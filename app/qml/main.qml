@@ -54,6 +54,10 @@ QtObject {
         windowsModel.append({ window: window })
         window.show()
         window.requestActivate()
+
+        // show() resets the window state, so this has to come after it.
+        if (Qt.application.arguments.indexOf("--fullscreen") !== -1)
+            window.fullscreen = true
     }
 
     function closeWindow(window) {
