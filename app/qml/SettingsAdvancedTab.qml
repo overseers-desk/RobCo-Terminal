@@ -66,6 +66,12 @@ ColumnLayout {
                 checked: appSettings.showMenubar
                 onCheckedChanged: appSettings.showMenubar = checked
             }
+            CheckBox {
+                id: perTabProfiles
+                text: qsTr("Give each new tab a different profile")
+                checked: appSettings.perTabProfiles
+                onCheckedChanged: appSettings.perTabProfiles = checked
+            }
         }
     }
 

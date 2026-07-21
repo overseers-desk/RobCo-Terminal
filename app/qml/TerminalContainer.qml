@@ -30,6 +30,10 @@ ShaderTerminal {
 
     property bool loadBloomEffect: settings.bloom > 0 || settings._frameShininess > 0
 
+    // When non-empty, this tab renders with its own profile instead of the
+    // global one. Assigned by TerminalTabs when per-tab profiles are enabled.
+    property string profileString: ""
+
     id: mainShader
     opacity: settings.windowOpacity * 0.3 + 0.7
 
@@ -41,6 +45,18 @@ ShaderTerminal {
         terminalWindow.height * Screen.devicePixelRatio * appSettings.windowScaling
     )
     bloomSource: bloomSourceLoader.item
+
+    // Created only for tabs that carry their own profile, so default tabs incur
+    // no extra FontManager. Declared before the terminal so 'settings' is live
+    // before PreprocessedTerminal connects to its font manager.
+    Loader {
+        id: ownProfileLoader
+        active: mainShader.profileString !== ""
+        sourceComponent: ProfileSettings {
+            Component.onCompleted: loadProfileString(mainShader.profileString)
+        }
+    }
+    settings: ownProfileLoader.item ? ownProfileLoader.item : appSettings
 
     PreprocessedTerminal {
         id: terminal

@@ -38,8 +38,25 @@ Item {
         return String(rawTitle).trim()
     }
 
+    // Advances through the built-in profiles so successive tabs look distinct.
+    // Starts at 1 so the first rotated tab differs from the default (index 0).
+    property int profileRotation: 1
+
+    function nextProfileString() {
+        if (!appSettings.perTabProfiles)
+            return ""
+        var list = appSettings.profilesList
+        if (list.count === 0)
+            return ""
+        var profileString = list.get(profileRotation % list.count).obj_string
+        profileRotation++
+        return profileString
+    }
+
     function addTab() {
-        tabsModel.append({ title: "" })
+        // The first tab keeps the default profile; later tabs may rotate.
+        var profileString = tabsModel.count > 0 ? nextProfileString() : ""
+        tabsModel.append({ title: "", profileString: profileString })
         tabBar.currentIndex = tabsModel.count - 1
     }
 
@@ -131,6 +148,7 @@ Item {
                 model: tabsModel
                 TerminalContainer {
                     property bool shouldHaveFocus: terminalWindow.active && StackLayout.isCurrentItem
+                    profileString: model.profileString ?? ""
                     isActive: StackLayout.isCurrentItem
                     onShouldHaveFocusChanged: {
                         if (shouldHaveFocus) {
