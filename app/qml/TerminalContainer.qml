@@ -28,10 +28,10 @@ ShaderTerminal {
     property bool isActive: false
     signal sessionFinished()
 
-    property bool loadBloomEffect: appSettings.bloom > 0 || appSettings._frameShininess > 0
+    property bool loadBloomEffect: settings.bloom > 0 || settings._frameShininess > 0
 
     id: mainShader
-    opacity: appSettings.windowOpacity * 0.3 + 0.7
+    opacity: settings.windowOpacity * 0.3 + 0.7
 
     source: terminal.mainSource
     burnInEffect: terminal.burnInEffect
@@ -44,6 +44,7 @@ ShaderTerminal {
 
     PreprocessedTerminal {
         id: terminal
+        settings: mainShader.settings
         anchors.fill: parent
         isActive: mainShader.isActive
         onSessionFinished: mainShader.sessionFinished()

@@ -30,6 +30,9 @@ Item{
     id: terminalContainer
     signal sessionFinished()
 
+    // Appearance profile driving this terminal; set by the owning tab.
+    property QtObject settings: appSettings
+
     property size virtualResolution: Qt.size(kterminal.totalWidth, kterminal.totalHeight)
     property alias mainTerminal: kterminal
 
@@ -67,7 +70,7 @@ Item{
 
     //When settings are updated sources need to be redrawn.
     Connections {
-        target: appSettings
+        target: settings
 
         onFontScalingChanged: {
             terminalContainer.updateSources()
@@ -96,8 +99,8 @@ Item{
     QMLTermWidget {
         id: kterminal
 
-        property int textureResolutionScale: appSettings.lowResolutionFont ? Screen.devicePixelRatio : 1
-        property int margin: appSettings.margin / screenScaling
+        property int textureResolutionScale: settings.lowResolutionFont ? Screen.devicePixelRatio : 1
+        property int margin: settings.margin / screenScaling
         property int totalWidth: Math.floor(parent.width / (screenScaling * fontWidth))
         property int totalHeight: Math.floor(parent.height / screenScaling)
 
@@ -115,7 +118,7 @@ Item{
         }
 
         fullCursorHeight: true
-        blinkingCursor: appSettings.blinkingCursor
+        blinkingCursor: settings.blinkingCursor
 
         colorScheme: "cool-retro-term"
 
@@ -187,12 +190,12 @@ Item{
             forceActiveFocus();
         }
         Component.onCompleted: {
-            appSettings.fontManager.terminalFontChanged.connect(handleFontChanged);
-            appSettings.fontManager.refresh()
+            settings.fontManager.terminalFontChanged.connect(handleFontChanged);
+            settings.fontManager.refresh()
             startSession();
         }
         Component.onDestruction: {
-            appSettings.fontManager.terminalFontChanged.disconnect(handleFontChanged);
+            settings.fontManager.terminalFontChanged.disconnect(handleFontChanged);
         }
     }
 
@@ -213,8 +216,8 @@ Item{
     property alias contextmenu: menuLoader.item
 
     MouseArea {
-        property real margin: appSettings.margin
-        property real frameSize: appSettings.frameSize * terminalWindow.normalizedWindowScale
+        property real margin: settings.margin
+        property real frameSize: settings.frameSize * terminalWindow.normalizedWindowScale
 
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         anchors.fill: parent
@@ -258,7 +261,7 @@ Item{
 
             var cc = Qt.size(0.5 - x, 0.5 - y);
             var distortion = (cc.height * cc.height + cc.width * cc.width)
-                    * appSettings.screenCurvature * appSettings.screenCurvatureSize
+                    * settings.screenCurvature * appSettings.screenCurvatureSize
                     * terminalWindow.normalizedWindowScale;
 
             return Qt.point((x - cc.width  * (1+distortion) * distortion) * (kterminal.totalWidth),
@@ -280,17 +283,18 @@ Item{
 
         property int burnInScaling: scaleTexture * appSettings.burnInQuality
 
-        width: Math.round(appSettings.lowResolutionFont
+        width: Math.round(settings.lowResolutionFont
                ? kterminal.totalWidth * Math.max(1, burnInScaling)
                : kterminal.totalWidth * scaleTexture * appSettings.burnInQuality)
 
-        height: Math.round(appSettings.lowResolutionFont
+        height: Math.round(settings.lowResolutionFont
                 ? kterminal.totalHeight * Math.max(1, burnInScaling)
                 : kterminal.totalHeight * scaleTexture * appSettings.burnInQuality)
 
 
         BurnInEffect {
             id: burnInEffect
+            settings: terminalContainer.settings
         }
     }
 }

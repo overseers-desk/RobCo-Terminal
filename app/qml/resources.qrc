@@ -4,6 +4,7 @@
         <file>ShaderTerminal.qml</file>
         <file>CheckableSlider.qml</file>
         <file>ApplicationSettings.qml</file>
+        <file>ProfileSettings.qml</file>
         <file>SettingsWindow.qml</file>
         <file>TerminalWindow.qml</file>
         <file>SettingsGeneralTab.qml</file>
