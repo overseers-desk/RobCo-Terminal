@@ -136,6 +136,10 @@ ApplicationWindow {
         }
         slotPrefixExists: terminalChannels.openChannelPrefixExists
     }
+    ChannelChassis {
+        anchors.fill: parent
+        well: crtRegion
+    }
     Rectangle {
         id: channelStrip
         width: 260

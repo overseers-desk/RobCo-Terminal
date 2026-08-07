@@ -57,6 +57,16 @@ function scaleColor(c1, value) {
     );
 }
 
+// The appliance's plastic: the profile's frame color, lifted towards the
+// screen's own glow as the ambient light rises.
+function frameBaseColor(frameColor, fontColor, backgroundColor, ambientLight) {
+    return mix(
+        scaleColor(mix(fontColor, backgroundColor, 0.2), 0.2),
+        sum(frameColor, Qt.rgba(0.1, 0.1, 0.1, 1.0)),
+        0.125 + 0.750 * ambientLight
+    );
+}
+
 function smoothstep(min, max, value) {
     let x = Math.max(0, Math.min(1, (value - min) / (max - min)));
     return x * x * (3 - 2 * x);
