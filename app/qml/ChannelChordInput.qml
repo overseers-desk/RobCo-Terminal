@@ -32,22 +32,33 @@ Item {
     signal storeToSlot(int slot)
     signal cycleOpen(int direction)
 
-    // True when some selectable slot has buf as a strict prefix; while true
-    // the chord keeps waiting for more digits instead of committing.
-    property var slotPrefixExists: function (buf) { return false }
+    // True when some slot the chord could still name has buf as a strict
+    // prefix; while true the chord keeps waiting for more digits instead of
+    // committing. Store chords may land on dark slots, so the host answers
+    // per mode.
+    property var slotPrefixExists: function (buf, store) { return false }
 
     property string digitBuffer: ""
     property bool storeMode: false
 
     readonly property var hostWindow: Window.window
 
+    // The first digit locks the chord's family; a Shift rolled early or late
+    // on a later digit cannot turn a select into a store or back.
     function feedDigit(digit, store) {
-        storeMode = store
+        if (digitBuffer === "")
+            storeMode = store
         digitBuffer += digit
-        if (slotPrefixExists(digitBuffer))
+        if (slotPrefixExists(digitBuffer, storeMode))
             commitTimer.restart()
         else
             commitChord()
+    }
+
+    function cancel() {
+        commitTimer.stop()
+        digitBuffer = ""
+        storeMode = false
     }
 
     function commitChord() {
