@@ -23,7 +23,10 @@
         <file>SettingsAdvancedTab.qml</file>
         <file>TerminalContainer.qml</file>
         <file>TerminalChannels.qml</file>
+        <file>ChannelBank.qml</file>
+        <file>ChannelButton.qml</file>
         <file>ChannelChassis.qml</file>
+        <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>
         <file>ChannelLedStrip.qml</file>
         <file>images/crt256.png</file>
