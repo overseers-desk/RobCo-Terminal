@@ -25,6 +25,10 @@ import "utils.js" as Utils
 // draws no background of its own: the chassis plastic behind it is the panel.
 // Its width follows the LED strip settings alone and never the window's size,
 // so dragging the window edge cannot move the screen well's left edge.
+//
+// The rows are a fixed-size window onto the slot space, paged: the numerals
+// read 1..N on every page, the way a car stereo reuses its preset keys across
+// FM1/FM2/FM3.
 Item {
     id: bank
 
@@ -52,10 +56,54 @@ Item {
 
     implicitWidth: 2 * bankPadding + numeralWidth + columnGap + buttonWidth + columnGap + stripWidth
 
-    readonly property int rowCount: Math.max(1, Math.floor(
-        (height - 2 * bankPadding + rowSpacing) / (rowHeight + rowSpacing)))
+    // Rows per page, measured rather than bound: a live count would reflow the
+    // bank on every frame of a window drag.
+    property int rowsVisible: 1
+    property int pageIndex: 0
+
+    readonly property int pageBase: pageIndex * rowsVisible
+    // Every open slot has a page, and so does the next free one: the slot a new
+    // channel will take is always one the mouse can reach.
+    readonly property int pageCount: Math.min(
+        Math.max(1, Math.ceil(Math.max(terminalChannels.highestOpenChannel,
+                                       terminalChannels.firstFreeChannel) / rowsVisible)),
+        Math.ceil(terminalChannels.channelCap / rowsVisible))
+
+    readonly property int currentChannel: terminalChannels.currentChannel
 
     clip: true
+
+    onHeightChanged: settleTimer.restart()
+    onRowHeightChanged: settleTimer.restart()
+    onCurrentChannelChanged: ensureVisible(currentChannel)
+    onPageCountChanged: pageIndex = Math.min(pageIndex, pageCount - 1)
+
+    Component.onCompleted: settle()
+
+    function settle() {
+        var rowsHeight = height - 2 * bankPadding - pager.height - rowSpacing
+        rowsVisible = Math.max(1, Math.floor((rowsHeight + rowSpacing) / (rowHeight + rowSpacing)))
+        ensureVisible(currentChannel)
+    }
+
+    // A page slot as the chord and the numerals read it, to its absolute slot;
+    // 0 where this page has no such row.
+    function absoluteSlot(pageSlot) {
+        return pageSlot >= 1 && pageSlot <= rowsVisible ? pageBase + pageSlot : 0
+    }
+
+    function slotPrefixExists(buf) {
+        return terminalChannels.pageSlotPrefixExists(buf, pageBase, rowsVisible)
+    }
+
+    function step(direction) {
+        pageIndex = Math.max(0, Math.min(pageCount - 1, pageIndex + direction))
+    }
+
+    function ensureVisible(channel) {
+        if (channel >= 1)
+            pageIndex = Math.floor((channel - 1) / rowsVisible)
+    }
 
     // The press of a preset: a dark slot starts a session on it, an open one
     // comes to the screen, and either way the shell gets the keyboard back.
@@ -67,18 +115,37 @@ Item {
         terminalChannels.activateCurrent()
     }
 
+    // A drag walks the height a frame at a time; the bank reflows once it stops.
+    Timer {
+        id: settleTimer
+        interval: 150
+        onTriggered: bank.settle()
+    }
+
+    Connections {
+        target: terminalChannels
+        function onChannelStored(channel) {
+            var row = rows.itemAt(channel - bank.pageBase - 1)
+            if (row)
+                row.blink()
+        }
+    }
+
     Column {
         x: bank.bankPadding
         y: bank.bankPadding
         spacing: bank.rowSpacing
 
         Repeater {
-            model: bank.rowCount
+            id: rows
+
+            model: bank.rowsVisible
 
             ChannelRow {
                 readonly property var slotTitle: terminalChannels.channelState[channel]
 
-                channel: index + 1
+                channel: bank.pageBase + index + 1
+                label: index + 1
                 width: bank.width - 2 * bank.bankPadding
                 height: bank.rowHeight
                 plastic: bank.plastic
@@ -89,9 +156,25 @@ Item {
                 stripPadding: bank.stripPadding
                 open: slotTitle !== undefined
                 title: slotTitle !== undefined ? slotTitle : ""
-                current: terminalChannels.currentChannel === channel
+                current: bank.currentChannel === channel
                 onActivated: bank.press(channel)
             }
         }
+    }
+
+    ChannelPager {
+        id: pager
+
+        x: bank.bankPadding
+        width: bank.width - 2 * bank.bankPadding
+        anchors {
+            bottom: parent.bottom
+            bottomMargin: bank.bankPadding
+        }
+        plastic: bank.plastic
+        columnGap: bank.columnGap
+        pageIndex: bank.pageIndex
+        pageCount: bank.pageCount
+        onStep: function (direction) { bank.step(direction) }
     }
 }

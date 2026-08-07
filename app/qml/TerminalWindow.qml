@@ -138,18 +138,30 @@ ApplicationWindow {
         shortcut: appSettings.isMacOS ? "Meta+W" : "Ctrl+Shift+W"
         onTriggered: terminalChannels.closeChannel(terminalChannels.currentChannel)
     }
+    // The chord names a key on the page the bank is showing, as the numerals
+    // engraved beside those keys read; the bank turns it into a slot.
     ChannelChordInput {
         id: channelChordInput
         onSelectSlot: function (slot) {
-            terminalChannels.selectChannel(slot)
+            terminalChannels.selectChannel(channelBank.absoluteSlot(slot))
         }
         onStoreToSlot: function (slot) {
-            terminalChannels.moveCurrentTo(slot)
+            terminalChannels.moveCurrentTo(channelBank.absoluteSlot(slot))
         }
         onCycleOpen: function (direction) {
             terminalChannels.cycleOpen(direction)
         }
-        slotPrefixExists: terminalChannels.openChannelPrefixExists
+        slotPrefixExists: channelBank.slotPrefixExists
+    }
+    Shortcut {
+        sequence: appSettings.isMacOS ? "Meta+PgUp" : "Alt+PgUp"
+        context: Qt.WindowShortcut
+        onActivated: channelBank.step(-1)
+    }
+    Shortcut {
+        sequence: appSettings.isMacOS ? "Meta+PgDown" : "Alt+PgDown"
+        context: Qt.WindowShortcut
+        onActivated: channelBank.step(1)
     }
     ChannelChassis {
         anchors.fill: parent
