@@ -54,6 +54,10 @@ Item {
     }
     property size terminalSize: Qt.size(0, 0)
 
+    // The set only flinches once it is on: bringing up the first channel is
+    // not a channel change.
+    property bool _degaussArmed: false
+
     // A session has landed on a slot: the bank acknowledges it on that row.
     signal channelStored(int channel)
 
@@ -139,6 +143,9 @@ Item {
         var from = _rowOf(currentChannel)
         if (from < 0)
             return
+        // The session on screen stays the same; its slot number moves. The LED
+        // blink is the store's acknowledgement, so the tube holds steady.
+        _degaussArmed = false
         var to = _rowOf(channel)
         if (to >= 0) {
             // Occupied slot: the two sessions swap slots. Swap the rows, then
@@ -165,6 +172,7 @@ Item {
         }
         currentChannel = channel
         _rebuildState()
+        _degaussArmed = true
         channelStored(channel)
         activateCurrent()
     }
@@ -206,37 +214,90 @@ Item {
             item.activate()
     }
 
-    Component.onCompleted: openChannel(1)
+    Component.onCompleted: {
+        openChannel(1)
+        _degaussArmed = true
+    }
 
-    StackLayout {
-        id: stack
+    // Turning the knob makes the tube flinch. Re-selecting the current channel
+    // never reaches here: currentChannel does not change.
+    onCurrentChannelChanged: {
+        if (_degaussArmed)
+            degauss.restart()
+    }
+
+    Item {
+        id: picture
+
         anchors.fill: parent
-        currentIndex: channelsRoot.currentIndex
+        transform: Scale {
+            id: pinch
+            origin.x: picture.width / 2
+            origin.y: picture.height / 2
+        }
 
-        Repeater {
-            id: channelRepeater
-            model: channelsModel
-            TerminalContainer {
-                property int channelNumber: model.channel
-                property bool shouldHaveFocus: terminalWindow.active && StackLayout.isCurrentItem
-                isActive: StackLayout.isCurrentItem
-                onShouldHaveFocusChanged: {
-                    if (shouldHaveFocus) {
-                        activate()
+        StackLayout {
+            id: stack
+            anchors.fill: parent
+            currentIndex: channelsRoot.currentIndex
+
+            Repeater {
+                id: channelRepeater
+                model: channelsModel
+                TerminalContainer {
+                    property int channelNumber: model.channel
+                    property bool shouldHaveFocus: terminalWindow.active && StackLayout.isCurrentItem
+                    isActive: StackLayout.isCurrentItem
+                    onShouldHaveFocusChanged: {
+                        if (shouldHaveFocus) {
+                            activate()
+                        }
+                    }
+                    onTitleChanged: channelsRoot.setTitle(channelNumber, title)
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    onSessionFinished: channelsRoot.closeChannel(channelNumber)
+                    onTerminalSizeChanged: publishTerminalSize()
+                    StackLayout.onIsCurrentItemChanged: publishTerminalSize()
+
+                    function publishTerminalSize() {
+                        if (StackLayout.isCurrentItem)
+                            channelsRoot.terminalSize = terminalSize
                     }
                 }
-                onTitleChanged: channelsRoot.setTitle(channelNumber, title)
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                onSessionFinished: channelsRoot.closeChannel(channelNumber)
-                onTerminalSizeChanged: publishTerminalSize()
-                StackLayout.onIsCurrentItemChanged: publishTerminalSize()
-
-                function publishTerminalSize() {
-                    if (StackLayout.isCurrentItem)
-                        channelsRoot.terminalSize = terminalSize
-                }
             }
+        }
+
+        // The phosphor flood. Idle it is transparent and out of the scene, so
+        // nothing of the flinch survives the animation.
+        Rectangle {
+            id: flood
+
+            anchors.fill: parent
+            color: appSettings.fontColor
+            opacity: 0
+            visible: opacity > 0
+        }
+    }
+
+    ParallelAnimation {
+        id: degauss
+
+        NumberAnimation {
+            target: pinch
+            property: "yScale"
+            from: 0.97
+            to: 1.0
+            duration: 200
+            easing.type: Easing.OutQuad
+        }
+        NumberAnimation {
+            target: flood
+            property: "opacity"
+            from: 0.25
+            to: 0.0
+            duration: 200
+            easing.type: Easing.OutQuad
         }
     }
 }
