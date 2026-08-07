@@ -46,8 +46,11 @@ ApplicationWindow {
         visible = true
     }
 
-    minimumWidth: channelStrip.width + 320
+    minimumWidth: channelBank.implicitWidth + 320
     minimumHeight: 240
+
+    // The plastic left standing between the screen well and the window edges.
+    readonly property int chassisMargin: 16
 
     visible: false
 
@@ -152,23 +155,24 @@ ApplicationWindow {
         anchors.fill: parent
         well: crtRegion
     }
-    Rectangle {
-        id: channelStrip
-        width: 260
+    ChannelBank {
+        id: channelBank
         anchors {
             left: parent.left
             top: parent.top
             bottom: parent.bottom
         }
-        color: "#0c0c0c"
     }
     Item {
         id: crtRegion
         anchors {
-            left: channelStrip.right
+            left: channelBank.right
             right: parent.right
             top: parent.top
             bottom: parent.bottom
+            rightMargin: terminalWindow.chassisMargin
+            topMargin: terminalWindow.chassisMargin
+            bottomMargin: terminalWindow.chassisMargin
         }
         TerminalChannels {
             id: terminalChannels
