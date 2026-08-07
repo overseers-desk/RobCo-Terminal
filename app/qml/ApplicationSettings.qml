@@ -140,8 +140,8 @@ QtObject {
         baseFontScaling: baseFontScaling
     }
 
-    // LED strip geometry, derived from the chosen font so strips and banks
-    // can never disagree about cell size.
+    // LED strip geometry, derived from the chosen font so every strip agrees
+    // on cell size.
     readonly property var _ledFontEntry: fontManager.fontByName(ledFontName)
     readonly property string ledFontFamily: (_ledFontEntry && _ledFontEntry.family) ? _ledFontEntry.family : lowResolutionFontList.get(0).family
     readonly property int ledFontPixelSize: (_ledFontEntry && _ledFontEntry.pixelSize) ? _ledFontEntry.pixelSize : 8

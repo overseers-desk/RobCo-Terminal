@@ -34,7 +34,6 @@ Item {
     property int currentChannel: 0
     property int currentIndex: -1
 
-    readonly property int highestOpenChannel: Math.max(0, channelState.length - 1)
     readonly property int firstFreeChannel: {
         for (var n = 1; n <= channelCap; n++) {
             if (channelState[n] === undefined)
