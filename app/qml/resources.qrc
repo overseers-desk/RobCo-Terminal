@@ -24,6 +24,7 @@
         <file>TerminalContainer.qml</file>
         <file>TerminalChannels.qml</file>
         <file>ChannelChordInput.qml</file>
+        <file>ChannelLedStrip.qml</file>
         <file>images/crt256.png</file>
         <file>utils.js</file>
         <file>images/allNoise512.png</file>
@@ -112,6 +113,8 @@
         <file>../shaders/terminal_static_rgb1_bloom1_curve1_shine1.frag.qsb</file>
         <file>../shaders/terminal_frame.frag.qsb</file>
         <file>../shaders/burn_in.frag.qsb</file>
+        <file>../shaders/led_matrix.vert.qsb</file>
+        <file>../shaders/led_matrix.frag.qsb</file>
         <file>fonts/unscii/unscii-8-thin.ttf</file>
         <file>fonts/unscii/unscii-16-full.ttf</file>
         <file>fonts/unscii/unscii-8.ttf</file>
