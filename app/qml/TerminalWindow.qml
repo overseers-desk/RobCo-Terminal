@@ -123,50 +123,28 @@ ApplicationWindow {
         shortcut: appSettings.isMacOS ? "Meta+W" : "Ctrl+Shift+W"
         onTriggered: terminalTabs.closeTab(terminalTabs.currentIndex)
     }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+1" : "Alt+1"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 0) terminalTabs.currentIndex = 0
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+2" : "Alt+2"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 1) terminalTabs.currentIndex = 1
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+3" : "Alt+3"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 2) terminalTabs.currentIndex = 2
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+4" : "Alt+4"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 3) terminalTabs.currentIndex = 3
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+5" : "Alt+5"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 4) terminalTabs.currentIndex = 4
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+6" : "Alt+6"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 5) terminalTabs.currentIndex = 5
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+7" : "Alt+7"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 6) terminalTabs.currentIndex = 6
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+8" : "Alt+8"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 7) terminalTabs.currentIndex = 7
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+9" : "Alt+9"
-        context: Qt.WindowShortcut
-        onActivated: if (terminalTabs.count > 8) terminalTabs.currentIndex = 8
+    // Channel slot wiring, currently against the dense session list.
+    ChannelChordInput {
+        id: channelChordInput
+        onSelectSlot: function (slot) {
+            if (slot >= 1 && slot <= terminalTabs.count)
+                terminalTabs.currentIndex = slot - 1
+        }
+        onStoreToSlot: function (slot) {
+            // Storing a session into a slot arrives with the sparse channel model.
+        }
+        onCycleOpen: function (direction) {
+            if (terminalTabs.count > 0)
+                terminalTabs.currentIndex = (terminalTabs.currentIndex + direction + terminalTabs.count) % terminalTabs.count
+        }
+        slotPrefixExists: function (buf) {
+            for (var n = 1; n <= terminalTabs.count; n++) {
+                var s = String(n)
+                if (s.length > buf.length && s.indexOf(buf) === 0)
+                    return true
+            }
+            return false
+        }
     }
     TerminalTabs {
         id: terminalTabs
