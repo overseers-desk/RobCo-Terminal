@@ -56,7 +56,7 @@ ColumnLayout {
                 }
                 Connections {
                     target: appSettings
-                    onLedFontNameChanged: {
+                    function onLedFontNameChanged() {
                         ledFontChanger.updateIndex()
                     }
                 }
@@ -75,9 +75,8 @@ ColumnLayout {
             }
         }
     }
-    ColumnLayout {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        // Live preview strip is added by the follow-up renderer page.
+    ChannelLedStrip {
+        Layout.alignment: Qt.AlignHCenter
+        text: "channel preview"
     }
 }
