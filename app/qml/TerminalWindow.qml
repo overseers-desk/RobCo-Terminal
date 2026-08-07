@@ -152,6 +152,15 @@ ApplicationWindow {
             terminalChannels.cycleOpen(direction)
         }
         slotPrefixExists: channelBank.slotPrefixExists
+
+        // A page flip re-labels the numerals, so digits typed against the old
+        // page are abandoned, never committed against the new one.
+        Connections {
+            target: channelBank
+            function onPageIndexChanged() {
+                channelChordInput.cancel()
+            }
+        }
     }
     Shortcut {
         sequence: appSettings.isMacOS ? "Meta+PgUp" : "Alt+PgUp"

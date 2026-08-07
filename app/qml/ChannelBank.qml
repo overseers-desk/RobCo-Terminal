@@ -92,7 +92,17 @@ Item {
         return pageSlot >= 1 && pageSlot <= rowsVisible ? pageBase + pageSlot : 0
     }
 
-    function slotPrefixExists(buf) {
+    // A store targets any page slot, dark included; a select waits only on
+    // open ones.
+    function slotPrefixExists(buf, store) {
+        if (store) {
+            for (var n = 1; n <= rowsVisible; n++) {
+                var s = String(n)
+                if (s.length > buf.length && s.indexOf(buf) === 0)
+                    return true
+            }
+            return false
+        }
         return terminalChannels.pageSlotPrefixExists(buf, pageBase, rowsVisible)
     }
 
