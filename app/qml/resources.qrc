@@ -120,6 +120,8 @@
         <file>../shaders/burn_in.frag.qsb</file>
         <file>../shaders/led_matrix.vert.qsb</file>
         <file>../shaders/led_matrix.frag.qsb</file>
+        <file>../shaders/chassis_plastic.vert.qsb</file>
+        <file>../shaders/chassis_plastic.frag.qsb</file>
         <file>fonts/unscii/unscii-8-thin.ttf</file>
         <file>fonts/unscii/unscii-16-full.ttf</file>
         <file>fonts/unscii/unscii-8.ttf</file>
