@@ -126,6 +126,7 @@ QtObject {
 
     property alias fontName: fontManager.fontName
     property alias filteredFontList: fontManager.filteredFontList
+    property alias lowResolutionFontList: fontManager.lowResolutionFontList
 
     property FontManager fontManager: FontManager {
         id: fontManager

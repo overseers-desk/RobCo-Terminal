@@ -13,6 +13,7 @@ class FontManager : public QObject
     Q_OBJECT
     Q_PROPERTY(FontListModel *fontList READ fontList CONSTANT)
     Q_PROPERTY(FontListModel *filteredFontList READ filteredFontList NOTIFY filteredFontListChanged)
+    Q_PROPERTY(FontListModel *lowResolutionFontList READ lowResolutionFontList CONSTANT)
     Q_PROPERTY(int fontSource READ fontSource WRITE setFontSource NOTIFY fontSourceChanged)
     Q_PROPERTY(int rasterization READ rasterization WRITE setRasterization NOTIFY rasterizationChanged)
     Q_PROPERTY(QString fontName READ fontName WRITE setFontName NOTIFY fontNameChanged)
@@ -29,6 +30,9 @@ public:
 
     FontListModel *fontList();
     FontListModel *filteredFontList();
+    FontListModel *lowResolutionFontList();
+
+    Q_INVOKABLE QVariantMap fontByName(const QString &name) const;
 
     int fontSource() const;
     void setFontSource(int fontSource);
@@ -93,6 +97,7 @@ private:
 
     FontListModel m_fontListModel;
     FontListModel m_filteredFontListModel;
+    FontListModel m_lowResolutionFontListModel;
     QVector<FontEntry> m_allFonts;
 
     int m_fontSource = 0;

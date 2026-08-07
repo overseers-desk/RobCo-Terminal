@@ -16,10 +16,20 @@ FontManager::FontManager(QObject *parent)
     : QObject(parent)
     , m_fontListModel(this)
     , m_filteredFontListModel(this)
+    , m_lowResolutionFontListModel(this)
 {
     populateBundledFonts();
     populateSystemFonts();
     m_fontListModel.setFonts(m_allFonts);
+
+    QVector<FontEntry> lowResolutionFonts;
+    for (const FontEntry &font : m_allFonts) {
+        if (!font.isSystemFont && font.lowResolutionFont) {
+            lowResolutionFonts.append(font);
+        }
+    }
+    m_lowResolutionFontListModel.setFonts(lowResolutionFonts);
+
     updateFilteredFonts();
     updateComputedFont();
 }
@@ -55,6 +65,31 @@ FontListModel *FontManager::fontList()
 FontListModel *FontManager::filteredFontList()
 {
     return &m_filteredFontListModel;
+}
+
+FontListModel *FontManager::lowResolutionFontList()
+{
+    return &m_lowResolutionFontListModel;
+}
+
+QVariantMap FontManager::fontByName(const QString &name) const
+{
+    QVariantMap map;
+    const FontEntry *font = findFontByName(name);
+    if (!font) {
+        return map;
+    }
+
+    map.insert("name", font->name);
+    map.insert("text", font->text);
+    map.insert("source", font->source);
+    map.insert("baseWidth", font->baseWidth);
+    map.insert("pixelSize", font->pixelSize);
+    map.insert("lowResolutionFont", font->lowResolutionFont);
+    map.insert("isSystemFont", font->isSystemFont);
+    map.insert("family", font->family);
+    map.insert("fallbackName", font->fallbackName);
+    return map;
 }
 
 int FontManager::fontSource() const
