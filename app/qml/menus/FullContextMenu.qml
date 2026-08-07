@@ -38,7 +38,7 @@ Menu {
             action: newWindowAction
         }
         MenuItem {
-            action: newTabAction
+            action: newChannelAction
         }
         MenuSeparator {}
         MenuItem {

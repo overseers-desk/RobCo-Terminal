@@ -27,8 +27,8 @@ MenuBar {
     Menu {
         title: qsTr("File")
         MenuItem { action: newWindowAction }
-        MenuItem { action: newTabAction }
-        MenuItem { action: closeTabAction }
+        MenuItem { action: newChannelAction }
+        MenuItem { action: closeChannelAction }
         MenuSeparator { }
         MenuItem { action: quitAction }
     }
