@@ -22,7 +22,7 @@ import QtQuick
 import "utils.js" as Utils
 
 // The bank of channel rows set into the chassis, left of the screen well. It
-// draws no background of its own: the chassis plastic behind it is the panel.
+// draws no background of its own: the chassis plastic behind it shows through.
 // Its width follows the LED strip settings alone and never the window's size,
 // so dragging the window edge cannot move the screen well's left edge.
 //

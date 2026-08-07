@@ -23,7 +23,7 @@ import "utils.js" as Utils
 
 // The appliance body the channel bank and the screen are set into. Its plastic
 // is mixed from the same profile inputs the frame shader lights, so the body
-// and the bezel are one moulding whichever profile is loaded.
+// and the frame are one moulding whichever profile is loaded.
 Rectangle {
     id: chassis
 

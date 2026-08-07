@@ -45,7 +45,7 @@ Item {
     implicitHeight: ledStrip.height + 2 * stripPadding
     implicitWidth: numeralWidth + columnGap + buttonWidth + columnGap + ledStrip.width
 
-    // The confirmation the panel gives when a session lands on this slot.
+    // The confirmation the panel gives when the current session is stored onto this slot.
     function blink() {
         storeBlink.restart()
     }
