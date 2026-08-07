@@ -54,6 +54,10 @@ ApplicationWindow {
                 padding: tabButtonPadding
                 text: qsTr("Advanced")
             }
+            TabButton {
+                padding: tabButtonPadding
+                text: qsTr("Channels")
+            }
         }
 
         StackLayout {
@@ -71,6 +75,7 @@ ApplicationWindow {
             SettingsTerminalTab { }
             SettingsEffectsTab { }
             SettingsAdvancedTab { }
+            SettingsChannelsTab { }
         }
     }
 }
