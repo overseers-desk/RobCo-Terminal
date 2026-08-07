@@ -21,7 +21,7 @@
         <file>Storage.qml</file>
         <file>SettingsAdvancedTab.qml</file>
         <file>TerminalContainer.qml</file>
-        <file>TerminalTabs.qml</file>
+        <file>TerminalChannels.qml</file>
         <file>ChannelChordInput.qml</file>
         <file>images/crt256.png</file>
         <file>utils.js</file>

@@ -48,7 +48,7 @@ ApplicationWindow {
 
     color: "#00000000"
 
-    title: terminalTabs.currentTitle
+    title: terminalChannels.currentTitle
 
     Action {
         id: fullscreenAction
@@ -112,42 +112,32 @@ ApplicationWindow {
         }
     }
     Action {
-        id: newTabAction
-        text: qsTr("New Tab")
+        id: newChannelAction
+        text: qsTr("New Channel")
         shortcut: appSettings.isMacOS ? "Meta+T" : "Ctrl+Shift+T"
-        onTriggered: terminalTabs.addTab()
+        onTriggered: terminalChannels.openFirstFree()
     }
     Action {
-        id: closeTabAction
-        text: qsTr("Close Tab")
+        id: closeChannelAction
+        text: qsTr("Close Channel")
         shortcut: appSettings.isMacOS ? "Meta+W" : "Ctrl+Shift+W"
-        onTriggered: terminalTabs.closeTab(terminalTabs.currentIndex)
+        onTriggered: terminalChannels.closeChannel(terminalChannels.currentChannel)
     }
-    // Channel slot wiring, currently against the dense session list.
     ChannelChordInput {
         id: channelChordInput
         onSelectSlot: function (slot) {
-            if (slot >= 1 && slot <= terminalTabs.count)
-                terminalTabs.currentIndex = slot - 1
+            terminalChannels.selectChannel(slot)
         }
         onStoreToSlot: function (slot) {
-            // Storing a session into a slot arrives with the sparse channel model.
+            terminalChannels.moveCurrentTo(slot)
         }
         onCycleOpen: function (direction) {
-            if (terminalTabs.count > 0)
-                terminalTabs.currentIndex = (terminalTabs.currentIndex + direction + terminalTabs.count) % terminalTabs.count
+            terminalChannels.cycleOpen(direction)
         }
-        slotPrefixExists: function (buf) {
-            for (var n = 1; n <= terminalTabs.count; n++) {
-                var s = String(n)
-                if (s.length > buf.length && s.indexOf(buf) === 0)
-                    return true
-            }
-            return false
-        }
+        slotPrefixExists: terminalChannels.openChannelPrefixExists
     }
-    TerminalTabs {
-        id: terminalTabs
+    TerminalChannels {
+        id: terminalChannels
         width: parent.width
         height: (parent.height + Math.abs(y))
     }
@@ -156,7 +146,7 @@ ApplicationWindow {
         active: appSettings.showTerminalSize
         sourceComponent: SizeOverlay {
             z: 3
-            terminalSize: terminalTabs.terminalSize
+            terminalSize: terminalChannels.terminalSize
         }
     }
     onClosing: {
