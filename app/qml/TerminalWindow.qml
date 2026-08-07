@@ -46,7 +46,7 @@ ApplicationWindow {
         visible = true
     }
 
-    minimumWidth: 320
+    minimumWidth: channelStrip.width + 320
     minimumHeight: 240
 
     visible: false
@@ -56,7 +56,7 @@ ApplicationWindow {
 
     menuBar: WindowMenu { }
 
-    property real normalizedWindowScale: 1024 / ((0.5 * width + 0.5 * height))
+    property real normalizedWindowScale: 1024 / ((0.5 * crtRegion.width + 0.5 * crtRegion.height))
 
     color: "#00000000"
 
@@ -148,13 +148,31 @@ ApplicationWindow {
         }
         slotPrefixExists: terminalChannels.openChannelPrefixExists
     }
-    TerminalChannels {
-        id: terminalChannels
-        width: parent.width
-        height: (parent.height + Math.abs(y))
+    Rectangle {
+        id: channelStrip
+        width: 260
+        anchors {
+            left: parent.left
+            top: parent.top
+            bottom: parent.bottom
+        }
+        color: "#0c0c0c"
+    }
+    Item {
+        id: crtRegion
+        anchors {
+            left: channelStrip.right
+            right: parent.right
+            top: parent.top
+            bottom: parent.bottom
+        }
+        TerminalChannels {
+            id: terminalChannels
+            anchors.fill: parent
+        }
     }
     Loader {
-        anchors.centerIn: parent
+        anchors.centerIn: crtRegion
         active: appSettings.showTerminalSize
         sourceComponent: SizeOverlay {
             z: 3
