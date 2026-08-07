@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
-import QtQuick 2.2
+import QtQuick 2.4
 import QtQuick.Controls 2.0
 import CoolRetroTerm 1.0
 
@@ -36,6 +36,10 @@ QtObject {
 
     readonly property real minBurnInFadeTime: 0.16
     readonly property real maxBurnInFadeTime: 1.6
+
+    readonly property int ledDotPitch: 3
+    readonly property int minLedCharacters: 4
+    readonly property int maxLedCharacters: 32
 
     property bool isMacOS: Qt.platform.os === "osx"
 
@@ -99,6 +103,9 @@ QtObject {
     property real _margin: 0.5
     property real margin: Utils.lint(1.0, 40.0, _margin) + (1.0 - Math.SQRT1_2) * screenRadius
 
+    property string ledFontName: "UNSCII_8_SCALED"
+    property int ledCharacters: 12
+
     readonly property bool frameEnabled: ambientLight > 0 || _frameSize > 0 || screenCurvature > 0
 
     readonly property int no_rasterization: 0
@@ -132,6 +139,19 @@ QtObject {
         id: fontManager
         baseFontScaling: baseFontScaling
     }
+
+    // LED strip geometry, derived from the chosen font so strips and banks
+    // can never disagree about cell size.
+    readonly property var _ledFontEntry: fontManager.fontByName(ledFontName)
+    readonly property string ledFontFamily: (_ledFontEntry && _ledFontEntry.family) ? _ledFontEntry.family : lowResolutionFontList.get(0).family
+    readonly property int ledFontPixelSize: (_ledFontEntry && _ledFontEntry.pixelSize) ? _ledFontEntry.pixelSize : 8
+    property TextMetrics _ledMetrics: TextMetrics {
+        font.family: ledFontFamily
+        font.pixelSize: ledFontPixelSize
+        text: "M"
+    }
+    readonly property int ledCellWidth: Math.max(1, Math.round(_ledMetrics.advanceWidth))
+    readonly property int ledCellHeight: Math.max(1, Math.ceil(_ledMetrics.height))
 
     signal initializedSettings
 
@@ -202,7 +222,9 @@ QtObject {
             "frameSize": _frameSize,
             "screenRadius": _screenRadius,
             "frameColor": _frameColor,
-            "frameShininess": _frameShininess
+            "frameShininess": _frameShininess,
+            "ledFontName": ledFontName,
+            "ledCharacters": ledCharacters
         }
         return profile
     }
@@ -310,6 +332,9 @@ QtObject {
         _frameShininess = settings.frameShininess !== undefined ? settings.frameShininess : _frameShininess
 
         blinkingCursor = settings.blinkingCursor !== undefined ? settings.blinkingCursor : blinkingCursor
+
+        ledFontName = settings.ledFontName !== undefined ? settings.ledFontName : ledFontName
+        ledCharacters = settings.ledCharacters !== undefined ? settings.ledCharacters : ledCharacters
     }
 
     function storeCustomProfiles() {
