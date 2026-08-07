@@ -41,11 +41,21 @@ Item {
         }
         return 0
     }
+    readonly property int highestOpenChannel: {
+        for (var n = channelCap; n >= 1; n--) {
+            if (channelState[n] !== undefined)
+                return n
+        }
+        return 0
+    }
     readonly property string currentTitle: {
         var title = channelState[currentChannel]
         return title ? title : "cool-retro-term"
     }
     property size terminalSize: Qt.size(0, 0)
+
+    // A session has landed on a slot: the bank acknowledges it on that row.
+    signal channelStored(int channel)
 
     // channelsModel rows are kept sorted ascending by channel.
     ListModel {
@@ -155,6 +165,7 @@ Item {
         }
         currentChannel = channel
         _rebuildState()
+        channelStored(channel)
         activateCurrent()
     }
 
@@ -168,9 +179,11 @@ Item {
         selectChannel(channelsModel.get(next).channel)
     }
 
-    function openChannelPrefixExists(buf) {
-        for (var n = 1; n < channelState.length; n++) {
-            if (channelState[n] === undefined)
+    // True when buf is a strict prefix of some open slot of the page rooted at
+    // base: the chord keeps waiting only for digits that can still land.
+    function pageSlotPrefixExists(buf, base, count) {
+        for (var n = 1; n <= count; n++) {
+            if (channelState[base + n] === undefined)
                 continue
             var s = String(n)
             if (s.length > buf.length && s.indexOf(buf) === 0)

@@ -22,10 +22,13 @@ import QtQuick 2.2
 // One slot of the bank: the numeral engraved in the plastic, the preset button
 // that selects it, and the LED strip carrying that session's title. The row
 // reads nothing from the model; the bank feeds it and takes the press back.
+// The numeral is the label, counted within the page; the channel behind it is
+// absolute.
 Item {
     id: channelRow
 
     property int channel: 0
+    property int label: 0
     property string title: ""
     property bool open: false
     property bool current: false
@@ -42,6 +45,11 @@ Item {
     implicitHeight: ledStrip.height + 2 * stripPadding
     implicitWidth: numeralWidth + columnGap + buttonWidth + columnGap + ledStrip.width
 
+    // The confirmation the panel gives when a session lands on this slot.
+    function blink() {
+        storeBlink.restart()
+    }
+
     Item {
         id: numeral
 
@@ -57,7 +65,7 @@ Item {
             font.pixelSize: 13
             font.bold: true
             font.letterSpacing: 0.5
-            text: channelRow.channel
+            text: channelRow.label
             color: Qt.lighter(channelRow.plastic, 1.55)
         }
         Text {
@@ -67,7 +75,7 @@ Item {
             font.pixelSize: 13
             font.bold: true
             font.letterSpacing: 0.5
-            text: channelRow.channel
+            text: channelRow.label
             color: Qt.darker(channelRow.plastic, 2.1)
         }
     }
@@ -114,5 +122,13 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: channelRow.title
         powered: channelRow.open
+    }
+
+    SequentialAnimation {
+        id: storeBlink
+
+        loops: 2
+        NumberAnimation { target: ledStrip; property: "opacity"; to: 0.0; duration: 40 }
+        NumberAnimation { target: ledStrip; property: "opacity"; to: 1.0; duration: 35 }
     }
 }
