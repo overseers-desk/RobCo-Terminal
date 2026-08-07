@@ -21,102 +21,56 @@ import QtQuick
 
 import "utils.js" as Utils
 
-// The appliance body the channel bank and the screen are set into. Its plastic
-// is mixed from the same profile inputs the frame shader lights, so the body
-// and the frame are one moulding whichever profile is loaded.
+// The moulding the channel bank is set into: the same plastic the frame shader
+// lights, drawn beyond the frame's own rectangle. Its lighting field and its
+// grain lattice are the frame's, continued outwards, so the bank column and the
+// CRT frame read as one piece rather than a panel butted against one.
 //
-// The body is four panels around the screen well, never a sheet behind it: a
-// see-through profile has to look through the tube onto the desktop, and any
-// plastic left under the glass would be a second veil over the picture.
-Item {
+// It occupies only the ground the bank stands on, never a sheet behind the
+// screen: a see-through profile has to look through the tube onto the desktop,
+// and any plastic left under the glass would be a second veil over the picture.
+ShaderEffect {
     id: chassis
 
-    // The item occupying the screen well; the body is recessed around it.
-    property Item well
+    // The item the frame shader fills; this plastic continues its field.
+    property Item frameRegion
 
-    readonly property color plastic: Utils.frameBaseColor(
+    property color frameColor: Utils.frameBaseColor(
         appSettings.frameColor,
         appSettings.fontColor,
         appSettings.backgroundColor,
         appSettings.ambientLight
     )
 
-    readonly property point wellOrigin: well
-        ? mapFromItem(well.parent, well.x, well.y)
-        : Qt.point(0, 0)
-    readonly property real wellWidth: well ? well.width : 0
-    readonly property real wellHeight: well ? well.height : 0
+    property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
 
+    property real frameShininess: appSettings.frameShininess
+
+    property real frameSize: appSettings.frameSize * terminalWindow.normalizedScreenScale
+
+    property real screenRadius: appSettings.screenRadius
+
+    // The frame's own measurements, in the units its shader works in: this
+    // plastic is placed in that field, not in one of its own.
+    property size viewportSize: Qt.size(_fieldWidth, _fieldHeight)
+
+    property size fieldScale: Qt.size(width / _fieldWidth, height / _fieldHeight)
+
+    property size fieldOffset: frameRegion
+        ? Qt.size((x - frameRegion.x) / _fieldWidth, (y - frameRegion.y) / _fieldHeight)
+        : Qt.size(0, 0)
+
+    readonly property real _fieldWidth: frameRegion ? Math.max(1, frameRegion.width) : 1
+    readonly property real _fieldHeight: frameRegion ? Math.max(1, frameRegion.height) : 1
+
+    // The body takes the tube's translucency, so a see-through profile is one
+    // set and not a screen cut into an opaque box.
     opacity: appSettings.windowOpacity * 0.3 + 0.7
 
-    // One moulding lit from above: each panel takes the slice of the body's
-    // full-height shading that its own span covers.
-    function shade(y) {
-        return Utils.mix(Utils.scaleColor(plastic, 1.12),
-                         Utils.scaleColor(plastic, 0.86),
-                         height > 0 ? Utils.clamp(y / height, 0, 1) : 0)
-    }
+    blending: false
 
-    Rectangle {
-        width: chassis.width
-        height: chassis.wellOrigin.y
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: chassis.shade(0) }
-            GradientStop { position: 1.0; color: chassis.shade(chassis.wellOrigin.y) }
-        }
+    vertexShader: "qrc:/shaders/chassis_plastic.vert.qsb"
+    fragmentShader: "qrc:/shaders/chassis_plastic.frag.qsb"
 
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; top: parent.top }
-            height: 1
-            color: Utils.scaleColor(chassis.plastic, 1.35)
-        }
-    }
-
-    Rectangle {
-        y: chassis.wellOrigin.y
-        width: chassis.wellOrigin.x
-        height: chassis.wellHeight
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: chassis.shade(chassis.wellOrigin.y) }
-            GradientStop { position: 1.0; color: chassis.shade(chassis.wellOrigin.y + chassis.wellHeight) }
-        }
-    }
-
-    Rectangle {
-        x: chassis.wellOrigin.x + chassis.wellWidth
-        y: chassis.wellOrigin.y
-        width: chassis.width - x
-        height: chassis.wellHeight
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: chassis.shade(chassis.wellOrigin.y) }
-            GradientStop { position: 1.0; color: chassis.shade(chassis.wellOrigin.y + chassis.wellHeight) }
-        }
-    }
-
-    Rectangle {
-        y: chassis.wellOrigin.y + chassis.wellHeight
-        width: chassis.width
-        height: chassis.height - y
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: chassis.shade(chassis.wellOrigin.y + chassis.wellHeight) }
-            GradientStop { position: 1.0; color: chassis.shade(chassis.height) }
-        }
-
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: 1
-            color: Utils.scaleColor(chassis.plastic, 0.62)
-        }
-    }
-
-    Rectangle {
-        visible: chassis.well !== null
-        x: chassis.wellOrigin.x - border.width
-        y: chassis.wellOrigin.y - border.width
-        width: chassis.wellWidth + 2 * border.width
-        height: chassis.wellHeight + 2 * border.width
-        color: "transparent"
-        border.width: 2
-        border.color: Utils.scaleColor(chassis.plastic, 0.55)
-    }
+    onStatusChanged: if (log) console.log(log)
 }

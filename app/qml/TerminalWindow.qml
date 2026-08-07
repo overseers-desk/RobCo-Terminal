@@ -37,9 +37,6 @@ ApplicationWindow {
     minimumWidth: channelBank.implicitWidth + 320
     minimumHeight: 240
 
-    // The plastic left standing between the screen well and the window edges.
-    readonly property int chassisMargin: 16
-
     visible: false
 
     property bool fullscreen: false
@@ -162,9 +159,12 @@ ApplicationWindow {
         context: Qt.WindowShortcut
         onActivated: channelBank.step(1)
     }
+    // The bank's plastic, continuing the frame's moulding leftwards. Nothing
+    // stands between the frame and the window on the other three sides: the
+    // frame is the outermost thing there, as it is upstream.
     ChannelChassis {
-        anchors.fill: parent
-        well: crtRegion
+        anchors.fill: channelBank
+        frameRegion: crtRegion
     }
     ChannelBank {
         id: channelBank
@@ -181,9 +181,6 @@ ApplicationWindow {
             right: parent.right
             top: parent.top
             bottom: parent.bottom
-            rightMargin: terminalWindow.chassisMargin
-            topMargin: terminalWindow.chassisMargin
-            bottomMargin: terminalWindow.chassisMargin
         }
         TerminalChannels {
             id: terminalChannels
