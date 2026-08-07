@@ -24,7 +24,11 @@ import "utils.js" as Utils
 // The appliance body the channel bank and the screen are set into. Its plastic
 // is mixed from the same profile inputs the frame shader lights, so the body
 // and the frame are one moulding whichever profile is loaded.
-Rectangle {
+//
+// The body is four panels around the screen well, never a sheet behind it: a
+// see-through profile has to look through the tube onto the desktop, and any
+// plastic left under the glass would be a second veil over the picture.
+Item {
     id: chassis
 
     // The item occupying the screen well; the body is recessed around it.
@@ -37,35 +41,80 @@ Rectangle {
         appSettings.ambientLight
     )
 
+    readonly property point wellOrigin: well
+        ? mapFromItem(well.parent, well.x, well.y)
+        : Qt.point(0, 0)
+    readonly property real wellWidth: well ? well.width : 0
+    readonly property real wellHeight: well ? well.height : 0
+
     opacity: appSettings.windowOpacity * 0.3 + 0.7
 
-    gradient: Gradient {
-        GradientStop { position: 0.0; color: Utils.scaleColor(chassis.plastic, 1.12) }
-        GradientStop { position: 1.0; color: Utils.scaleColor(chassis.plastic, 0.86) }
+    // One moulding lit from above: each panel takes the slice of the body's
+    // full-height shading that its own span covers.
+    function shade(y) {
+        return Utils.mix(Utils.scaleColor(plastic, 1.12),
+                         Utils.scaleColor(plastic, 0.86),
+                         height > 0 ? Utils.clamp(y / height, 0, 1) : 0)
     }
 
     Rectangle {
-        anchors { left: parent.left; right: parent.right; top: parent.top }
-        height: 1
-        color: Utils.scaleColor(chassis.plastic, 1.35)
+        width: chassis.width
+        height: chassis.wellOrigin.y
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: chassis.shade(0) }
+            GradientStop { position: 1.0; color: chassis.shade(chassis.wellOrigin.y) }
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: 1
+            color: Utils.scaleColor(chassis.plastic, 1.35)
+        }
     }
 
     Rectangle {
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: 1
-        color: Utils.scaleColor(chassis.plastic, 0.62)
+        y: chassis.wellOrigin.y
+        width: chassis.wellOrigin.x
+        height: chassis.wellHeight
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: chassis.shade(chassis.wellOrigin.y) }
+            GradientStop { position: 1.0; color: chassis.shade(chassis.wellOrigin.y + chassis.wellHeight) }
+        }
     }
 
     Rectangle {
-        readonly property point origin: chassis.well
-            ? chassis.mapFromItem(chassis.well.parent, chassis.well.x, chassis.well.y)
-            : Qt.point(0, 0)
+        x: chassis.wellOrigin.x + chassis.wellWidth
+        y: chassis.wellOrigin.y
+        width: chassis.width - x
+        height: chassis.wellHeight
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: chassis.shade(chassis.wellOrigin.y) }
+            GradientStop { position: 1.0; color: chassis.shade(chassis.wellOrigin.y + chassis.wellHeight) }
+        }
+    }
 
+    Rectangle {
+        y: chassis.wellOrigin.y + chassis.wellHeight
+        width: chassis.width
+        height: chassis.height - y
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: chassis.shade(chassis.wellOrigin.y + chassis.wellHeight) }
+            GradientStop { position: 1.0; color: chassis.shade(chassis.height) }
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: 1
+            color: Utils.scaleColor(chassis.plastic, 0.62)
+        }
+    }
+
+    Rectangle {
         visible: chassis.well !== null
-        x: origin.x - border.width
-        y: origin.y - border.width
-        width: (chassis.well ? chassis.well.width : 0) + 2 * border.width
-        height: (chassis.well ? chassis.well.height : 0) + 2 * border.width
+        x: chassis.wellOrigin.x - border.width
+        y: chassis.wellOrigin.y - border.width
+        width: chassis.wellWidth + 2 * border.width
+        height: chassis.wellHeight + 2 * border.width
         color: "transparent"
         border.width: 2
         border.color: Utils.scaleColor(chassis.plastic, 0.55)

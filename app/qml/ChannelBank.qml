@@ -64,10 +64,12 @@ Item {
     readonly property int pageBase: pageIndex * rowsVisible
     // Every open slot has a page, and so does the next free one: the slot a new
     // channel will take is always one the mouse can reach.
-    readonly property int pageCount: Math.min(
-        Math.max(1, Math.ceil(Math.max(terminalChannels.highestOpenChannel,
-                                       terminalChannels.firstFreeChannel) / rowsVisible)),
-        Math.ceil(terminalChannels.channelCap / rowsVisible))
+    readonly property int pageCount: Math.max(1, Math.ceil(
+        Math.max(terminalChannels.highestOpenChannel,
+                 terminalChannels.firstFreeChannel) / rowsVisible))
+    // The last page stops at the cap. No key is engraved for a slot that no
+    // channel can ever take.
+    readonly property int rowsOnPage: Math.min(rowsVisible, terminalChannels.channelCap - pageBase)
 
     readonly property int currentChannel: terminalChannels.currentChannel
 
@@ -80,30 +82,35 @@ Item {
 
     Component.onCompleted: settle()
 
+    // A reflow that leaves the row count where it was leaves the page there
+    // too: a hand-picked page survives the window being nudged.
     function settle() {
         var rowsHeight = height - 2 * bankPadding - pager.height - rowSpacing
-        rowsVisible = Math.max(1, Math.floor((rowsHeight + rowSpacing) / (rowHeight + rowSpacing)))
+        var measured = Math.max(1, Math.floor((rowsHeight + rowSpacing) / (rowHeight + rowSpacing)))
+        if (measured === rowsVisible)
+            return
+        rowsVisible = measured
         ensureVisible(currentChannel)
     }
 
     // A page slot as the chord and the numerals read it, to its absolute slot;
     // 0 where this page has no such row.
     function absoluteSlot(pageSlot) {
-        return pageSlot >= 1 && pageSlot <= rowsVisible ? pageBase + pageSlot : 0
+        return pageSlot >= 1 && pageSlot <= rowsOnPage ? pageBase + pageSlot : 0
     }
 
     // A store targets any page slot, dark included; a select waits only on
     // open ones.
     function slotPrefixExists(buf, store) {
         if (store) {
-            for (var n = 1; n <= rowsVisible; n++) {
+            for (var n = 1; n <= rowsOnPage; n++) {
                 var s = String(n)
                 if (s.length > buf.length && s.indexOf(buf) === 0)
                     return true
             }
             return false
         }
-        return terminalChannels.pageSlotPrefixExists(buf, pageBase, rowsVisible)
+        return terminalChannels.pageSlotPrefixExists(buf, pageBase, rowsOnPage)
     }
 
     function step(direction) {
@@ -149,9 +156,10 @@ Item {
         Repeater {
             id: rows
 
-            model: bank.rowsVisible
+            model: bank.rowsOnPage
 
             ChannelRow {
+                required property int index
                 readonly property var slotTitle: terminalChannels.channelState[channel]
 
                 channel: bank.pageBase + index + 1

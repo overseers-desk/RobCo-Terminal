@@ -140,7 +140,8 @@ Item {
     function moveCurrentTo(channel) {
         if (channel < 1 || channel > channelCap || channel === currentChannel)
             return
-        var from = _rowOf(currentChannel)
+        var origin = currentChannel
+        var from = _rowOf(origin)
         if (from < 0)
             return
         // The session on screen stays the same; its slot number moves. The LED
@@ -174,6 +175,9 @@ Item {
         _rebuildState()
         _degaussArmed = true
         channelStored(channel)
+        // A swap lands two sessions, and the displaced one gets its own say.
+        if (to >= 0)
+            channelStored(origin)
         activateCurrent()
     }
 
@@ -268,12 +272,15 @@ Item {
             }
         }
 
-        // The phosphor flood. Idle it is transparent and out of the scene, so
-        // nothing of the flinch survives the animation.
+        // The phosphor flood, cut to the tube face the frame leaves exposed so
+        // it never lights the bezel's corners. Idle it is transparent and out
+        // of the scene, so nothing of the flinch survives the animation.
         Rectangle {
             id: flood
 
             anchors.fill: parent
+            anchors.margins: appSettings.frameSize * Math.min(picture.width, picture.height)
+            radius: appSettings.screenRadius
             color: appSettings.fontColor
             opacity: 0
             visible: opacity > 0
@@ -281,7 +288,9 @@ Item {
     }
 
     // The mockup's degauss keyframe: brightness 2.6, scaleY 0.97, 200 ms
-    // ease-out; the 0.25 flood over the phosphor lands the same peak.
+    // ease-out; the 0.25 flood over the phosphor lands the same peak. The
+    // flood is behind the same glass as the picture, so it takes the same
+    // translucency a see-through profile asks for.
     ParallelAnimation {
         id: degauss
 
@@ -296,7 +305,7 @@ Item {
         NumberAnimation {
             target: flood
             property: "opacity"
-            from: 0.25
+            from: 0.25 * (appSettings.windowOpacity * 0.3 + 0.7)
             to: 0.0
             duration: 200
             easing.type: Easing.OutQuad

@@ -34,11 +34,12 @@ Item {
     property bool current: false
     property color plastic: "#7a7168"
 
-    property int numeralWidth: 20
-    property int columnGap: 6
-    property int buttonWidth: 24
-    property int buttonHeight: 18
-    property int stripPadding: 3
+    // The bank owns the panel's layout; a row carries no opinion of its own.
+    required property int numeralWidth
+    required property int columnGap
+    required property int buttonWidth
+    required property int buttonHeight
+    required property int stripPadding
 
     signal activated()
 
