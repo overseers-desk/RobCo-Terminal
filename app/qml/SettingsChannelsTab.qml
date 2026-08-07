@@ -72,6 +72,12 @@ ColumnLayout {
                 to: appSettings.maxLedCharacters
                 value: appSettings.ledCharacters
                 onValueModified: appSettings.ledCharacters = value
+                Connections {
+                    target: appSettings
+                    function onLedCharactersChanged() {
+                        ledCharactersChanger.value = appSettings.ledCharacters
+                    }
+                }
             }
         }
     }
