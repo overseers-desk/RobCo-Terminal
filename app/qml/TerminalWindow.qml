@@ -59,7 +59,7 @@ ApplicationWindow {
 
     menuBar: WindowMenu { }
 
-    property real normalizedWindowScale: 1024 / ((0.5 * crtRegion.width + 0.5 * crtRegion.height))
+    property real normalizedScreenScale: 1024 / ((0.5 * crtRegion.width + 0.5 * crtRegion.height))
 
     color: "#00000000"
 

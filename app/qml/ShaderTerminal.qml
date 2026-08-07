@@ -54,8 +54,8 @@ Item {
     property color fontColor: appSettings.fontColor
     property color backgroundColor: appSettings.backgroundColor
 
-    property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedWindowScale
-    property real frameSize: appSettings.frameSize * terminalWindow.normalizedWindowScale
+    property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
+    property real frameSize: appSettings.frameSize * terminalWindow.normalizedScreenScale
 
     property real chromaColor: appSettings.chromaColor
 
