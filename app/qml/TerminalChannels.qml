@@ -280,6 +280,8 @@ Item {
         }
     }
 
+    // The mockup's degauss keyframe: brightness 2.6, scaleY 0.97, 200 ms
+    // ease-out; the 0.25 flood over the phosphor lands the same peak.
     ParallelAnimation {
         id: degauss
 
