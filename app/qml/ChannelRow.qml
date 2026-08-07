@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
-import QtQuick 2.2
+import QtQuick
 
 // One slot of the bank: the numeral engraved in the plastic, the preset button
 // that selects it, and the LED strip carrying that session's title. The row

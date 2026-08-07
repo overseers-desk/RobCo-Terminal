@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
-import QtQuick 2.2
+import QtQuick
 
 // Dot-matrix LED strip: renders a channel title as a panel of round LEDs,
 // one LED per pixel of the bundled pixel font. A dark slot (powered: false)
