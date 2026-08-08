@@ -33,6 +33,19 @@
         <file>shells/moulded-plastic/Pager.qml</file>
         <file>shells/moulded-plastic/ChannelButton.qml</file>
         <file>shells/moulded-plastic/Metrics.qml</file>
+        <file>shells/robco-amber/Frame.qml</file>
+        <file>shells/robco-amber/Chassis.qml</file>
+        <file>shells/robco-amber/RowFurniture.qml</file>
+        <file>shells/robco-amber/SelectorTrack.qml</file>
+        <file>shells/robco-amber/Pager.qml</file>
+        <file>shells/robco-amber/ChannelButton.qml</file>
+        <file>shells/robco-amber/Metrics.qml</file>
+        <file>shells/robco-blue/Frame.qml</file>
+        <file>shells/robco-blue/Chassis.qml</file>
+        <file>shells/robco-blue/RowFurniture.qml</file>
+        <file>shells/robco-blue/SelectorTrack.qml</file>
+        <file>shells/robco-blue/Pager.qml</file>
+        <file>shells/robco-blue/Metrics.qml</file>
         <file>displays/led/Display.qml</file>
         <file>displays/led/Metrics.qml</file>
         <file>images/crt256.png</file>
