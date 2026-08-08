@@ -132,7 +132,28 @@ ApplicationWindow {
         id: newChannelAction
         text: qsTr("New Channel")
         shortcut: appSettings.isMacOS ? "Meta+T" : "Ctrl+Shift+T"
+        // Follows the focus: on a remote channel this is a tmux window.
+        onTriggered: terminalChannels.newChannel()
+    }
+    // The two ends of the fork the shortcut chooses between, each nameable on
+    // its own, plus the way back off the session. The remote pair only exists
+    // while a gateway does.
+    Action {
+        id: newLocalChannelAction
+        text: qsTr("New local window")
         onTriggered: terminalChannels.openFirstFree()
+    }
+    Action {
+        id: newRemoteChannelAction
+        text: qsTr("New window on %1").arg(terminalChannels.tmuxHost)
+        enabled: terminalChannels.tmuxGateway !== null
+        onTriggered: terminalChannels.tmuxGateway.newWindow()
+    }
+    Action {
+        id: detachAction
+        text: qsTr("Detach from %1").arg(terminalChannels.tmuxHost)
+        enabled: terminalChannels.tmuxGateway !== null
+        onTriggered: terminalChannels.tmuxGateway.detach()
     }
     Action {
         id: closeChannelAction

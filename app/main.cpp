@@ -141,7 +141,9 @@ int main(int argc, char *argv[])
         cmdList << args.mid(args.indexOf("-e") + 1);
     }
     QVariant command(cmdList.empty() ? QVariant() : cmdList[0]);
-    QVariant commandArgs(cmdList.size() <= 1 ? QVariant() : QVariant(cmdList.mid(1)));
+    // An empty list, never an invalid QVariant: "-e cmd" with no arguments of
+    // its own still has to reach setArgs() as an argument list.
+    QVariant commandArgs(cmdList.isEmpty() ? QStringList() : cmdList.mid(1));
     engine.rootContext()->setContextProperty("appVersion", appVersion);
     engine.rootContext()->setContextProperty("defaultCmd", command);
     engine.rootContext()->setContextProperty("defaultCmdArgs", commandArgs);

@@ -149,12 +149,30 @@ Item {
             openChannel(firstFreeChannel)
     }
 
+    // A new channel follows the focus: asked for from a remote channel it is
+    // another window on that tmux session, from a local one the lowest free
+    // slot with a shell in it.
+    function newChannel() {
+        var row = _rowOf(currentChannel)
+        if (row >= 0 && channelsModel.get(row).kind === "remote" && tmuxGateway)
+            tmuxGateway.newWindow()
+        else
+            openFirstFree()
+    }
+
     function closeChannel(channel) {
         var row = _rowOf(channel)
         if (row < 0)
             return
         var target = channelsModel.get(row)
-        if (!target.buried && _visibleCount() <= 1) {
+        if (target.buried) {
+            // Only the gateway is buried, and it only closes when the program
+            // holding the session died: no %exit is coming and there is
+            // nothing to restore the slot to.
+            _gatewayDied(channel)
+            return
+        }
+        if (_visibleCount() <= 1) {
             // The last thing on the air: with a gateway buried behind it the
             // set detaches rather than going dark; without one the appliance
             // switches off.
@@ -174,8 +192,32 @@ Item {
         _removeRow(channel)
     }
 
-    // The one removal path: local closes, kill-window echoes and the detach
-    // sweep all land here.
+    // The gateway's program is gone (ssh killed, tmux -CC never said %exit).
+    // Its windows are unreachable and its own slot has no shell behind it any
+    // more, so the whole set goes, remote rows first: their sessions are the
+    // gateway client's wiring, and it dies with the row that owns it.
+    function _gatewayDied(channel) {
+        console.log("channel " + channel + ": tmux gateway died, dropping "
+                    + tmuxHost + " and its windows")
+        for (var i = channelsModel.count - 1; i >= 0; i--) {
+            if (channelsModel.get(i).kind === "remote")
+                channelsModel.remove(i)
+        }
+        tmuxGateway = null
+        tmuxHost = ""
+        gatewayChannel = 0
+        // Whatever was on the air went with the windows, so the dying row is
+        // made current and _removeRow hands the air to its nearest neighbour.
+        currentChannel = channel
+        _removeRow(channel)
+        // Nothing survived it: the appliance has no channel left to show.
+        if (channelsModel.count === 0)
+            terminalWindow.close()
+    }
+
+    // Where a single row goes: local closes and kill-window echoes land here.
+    // The bulk sweeps (detach, gateway death) clear their remote rows in their
+    // own loops and settle the bank once at the end.
     function _removeRow(channel) {
         var row = _rowOf(channel)
         if (row < 0)
@@ -229,10 +271,15 @@ Item {
         var from = _rowOf(origin)
         if (from < 0)
             return
+        var to = _rowOf(channel)
+        // A buried row is off the air but still holds its slot: there is
+        // nothing there to swap with, so the store finds the slot taken by
+        // something it cannot move and does nothing at all.
+        if (to >= 0 && channelsModel.get(to).buried)
+            return
         // The session on screen stays the same; its slot number moves. The LED
         // blink is the store's acknowledgement, so the tube holds steady.
         _degaussArmed = false
-        var to = _rowOf(channel)
         if (to >= 0) {
             // Occupied slot: the two sessions swap slots. Swap the rows, then
             // restore the channel numbers by position so each session carries
@@ -307,12 +354,16 @@ Item {
     // A channel's program has entered tmux control mode and handed up its
     // gateway: the channel leaves the air (row and delegate stay alive, its
     // LED goes dark) and the gateway's windows run the bank until detach
-    // hands the slot back. Null arrivals and second gateways are ignored: the
-    // detach restore has its own signal, and one gateway at a time is the law.
+    // hands the slot back. A null arrival is the detach restore, which has its
+    // own signal. One gateway at a time is the law: a second channel entering
+    // control mode is detached where it stands and comes back a plain shell.
     function attachGateway(channel, gateway) {
-        if (!gateway || tmuxGateway) {
-            if (gateway)
-                console.log("channel " + channel + ": second tmux gateway ignored")
+        if (!gateway)
+            return
+        if (tmuxGateway) {
+            console.log("channel " + channel + ": second tmux gateway refused, "
+                        + tmuxHost + " already has the bank")
+            gateway.detach()
             return
         }
         var row = _rowOf(channel)
@@ -321,6 +372,9 @@ Item {
         tmuxGateway = gateway
         tmuxHost = gateway.host
         gatewayChannel = channel
+        // The bank is empty only until the bootstrap listing answers, which is
+        // sub-second and never empty: a tmux session always has a window. The
+        // buried row's last screen stands there in the meantime.
         channelsModel.setProperty(row, "buried", true)
         _rebuildState()
     }
