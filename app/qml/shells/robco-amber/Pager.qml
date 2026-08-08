@@ -85,7 +85,7 @@ Item {
     }
 
     Text {
-        x: 247 - width / 2
+        x: 231 - width / 2
         y: 3
         font.family: "Liberation Sans Narrow"
         font.pixelSize: 17
@@ -95,7 +95,7 @@ Item {
         color: pager.labelColor
     }
     Arrow {
-        x: 264
+        x: 260
         y: 5
         direction: 1
         tint: pager.labelColor
