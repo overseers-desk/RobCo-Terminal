@@ -29,6 +29,7 @@
         <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>
         <file>ChannelPager.qml</file>
+        <file>ChannelSelectorTrack.qml</file>
         <file>ChannelLedStrip.qml</file>
         <file>images/crt256.png</file>
         <file>utils.js</file>
