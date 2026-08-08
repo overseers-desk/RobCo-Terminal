@@ -37,9 +37,8 @@ QtObject {
     readonly property real minBurnInFadeTime: 0.16
     readonly property real maxBurnInFadeTime: 1.6
 
-    readonly property int ledDotPitch: 3
-    readonly property int minLedCharacters: 4
-    readonly property int maxLedCharacters: 32
+    readonly property real ledDotPitch: 1.5
+    readonly property int minLedCharacters: 8
 
     property bool isMacOS: Qt.platform.os === "osx"
 
