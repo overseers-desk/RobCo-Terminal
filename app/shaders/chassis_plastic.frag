@@ -1,8 +1,8 @@
 #version 440
 
 // The chassis plastic beside the tube. It is the frame shader's moulding read
-// outside the frame's own rectangle: the same lighting field, the same grain
-// lattice, continued through fieldScale/fieldOffset so the seam where the bank
+// outside the frame's own rectangle: the same lighting, the same procedural
+// grain, continued through fieldScale/fieldOffset so the seam where the bank
 // column meets the frame's left edge has nothing to see.
 
 layout(location = 0) in vec2 qt_TexCoord0;
