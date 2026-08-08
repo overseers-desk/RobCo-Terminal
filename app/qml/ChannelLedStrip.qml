@@ -19,14 +19,23 @@
 *******************************************************************************/
 import QtQuick
 
+import "utils.js" as Utils
+
 // Dot-matrix LED strip: renders a channel title as a panel of round LEDs,
 // one LED per pixel of the bundled pixel font. A dark slot (powered: false)
-// shows the unlit panel only.
+// shows the unlit panel only. The lamps take their colour from the profile's
+// font colour, so the bank and the screen burn the same phosphor.
 Item {
     id: ledStrip
 
     property string text: ""
     property bool powered: true
+    // The channel on screen: its lamps run hotter and throw a wider halo.
+    property bool bright: false
+
+    readonly property var colors: Utils.ledWindowColors(
+        appSettings.fontColor, powered, bright)
+    readonly property color litColor: colors.lit
 
     readonly property int gridW: appSettings.ledCellWidth * appSettings.ledCharacters
     readonly property int gridH: appSettings.ledCellHeight
@@ -62,13 +71,19 @@ Item {
 
         property variant source: ledSource
         property size gridSize: Qt.size(ledStrip.gridW, ledStrip.gridH)
-        property color litColor: "#ff4a26"
-        property color dimColor: ledStrip.powered ? "#38100c" : "#1a0806"
-        property color panelColor: ledStrip.powered ? "#1e0505" : "#0e0202"
+        property color litColor: ledStrip.colors.lit
+        property color dimColor: ledStrip.colors.dim
+        property color panelColor: ledStrip.colors.panel
         property real dotRadius: 0.36
         property real threshold: 0.4
-        property real glow: 0.35
+        property real glow: ledStrip.bright ? 0.55 : 0.3
         property real pixelsPerCell: appSettings.ledDotPitch
+
+        // The lamps come up to heat rather than snapping, so a channel switch
+        // reads as light rising in one window and falling in the other.
+        Behavior on glow {
+            NumberAnimation { duration: 150 }
+        }
 
         vertexShader: "qrc:/shaders/led_matrix.vert.qsb"
         fragmentShader: "qrc:/shaders/led_matrix.frag.qsb"
