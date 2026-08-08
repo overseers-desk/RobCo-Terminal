@@ -40,21 +40,27 @@ ShaderEffect {
 
     property real ambientLight: appSettings.ambientLight
 
-    property vector2d lightDir: Qt.vector2d(-0.55, -0.85)
+    property vector2d lightDir: Qt.vector2d(-0.8, -0.6)
     property color bezelColor: "#2e2820"
-    property color chassisColor: "#353024"
+    property color chassisColor: "#373125"
     property color ridgeColor: "#8c8068"
     // Bezel plate edge insets, in px: left, top, right, bottom.
-    property vector4d bezelMargins: Qt.vector4d(6, 11, 16, 8)
+    property vector4d bezelMargins: Qt.vector4d(6, 10, 14, 12)
     property real outerRadius: 45
     property real wellDepth: 45
     property real wellFloor: 0.16
-    property real ridgeGain: 1.15
-    property real troughGain: 1.3
+    property real ridgeGain: 0.45
+    property real troughGain: 0.0
+    // The mock's plate is lit only in a band along its own moulding; deeper
+    // in, the face is the well's dark wall however far the glass still is,
+    // with the bright rim standing on the wall around the opening.
+    property real faceBandPx: 12
+    property real rimDistPx: 14
+    property real rimGain: 1.6
     property real grainAmount: 0.35
-    property real mottleAmount: 0.85
+    property real mottleAmount: 1.0
     property real scratchAmount: 0.55
-    property real vignetteStrength: 0.5
+    property real vignetteStrength: 0.35
     property real fillGain: 0.35
 
     vertexShader: "qrc:/shaders/frame_metal.vert.qsb"

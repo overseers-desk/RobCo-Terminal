@@ -20,10 +20,10 @@
 import QtQuick
 
 // One blue row's furniture: a numeral stamped dark into the metal, its
-// strike catching a sliver of light on the lower edge, and a raised window
-// bezel: top edge lit by the room, an under-shadow thrown on the chassis
-// below, the punched panel inside recessed with its bright line on the
-// bottom lip where light reaches the far wall.
+// strike catching a sliver of light on the lower edge, and a window punched
+// straight into the chassis: a tight dark cut ring around the recessed
+// panel, and a bright bevel line on the chassis just under the hole, where
+// the light catches the far wall of the punch.
 Item {
     id: furniture
 
@@ -39,7 +39,7 @@ Item {
     readonly property color numeralInk: "#0d0b08"
     readonly property color numeralEdge: "#4a4030"
     readonly property color panelDark: "#090d0d"
-    readonly property color rimLight: "#6e6350"
+    readonly property color rimLight: "#b7a283"
     readonly property color rimDark: "#12100b"
 
     FontLoader {
@@ -62,19 +62,19 @@ Item {
             width: numeral.width
             horizontalAlignment: Text.AlignRight
             font.family: stampFace.name
-            font.pixelSize: 37
+            font.pixelSize: 33
             font.bold: true
             font.letterSpacing: -1
             text: furniture.numeralText
             color: furniture.numeralEdge
-            opacity: 0.8
+            opacity: 0.5
         }
         Text {
             id: stamped
             width: numeral.width
             horizontalAlignment: Text.AlignRight
             font.family: stampFace.name
-            font.pixelSize: 37
+            font.pixelSize: 33
             font.bold: true
             font.letterSpacing: -1
             text: furniture.numeralText
@@ -82,45 +82,34 @@ Item {
         }
     }
 
-    // The under-shadow the raised bezel throws on the chassis below it.
+    // The cut ring of the punch: two pixels of shadowed edge around the
+    // panel, darkest under the top lip where the room cannot reach.
     Rectangle {
-        x: furniture.displayRect.x - 4
-        y: parent.height - 1
-        width: furniture.displayRect.width + 10
-        height: 3
-        radius: 2
-        color: "#000000"
-        opacity: 0.4
-    }
+        id: ring
 
-    // The raised rim standing proud of the chassis around the hole: lit
-    // along its top edge, falling dark down its sides.
-    Rectangle {
-        id: rim
-
-        x: furniture.displayRect.x - 6
+        x: furniture.displayRect.x - 3
         y: 0
-        width: furniture.displayRect.width + 12
+        width: furniture.displayRect.width + 6
         height: parent.height
         radius: 3
         antialiasing: true
 
         gradient: Gradient {
-            GradientStop { position: 0.00; color: furniture.rimLight }
-            GradientStop { position: 0.10; color: Qt.darker(furniture.plastic, 1.15) }
-            GradientStop { position: 0.60; color: Qt.darker(furniture.plastic, 1.55) }
-            GradientStop { position: 1.00; color: furniture.rimDark }
+            GradientStop { position: 0.00; color: furniture.rimDark }
+            GradientStop { position: 0.55; color: Qt.darker(furniture.plastic, 2.2) }
+            GradientStop { position: 1.00; color: Qt.darker(furniture.plastic, 1.4) }
         }
     }
 
-    // The punched panel, recessed: bright bevel line on the bottom lip.
+    // The recessed panel: dark under the top lip, its far wall catching
+    // light along the bottom.
     Rectangle {
         id: panel
 
         x: furniture.displayRect.x - 1
         y: 2
         width: furniture.displayRect.width + 2
-        height: parent.height - 7
+        height: parent.height - 4
         radius: 2
         antialiasing: true
         clip: true
@@ -131,5 +120,16 @@ Item {
             GradientStop { position: 0.92; color: Qt.lighter(furniture.panelDark, 1.5) }
             GradientStop { position: 1.0; color: Qt.lighter(furniture.panelDark, 2.6) }
         }
+    }
+
+    // The bright bevel line on the chassis just under the hole.
+    Rectangle {
+        x: furniture.displayRect.x - 2
+        y: parent.height + 1
+        width: furniture.displayRect.width + 4
+        height: 2
+        radius: 1
+        color: furniture.rimLight
+        opacity: 0.9
     }
 }

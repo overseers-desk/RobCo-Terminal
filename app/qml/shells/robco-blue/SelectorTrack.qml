@@ -24,8 +24,8 @@ import "../common"
 // The blue appliance's carrier: a full-height proud metal rail with a deep
 // slot milled down it between machined double-groove edges, an angular
 // sheet-metal hinge bracket bolted over its head with three slotted screws,
-// and the carriage shoe riding the slot. Measured off the mock: rail x 29..70
-// (this item's width), slot 18..27 within it, bracket [18,78]-[118,152] in
+// and the carriage shoe riding the slot. Measured off the mock: rail x 29..69
+// (this item's width), groove 46..55 within it, bracket [18,48]-[116,120] in
 // bank coordinates. It reads the panel and reports nothing back; there is no
 // mouse area.
 Item {
@@ -35,9 +35,9 @@ Item {
     // Where the carriage belongs, as a centre in this item's coordinates.
     property real targetY: height / 2
 
-    readonly property color railMetal: "#231e16"
+    readonly property color railMetal: "#2b2418"
     readonly property color grooveDark: "#030202"
-    readonly property color bracketLight: "#8e8a6e"
+    readonly property color bracketLight: "#b2a47d"
     readonly property color bracketDark: "#241e14"
     readonly property color screwGlint: "#e3dfd2"
     readonly property color machinedLight: "#5c5344"
@@ -82,8 +82,8 @@ Item {
         anchors {
             top: parent.top
             bottom: parent.bottom
-            topMargin: 4
-            bottomMargin: 11
+            topMargin: 5
+            bottomMargin: 12
         }
 
         Rectangle { x: 0; width: 1; height: parent.height; color: track.machinedLight; opacity: 0.8 }
@@ -178,14 +178,14 @@ Item {
     // The hinge bracket over the rail's head: an angular sheet-metal plate,
     // wider at the left, its right end tapering toward the numeral column
     // with the top corner cut, three slotted screws holding it down.
-    // Bank coordinates [18,78]-[118,152]; the rail starts at bank x 29, y 29.
+    // Bank coordinates [18,48]-[116,120]; the rail starts at bank x 29, y 29.
     Item {
         id: bracket
 
         x: -11
-        y: 49
-        width: 100
-        height: 74
+        y: 19
+        width: 98
+        height: 72
 
         // The bracket's shadow on rail and chassis.
         Canvas {
@@ -214,8 +214,8 @@ Item {
                 // Body: brushed sheet metal lit from the upper left.
                 var body = ctx.createLinearGradient(0, 0, w * 0.9, h)
                 body.addColorStop(0.0, track.bracketLight)
-                body.addColorStop(0.35, Qt.lighter(track.bracketDark, 1.9))
-                body.addColorStop(1.0, track.bracketDark)
+                body.addColorStop(0.45, Qt.lighter(track.bracketDark, 3.4))
+                body.addColorStop(1.0, Qt.lighter(track.bracketDark, 1.3))
                 bracket.tracePlate(ctx, w, h)
                 ctx.fillStyle = body
                 ctx.fill()
@@ -234,7 +234,7 @@ Item {
                     var dark2 = rnd() < 0.55
                     ctx.beginPath()
                     ctx.ellipse(bx - br, by - br * (0.5 + rnd() * 0.5), br * 2, br * (1.0 + rnd()))
-                    ctx.fillStyle = dark2 ? Qt.rgba(0.05, 0.04, 0.02, 0.10 + 0.10 * rnd())
+                    ctx.fillStyle = dark2 ? Qt.rgba(0.05, 0.04, 0.02, 0.06 + 0.08 * rnd())
                                           : Qt.rgba(0.75, 0.72, 0.58, 0.05 + 0.07 * rnd())
                     ctx.fill()
                 }
@@ -291,9 +291,9 @@ Item {
             ctx.closePath()
         }
 
-        // Screw centres in bank coordinates: (45,103) (102,115) (47,134).
+        // Screw centres in bank coordinates: (46,69) (102,84) (47,102).
         ScrewHead {
-            x: 45 - 18 - 11; y: 103 - 78 - 11
+            x: 46 - 18 - 11; y: 69 - 48 - 11
             width: 22; height: 22
             metalLight: track.bracketLight
             metalMid: "#4a4234"
@@ -302,7 +302,7 @@ Item {
             slotAngle: 32
         }
         ScrewHead {
-            x: 102 - 18 - 11; y: 115 - 78 - 11
+            x: 102 - 18 - 11; y: 84 - 48 - 11
             width: 22; height: 22
             metalLight: track.bracketLight
             metalMid: "#4a4234"
@@ -311,7 +311,7 @@ Item {
             slotAngle: -63
         }
         ScrewHead {
-            x: 47 - 18 - 11; y: 134 - 78 - 11
+            x: 47 - 18 - 11; y: 102 - 48 - 11
             width: 22; height: 22
             metalLight: track.bracketLight
             metalMid: "#4a4234"

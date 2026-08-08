@@ -44,6 +44,13 @@ for i in range(led["count"]):
         [r["x0"], r["y0"] + dy, r["x1"], r["y1"] + dy],
         radius=r["radius"], fill=(0, 0, 0))
 
+# The page-number window is an LED panel too, where the metrics declare one.
+pw = carve.get("page_window")
+if pw:
+    draw.rounded_rectangle(
+        [pw["x0"], pw["y0"], pw["x1"], pw["y1"]],
+        radius=pw["radius"], fill=(0, 0, 0))
+
 im.save(out_path)
 print(out_path)
 PY
