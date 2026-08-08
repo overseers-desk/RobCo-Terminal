@@ -36,11 +36,13 @@ Item {
     // setting; a fixture with a window of its own (the blue shell's page
     // counter) names its width here.
     property int characters: appSettings.ledCharacters
-    // Unlit lamps ahead of the text. The reference mocks never light the
-    // column against the window's lip, and a glyph starting there reads as
-    // cut off by the plate; one dark cell keeps the first letter clear of
-    // the metal. Fixtures that fill their window edge to edge set it to 0.
+    // Unlit lamps ahead of and behind the text. The reference mocks never
+    // light the column against either of the window's lips, and a glyph
+    // standing there reads as cut off by the plate, its glow thrown onto
+    // the metal; one dark cell each side keeps the letters clear. Fixtures
+    // that fill their window edge to edge set them to 0.
     property int padCellsLeft: 1
+    property int padCellsRight: 1
 
     // The LED window's colours, all struck from the profile's font colour: the
     // lamp driven to full, and that same hue sunk towards black for the unlit
@@ -103,7 +105,9 @@ Item {
         // Truncated from the head: a title too long for the window is a path,
         // and its tail is the part that names the session.
         text: ledStrip.powered
-              ? ledStrip.text.slice(-(ledStrip.characters - ledStrip.padCellsLeft))
+              ? ledStrip.text.slice(-(ledStrip.characters
+                                      - ledStrip.padCellsLeft
+                                      - ledStrip.padCellsRight))
               : ""
     }
 

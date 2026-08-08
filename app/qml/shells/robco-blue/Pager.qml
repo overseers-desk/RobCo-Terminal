@@ -83,6 +83,11 @@ Item {
         }
         Binding {
             target: pageDisplay.item
+            property: "padCellsRight"
+            value: 0
+        }
+        Binding {
+            target: pageDisplay.item
             property: "text"
             value: ("0" + (pager.pageIndex + 1)).slice(-2)
         }
