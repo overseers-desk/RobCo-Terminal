@@ -37,6 +37,6 @@ QtObject {
     // held by minRowHeight so the pitch lands at 45 regardless of padding sums.
     readonly property int stripPadding: 12
     readonly property int minRowHeight: 43
-    // Glow profile: no selector lane, but the contract names the measure.
+    // Glow profile: no selector lane, but shellMetrics always exposes trackWidth.
     readonly property int trackWidth: 14
 }

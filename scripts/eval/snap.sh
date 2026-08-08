@@ -12,7 +12,8 @@
 # the user does it: a pointer drag on the seam between the bank and the
 # screen well. The seam lands where the bank's implicitWidth puts it, so the
 # grab point is computed from the shell's fixed furniture plus 12px per
-# character (the LED display's unitWidth at the default font).
+# character (the LED display's unitWidth at the default font). FIXED below
+# must be re-derived by hand if a shell's Metrics.qml changes.
 set -euo pipefail
 
 BIN=$(realpath "${1:?binary}")
