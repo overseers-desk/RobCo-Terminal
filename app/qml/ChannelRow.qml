@@ -123,6 +123,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: channelRow.title
         powered: channelRow.open
+        bright: channelRow.current
     }
 
     SequentialAnimation {
