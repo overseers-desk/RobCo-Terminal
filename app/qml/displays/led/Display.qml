@@ -36,12 +36,11 @@ Item {
     // setting; a fixture with a window of its own (the blue shell's page
     // counter) names its width here.
     property int characters: appSettings.ledCharacters
-    // Unlit lamps ahead of the text and behind it. The reference mocks never
+    // Unlit lamps ahead of and behind the text. The reference mocks never
     // light the column against either of the window's lips, and a glyph
-    // standing there reads as cut off by the plate; one dark cell keeps the
-    // first letter clear of the metal, and one more keeps a full-length
-    // tail's last letter (and its halo, on the bright row) off the right
-    // lip. Fixtures that fill their window edge to edge set them to 0.
+    // standing there reads as cut off by the plate, its glow thrown onto
+    // the metal; one dark cell each side keeps the letters clear. Fixtures
+    // that fill their window edge to edge set them to 0.
     property int padCellsLeft: 1
     property int padCellsRight: 1
 
