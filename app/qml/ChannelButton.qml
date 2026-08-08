@@ -19,8 +19,9 @@
 *******************************************************************************/
 import QtQuick
 
-// A latching preset button moulded from the chassis plastic. Rectangle and
-// MouseArea only: a Control would take the focus the terminal needs.
+// A key moulded from the chassis plastic, worked by the pager's rocker. Its
+// three-stop gradient does all the modelling; nothing is outlined. Rectangle
+// and MouseArea only: a Control would take the focus the terminal needs.
 Rectangle {
     id: presetButton
 
@@ -39,9 +40,6 @@ Rectangle {
     implicitHeight: 18
     radius: 4
     antialiasing: true
-
-    border.width: 1
-    border.color: Qt.darker(plastic, 1.9)
 
     gradient: Gradient {
         GradientStop { position: 0.0; color: Qt.lighter(presetButton.body, 1.3) }
