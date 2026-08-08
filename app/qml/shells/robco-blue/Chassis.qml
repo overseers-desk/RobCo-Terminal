@@ -48,11 +48,11 @@ ShaderEffect {
 
     // The frame's own chassis law, continued leftwards.
     property vector2d lightDir: Qt.vector2d(-0.55, -0.85)
-    property color chassisColor: "#393528"
+    property color chassisColor: "#453c2d"
     property real grainAmount: 0.4
-    property real mottleAmount: 1.0
+    property real mottleAmount: 1.35
     property real scratchAmount: 0.7
-    property real vignetteStrength: 0.5
+    property real vignetteStrength: 0.3
 
     // The body takes the tube's translucency, so a see-through profile is one
     // set and not a screen cut into an opaque box.

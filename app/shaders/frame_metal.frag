@@ -34,6 +34,14 @@ layout(std140, binding = 0) uniform ubuf {
     float vignetteStrength;
     float fillGain;
     float troughGain;
+    // A face-band appliance (the blue mock): the plate is bright only within
+    // this many pixels of its own moulded edge, and everything deeper is the
+    // sloped dark wall of the well. Zero keeps the glass-keyed well alone.
+    float faceBandPx;
+    // Where the lit rim rides the wall, in pixels out from the glass, and
+    // how hard; zeros fall back to the thin lip at the glass edge.
+    float rimDistPx;
+    float rimGain;
 };
 
 float min2(vec2 v) { return min(v.x, v.y); }
@@ -137,6 +145,14 @@ void main() {
     float band = 0.55 + fillGain * clamp(dot(nrm, L), 0.0, 1.0);
     vec3 bez = bezelColor.rgb * band * surf;
     float well = mix(1.0, wellFloor, smoothstep(wellDepth, 0.0, distPixels));
+    if (faceBandPx > 0.5) {
+        // The plate carries the room's light only in a band along its own
+        // edge; past it the face drops down the wall no matter how far the
+        // glass still is, which is what carries the corners' black sweep.
+        float wall = mix(1.0, wellFloor,
+                         smoothstep(faceBandPx * 0.5, faceBandPx * 1.8, -dOuter));
+        well = min(well, wall);
+    }
     bez *= well;
 
     // The trough floor at the well's outer rim: broad metal the room light
@@ -147,11 +163,19 @@ void main() {
     bez += bezelColor.rgb * surf * trough * troughGain
          * (0.4 + 0.9 * clamp(-dot(nrm, L), 0.0, 1.0));
 
-    // The lip where the well meets the glass: a thin catch of light on the
-    // wall that faces away from the key.
-    float lip = (1.0 - smoothstep(0.0, 2.5, abs(distPixels - 2.0)))
-              * clamp(-dot(nrm, L), 0.0, 1.0);
-    bez += ridgeColor.rgb * lip * 0.4 * ridgeGain;
+    // The lit rim on the wall: by default a thin catch of light where the
+    // well meets the glass; a shell may stand it farther out and drive it
+    // harder, the bright ring the blue mock draws around the opening.
+    bool standingRim = rimGain > 0.001;
+    float facing = clamp(-dot(nrm, L), 0.0, 1.0);
+    // A standing rim rides the crease where the face band breaks into the
+    // wall, a fixed depth in from the plate's own edge, so it stays a ring
+    // parallel to the moulding however far the glass sweeps back.
+    float rimD = standingRim ? abs(-dOuter - rimDistPx) : abs(distPixels - 2.0);
+    float rimW = standingRim ? 3.0 : 2.5;
+    float lip = (1.0 - smoothstep(0.0, rimW, rimD))
+              * (standingRim ? 0.45 + 0.55 * facing : facing);
+    bez += ridgeColor.rgb * lip * (standingRim ? rimGain : 0.4 * ridgeGain);
 
     // Chassis metal outside the bezel plate.
     vec3 cha = chassisColor.rgb * surf;

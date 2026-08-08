@@ -60,7 +60,9 @@ Item {
     // Plate standing between the strips' right edge and the frame's moulding;
     // zero for a shell whose strips run to the boundary.
     readonly property int rightPadding: shellMetrics.item?.rightPadding ?? 0
-    readonly property int rowSpacing: shellMetrics.item?.rowSpacing ?? 6
+    // Real, not int: a shell whose mock's row pitch is fractional carries the
+    // fraction here, or fourteen rows drift three pixels by the bank's foot.
+    readonly property real rowSpacing: shellMetrics.item?.rowSpacing ?? 6
     readonly property int columnGap: shellMetrics.item?.columnGap ?? 10
     readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 34
     readonly property int stripPadding: shellMetrics.item?.stripPadding ?? 13
