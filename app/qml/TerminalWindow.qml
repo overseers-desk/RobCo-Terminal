@@ -147,7 +147,7 @@ ApplicationWindow {
         id: newRemoteChannelAction
         text: qsTr("New window on %1").arg(terminalChannels.tmuxHost)
         enabled: terminalChannels.tmuxGateway !== null
-        onTriggered: terminalChannels.tmuxGateway.newWindow()
+        onTriggered: terminalChannels.newRemoteChannel()
     }
     Action {
         id: detachAction
