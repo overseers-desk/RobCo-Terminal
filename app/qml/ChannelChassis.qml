@@ -22,9 +22,9 @@ import QtQuick
 import "utils.js" as Utils
 
 // The moulding the channel bank is set into: the same plastic the frame shader
-// lights, drawn beyond the frame's own rectangle. Its lighting field and its
-// grain lattice are the frame's, continued outwards, so the bank column and the
-// CRT frame read as one piece rather than a panel butted against one.
+// lights, drawn beyond the frame's own rectangle. Its lighting and its
+// procedural grain are the frame's, continued outwards, so the bank column and
+// the CRT frame read as one piece rather than a panel butted against one.
 //
 // It occupies only the ground the bank stands on, never a sheet behind the
 // screen: a see-through profile has to look through the tube onto the desktop,
