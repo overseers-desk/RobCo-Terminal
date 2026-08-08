@@ -17,39 +17,18 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
-import QtQuick 2.0
+import QtQuick
 
-import "../../utils.js" as Utils
-
-// The amber appliance's slim bezel. Geometry skeleton: the moulded-plastic
-// lighting law stands in for the patinated metal until the paint pass; the
-// opening's proportions come from the profile's frameSize and screenRadius.
-ShaderEffect {
-    // The instantiation site used to set this; the frame is opaque plastic
-    // either way, so it travels with the component now.
-    blending: false
-
-    property color frameColor: Utils.frameBaseColor(
-        appSettings.frameColor,
-        appSettings.fontColor,
-        appSettings.backgroundColor,
-        appSettings.ambientLight
-    )
-
-    property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
-
-    property real frameShininess: appSettings.frameShininess
-
-    property real frameSize: appSettings.frameSize * terminalWindow.normalizedScreenScale
-
-    property real screenRadius: appSettings.screenRadius
-
-    property size viewportSize: Qt.size(width / appSettings.windowScaling, height / appSettings.windowScaling)
-
-    property real ambientLight: appSettings.ambientLight
-
-    vertexShader: "qrc:/shaders/terminal_frame.vert.qsb"
-    fragmentShader: "qrc:/shaders/terminal_frame.frag.qsb"
-
-    onStatusChanged: if (log) console.log(log) //Print warning messages
+// The amber appliance's slim bezel, sliced whole from the mock: the metal
+// bands, the groove against the chassis, the lit right side and the plate's
+// drop shadow on the left margin are the mock's pixels. The glass interior
+// is carved to alpha in the asset, so the live tube shows through it and
+// the terminal shader composites this image as the frame. Chassis.qml and
+// this slice are two halves of the same photograph, so the bank column and
+// the CRT frame keep reading as one piece.
+BorderImage {
+    source: "assets/frame.png"
+    border { left: 100; right: 100; top: 100; bottom: 100 }
+    horizontalTileMode: BorderImage.Repeat
+    verticalTileMode: BorderImage.Repeat
 }

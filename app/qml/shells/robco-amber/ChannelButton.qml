@@ -19,11 +19,10 @@
 *******************************************************************************/
 import QtQuick
 
-// The amber pager's key: a ridged metal cap over a dark front face, as the
-// mock's PREV/NEXT keys are built (four lit ridges on top, the cap's front
-// dropping to near-black). Gradient stops stand in for the ridges until the
-// paint pass. Rectangle and MouseArea only: no Control, no stolen focus.
-Rectangle {
+// The amber pager's key: the mock's own ridged metal cap, sliced with its
+// shadow margin, over a dark front face. A press seats the cap two pixels
+// lower. Image and MouseArea only: no Control, no stolen focus.
+Item {
     id: presetButton
 
     property color plastic: "#241e19"
@@ -33,29 +32,15 @@ Rectangle {
 
     readonly property bool hovered: pointer.containsMouse
 
-    readonly property color ridgeHighlight: "#f7e8c4"
-    readonly property color ridgeBase: "#c7a381"
-    readonly property color frontFace: "#1c1411"
-
     implicitWidth: 56
     implicitHeight: 40
-    radius: 3
-    antialiasing: true
 
-    opacity: pressed ? 0.85 : (hovered ? 1.0 : 0.96)
+    opacity: pressed ? 0.88 : (hovered ? 1.0 : 0.96)
 
-    // Top half: four ridges catching the light. Bottom half: the front face.
-    gradient: Gradient {
-        GradientStop { position: 0.00; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.08; color: presetButton.ridgeBase }
-        GradientStop { position: 0.14; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.22; color: presetButton.ridgeBase }
-        GradientStop { position: 0.28; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.36; color: presetButton.ridgeBase }
-        GradientStop { position: 0.42; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.50; color: presetButton.ridgeBase }
-        GradientStop { position: 0.58; color: presetButton.frontFace }
-        GradientStop { position: 1.00; color: presetButton.frontFace }
+    Image {
+        anchors.fill: parent
+        anchors.margins: -3
+        source: "assets/key.png"
     }
 
     transform: Translate { y: presetButton.pressed ? 2 : 0 }

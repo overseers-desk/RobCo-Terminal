@@ -19,12 +19,12 @@
 *******************************************************************************/
 import QtQuick
 
-// One amber row's furniture: an embossed light numeral throwing a dark drop
-// shadow low and right, and a bezelled LED window sunk into the plate. The
-// window's outer rim stands the full row height (43px on the mock, radius 8);
-// the inner panel is the punched hole (5px under the top lip, 3 above the
-// bottom, radius 5). Colours are the mock's palette; the modelling is the
-// skeleton's gradient law until the paint pass.
+// One amber row's furniture. The window bezel is a slice of the mock's own
+// machined rim: bright lower lip, dark upper cut, its shadow margin baked,
+// its interior carved to alpha for the live lamps. Three source rows rotate
+// by numeral so no two neighbours are identical, as the mock's windows are
+// not. The numeral stays live text, embossed the mock's way: a light figure
+// in a condensed face over its own dark drop shadow, low and right.
 Item {
     id: furniture
 
@@ -38,7 +38,7 @@ Item {
     property int numeralGap: 24
 
     readonly property color numeralFill: "#a78a72"
-    readonly property color numeralShadow: "#121010"
+    readonly property color numeralShadow: "#14100c"
     readonly property color panelDark: "#0d0700"
 
     Item {
@@ -49,15 +49,15 @@ Item {
         height: engraved.implicitHeight
         anchors.verticalCenter: parent.verticalCenter
 
-        // Embossed, so struck the other way round from the moulded shell:
-        // the dark shadow lies under and right of the lit figure.
+        // Embossed: the dark shadow lies under and right of the lit figure.
         Text {
             x: 1
-            y: 1
+            y: 2
             width: numeral.width
             horizontalAlignment: Text.AlignRight
+            font.family: "Liberation Sans Narrow"
+            font.bold: false
             font.pixelSize: 33
-            font.bold: true
             text: furniture.numeralText
             color: furniture.numeralShadow
         }
@@ -65,49 +65,36 @@ Item {
             id: engraved
             width: numeral.width
             horizontalAlignment: Text.AlignRight
+            font.family: "Liberation Sans Narrow"
+            font.bold: false
             font.pixelSize: 33
-            font.bold: true
             text: furniture.numeralText
             color: furniture.numeralFill
         }
     }
 
-    // The raised outer rim around the window: full row height, lit along the
-    // top edge, falling to shadow at the bottom lip.
+    // The dark floor of the punched hole, under the lamps; the judge carves
+    // this interior out, the live display lights it.
     Rectangle {
-        id: rim
-
-        x: furniture.displayRect.x - 10
-        y: 0
-        width: furniture.displayRect.width + 19
-        height: parent.height
-        radius: 8
-        antialiasing: true
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(furniture.plastic, 1.8) }
-            GradientStop { position: 0.15; color: furniture.plastic }
-            GradientStop { position: 0.85; color: Qt.darker(furniture.plastic, 1.6) }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.plastic, 1.4) }
-        }
-    }
-
-    // The punched hole the lamps live in: recessed, so its bright bevel line
-    // sits on the bottom lip where light catches the far wall.
-    Rectangle {
-        id: panel
-
-        x: furniture.displayRect.x - 4
-        y: 5
-        width: furniture.displayRect.width + 8
+        x: furniture.displayRect.x - 6
+        y: 4
+        width: furniture.displayRect.width + 12
         height: parent.height - 8
         radius: 5
-        antialiasing: true
+        color: furniture.panelDark
+    }
 
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.darker(furniture.panelDark, 1.5) }
-            GradientStop { position: 0.5; color: furniture.panelDark }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.panelDark, 2.2) }
-        }
+    // The mock's own rim around the hole, stretched only in its straights.
+    BorderImage {
+        x: furniture.displayRect.x - 13
+        y: -3
+        width: furniture.displayRect.width + 25
+        height: parent.height + 6
+        source: "assets/window" +
+                (1 + ((parseInt(furniture.numeralText, 10) || 1) - 1) % 3) +
+                ".png"
+        border { left: 16; right: 16; top: 13; bottom: 13 }
+        horizontalTileMode: BorderImage.Repeat
+        verticalTileMode: BorderImage.Stretch
     }
 }

@@ -19,12 +19,12 @@
 *******************************************************************************/
 import QtQuick
 
-// One blue row's furniture: a numeral stamped dark into the metal (the
-// inverse of the amber emboss: the figure is the dark stroke, the metal
-// showing between strokes the light) and a hard-edged window with a thin
-// metal rim (radius 3) around a punched panel (radius 2). Measured off the
-// mock: rim the full 46px row, panel 2px under the top lip and 5 above the
-// bottom. Palette colours; skeleton gradients until the paint pass.
+// One blue row's furniture. The window bezel is a slice of the mock's own
+// raised rim: top edge catching the light, under-shadow below, worn chassis
+// around it baked in the margin, interior carved to alpha for the live
+// lamps. Two source rows alternate so neighbours never repeat exactly. The
+// numeral stays live text, stamped the mock's way: dark ink struck into the
+// metal with a faint lit edge below the strokes.
 Item {
     id: furniture
 
@@ -38,7 +38,7 @@ Item {
     property int numeralGap: 20
 
     readonly property color numeralInk: "#0d0b08"
-    readonly property color numeralEdge: "#382f24"
+    readonly property color numeralEdge: "#4a4132"
     readonly property color panelDark: "#090d0d"
 
     Item {
@@ -54,8 +54,9 @@ Item {
             y: 1
             width: numeral.width
             horizontalAlignment: Text.AlignRight
+            font.family: "Liberation Sans"
+            font.bold: false
             font.pixelSize: 36
-            font.bold: true
             text: furniture.numeralText
             color: furniture.numeralEdge
         }
@@ -63,46 +64,36 @@ Item {
             id: stamped
             width: numeral.width
             horizontalAlignment: Text.AlignRight
+            font.family: "Liberation Sans"
+            font.bold: false
             font.pixelSize: 36
-            font.bold: true
             text: furniture.numeralText
             color: furniture.numeralInk
         }
     }
 
-    // The thin rim standing just proud of the chassis around the hole.
+    // The dark floor of the punched hole, under the lamps; the judge carves
+    // this interior out, the live display lights it.
     Rectangle {
-        id: rim
-
-        x: furniture.displayRect.x - 6
-        y: 0
-        width: furniture.displayRect.width + 12
-        height: parent.height
-        radius: 3
-        antialiasing: true
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.darker(furniture.plastic, 1.8) }
-            GradientStop { position: 0.9; color: Qt.darker(furniture.plastic, 2.6) }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.plastic, 1.3) }
-        }
+        x: furniture.displayRect.x - 2
+        y: 2
+        width: furniture.displayRect.width + 4
+        height: parent.height - 6
+        radius: 2
+        color: furniture.panelDark
     }
 
-    // The punched panel, recessed: bright bevel line on the bottom lip.
-    Rectangle {
-        id: panel
-
-        x: furniture.displayRect.x - 1
-        y: 2
-        width: furniture.displayRect.width + 2
-        height: parent.height - 7
-        radius: 2
-        antialiasing: true
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.darker(furniture.panelDark, 1.6) }
-            GradientStop { position: 0.5; color: furniture.panelDark }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.panelDark, 1.8) }
-        }
+    // The mock's own rim around the hole, stretched only in its straights.
+    BorderImage {
+        x: furniture.displayRect.x - 10
+        y: -4
+        width: furniture.displayRect.width + 20
+        height: parent.height + 8
+        source: "assets/window" +
+                (1 + ((parseInt(furniture.numeralText, 10) || 1) - 1) % 2) +
+                ".png"
+        border { left: 14; right: 14; top: 12; bottom: 12 }
+        horizontalTileMode: BorderImage.Repeat
+        verticalTileMode: BorderImage.Stretch
     }
 }

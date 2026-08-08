@@ -36,7 +36,9 @@ Item {
     readonly property color labelColor: "#6a5642"
 
     enabled: pageCount > 1
-    opacity: enabled ? 1.0 : 0.55
+    // The labels are engraved and the caps are bolted on: a single page dims
+    // the station only a little, as the mock's always-present furniture reads.
+    opacity: enabled ? 1.0 : 0.85
 
     // Key tops sit 38px into the block; the plate runs on below them.
     implicitHeight: 130
@@ -47,8 +49,8 @@ Item {
         // -1 points left, 1 right.
         property int direction: -1
 
-        width: 10
-        height: 12
+        width: 13
+        height: 14
         onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
@@ -66,17 +68,18 @@ Item {
     }
 
     Arrow {
-        x: 52
-        y: 6
+        x: 50
+        y: 5
         direction: -1
         tint: pager.labelColor
     }
     Text {
         x: 102 - width / 2
         y: 3
-        font.pixelSize: 15
+        font.family: "Liberation Sans Narrow"
+        font.pixelSize: 17
         font.bold: true
-        font.letterSpacing: 1
+        font.letterSpacing: 2
         text: "PREV"
         color: pager.labelColor
     }
@@ -84,15 +87,16 @@ Item {
     Text {
         x: 247 - width / 2
         y: 3
-        font.pixelSize: 15
+        font.family: "Liberation Sans Narrow"
+        font.pixelSize: 17
         font.bold: true
-        font.letterSpacing: 1
+        font.letterSpacing: 2
         text: "NEXT"
         color: pager.labelColor
     }
     Arrow {
-        x: 262
-        y: 6
+        x: 264
+        y: 5
         direction: 1
         tint: pager.labelColor
     }

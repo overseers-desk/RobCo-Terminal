@@ -19,13 +19,12 @@
 *******************************************************************************/
 import QtQuick
 
-// The blue appliance's carrier: a full-height proud metal rail with a deep
-// dark slot milled down it, a hinged bracket bolted over its head with three
-// screws, and the carriage riding the slot beside the channel on screen.
-// Measured off the mock: rail x 29..70 (this item's width), slot 18..27
-// within it, slot running 4px below the item's top to 11px above its foot,
-// bracket [18,78]-[118,152] in bank coordinates. It reads the panel and
-// reports nothing back; there is no mouse area.
+// The blue appliance's carrier. The rail, its milled slot, the hinge
+// bracket and its screws are the mock's pixels, baked into the chassis
+// slice behind this item; what moves is only the carriage, and that is a
+// slotted screw head cut from the same photograph, riding the slot beside
+// the channel on screen. It reads the panel and reports nothing back;
+// there is no mouse area.
 Item {
     id: track
 
@@ -33,125 +32,32 @@ Item {
     // Where the carriage belongs, as a centre in this item's coordinates.
     property real targetY: height / 2
 
-    readonly property color railMetal: "#231e16"
-    readonly property color grooveDark: "#030202"
-    readonly property color bracketLight: "#8e8a6e"
-    readonly property color screwGlint: "#e3dfd2"
-
-    readonly property int clampHeight: 26
-
     implicitWidth: 41
 
-    // The rail body: a proud strip, lit down its left edge.
+    // The shadow the carriage drops into the slot beneath it.
     Rectangle {
-        anchors.fill: parent
-        radius: 4
-        antialiasing: true
-
-        gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: Qt.lighter(track.railMetal, 1.9) }
-            GradientStop { position: 0.12; color: track.railMetal }
-            GradientStop { position: 0.85; color: track.railMetal }
-            GradientStop { position: 1.0; color: Qt.darker(track.railMetal, 1.8) }
-        }
+        x: knob.x + 3
+        y: knob.y + 3
+        width: knob.width - 3
+        height: knob.height - 2
+        radius: height / 2
+        color: "#000000"
+        opacity: 0.5
     }
 
-    // The slot: near-black, with a lit endcap at its foot on the mock.
-    Rectangle {
-        id: groove
+    // The carriage: a slotted bolt head astride the slot (local x 18..27).
+    Image {
+        id: knob
 
-        x: 18
-        width: 9
-        anchors {
-            top: parent.top
-            bottom: parent.bottom
-            topMargin: 4
-            bottomMargin: 11
-        }
-        radius: 4
-        antialiasing: true
-
-        gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: track.grooveDark }
-            GradientStop { position: 0.7; color: Qt.lighter(track.grooveDark, 3.0) }
-            GradientStop { position: 1.0; color: Qt.lighter(track.grooveDark, 6.0) }
-        }
-
-        Rectangle {
-            anchors {
-                left: parent.left
-                right: parent.right
-                bottom: parent.bottom
-            }
-            height: 2
-            color: Qt.lighter(track.railMetal, 2.4)
-        }
-    }
-
-    // The carriage riding the slot, wider than the slot as a bolted shoe is.
-    Rectangle {
-        id: clamp
-
-        x: groove.x - 6
+        x: 22 - width / 2
         y: Math.round(track.targetY - height / 2)
-        width: groove.width + 12
-        height: track.clampHeight
-        radius: 3
-        antialiasing: true
+        width: 27
+        height: 27
+        source: "assets/knob.png"
 
+        // The travel of a hand moving the carriage, not of a lamp fading up.
         Behavior on y {
             NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
         }
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: track.bracketLight }
-            GradientStop { position: 0.35; color: Qt.lighter(track.railMetal, 1.6) }
-            GradientStop { position: 1.0; color: Qt.darker(track.railMetal, 1.6) }
-        }
-    }
-
-    // A bolt head with its glint on the upper left, as the mock lights them.
-    component RailScrew: Rectangle {
-        width: 22
-        height: 22
-        radius: width / 2
-        antialiasing: true
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: track.screwGlint }
-            GradientStop { position: 0.4; color: track.bracketLight }
-            GradientStop { position: 1.0; color: Qt.darker(track.railMetal, 1.4) }
-        }
-    }
-
-    // The hinge bracket over the rail's head: a proud tab reaching from left
-    // of the rail toward the numeral column, three screws holding it.
-    // Bank coordinates [18,78]-[118,152]; the rail starts at bank x 29, y 29.
-    Item {
-        id: bracket
-
-        x: -11
-        y: 49
-        width: 100
-        height: 74
-
-        Rectangle {
-            anchors.fill: parent
-            radius: 6
-            antialiasing: true
-
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: track.bracketLight }
-                GradientStop { position: 0.25; color: Qt.lighter(track.railMetal, 1.8) }
-                GradientStop { position: 1.0; color: track.railMetal }
-            }
-        }
-
-        // Screw centres in bank coordinates: (45,103) (102,115) (47,134).
-        RailScrew { x: 45 - 18 - 11; y: 103 - 78 - 11 }
-        RailScrew { x: 102 - 18 - 11; y: 115 - 78 - 11 }
-        RailScrew { x: 47 - 18 - 11; y: 134 - 78 - 11 }
     }
 }

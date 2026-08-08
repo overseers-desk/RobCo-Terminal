@@ -19,58 +19,29 @@
 *******************************************************************************/
 import QtQuick
 
-import "../../utils.js" as Utils
-
-// The blue appliance's chassis: bare scratched gunmetal on the mock, with the
-// numerals and windows punched straight into it. There is no plate, so this
-// is the frame's lighting field continued under the bank and nothing more.
-// The moulded-plastic law stands in for the metal until the paint pass.
-//
-// It occupies only the ground the bank stands on, never a sheet behind the
-// screen: a see-through profile has to look through the tube onto the desktop,
-// and any plastic left under the glass would be a second veil over the picture.
-ShaderEffect {
+// The blue appliance's chassis: the mock's own scratched gunmetal column,
+// sliced whole. The carrier rail, its milled slot, the hinge bracket with
+// its three screws and the eyelet beside it are the mock's pixels, baked at
+// their stations; only the furniture that moves at runtime (windows and
+// numerals) was cleaned back to bare metal. The border insets keep rail,
+// bracket and the slot's lit endcap out of the tiled middle.
+Item {
     id: chassis
 
-    // The item the frame shader fills; this plastic continues its field.
+    // The window hands the frame's region over; a slice carries its own
+    // lighting, so the field is baked and the handle is kept only for the
+    // interface's sake.
     property Item frameRegion
 
-    property color frameColor: Utils.frameBaseColor(
-        appSettings.frameColor,
-        appSettings.fontColor,
-        appSettings.backgroundColor,
-        appSettings.ambientLight
-    )
-
-    property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
-
-    property real frameShininess: appSettings.frameShininess
-
-    property real frameSize: appSettings.frameSize * terminalWindow.normalizedScreenScale
-
-    property real screenRadius: appSettings.screenRadius
-
-    // The frame's own measurements, in the units its shader works in: this
-    // plastic is placed in that field, not in one of its own.
-    property size viewportSize: Qt.size(_fieldWidth, _fieldHeight)
-
-    property size fieldScale: Qt.size(width / _fieldWidth, height / _fieldHeight)
-
-    property size fieldOffset: frameRegion
-        ? Qt.size((x - frameRegion.x) / _fieldWidth, (y - frameRegion.y) / _fieldHeight)
-        : Qt.size(0, 0)
-
-    readonly property real _fieldWidth: frameRegion ? Math.max(1, frameRegion.width) : 1
-    readonly property real _fieldHeight: frameRegion ? Math.max(1, frameRegion.height) : 1
-
-    // The body takes the tube's translucency, so a see-through profile is one
-    // set and not a screen cut into an opaque box.
+    // The tube's translucency law, as the moulded shell keeps it: the body
+    // fades with windowOpacity but never below the moulding's floor.
     opacity: appSettings.windowOpacity * 0.3 + 0.7
 
-    blending: false
-
-    vertexShader: "qrc:/shaders/chassis_plastic.vert.qsb"
-    fragmentShader: "qrc:/shaders/chassis_plastic.frag.qsb"
-
-    onStatusChanged: if (log) console.log(log)
+    BorderImage {
+        anchors.fill: parent
+        source: "assets/bank.png"
+        border { left: 140; right: 8; top: 165; bottom: 45 }
+        horizontalTileMode: BorderImage.Repeat
+        verticalTileMode: BorderImage.Repeat
+    }
 }
