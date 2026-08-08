@@ -51,9 +51,10 @@ ShaderEffect {
     readonly property real _fieldWidth: frameRegion ? Math.max(1, frameRegion.width) : 1
     readonly property real _fieldHeight: frameRegion ? Math.max(1, frameRegion.height) : 1
 
-    // The frame's own chassis law, continued leftwards.
-    property vector2d lightDir: Qt.vector2d(-0.55, -0.85)
-    property color chassisColor: "#453c2d"
+    // The frame's own chassis law, continued leftwards: one casting, one
+    // shared light and metal color, read off this shell's Metrics.
+    property vector2d lightDir: metrics.castingLightDir
+    property color chassisColor: metrics.castingColor
     property real grainAmount: 0.4
     property real mottleAmount: 1.35
     property real scratchAmount: 0.7
@@ -76,11 +77,13 @@ ShaderEffect {
     // screws. Measured off the mock: rail x 29..69, standing 29 off the
     // chassis top and foot, groove 46..55 in bank coordinates, bracket
     // [18,48]-[116,120]. Bare furniture: nothing rides the slot.
+    Metrics { id: metrics }
+
     Item {
         id: rail
 
         x: 29
-        width: 41
+        width: metrics.trackWidth
         anchors {
             top: parent.top
             bottom: parent.bottom

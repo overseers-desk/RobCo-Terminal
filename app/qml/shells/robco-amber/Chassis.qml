@@ -28,6 +28,8 @@ import "../common"
 ShaderEffect {
     id: chassis
 
+    Metrics { id: metrics }
+
     // The item the frame shader fills; this metal continues its field.
     property Item frameRegion
 
@@ -42,9 +44,10 @@ ShaderEffect {
     readonly property real _fieldWidth: frameRegion ? Math.max(1, frameRegion.width) : 1
     readonly property real _fieldHeight: frameRegion ? Math.max(1, frameRegion.height) : 1
 
-    // The frame's own chassis law, continued leftwards.
-    property vector2d lightDir: Qt.vector2d(0.8, -0.6)
-    property color chassisColor: "#16130f"
+    // The frame's own chassis law, continued leftwards: one casting, one
+    // shared light and metal color, read off this shell's Metrics.
+    property vector2d lightDir: metrics.castingLightDir
+    property color chassisColor: metrics.castingColor
     property real grainAmount: 0.16
     property real mottleAmount: 0.4
     property real scratchAmount: 0.08

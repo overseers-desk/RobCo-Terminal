@@ -28,6 +28,8 @@ ShaderEffect {
     // either way, so it travels with the component now.
     blending: false
 
+    Metrics { id: metrics }
+
     property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
 
     property real frameShininess: appSettings.frameShininess
@@ -42,9 +44,9 @@ ShaderEffect {
 
     // The fill from the right is what models the bezel bands, so the shader's
     // key leans right; the vignette still pools the corners dark.
-    property vector2d lightDir: Qt.vector2d(0.8, -0.6)
+    property vector2d lightDir: metrics.castingLightDir
     property color bezelColor: "#26211c"
-    property color chassisColor: "#191512"
+    property color chassisColor: metrics.castingColor
     property color ridgeColor: "#6e5c48"
     // Bezel plate edge insets, in px: left, top, right, bottom. The plate
     // meets the bank flush on the left.

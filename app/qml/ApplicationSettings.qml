@@ -333,7 +333,8 @@ QtObject {
         customCommand = settings.customCommand
                 !== undefined ? settings.customCommand : customCommand
 
-        ledCharacters = settings.ledCharacters !== undefined ? settings.ledCharacters : ledCharacters
+        ledCharacters = settings.ledCharacters
+                !== undefined ? Math.max(minLedCharacters, settings.ledCharacters) : ledCharacters
     }
 
     function loadProfileString(profileString) {

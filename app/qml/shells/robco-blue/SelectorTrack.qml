@@ -39,7 +39,9 @@ Item {
 
     readonly property int clampHeight: 26
 
-    implicitWidth: 41
+    Metrics { id: metrics }
+
+    implicitWidth: metrics.trackWidth
 
     // The carriage: a bolted steel shoe, specular ridge across its cap, hard
     // shadow under its foot.

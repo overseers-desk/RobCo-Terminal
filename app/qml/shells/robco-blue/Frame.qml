@@ -28,6 +28,8 @@ ShaderEffect {
     // either way, so it travels with the component now.
     blending: false
 
+    Metrics { id: metrics }
+
     property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
 
     property real frameShininess: appSettings.frameShininess
@@ -40,9 +42,9 @@ ShaderEffect {
 
     property real ambientLight: appSettings.ambientLight
 
-    property vector2d lightDir: Qt.vector2d(-0.8, -0.6)
+    property vector2d lightDir: metrics.castingLightDir
     property color bezelColor: "#2e2820"
-    property color chassisColor: "#373125"
+    property color chassisColor: metrics.castingColor
     property color ridgeColor: "#8c8068"
     // Bezel plate edge insets, in px: left, top, right, bottom.
     property vector4d bezelMargins: Qt.vector4d(6, 10, 14, 12)
