@@ -66,21 +66,21 @@ Item {
             width: numeral.width
             y: 1
             horizontalAlignment: Text.AlignRight
-            font.pixelSize: 13
+            font.pixelSize: 22
             font.bold: true
             font.letterSpacing: 0.5
             text: channelRow.numeralText
-            color: Qt.lighter(channelRow.plastic, 1.55)
+            color: Qt.lighter(channelRow.plastic, 1.9)
         }
         Text {
             id: engraving
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.pixelSize: 13
+            font.pixelSize: 22
             font.bold: true
             font.letterSpacing: 0.5
             text: channelRow.numeralText
-            color: Qt.darker(channelRow.plastic, 2.1)
+            color: Qt.darker(channelRow.plastic, 2.6)
         }
     }
 

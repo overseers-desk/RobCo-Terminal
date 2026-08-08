@@ -30,9 +30,71 @@ Item {
     property int pageCount: 1
     property int columnGap: 6
 
-    readonly property int buttonWidth: 20
-    readonly property int buttonHeight: 14
+    readonly property int buttonWidth: 32
+    readonly property int buttonHeight: 22
     readonly property int buttonGap: 4
+
+    // One stroke of the V, from the apex out. The arm is a bar laid along the
+    // segment between the apex and the corner, so the pair meets at a point.
+    component ChevronFace: Item {
+        id: face
+
+        property color tint: "black"
+        // -1 raises the apex, 1 drops it.
+        property int direction: -1
+        property real thickness: 3
+
+        readonly property real angle: Math.atan2(height, width / 2) * 180 / Math.PI
+        readonly property real armLength: Math.sqrt(
+            (width / 2) * (width / 2) + height * height)
+
+        Rectangle {
+            width: face.armLength
+            height: face.thickness
+            radius: height / 2
+            antialiasing: true
+            color: face.tint
+            x: face.width / 4 - width / 2
+            y: face.height / 2 - height / 2
+            rotation: face.angle * face.direction
+        }
+        Rectangle {
+            width: face.armLength
+            height: face.thickness
+            radius: height / 2
+            antialiasing: true
+            color: face.tint
+            x: 3 * face.width / 4 - width / 2
+            y: face.height / 2 - height / 2
+            rotation: -face.angle * face.direction
+        }
+    }
+
+    // The arrow moulded into the keycap rather than printed on it: the same
+    // plastic struck twice, a shadow a pixel low and a lit face above it.
+    component Chevron: Item {
+        id: chevron
+
+        property color plastic: "#7a7168"
+        property int direction: -1
+
+        implicitWidth: 14
+        implicitHeight: 7
+
+        ChevronFace {
+            width: chevron.width
+            height: chevron.height
+            y: 1
+            direction: chevron.direction
+            tint: Qt.darker(chevron.plastic, 2.6)
+        }
+        ChevronFace {
+            width: chevron.width
+            height: chevron.height
+            direction: chevron.direction
+            tint: Qt.lighter(chevron.plastic, 1.9)
+        }
+    }
 
     signal step(int direction)
 
@@ -52,11 +114,10 @@ Item {
         plastic: pager.plastic
         onClicked: pager.step(-1)
 
-        Text {
+        Chevron {
             anchors.centerIn: parent
-            font.pixelSize: 9
-            text: "▲"
-            color: Qt.darker(pager.plastic, 2.4)
+            plastic: pager.plastic
+            direction: -1
         }
     }
 
@@ -68,11 +129,10 @@ Item {
         plastic: pager.plastic
         onClicked: pager.step(1)
 
-        Text {
+        Chevron {
             anchors.centerIn: parent
-            font.pixelSize: 9
-            text: "▼"
-            color: Qt.darker(pager.plastic, 2.4)
+            plastic: pager.plastic
+            direction: 1
         }
     }
 
@@ -90,18 +150,18 @@ Item {
 
         Text {
             y: 1
-            font.pixelSize: 12
+            font.pixelSize: 16
             font.bold: true
             text: counter.label
-            color: Qt.lighter(pager.plastic, 1.55)
+            color: Qt.lighter(pager.plastic, 1.9)
         }
         Text {
             id: engraving
 
-            font.pixelSize: 12
+            font.pixelSize: 16
             font.bold: true
             text: counter.label
-            color: Qt.darker(pager.plastic, 2.1)
+            color: Qt.darker(pager.plastic, 2.6)
         }
     }
 }
