@@ -53,6 +53,13 @@ Item {
     }
 
     readonly property int bankPadding: shellMetrics.item?.bankPadding ?? 10
+    // A shell whose furniture is heavier at one edge than another may split
+    // the padding; one that says nothing gets the even air it always had.
+    readonly property int topPadding: shellMetrics.item?.topPadding ?? bankPadding
+    readonly property int bottomPadding: shellMetrics.item?.bottomPadding ?? bankPadding
+    // Plate standing between the strips' right edge and the frame's moulding;
+    // zero for a shell whose strips run to the boundary.
+    readonly property int rightPadding: shellMetrics.item?.rightPadding ?? 0
     readonly property int rowSpacing: shellMetrics.item?.rowSpacing ?? 6
     readonly property int columnGap: shellMetrics.item?.columnGap ?? 10
     readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 34
@@ -79,7 +86,7 @@ Item {
     readonly property int contentX: bankPadding + trackWidth + trackGap
     readonly property int contentWidth: width - contentX
 
-    implicitWidth: contentX + numeralWidth + columnGap + stripWidth
+    implicitWidth: contentX + numeralWidth + columnGap + stripWidth + rightPadding
 
     // Rows per page, measured rather than bound: a live count would reflow the
     // bank on every frame of a window drag.
@@ -102,7 +109,7 @@ Item {
     // of the channel on screen, or down by the pager when that channel is on a
     // page this one is not showing.
     readonly property real pointerY: (currentChannel > pageBase && currentChannel <= pageBase + rowsOnPage)
-        ? (currentChannel - pageBase - 1) * (rowHeight + rowSpacing) + rowHeight / 2
+        ? topPadding - bankPadding + (currentChannel - pageBase - 1) * (rowHeight + rowSpacing) + rowHeight / 2
         : pager.y + pager.height / 2 - bankPadding
 
     // The pager and the selector are shell components in files of their own,
@@ -121,7 +128,7 @@ Item {
     // A reflow that leaves the row count where it was leaves the page there
     // too: a hand-picked page survives the window being nudged.
     function settle() {
-        var rowsHeight = height - 2 * bankPadding - pager.height - rowSpacing
+        var rowsHeight = height - topPadding - bottomPadding - pager.height - rowSpacing
         var measured = Math.max(1, Math.floor((rowsHeight + rowSpacing) / (rowHeight + rowSpacing)))
         if (measured === rowsVisible)
             return
@@ -216,7 +223,7 @@ Item {
 
     Column {
         x: bank.contentX
-        y: bank.bankPadding
+        y: bank.topPadding
         spacing: bank.rowSpacing
 
         Repeater {
@@ -251,7 +258,7 @@ Item {
         width: bank.contentWidth
         anchors {
             bottom: parent.bottom
-            bottomMargin: bank.bankPadding
+            bottomMargin: bank.bottomPadding
         }
 
         source: appSettings.shellUrl("Pager")
