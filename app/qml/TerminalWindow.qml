@@ -46,7 +46,10 @@ ApplicationWindow {
         visible = true
     }
 
-    minimumWidth: channelBank.implicitWidth + 320
+    // The least screen the well is ever given; the seam's travel stops here too.
+    readonly property int crtMinimumWidth: 320
+
+    minimumWidth: channelBank.implicitWidth + crtMinimumWidth
     minimumHeight: 240
 
     visible: false
@@ -197,6 +200,34 @@ ApplicationWindow {
         TerminalChannels {
             id: terminalChannels
             anchors.fill: parent
+        }
+    }
+    // The seam where the bank's plastic meets the screen well. Nothing is
+    // drawn: the cursor's change of shape is the only tell. A drag re-fits
+    // the LED strips at the character count nearest the hand, so the seam
+    // travels in whole-character steps.
+    MouseArea {
+        id: seam
+
+        x: channelBank.width - 5
+        width: 10
+        anchors {
+            top: parent.top
+            bottom: parent.bottom
+        }
+        z: 2
+        cursorShape: Qt.SplitHCursor
+        acceptedButtons: Qt.LeftButton
+        onPositionChanged: function (mouse) {
+            if (!pressed)
+                return
+            var windowX = mapToItem(null, mouse.x, 0).x
+            var chars = Math.min(channelBank.charactersForWidth(windowX),
+                                 channelBank.charactersForWidth(terminalWindow.width - terminalWindow.crtMinimumWidth))
+            chars = Math.max(appSettings.minLedCharacters,
+                             Math.min(appSettings.maxLedCharacters, chars))
+            if (chars !== appSettings.ledCharacters)
+                appSettings.ledCharacters = chars
         }
     }
     Loader {
