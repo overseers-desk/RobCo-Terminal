@@ -5,6 +5,7 @@
 #include <QStringList>
 
 #include <QDir>
+#include <QFileInfo>
 
 #include <QtWidgets/QApplication>
 #include <QIcon>
@@ -89,15 +90,21 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv);
     app.setAttribute(Qt::AA_MacDontSwapCtrlAndMeta, true);
-    app.setApplicationName(QStringLiteral("cool-retro-term"));
-    app.setOrganizationName(QStringLiteral("cool-retro-term"));
-    app.setOrganizationDomain(QStringLiteral("cool-retro-term"));
+    // The executable's own name is the application's identity: the stock
+    // binary keeps today's name, settings and instance lock, while a renamed
+    // copy gets a lock and a settings store of its own and the two can run
+    // side by side. Desktop integration below stays literal: the .desktop
+    // file and the theme icon exist under the stock name only.
+    const QString appIdentity = QFileInfo(QCoreApplication::applicationFilePath()).baseName();
+    app.setApplicationName(appIdentity);
+    app.setOrganizationName(appIdentity);
+    app.setOrganizationDomain(appIdentity);
     app.setApplicationVersion(appVersion);
 
     installCrashLog(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
                     + QStringLiteral("/crashes"));
 
-    KDSingleApplication singleApp(QStringLiteral("cool-retro-term"));
+    KDSingleApplication singleApp(appIdentity);
 
     if (!singleApp.isPrimaryInstance()) {
         if (singleApp.sendMessage("new-window"))
