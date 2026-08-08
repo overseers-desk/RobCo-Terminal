@@ -19,11 +19,12 @@
 *******************************************************************************/
 import QtQuick
 
-// The amber pager's key: a ridged metal cap over a dark front face, as the
-// mock's PREV/NEXT keys are built (four lit ridges on top, the cap's front
-// dropping to near-black). Gradient stops stand in for the ridges until the
-// paint pass. Rectangle and MouseArea only: no Control, no stolen focus.
-Rectangle {
+// The amber pager's key, as the mock builds it: a metal cap of four machined
+// ridges lit from above, each ridge a specular line over its own shadow, the
+// cap's front face dropping to near-black, a worn bevel down both sides and
+// a shadow the key throws onto the plate. Rectangle and MouseArea only: no
+// Control, no stolen focus.
+Item {
     id: presetButton
 
     property color plastic: "#241e19"
@@ -35,30 +36,106 @@ Rectangle {
 
     readonly property color ridgeHighlight: "#f7e8c4"
     readonly property color ridgeBase: "#c7a381"
+    readonly property color ridgeShadow: "#5e4630"
     readonly property color frontFace: "#1c1411"
 
     implicitWidth: 56
     implicitHeight: 40
-    radius: 3
-    antialiasing: true
 
-    opacity: pressed ? 0.85 : (hovered ? 1.0 : 0.96)
-
-    // Top half: four ridges catching the light. Bottom half: the front face.
-    gradient: Gradient {
-        GradientStop { position: 0.00; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.08; color: presetButton.ridgeBase }
-        GradientStop { position: 0.14; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.22; color: presetButton.ridgeBase }
-        GradientStop { position: 0.28; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.36; color: presetButton.ridgeBase }
-        GradientStop { position: 0.42; color: presetButton.ridgeHighlight }
-        GradientStop { position: 0.50; color: presetButton.ridgeBase }
-        GradientStop { position: 0.58; color: presetButton.frontFace }
-        GradientStop { position: 1.00; color: presetButton.frontFace }
+    // The key's shadow on the plate.
+    Rectangle {
+        x: 2
+        y: 3
+        width: cap.width
+        height: cap.height
+        radius: 4
+        color: "#000000"
+        opacity: 0.45
     }
 
-    transform: Translate { y: presetButton.pressed ? 2 : 0 }
+    Rectangle {
+        id: cap
+
+        anchors.fill: parent
+        radius: 3
+        antialiasing: true
+        color: presetButton.frontFace
+
+        transform: Translate { y: presetButton.pressed ? 2 : 0 }
+        opacity: presetButton.pressed ? 0.9 : (presetButton.hovered ? 1.0 : 0.97)
+
+        // The ridged top: four specular ridges, each with its shadow gap.
+        Column {
+            id: ridges
+
+            x: 2
+            y: 2
+            width: parent.width - 4
+            spacing: 0
+
+            Repeater {
+                model: 4
+                Item {
+                    width: ridges.width
+                    height: 5
+                    Rectangle {
+                        width: parent.width
+                        height: 2
+                        radius: 1
+                        color: presetButton.ridgeHighlight
+                    }
+                    Rectangle {
+                        y: 2
+                        width: parent.width
+                        height: 2
+                        color: presetButton.ridgeBase
+                    }
+                    Rectangle {
+                        y: 4
+                        width: parent.width
+                        height: 1
+                        color: presetButton.ridgeShadow
+                    }
+                }
+            }
+        }
+
+        // The cap's rolled front edge under the last ridge.
+        Rectangle {
+            x: 2
+            y: ridges.y + ridges.height
+            width: parent.width - 4
+            height: 2
+            color: presetButton.ridgeShadow
+        }
+
+        // Worn bevels down the cap's sides.
+        Rectangle {
+            x: 0
+            y: 2
+            width: 1
+            height: parent.height - 6
+            color: presetButton.ridgeBase
+            opacity: 0.5
+        }
+        Rectangle {
+            x: parent.width - 1
+            y: 2
+            width: 1
+            height: parent.height - 6
+            color: "#000000"
+            opacity: 0.6
+        }
+        // A dim catch along the front face's foot.
+        Rectangle {
+            x: 3
+            y: parent.height - 2
+            width: parent.width - 6
+            height: 1
+            color: presetButton.ridgeBase
+            opacity: 0.25
+        }
+    }
 
     MouseArea {
         id: pointer

@@ -19,12 +19,11 @@
 *******************************************************************************/
 import QtQuick
 
-// One amber row's furniture: an embossed light numeral throwing a dark drop
-// shadow low and right, and a bezelled LED window sunk into the plate. The
-// window's outer rim stands the full row height (43px on the mock, radius 8);
-// the inner panel is the punched hole (5px under the top lip, 3 above the
-// bottom, radius 5). Colours are the mock's palette; the modelling is the
-// skeleton's gradient law until the paint pass.
+// One amber row's furniture: a struck condensed-mono numeral, worn low, and a
+// machined window bezel sunk into the plate. The bezel's inner cut is dark
+// along the top where the cutter shadowed it and bright along the lower and
+// right lip where the light catches the machined face; each window came off
+// the mill a hair different, so a hash of the numeral sways the lip.
 Item {
     id: furniture
 
@@ -37,9 +36,25 @@ Item {
     // Bound from the shell's own Metrics.columnGap by the row.
     property int numeralGap: 24
 
-    readonly property color numeralFill: "#a78a72"
-    readonly property color numeralShadow: "#121010"
+    readonly property color numeralFill: "#9c8168"
+    readonly property color numeralShadow: "#0f0d0c"
     readonly property color panelDark: "#0d0700"
+    readonly property color lipLight: "#7a6448"
+    readonly property color cutDark: "#060402"
+
+    // No two windows left the mill identical: a cheap hash off the numeral
+    // sways each window's lip brightness and rim tone a few percent.
+    readonly property real jitter: {
+        var h = 0
+        for (var i = 0; i < numeralText.length; i++)
+            h = (h * 31 + numeralText.charCodeAt(i)) % 997
+        return h / 997
+    }
+
+    FontLoader {
+        id: struckFace
+        source: "qrc:/fonts/iosevka/IosevkaTermNerdFontMono-Regular.ttf"
+    }
 
     Item {
         id: numeral
@@ -49,31 +64,35 @@ Item {
         height: engraved.implicitHeight
         anchors.verticalCenter: parent.verticalCenter
 
-        // Embossed, so struck the other way round from the moulded shell:
-        // the dark shadow lies under and right of the lit figure.
+        // Struck into the plate: the lit figure throws its dark shadow low
+        // and right, and the whole strike sits worn, not printed.
         Text {
-            x: 1
-            y: 1
+            x: 2
+            y: 2
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.pixelSize: 33
-            font.bold: true
+            font.family: struckFace.name
+            font.pixelSize: 34
+            font.letterSpacing: -1
             text: furniture.numeralText
             color: furniture.numeralShadow
+            opacity: 0.9
         }
         Text {
             id: engraved
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.pixelSize: 33
-            font.bold: true
+            font.family: struckFace.name
+            font.pixelSize: 34
+            font.letterSpacing: -1
             text: furniture.numeralText
             color: furniture.numeralFill
+            opacity: 0.88 + 0.08 * furniture.jitter
         }
     }
 
-    // The raised outer rim around the window: full row height, lit along the
-    // top edge, falling to shadow at the bottom lip.
+    // The raised outer rim around the window: a thin moulding standing just
+    // proud of the plate, its top edge lit, dropping to a dark cut inside.
     Rectangle {
         id: rim
 
@@ -85,10 +104,42 @@ Item {
         antialiasing: true
 
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(furniture.plastic, 1.8) }
-            GradientStop { position: 0.15; color: furniture.plastic }
-            GradientStop { position: 0.85; color: Qt.darker(furniture.plastic, 1.6) }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.plastic, 1.4) }
+            GradientStop { position: 0.00; color: Qt.lighter(furniture.plastic, 1.9 + 0.2 * furniture.jitter) }
+            GradientStop { position: 0.06; color: Qt.lighter(furniture.plastic, 1.15) }
+            GradientStop { position: 0.30; color: Qt.darker(furniture.plastic, 1.25) }
+            GradientStop { position: 0.90; color: Qt.darker(furniture.plastic, 1.7) }
+            GradientStop { position: 1.00; color: Qt.lighter(furniture.plastic, 1.5) }
+        }
+
+        // The machined inner bevel: dark cut on the upper lip...
+        Rectangle {
+            x: 4
+            y: 3
+            width: parent.width - 8
+            height: 2
+            radius: 1
+            color: furniture.cutDark
+            opacity: 0.85
+        }
+        // ...bright machined face along the lower lip...
+        Rectangle {
+            x: 5
+            y: parent.height - 4
+            width: parent.width - 10
+            height: 2
+            radius: 1
+            color: furniture.lipLight
+            opacity: 0.7 + 0.3 * furniture.jitter
+        }
+        // ...and a fainter catch down the right lip.
+        Rectangle {
+            x: parent.width - 4
+            y: 6
+            width: 2
+            height: parent.height - 12
+            radius: 1
+            color: furniture.lipLight
+            opacity: 0.3 + 0.2 * furniture.jitter
         }
     }
 
@@ -105,9 +156,10 @@ Item {
         antialiasing: true
 
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.darker(furniture.panelDark, 1.5) }
-            GradientStop { position: 0.5; color: furniture.panelDark }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.panelDark, 2.2) }
+            GradientStop { position: 0.0; color: Qt.darker(furniture.panelDark, 1.6) }
+            GradientStop { position: 0.45; color: furniture.panelDark }
+            GradientStop { position: 0.93; color: Qt.lighter(furniture.panelDark, 1.6) }
+            GradientStop { position: 1.0; color: Qt.lighter(furniture.panelDark, 3.2) }
         }
     }
 }
