@@ -19,39 +19,22 @@
 *******************************************************************************/
 import QtQuick
 
-import "../../utils.js" as Utils
-
-// The blue appliance's chassis: bare scratched gunmetal on the mock, with the
-// numerals and windows punched straight into it. There is no plate, so this
-// is the frame's lighting field continued under the bank and nothing more.
-// The moulded-plastic law stands in for the metal until the paint pass.
+// The blue appliance's chassis: bare scratched gunmetal, with the numerals
+// and windows punched straight into it. There is no plate, so this is the
+// frame's chassis law continued under the bank and nothing more: heavy grain,
+// blotchy stains, wear streaks, the room's vignette pooling the corners dark.
 //
 // It occupies only the ground the bank stands on, never a sheet behind the
 // screen: a see-through profile has to look through the tube onto the desktop,
-// and any plastic left under the glass would be a second veil over the picture.
+// and any metal left under the glass would be a second veil over the picture.
 ShaderEffect {
     id: chassis
 
-    // The item the frame shader fills; this plastic continues its field.
+    // The item the frame shader fills; this metal continues its field.
     property Item frameRegion
 
-    property color frameColor: Utils.frameBaseColor(
-        appSettings.frameColor,
-        appSettings.fontColor,
-        appSettings.backgroundColor,
-        appSettings.ambientLight
-    )
-
-    property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
-
-    property real frameShininess: appSettings.frameShininess
-
-    property real frameSize: appSettings.frameSize * terminalWindow.normalizedScreenScale
-
-    property real screenRadius: appSettings.screenRadius
-
     // The frame's own measurements, in the units its shader works in: this
-    // plastic is placed in that field, not in one of its own.
+    // metal is placed in that field, not in one of its own.
     property size viewportSize: Qt.size(_fieldWidth, _fieldHeight)
 
     property size fieldScale: Qt.size(width / _fieldWidth, height / _fieldHeight)
@@ -63,14 +46,22 @@ ShaderEffect {
     readonly property real _fieldWidth: frameRegion ? Math.max(1, frameRegion.width) : 1
     readonly property real _fieldHeight: frameRegion ? Math.max(1, frameRegion.height) : 1
 
+    // The frame's own chassis law, continued leftwards.
+    property vector2d lightDir: Qt.vector2d(-0.55, -0.85)
+    property color chassisColor: "#393528"
+    property real grainAmount: 0.4
+    property real mottleAmount: 1.0
+    property real scratchAmount: 0.7
+    property real vignetteStrength: 0.5
+
     // The body takes the tube's translucency, so a see-through profile is one
     // set and not a screen cut into an opaque box.
     opacity: appSettings.windowOpacity * 0.3 + 0.7
 
     blending: false
 
-    vertexShader: "qrc:/shaders/chassis_plastic.vert.qsb"
-    fragmentShader: "qrc:/shaders/chassis_plastic.frag.qsb"
+    vertexShader: "qrc:/shaders/chassis_metal.vert.qsb"
+    fragmentShader: "qrc:/shaders/chassis_metal.frag.qsb"
 
     onStatusChanged: if (log) console.log(log)
 }
