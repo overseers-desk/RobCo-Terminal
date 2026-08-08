@@ -37,6 +37,11 @@ QtObject {
     // held by minRowHeight so the pitch lands at 45 regardless of padding sums.
     readonly property int stripPadding: 12
     readonly property int minRowHeight: 43
+    // Dark panel above and below the strip inside the window's punched hole
+    // (the hole stands 35px in the 43px bezel, the strip 18): the mock keeps
+    // that glass unlit, so the lamps' throw is swallowed across it and lands
+    // on the machined lip.
+    readonly property int panelPadY: 8
     // Glow profile: no selector lane, but shellMetrics always exposes trackWidth.
     readonly property int trackWidth: 14
 }
