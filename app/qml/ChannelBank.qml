@@ -109,6 +109,13 @@ Item {
         ensureVisible(currentChannel)
     }
 
+    // The character count whose bank width sits nearest the given width,
+    // measured from the current width so no layout arithmetic is repeated.
+    function charactersForWidth(w) {
+        var perChar = appSettings.ledCellWidth * appSettings.ledDotPitch
+        return appSettings.ledCharacters + Math.round((w - implicitWidth) / perChar)
+    }
+
     // A page slot as the chord and the numerals read it, to its absolute slot;
     // 0 where this page has no such row.
     function absoluteSlot(pageSlot) {
