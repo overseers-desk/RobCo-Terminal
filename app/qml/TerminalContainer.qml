@@ -29,6 +29,14 @@ ShaderTerminal {
     signal sessionFinished()
     signal tmuxGateway(var gateway)
 
+    // What this channel shows: a local shell, or a remote tmux window fed
+    // through the named gateway. (The property is remoteGateway because the
+    // upward signal above already took the tmuxGateway name.)
+    property string channelKind: "local"
+    property string tmuxWindowId: ""
+    property string tmuxPaneId: ""
+    property var remoteGateway: null
+
     property bool loadBloomEffect: appSettings.bloom > 0 || appSettings._frameShininess > 0
 
     id: mainShader
@@ -47,6 +55,10 @@ ShaderTerminal {
         id: terminal
         anchors.fill: parent
         isActive: mainShader.isActive
+        channelKind: mainShader.channelKind
+        tmuxWindowId: mainShader.tmuxWindowId
+        tmuxPaneId: mainShader.tmuxPaneId
+        remoteGateway: mainShader.remoteGateway
         onSessionFinished: mainShader.sessionFinished()
         onTmuxGateway: (gateway) => mainShader.tmuxGateway(gateway)
     }
