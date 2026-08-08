@@ -42,7 +42,8 @@ Item {
     // The shell's rule for the column's fixed measures, the display's for the
     // strips'. Synchronous loads: the bank's very first layout divides by
     // these, so they cannot arrive a frame late. The fallbacks are the
-    // moulded-plastic and LED numbers, for the beat before the items exist.
+    // moulded-plastic numbers for the shell metrics and safe zeros for the
+    // display metrics, for the beat before the items exist.
     Loader {
         id: shellMetrics
         source: appSettings.shellUrl("Metrics")
