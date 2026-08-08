@@ -61,6 +61,12 @@ ShaderEffect {
     property real scratchAmount: 0.15
     property real vignetteStrength: 0.42
     property real fillGain: 0.95
+    // The shader's face-band law, switched off for this shell. Declared as
+    // zeros rather than left to the runtime's fill-in: every uniform the
+    // shader names gets a property here, so the UBO is written whole.
+    property real faceBandPx: 0
+    property real rimDistPx: 0
+    property real rimGain: 0
 
     vertexShader: "qrc:/shaders/frame_metal.vert.qsb"
     fragmentShader: "qrc:/shaders/frame_metal.frag.qsb"
