@@ -14,6 +14,8 @@ layout(std140, binding = 0) uniform ubuf {
     float threshold;
     float glow;
     float pixelsPerCell;
+    vec2 spillMargin;
+    float spillStrength;
 };
 
 layout(location = 0) out vec2 qt_TexCoord0;
