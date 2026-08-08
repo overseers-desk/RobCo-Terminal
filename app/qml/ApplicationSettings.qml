@@ -333,7 +333,8 @@ QtObject {
         customCommand = settings.customCommand
                 !== undefined ? settings.customCommand : customCommand
 
-        ledCharacters = settings.ledCharacters !== undefined ? settings.ledCharacters : ledCharacters
+        ledCharacters = settings.ledCharacters
+                !== undefined ? Math.max(minLedCharacters, settings.ledCharacters) : ledCharacters
     }
 
     function loadProfileString(profileString) {
@@ -969,11 +970,13 @@ QtObject {
         }
         // The blue appliance of the reference mock: warm olive-grey gunmetal
         // (all the blue in that mock is emitted light, none of it paint),
-        // windows punched into the chassis, the mechanical selector riding a
-        // full-height rail down the bank's left edge. frameSize sits between
-        // the mock's shallow top inset and its deep bottom trough; the
-        // screenRadius ceiling plus the strong curvature approximates the
-        // barrel-curved glass mouth.
+        // windows punched into the chassis, a bare carrier rail down the
+        // bank's left edge. The rail is chassis furniture and carries no
+        // live carriage: the mock's channel is an uninterrupted groove,
+        // and the window on screen marks itself by its own glow. frameSize
+        // sits between the mock's shallow top inset and its deep bottom
+        // trough; the screenRadius ceiling plus the strong curvature
+        // approximates the barrel-curved glass mouth.
         ListElement {
             text: "RobCo Blue"
             obj_string: '{
@@ -1005,7 +1008,7 @@ QtObject {
                 "frameSize": 0.7,
                 "frameColor": "#a77d37",
                 "frameShininess": 0.15,
-                "channelIndicator": "pointer",
+                "channelIndicator": "glow",
                 "shell": "robco-blue"
             }'
             builtin: true

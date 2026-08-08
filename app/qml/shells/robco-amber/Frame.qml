@@ -19,22 +19,16 @@
 *******************************************************************************/
 import QtQuick 2.0
 
-import "../../utils.js" as Utils
-
-// The amber appliance's slim bezel. Geometry skeleton: the moulded-plastic
-// lighting law stands in for the patinated metal until the paint pass; the
-// opening's proportions come from the profile's frameSize and screenRadius.
+// The amber appliance's slim bezel: aged gunmetal built by the metal shader
+// pair. Low-key room light from high and slightly left, a soft fill from the
+// right lighting the right bezel band, dark corners; the chassis margin
+// around the bezel is near-black and almost matte, as the mock's is.
 ShaderEffect {
-    // The instantiation site used to set this; the frame is opaque plastic
+    // The instantiation site used to set this; the frame is opaque metal
     // either way, so it travels with the component now.
     blending: false
 
-    property color frameColor: Utils.frameBaseColor(
-        appSettings.frameColor,
-        appSettings.fontColor,
-        appSettings.backgroundColor,
-        appSettings.ambientLight
-    )
+    Metrics { id: metrics }
 
     property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
 
@@ -48,8 +42,34 @@ ShaderEffect {
 
     property real ambientLight: appSettings.ambientLight
 
-    vertexShader: "qrc:/shaders/terminal_frame.vert.qsb"
-    fragmentShader: "qrc:/shaders/terminal_frame.frag.qsb"
+    // The fill from the right is what models the bezel bands, so the shader's
+    // key leans right; the vignette still pools the corners dark.
+    property vector2d lightDir: metrics.castingLightDir
+    property color bezelColor: "#26211c"
+    property color chassisColor: metrics.castingColor
+    property color ridgeColor: "#6e5c48"
+    // Bezel plate edge insets, in px: left, top, right, bottom. The plate
+    // meets the bank flush on the left.
+    property vector4d bezelMargins: Qt.vector4d(0, 12, 10, 9)
+    property real outerRadius: 60
+    property real wellDepth: 9
+    property real wellFloor: 0.4
+    property real ridgeGain: 0.7
+    property real troughGain: 0.35
+    property real grainAmount: 0.16
+    property real mottleAmount: 0.5
+    property real scratchAmount: 0.15
+    property real vignetteStrength: 0.42
+    property real fillGain: 0.95
+    // The shader's face-band law, switched off for this shell. Declared as
+    // zeros rather than left to the runtime's fill-in: every uniform the
+    // shader names gets a property here, so the UBO is written whole.
+    property real faceBandPx: 0
+    property real rimDistPx: 0
+    property real rimGain: 0
+
+    vertexShader: "qrc:/shaders/frame_metal.vert.qsb"
+    fragmentShader: "qrc:/shaders/frame_metal.frag.qsb"
 
     onStatusChanged: if (log) console.log(log) //Print warning messages
 }

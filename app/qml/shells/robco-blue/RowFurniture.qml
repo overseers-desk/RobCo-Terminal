@@ -19,12 +19,11 @@
 *******************************************************************************/
 import QtQuick
 
-// One blue row's furniture: a numeral stamped dark into the metal (the
-// inverse of the amber emboss: the figure is the dark stroke, the metal
-// showing between strokes the light) and a hard-edged window with a thin
-// metal rim (radius 3) around a punched panel (radius 2). Measured off the
-// mock: rim the full 46px row, panel 2px under the top lip and 5 above the
-// bottom. Palette colours; skeleton gradients until the paint pass.
+// One blue row's furniture: a numeral stamped dark into the metal, its
+// strike catching a sliver of light on the lower edge, and a window punched
+// straight into the chassis: a tight dark cut ring around the recessed
+// panel, and a bright bevel line on the chassis just under the hole, where
+// the light catches the far wall of the punch.
 Item {
     id: furniture
 
@@ -38,8 +37,14 @@ Item {
     property int numeralGap: 20
 
     readonly property color numeralInk: "#0d0b08"
-    readonly property color numeralEdge: "#382f24"
+    readonly property color numeralEdge: "#4a4030"
     readonly property color panelDark: "#090d0d"
+    readonly property color rimLight: "#b7a283"
+    readonly property color rimDark: "#12100b"
+
+    // The numeral's stamp face: the same Iosevka the font manager already
+    // registers app-wide, named directly rather than loaded a second time.
+    readonly property string stampFaceFamily: appSettings.fontManager.fontByName("IOSEVKA").family
 
     Item {
         id: numeral
@@ -51,58 +56,79 @@ Item {
 
         // Metal catching light along the stroke's lower edge, ink above it.
         Text {
-            y: 1
+            y: 2
+            x: 1
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.pixelSize: 36
+            font.family: furniture.stampFaceFamily
+            font.pixelSize: 33
             font.bold: true
+            font.letterSpacing: -1
             text: furniture.numeralText
             color: furniture.numeralEdge
+            opacity: 0.5
         }
         Text {
             id: stamped
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.pixelSize: 36
+            font.family: furniture.stampFaceFamily
+            font.pixelSize: 33
             font.bold: true
+            font.letterSpacing: -1
             text: furniture.numeralText
             color: furniture.numeralInk
         }
     }
 
-    // The thin rim standing just proud of the chassis around the hole.
+    // The cut ring of the punch: two pixels of shadowed edge around the
+    // panel, darkest under the top lip where the room cannot reach.
     Rectangle {
-        id: rim
+        id: ring
 
-        x: furniture.displayRect.x - 6
+        x: furniture.displayRect.x - 3
         y: 0
-        width: furniture.displayRect.width + 12
+        width: furniture.displayRect.width + 6
         height: parent.height
         radius: 3
         antialiasing: true
 
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.darker(furniture.plastic, 1.8) }
-            GradientStop { position: 0.9; color: Qt.darker(furniture.plastic, 2.6) }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.plastic, 1.3) }
+            GradientStop { position: 0.00; color: furniture.rimDark }
+            GradientStop { position: 0.55; color: Qt.darker(furniture.plastic, 2.2) }
+            GradientStop { position: 1.00; color: Qt.darker(furniture.plastic, 1.4) }
         }
     }
 
-    // The punched panel, recessed: bright bevel line on the bottom lip.
+    // The recessed panel: dark under the top lip, its far wall catching
+    // light along the bottom.
     Rectangle {
         id: panel
 
         x: furniture.displayRect.x - 1
         y: 2
         width: furniture.displayRect.width + 2
-        height: parent.height - 7
+        height: parent.height - 4
         radius: 2
         antialiasing: true
+        clip: true
 
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.darker(furniture.panelDark, 1.6) }
+            GradientStop { position: 0.0; color: Qt.darker(furniture.panelDark, 1.7) }
             GradientStop { position: 0.5; color: furniture.panelDark }
-            GradientStop { position: 1.0; color: Qt.lighter(furniture.panelDark, 1.8) }
+            GradientStop { position: 0.92; color: Qt.lighter(furniture.panelDark, 1.5) }
+            GradientStop { position: 1.0; color: Qt.lighter(furniture.panelDark, 2.6) }
         }
+    }
+
+    // The bright bevel line on the chassis just under the hole.
+    Rectangle {
+        x: furniture.displayRect.x - 2
+        y: parent.height + 1
+        width: furniture.displayRect.width + 4
+        height: 2
+        radius: 1
+        color: furniture.rimLight
+        opacity: 0.9
     }
 }

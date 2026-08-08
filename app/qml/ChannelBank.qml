@@ -60,11 +60,16 @@ Item {
     // Plate standing between the strips' right edge and the frame's moulding;
     // zero for a shell whose strips run to the boundary.
     readonly property int rightPadding: shellMetrics.item?.rightPadding ?? 0
-    readonly property int rowSpacing: shellMetrics.item?.rowSpacing ?? 6
+    // Real, not int: a shell whose mock's row pitch is fractional carries the
+    // fraction here, or fourteen rows drift three pixels by the bank's foot.
+    readonly property real rowSpacing: shellMetrics.item?.rowSpacing ?? 6
     readonly property int columnGap: shellMetrics.item?.columnGap ?? 10
     readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 34
     readonly property int stripPadding: shellMetrics.item?.stripPadding ?? 13
     readonly property int minRowHeight: shellMetrics.item?.minRowHeight ?? 26
+    // Dark panel a shell's window keeps above and below the strip; a shell
+    // that says nothing has windows hugging their strips.
+    readonly property int panelPadY: shellMetrics.item?.panelPadY ?? 0
 
     readonly property int stripWidth: displayMetrics.item
         ? displayMetrics.item.widthForUnits(appSettings.ledCharacters) : 0
@@ -243,6 +248,7 @@ Item {
                 numeralWidth: bank.numeralWidth
                 columnGap: bank.columnGap
                 stripPadding: bank.stripPadding
+                panelPadY: bank.panelPadY
                 open: slotTitle !== undefined
                 title: slotTitle !== undefined ? slotTitle : ""
                 current: bank.currentChannel === channel

@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
-import QtQml
+import QtQuick
 
 // The amber appliance's fixed furniture, measured off the reference mock
 // (1448x1086): a raised plate carrying 19 windows at a 45px pitch, numerals
@@ -37,6 +37,17 @@ QtObject {
     // held by minRowHeight so the pitch lands at 45 regardless of padding sums.
     readonly property int stripPadding: 12
     readonly property int minRowHeight: 43
+    // Dark panel above and below the strip inside the window's punched hole
+    // (the hole stands 35px in the 43px bezel, the strip 18): the mock keeps
+    // that glass unlit, so the lamps' throw is swallowed across it and lands
+    // on the machined lip.
+    readonly property int panelPadY: 8
     // Glow profile: no selector lane, but shellMetrics always exposes trackWidth.
     readonly property int trackWidth: 14
+
+    // The chassis and frame are one casting poured from the metal shader
+    // pair; both read this same light and metal color rather than keeping
+    // their own copies to drift apart.
+    readonly property vector2d castingLightDir: Qt.vector2d(0.8, -0.6)
+    readonly property color castingColor: "#16130f"
 }
