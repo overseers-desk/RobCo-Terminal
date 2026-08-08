@@ -24,13 +24,17 @@
         <file>TerminalContainer.qml</file>
         <file>TerminalChannels.qml</file>
         <file>ChannelBank.qml</file>
-        <file>ChannelButton.qml</file>
-        <file>ChannelChassis.qml</file>
         <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>
-        <file>ChannelPager.qml</file>
-        <file>ChannelSelectorTrack.qml</file>
-        <file>ChannelLedStrip.qml</file>
+        <file>shells/moulded-plastic/Frame.qml</file>
+        <file>shells/moulded-plastic/Chassis.qml</file>
+        <file>shells/moulded-plastic/RowFurniture.qml</file>
+        <file>shells/moulded-plastic/SelectorTrack.qml</file>
+        <file>shells/moulded-plastic/Pager.qml</file>
+        <file>shells/moulded-plastic/ChannelButton.qml</file>
+        <file>shells/moulded-plastic/Metrics.qml</file>
+        <file>displays/led/Display.qml</file>
+        <file>displays/led/Metrics.qml</file>
         <file>images/crt256.png</file>
         <file>utils.js</file>
         <file>images/allNoise512.png</file>
@@ -53,7 +57,6 @@
         <file>fonts/departure-mono/DepartureMonoNerdFontMono-Regular.otf</file>
         <file>fonts/opendyslexic/OpenDyslexicMNerdFontMono-Regular.otf</file>
         <file>fonts/source-code-pro/SauceCodeProNerdFontMono-Regular.ttf</file>
-        <file>TerminalFrame.qml</file>
         <file>menus/WindowMenu.qml</file>
         <file>menus/FullContextMenu.qml</file>
         <file>menus/ShortContextMenu.qml</file>

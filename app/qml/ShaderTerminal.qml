@@ -146,15 +146,17 @@ Item {
 
         sourceComponent: ShaderEffectSource {
 
-            sourceItem: terminalFrame
+            sourceItem: frameLoader
             hideSource: true
             visible: false
             format: ShaderEffectSource.RGBA
 
-            TerminalFrame {
-                id: terminalFrame
-                blending: false
+            // The loaded frame is a ShaderEffect with no implicit size of its
+            // own; the loader's fill is what sizes it.
+            Loader {
+                id: frameLoader
                 anchors.fill: parent
+                source: appSettings.shellUrl("Frame")
             }
         }
     }

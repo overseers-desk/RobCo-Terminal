@@ -39,28 +39,38 @@ Item {
         appSettings.ambientLight
     )
 
-    readonly property int bankPadding: 10
-    readonly property int rowSpacing: 6
-    readonly property int columnGap: 10
-    readonly property int numeralWidth: 34
-    // Sized so a channel row's pitch sits near two terminal text rows
-    // (25 px at the default profile), the bank's readability target.
-    readonly property int stripPadding: 13
-    readonly property int minRowHeight: 26
+    // The shell's rule for the column's fixed measures, the display's for the
+    // strips'. Synchronous loads: the bank's very first layout divides by
+    // these, so they cannot arrive a frame late. The fallbacks are the
+    // moulded-plastic and LED numbers, for the beat before the items exist.
+    Loader {
+        id: shellMetrics
+        source: appSettings.shellUrl("Metrics")
+    }
+    Loader {
+        id: displayMetrics
+        source: appSettings.displayUrl("Metrics")
+    }
 
-    // Rounded, not truncated: at a fractional dot pitch a floored strip would
-    // leave the row half a pixel short of the window it has to hold.
-    readonly property int stripWidth: Math.round(
-        appSettings.ledCellWidth * appSettings.ledCharacters * appSettings.ledDotPitch)
-    readonly property int stripHeight: Math.round(
-        (appSettings.ledCellHeight + appSettings.ledPadCells) * appSettings.ledDotPitch)
+    readonly property int bankPadding: shellMetrics.item?.bankPadding ?? 10
+    readonly property int rowSpacing: shellMetrics.item?.rowSpacing ?? 6
+    readonly property int columnGap: shellMetrics.item?.columnGap ?? 10
+    readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 34
+    readonly property int stripPadding: shellMetrics.item?.stripPadding ?? 13
+    readonly property int minRowHeight: shellMetrics.item?.minRowHeight ?? 26
+
+    readonly property int stripWidth: displayMetrics.item
+        ? displayMetrics.item.widthForUnits(appSettings.ledCharacters) : 0
+    readonly property int stripHeight: displayMetrics.item?.stripHeight ?? 0
+    // The fewest characters the display will hold; the seam drag's floor.
+    readonly property int minUnits: displayMetrics.item?.minUnits ?? 1
     readonly property int rowHeight: Math.max(minRowHeight, stripHeight + 2 * stripPadding)
 
     // The profile decides how the channel on screen is marked. The pointer look
     // gives the mechanical selector a lane of its own down the left edge; the
     // glow look has no selector and reserves nothing for one.
     readonly property bool pointerIndicator: appSettings.channelIndicator === "pointer"
-    readonly property int trackWidth: pointerIndicator ? 14 : 0
+    readonly property int trackWidth: pointerIndicator ? (shellMetrics.item?.trackWidth ?? 14) : 0
     readonly property int trackGap: pointerIndicator ? columnGap : 0
 
     // The ground left to the rows once the selector has taken its lane. It
@@ -95,6 +105,10 @@ Item {
         ? (currentChannel - pageBase - 1) * (rowHeight + rowSpacing) + rowHeight / 2
         : pager.y + pager.height / 2 - bankPadding
 
+    // The pager and the selector are shell components in files of their own,
+    // where this file's ids do not reach; every property they take is pushed
+    // over explicitly below.
+
     clip: true
 
     onHeightChanged: settleTimer.restart()
@@ -118,7 +132,7 @@ Item {
     // The character count whose bank width sits nearest the given width,
     // measured from the current width so no layout arithmetic is repeated.
     function charactersForWidth(w) {
-        var perChar = appSettings.ledCellWidth * appSettings.ledDotPitch
+        var perChar = displayMetrics.item ? displayMetrics.item.unitWidth : 1
         return appSettings.ledCharacters + Math.round((w - implicitWidth) / perChar)
     }
 
@@ -186,9 +200,17 @@ Item {
         width: bank.trackWidth
         height: Math.max(0, bank.height - 2 * bank.bankPadding)
 
-        sourceComponent: ChannelSelectorTrack {
-            plastic: bank.plastic
-            targetY: bank.pointerY
+        source: appSettings.shellUrl("SelectorTrack")
+
+        Binding {
+            target: selector.item
+            property: "plastic"
+            value: bank.plastic
+        }
+        Binding {
+            target: selector.item
+            property: "targetY"
+            value: bank.pointerY
         }
     }
 
@@ -222,7 +244,7 @@ Item {
         }
     }
 
-    ChannelPager {
+    Loader {
         id: pager
 
         x: bank.contentX
@@ -231,10 +253,29 @@ Item {
             bottom: parent.bottom
             bottomMargin: bank.bankPadding
         }
-        plastic: bank.plastic
-        columnGap: bank.columnGap
-        pageIndex: bank.pageIndex
-        pageCount: bank.pageCount
-        onStep: function (direction) { bank.step(direction) }
+
+        source: appSettings.shellUrl("Pager")
+        onLoaded: item.step.connect(bank.step)
+
+        Binding {
+            target: pager.item
+            property: "plastic"
+            value: bank.plastic
+        }
+        Binding {
+            target: pager.item
+            property: "columnGap"
+            value: bank.columnGap
+        }
+        Binding {
+            target: pager.item
+            property: "pageIndex"
+            value: bank.pageIndex
+        }
+        Binding {
+            target: pager.item
+            property: "pageCount"
+            value: bank.pageCount
+        }
     }
 }

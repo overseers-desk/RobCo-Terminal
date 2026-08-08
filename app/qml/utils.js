@@ -67,22 +67,6 @@ function frameBaseColor(frameColor, fontColor, backgroundColor, ambientLight) {
     );
 }
 
-// The LED window's colours, all struck from the profile's font colour: the
-// lamp driven to full, and that same hue sunk towards black for the unlit dots
-// and for the panel they are set into. A dark slot sits darker still, and the
-// current channel's lamps run a shade hotter.
-function ledWindowColors(fontColor, powered, bright) {
-    let peak = Math.max(fontColor.r, Math.max(fontColor.g, fontColor.b));
-    let lit = scaleColor(fontColor, peak > 0 ? 1.0 / peak : 1.0);
-    if (bright)
-        lit = mix(lit, Qt.rgba(1.0, 1.0, 1.0, 1.0), 0.08);
-    return {
-        lit: lit,
-        dim: scaleColor(lit, powered ? 0.20 : 0.13),
-        panel: scaleColor(lit, powered ? 0.09 : 0.045)
-    };
-}
-
 function smoothstep(min, max, value) {
     let x = Math.max(0, Math.min(1, (value - min) / (max - min)));
     return x * x * (3 - 2 * x);

@@ -42,100 +42,91 @@ Item {
 
     signal activated()
 
-    implicitHeight: ledStrip.height + 2 * stripPadding
-    implicitWidth: numeralWidth + columnGap + ledStrip.width
+    implicitHeight: display.height + 2 * stripPadding
+    implicitWidth: numeralWidth + columnGap + display.width
 
     // Two digits always, as the panel printer stamped them.
     readonly property string numeralText:
         label < 10 ? "0" + label : String(label)
+
+    // Where the title display sits, in this row's coordinates: the shell's
+    // furniture paints its window moulding around this rectangle.
+    readonly property rect displayRect: Qt.rect(
+        display.x, (height - display.height) / 2, display.width, display.height)
 
     // The confirmation the panel gives when the current session is stored onto this slot.
     function blink() {
         storeBlink.restart()
     }
 
-    Item {
-        id: numeral
+    // The plastic around the window: numeral, dish and moulding, all the
+    // shell's. It lives in a file of its own where this row's ids do not
+    // reach, so everything it paints from is pushed over explicitly.
+    Loader {
+        id: furniture
 
-        x: 0
-        width: channelRow.numeralWidth
-        height: engraving.implicitHeight
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.fill: parent
+        source: appSettings.shellUrl("RowFurniture")
 
-        Text {
-            width: numeral.width
-            y: 1
-            horizontalAlignment: Text.AlignRight
-            font.pixelSize: 22
-            font.bold: true
-            font.letterSpacing: 0.5
-            text: channelRow.numeralText
-            color: Qt.lighter(channelRow.plastic, 1.9)
+        Binding {
+            target: furniture.item
+            property: "plastic"
+            value: channelRow.plastic
         }
-        Text {
-            id: engraving
-            width: numeral.width
-            horizontalAlignment: Text.AlignRight
-            font.pixelSize: 22
-            font.bold: true
-            font.letterSpacing: 0.5
-            text: channelRow.numeralText
-            color: Qt.darker(channelRow.plastic, 2.6)
+        Binding {
+            target: furniture.item
+            property: "numeralText"
+            value: channelRow.numeralText
         }
-    }
-
-    // The dish the window is sunk into: shading alone, no outline. It tints
-    // whatever plastic lies behind rather than laying down a sheet of its own,
-    // so a translucent profile still sees through the bank.
-    Rectangle {
-        id: dish
-
-        x: recess.x - 4
-        y: recess.y - 4
-        width: recess.width + 8
-        height: recess.height + 8
-        radius: 6
-        antialiasing: true
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.34) }
-            GradientStop { position: 0.62; color: Qt.rgba(0, 0, 0, 0.10) }
-            GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.07) }
+        Binding {
+            target: furniture.item
+            property: "displayRect"
+            value: channelRow.displayRect
+        }
+        Binding {
+            target: furniture.item
+            property: "open"
+            value: channelRow.open
+        }
+        Binding {
+            target: furniture.item
+            property: "current"
+            value: channelRow.current
         }
     }
 
-    // The window body. Darker under its top lip, where the moulding shades it.
-    Rectangle {
-        id: recess
+    Loader {
+        id: display
 
-        x: channelRow.numeralWidth + channelRow.columnGap - 3
-        width: ledStrip.width + 6
-        height: ledStrip.height + 6
-        radius: 3
-        antialiasing: true
+        x: channelRow.numeralWidth + channelRow.columnGap
         anchors.verticalCenter: parent.verticalCenter
+        source: appSettings.displayUrl("Display")
 
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.darker(channelRow.plastic, 5.0) }
-            GradientStop { position: 0.45; color: Qt.darker(channelRow.plastic, 3.6) }
-            GradientStop { position: 1.0; color: Qt.darker(channelRow.plastic, 2.9) }
+        Binding {
+            target: display.item
+            property: "text"
+            value: channelRow.title
         }
-    }
-
-    ChannelLedStrip {
-        id: ledStrip
-
-        x: recess.x + 3
-        anchors.verticalCenter: parent.verticalCenter
-        text: channelRow.title
-        powered: channelRow.open
-        bright: channelRow.current
+        Binding {
+            target: display.item
+            property: "powered"
+            value: channelRow.open
+        }
+        Binding {
+            target: display.item
+            property: "bright"
+            value: channelRow.current
+        }
     }
 
     // The window is the key. No Control and no focus: the terminal keeps the
-    // keyboard, as the button this replaced was careful to.
+    // keyboard, as the button this replaced was careful to. It covers the
+    // whole window body, moulding lip included, as it always has.
     MouseArea {
-        anchors.fill: recess
+        x: channelRow.displayRect.x - 3
+        y: channelRow.displayRect.y - 3
+        width: channelRow.displayRect.width + 6
+        height: channelRow.displayRect.height + 6
         acceptedButtons: Qt.LeftButton
         onClicked: channelRow.activated()
     }
@@ -144,7 +135,7 @@ Item {
         id: storeBlink
 
         loops: 2
-        NumberAnimation { target: ledStrip; property: "opacity"; to: 0.0; duration: 40 }
-        NumberAnimation { target: ledStrip; property: "opacity"; to: 1.0; duration: 35 }
+        NumberAnimation { target: display; property: "opacity"; to: 0.0; duration: 40 }
+        NumberAnimation { target: display; property: "opacity"; to: 1.0; duration: 35 }
     }
 }
