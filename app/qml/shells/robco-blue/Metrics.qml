@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
-import QtQml
+import QtQuick
 
 // The blue appliance's fixed furniture, measured off the reference mock
 // Metalic-Blue.png (1448x1086): windows punched straight into the chassis at
@@ -55,4 +55,10 @@ QtObject {
     // folded into bankPadding above (the glow profile reserves no lane);
     // shellMetrics always exposes trackWidth for a profile that asks.
     readonly property int trackWidth: 41
+
+    // The chassis and frame are one casting poured from the metal shader
+    // pair; both read this same light and metal color rather than keeping
+    // their own copies to drift apart.
+    readonly property vector2d castingLightDir: Qt.vector2d(-0.55, -0.85)
+    readonly property color castingColor: "#453c2d"
 }

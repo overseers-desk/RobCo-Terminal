@@ -51,10 +51,9 @@ Item {
         return h / 997
     }
 
-    FontLoader {
-        id: struckFace
-        source: "qrc:/fonts/iosevka/IosevkaTermNerdFontMono-Regular.ttf"
-    }
+    // The numeral's struck face: the same Iosevka the font manager already
+    // registers app-wide, named directly rather than loaded a second time.
+    readonly property string struckFaceFamily: appSettings.fontManager.fontByName("IOSEVKA").family
 
     Item {
         id: numeral
@@ -71,7 +70,7 @@ Item {
             y: 2
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.family: struckFace.name
+            font.family: furniture.struckFaceFamily
             font.pixelSize: 34
             font.letterSpacing: -1
             text: furniture.numeralText
@@ -82,7 +81,7 @@ Item {
             id: engraved
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.family: struckFace.name
+            font.family: furniture.struckFaceFamily
             font.pixelSize: 34
             font.letterSpacing: -1
             text: furniture.numeralText

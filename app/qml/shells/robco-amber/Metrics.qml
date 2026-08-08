@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
-import QtQml
+import QtQuick
 
 // The amber appliance's fixed furniture, measured off the reference mock
 // (1448x1086): a raised plate carrying 19 windows at a 45px pitch, numerals
@@ -44,4 +44,10 @@ QtObject {
     readonly property int panelPadY: 8
     // Glow profile: no selector lane, but shellMetrics always exposes trackWidth.
     readonly property int trackWidth: 14
+
+    // The chassis and frame are one casting poured from the metal shader
+    // pair; both read this same light and metal color rather than keeping
+    // their own copies to drift apart.
+    readonly property vector2d castingLightDir: Qt.vector2d(0.8, -0.6)
+    readonly property color castingColor: "#16130f"
 }

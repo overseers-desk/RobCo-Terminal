@@ -102,5 +102,10 @@ Canvas {
     }
 
     onMetalLightChanged: requestPaint()
+    onMetalMidChanged: requestPaint()
+    onMetalDarkChanged: requestPaint()
+    onGlintChanged: requestPaint()
     onSlotAngleChanged: requestPaint()
+    onLightXChanged: requestPaint()
+    onLightYChanged: requestPaint()
 }

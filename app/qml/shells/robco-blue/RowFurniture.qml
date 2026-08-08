@@ -42,10 +42,9 @@ Item {
     readonly property color rimLight: "#b7a283"
     readonly property color rimDark: "#12100b"
 
-    FontLoader {
-        id: stampFace
-        source: "qrc:/fonts/iosevka/IosevkaTermNerdFontMono-Regular.ttf"
-    }
+    // The numeral's stamp face: the same Iosevka the font manager already
+    // registers app-wide, named directly rather than loaded a second time.
+    readonly property string stampFaceFamily: appSettings.fontManager.fontByName("IOSEVKA").family
 
     Item {
         id: numeral
@@ -61,7 +60,7 @@ Item {
             x: 1
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.family: stampFace.name
+            font.family: furniture.stampFaceFamily
             font.pixelSize: 33
             font.bold: true
             font.letterSpacing: -1
@@ -73,7 +72,7 @@ Item {
             id: stamped
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.family: stampFace.name
+            font.family: furniture.stampFaceFamily
             font.pixelSize: 33
             font.bold: true
             font.letterSpacing: -1
