@@ -165,9 +165,19 @@ ApplicationWindow {
     // The bank's plastic, continuing the frame's moulding leftwards. Nothing
     // stands between the frame and the window on the other three sides: the
     // frame is the outermost thing there, as it is upstream.
-    ChannelChassis {
+    Loader {
+        id: chassisLoader
+
         anchors.fill: channelBank
-        frameRegion: crtRegion
+        source: appSettings.shellUrl("Chassis")
+
+        // The chassis lives in a file of its own, where this window's ids do
+        // not reach; the frame's region is handed over explicitly.
+        Binding {
+            target: chassisLoader.item
+            property: "frameRegion"
+            value: crtRegion
+        }
     }
     ChannelBank {
         id: channelBank
@@ -215,7 +225,7 @@ ApplicationWindow {
             var windowX = mapToItem(null, mouse.x, 0).x
             var chars = Math.min(channelBank.charactersForWidth(windowX),
                                  channelBank.charactersForWidth(terminalWindow.width - terminalWindow.crtMinimumWidth))
-            chars = Math.max(appSettings.minLedCharacters, chars)
+            chars = Math.max(channelBank.minUnits, chars)
             if (chars !== appSettings.ledCharacters)
                 appSettings.ledCharacters = chars
         }

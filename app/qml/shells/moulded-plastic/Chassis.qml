@@ -19,7 +19,7 @@
 *******************************************************************************/
 import QtQuick
 
-import "utils.js" as Utils
+import "../../utils.js" as Utils
 
 // The moulding the channel bank is set into: the same plastic the frame shader
 // lights, drawn beyond the frame's own rectangle. Its lighting and its

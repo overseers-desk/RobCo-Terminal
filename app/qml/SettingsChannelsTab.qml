@@ -84,8 +84,9 @@ ColumnLayout {
             }
         }
     }
-    ChannelLedStrip {
+    Loader {
         Layout.alignment: Qt.AlignHCenter
-        text: "channel preview"
+        source: appSettings.displayUrl("Display")
+        onLoaded: item.text = "channel preview"
     }
 }

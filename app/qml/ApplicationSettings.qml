@@ -81,6 +81,11 @@ QtObject {
     // itself, "pointer" runs a mechanical selector up the bank's left edge.
     // A profile written before the key existed gets "glow", the older look.
     property string channelIndicator: "glow"
+    // Which kit of components paints the appliance's body, and which display
+    // sits in the bank's windows. Directories under shells/ and displays/;
+    // a profile written before the keys existed gets today's look.
+    property string shell: "moulded-plastic"
+    property string channelDisplay: "led"
     property string saturatedColor: Utils.mix(Utils.strToColor(_fontColor), Utils.strToColor("#FFFFFF"), (saturationColor * 0.5))
     property color fontColor: Utils.mix(Utils.strToColor(_backgroundColor), Utils.strToColor(saturatedColor), (0.7 + (contrast * 0.3)))
     property color backgroundColor: Utils.mix(Utils.strToColor(saturatedColor), Utils.strToColor(_backgroundColor), (0.7 + (contrast * 0.3)))
@@ -163,6 +168,36 @@ QtObject {
     readonly property int ledCellWidth: Math.max(1, Math.round(_ledMetrics.advanceWidth))
     readonly property int ledCellHeight: Math.max(1, Math.ceil(_ledMetrics.height))
 
+    // The looks the build actually carries. A profile naming any other falls
+    // back to the default, warned once: a look can go missing between
+    // versions, and a bank that fails to paint would be worse than one that
+    // paints plainly.
+    readonly property var knownShells: ["moulded-plastic"]
+    readonly property var knownDisplays: ["led"]
+    property var _warnedLooks: ({})
+
+    function _validatedLook(kind, name, known, fallback) {
+        if (known.indexOf(name) !== -1)
+            return name
+        var key = kind + ":" + name
+        if (!_warnedLooks[key]) {
+            _warnedLooks[key] = true
+            console.log("Unknown " + kind + " \"" + name + "\", falling back to \"" + fallback + "\"")
+        }
+        return fallback
+    }
+
+    // Relative URLs, resolved by the Loader against qrc:/.
+    function shellUrl(part) {
+        return "shells/" + _validatedLook("shell", shell, knownShells, "moulded-plastic")
+                + "/" + part + ".qml"
+    }
+
+    function displayUrl(part) {
+        return "displays/" + _validatedLook("display", channelDisplay, knownDisplays, "led")
+                + "/" + part + ".qml"
+    }
+
     signal initializedSettings
 
     function incrementScaling() {
@@ -235,7 +270,9 @@ QtObject {
             "frameColor": _frameColor,
             "frameShininess": _frameShininess,
             "ledFontName": ledFontName,
-            "channelIndicator": channelIndicator
+            "channelIndicator": channelIndicator,
+            "shell": shell,
+            "channelDisplay": channelDisplay
         }
         return profile
     }
@@ -352,6 +389,11 @@ QtObject {
         // loaded: leaving the old profile's pointer standing in a profile that
         // never asked for one would be the switch failing to switch.
         channelIndicator = settings.channelIndicator !== undefined ? settings.channelIndicator : "glow"
+        // Same convention, same reason: switching profiles has to switch the
+        // look back, so a profile without the keys means the default look,
+        // never whatever the last profile left standing.
+        shell = settings.shell !== undefined ? settings.shell : "moulded-plastic"
+        channelDisplay = settings.channelDisplay !== undefined ? settings.channelDisplay : "led"
     }
 
     function storeCustomProfiles() {

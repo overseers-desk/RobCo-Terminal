@@ -19,9 +19,13 @@
 *******************************************************************************/
 import QtQuick 2.0
 
-import "utils.js" as Utils
+import "../../utils.js" as Utils
 
 ShaderEffect {
+    // The instantiation site used to set this; the frame is opaque plastic
+    // either way, so it travels with the component now.
+    blending: false
+
     property color frameColor: Utils.frameBaseColor(
         appSettings.frameColor,
         appSettings.fontColor,
