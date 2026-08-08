@@ -71,6 +71,11 @@ Item {
     // not a channel change.
     property bool _degaussArmed: false
 
+    // A window this set asked tmux for, still on its way. Asking for a channel
+    // puts you in it whether the shell is local or a session's away, so the
+    // next window to arrive takes the air; the ones tmux volunteers do not.
+    property bool _followNextRemote: false
+
     // A session has landed on a slot: the bank acknowledges it on that row.
     signal channelStored(int channel)
 
@@ -118,19 +123,23 @@ Item {
         _rebuildState()
     }
 
-    // A tmux window becomes an ordinary channel on the lowest free slot. Only
-    // the first one pulls selection off the buried gateway; the rest line up
-    // behind it.
+    // A tmux window becomes an ordinary channel on the lowest free slot. Of the
+    // windows an attach lists, only the first pulls selection off the buried
+    // gateway; the rest line up behind it. A window this set asked for is the
+    // exception and takes the air outright.
     function openRemoteChannel(windowId, paneId, name) {
         var channel = firstFreeChannel
         if (channel < 1)
             return
+        // Whatever arrives next answers the request, and nothing after it does.
+        var asked = _followNextRemote
+        _followNextRemote = false
         _insertRow({ channel: channel,
                      title: normalizeTitle(name + "@" + tmuxHost),
                      kind: "remote", windowId: windowId, paneId: paneId,
                      buried: false })
         var currentRow = _rowOf(currentChannel)
-        if (currentRow < 0 || channelsModel.get(currentRow).buried)
+        if (asked || currentRow < 0 || channelsModel.get(currentRow).buried)
             currentChannel = channel
         _rebuildState()
         if (currentChannel === channel)
@@ -155,9 +164,19 @@ Item {
     function newChannel() {
         var row = _rowOf(currentChannel)
         if (row >= 0 && channelsModel.get(row).kind === "remote" && tmuxGateway)
-            tmuxGateway.newWindow()
+            newRemoteChannel()
         else
             openFirstFree()
+    }
+
+    // Ask the session for another window. The one door for it: the shortcut
+    // arrives here when the focus is remote, the menu item when it is asked
+    // for by name, and either way the bank goes to the window when it lands.
+    function newRemoteChannel() {
+        if (!tmuxGateway)
+            return
+        _followNextRemote = true
+        tmuxGateway.newWindow()
     }
 
     function closeChannel(channel) {
