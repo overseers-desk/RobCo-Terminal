@@ -52,7 +52,18 @@ Item {
     readonly property int stripHeight: appSettings.ledCellHeight * appSettings.ledDotPitch
     readonly property int rowHeight: Math.max(minRowHeight, stripHeight + 2 * stripPadding)
 
-    implicitWidth: 2 * bankPadding + numeralWidth + columnGap + stripWidth
+    // The profile decides how the channel on screen is marked. The pointer look
+    // gives the mechanical selector a lane of its own down the left edge; the
+    // glow look has no selector and reserves nothing for one.
+    readonly property bool pointerIndicator: appSettings.channelIndicator === "pointer"
+    readonly property int trackWidth: pointerIndicator ? 14 : 0
+    readonly property int trackGap: pointerIndicator ? columnGap : 0
+
+    // The ground left to the rows once the selector has taken its lane.
+    readonly property int contentX: bankPadding + trackWidth + trackGap
+    readonly property int contentWidth: width - contentX - bankPadding
+
+    implicitWidth: contentX + numeralWidth + columnGap + stripWidth + bankPadding
 
     // Rows per page, measured rather than bound: a live count would reflow the
     // bank on every frame of a window drag.
@@ -70,6 +81,13 @@ Item {
     readonly property int rowsOnPage: Math.min(rowsVisible, terminalChannels.channelCap - pageBase)
 
     readonly property int currentChannel: terminalChannels.currentChannel
+
+    // Where the selector stands, in the track's own coordinates: beside the row
+    // of the channel on screen, or down by the pager when that channel is on a
+    // page this one is not showing.
+    readonly property real pointerY: (currentChannel > pageBase && currentChannel <= pageBase + rowsOnPage)
+        ? (currentChannel - pageBase - 1) * (rowHeight + rowSpacing) + rowHeight / 2
+        : pager.y + pager.height / 2 - bankPadding
 
     clip: true
 
@@ -146,8 +164,23 @@ Item {
         }
     }
 
-    Column {
+    Loader {
+        id: selector
+
+        active: bank.pointerIndicator
         x: bank.bankPadding
+        y: bank.bankPadding
+        width: bank.trackWidth
+        height: Math.max(0, bank.height - 2 * bank.bankPadding)
+
+        sourceComponent: ChannelSelectorTrack {
+            plastic: bank.plastic
+            targetY: bank.pointerY
+        }
+    }
+
+    Column {
+        x: bank.contentX
         y: bank.bankPadding
         spacing: bank.rowSpacing
 
@@ -162,7 +195,7 @@ Item {
 
                 channel: bank.pageBase + index + 1
                 label: index + 1
-                width: bank.width - 2 * bank.bankPadding
+                width: bank.contentWidth
                 height: bank.rowHeight
                 plastic: bank.plastic
                 numeralWidth: bank.numeralWidth
@@ -179,8 +212,8 @@ Item {
     ChannelPager {
         id: pager
 
-        x: bank.bankPadding
-        width: bank.width - 2 * bank.bankPadding
+        x: bank.contentX
+        width: bank.contentWidth
         anchors {
             bottom: parent.bottom
             bottomMargin: bank.bankPadding
