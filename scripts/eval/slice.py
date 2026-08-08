@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Slice the shell paint out of the two reference mocks.
 
-usage: slice.py <dir holding RoboCo-Amber.png and metalic-blue.png>
+usage: slice.py <dir holding RoboCo-Amber.png and Metalic-Blue.png>
 
 Every asset the textured shells composite at runtime is cut here, from the
 mock PNGs, at mock scale (1448x1086), into app/qml/shells/<shell>/assets/:
@@ -12,6 +12,8 @@ mock PNGs, at mock scale (1448x1086), into app/qml/shells/<shell>/assets/:
 
   robco-blue: bank.png (chassis column with rail + bracket baked),
   window*.png, knob.png (a slotted screw head, the carriage's knob),
+  prev/next/pagewin.png (the recessed page selector's three pieces, each
+  with its bevel-line lip; the page window's interior carved to alpha),
   frame.png (deep bezel + margins, barrel glass carved).
 
 The carve-outs kept out of comparison (CRT glass interior, LED window
@@ -73,8 +75,8 @@ def clean_banded(img, rects, band_at, band_h, pitch, count, first_cell_y):
     period = 2 * band_h - 2
     for (x0, y0, x1, y1) in rects:
         for y in range(y0, y1):
-            i = min(count - 1, max(0, (y - first_cell_y) // pitch))
-            b0 = band_at + i * pitch
+            i = min(count - 1, max(0, int((y - first_cell_y) // pitch)))
+            b0 = band_at + round(i * pitch)
             r = (y - b0) % period
             row = b0 + (r if r < band_h else period - r)
             row = min(img.height - 1, max(0, row))
@@ -137,41 +139,63 @@ def amber():
 
 
 def blue():
-    src = Image.open(MOCKS / "metalic-blue.png").convert("RGB")
+    src = Image.open(MOCKS / "Metalic-Blue.png").convert("RGB")
     out = SHELLS / "robco-blue" / "assets"
     out.mkdir(parents=True, exist_ok=True)
 
-    # Chassis column: rail, bracket, hinge eyelet and grime stay baked;
-    # numerals and windows are cleaned back to chassis. Donor band is the
-    # clean strip under row 16.
-    bank = src.crop((0, 0, 404, 1086))
-    # Bands of bare chassis between the windows (9px each, one per pitch
+    # Chassis column: rail, bracket and grime stay baked; numerals, windows
+    # and the page selector are cleaned back to chassis (the selector is the
+    # Pager's furniture now, at stations of its own).
+    bank = src.crop((0, 0, 382, 1086))
+    # Bands of bare chassis between the windows (13px each, one per pitch
     # cell) rebuild the column; the bracket's ear keeps its head clear.
     bank = clean_banded(bank,
-                        rects=[(119, 86, 394, 160), (106, 160, 394, 1058)],
-                        band_at=145, band_h=9, pitch=61, count=16,
-                        first_cell_y=95)
+                        rects=[(119, 56, 382, 124), (106, 124, 382, 905)],
+                        band_at=110, band_h=13, pitch=60.8, count=14,
+                        first_cell_y=64)
+    # The selector's stations and the chassis foot get the wide band of
+    # bare chassis under row 14 instead: the foot stands exposed at
+    # runtime, and narrow mirrored bands would lace it.
+    bank = clean(bank, (0, 901, 382, 930), [(106, 905, 382, 1060)])
     bank.save(out / "bank.png")
 
-    # Window bezels from rows 2 and 3. Outer x 167..383, h 47, pitch 61
-    # from y 95; 4px margin, inner panel carved.
+    # Window bezels from rows 2 and 3. Outer x 172..379, h 43, pitch 60.8
+    # from y 64; 8px margin left, inner panel carved.
     for n in (1, 2):
-        y0 = 95 + 61 * n
-        w = src.crop((163, y0 - 4, 388, y0 + 51))
-        # Inner panel 173..378, y +2..+41 within the window, radius 2.
+        y0 = 64 + round(60.8 * n)
+        w = src.crop((164, y0 - 4, 388, y0 + 47))
+        # Inner panel 174..377, y +2..+40 within the window, radius 2.
         w = with_outer_mask(w, radius=6, feather=2.0)
-        w = carve(w, (10, 5, 215, 46), 2, 1.0)
+        w = carve(w, (10, 6, 214, 44), 2, 1.0)
         w.save(out / f"window{n}.png")
 
     # The carriage's knob: the bracket's right screw head, cut round.
-    knob = src.crop((89, 102, 116, 129))
+    knob = src.crop((89, 71, 116, 98))
     knob = with_outer_mask(knob, radius=13, feather=1.5)
     knob.save(out / "knob.png")
 
+    # The page selector's three recessed pieces, each with the bright bevel
+    # lip the punched holes carry at their feet (y=1022 on the mock; the
+    # chassis between them carries none, so they slice apart cleanly).
+    prev = src.crop((104, 927, 184, 1027))
+    prev = with_outer_mask(prev, radius=6, feather=2.0)
+    prev.save(out / "prev.png")
+
+    nxt = src.crop((304, 927, 384, 1027))
+    nxt = with_outer_mask(nxt, radius=6, feather=2.0)
+    nxt.save(out / "next.png")
+
+    # The page-number window: an LED panel like the rows', interior carved
+    # for the live display.
+    pagewin = src.crop((199, 926, 290, 1028))
+    pagewin = with_outer_mask(pagewin, radius=6, feather=2.0)
+    pagewin = carve(pagewin, (207 - 199, 933 - 926, 283 - 199, 1018 - 926), 2, 1.0)
+    pagewin.save(out / "pagewin.png")
+
     # The CRT frame: deep bezel and chassis margins, barrel glass carved
     # along the tuned rounded rect (its overshoot lands on the dark wall).
-    frame = src.crop((404, 0, 1448, 1086)).convert("RGBA")
-    frame = carve(frame, (430 - 404, 18, 1394 - 404, 1046), 110, 1.5)
+    frame = src.crop((382, 0, 1448, 1086)).convert("RGBA")
+    frame = carve(frame, (430 - 382, 18, 1398 - 382, 1049), 110, 1.5)
     frame.save(out / "frame.png")
 
 

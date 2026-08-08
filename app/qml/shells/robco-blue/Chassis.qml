@@ -20,10 +20,10 @@
 import QtQuick
 
 // The blue appliance's chassis: the mock's own scratched gunmetal column,
-// sliced whole. The carrier rail, its milled slot, the hinge bracket with
-// its three screws and the eyelet beside it are the mock's pixels, baked at
-// their stations; only the furniture that moves at runtime (windows and
-// numerals) was cleaned back to bare metal. The border insets keep rail,
+// sliced whole. The carrier rail, its milled slot and the hinge bracket
+// with its three screws are the mock's pixels, baked at their stations;
+// only the furniture that moves at runtime (windows, numerals and the page
+// selector) was cleaned back to bare metal. The border insets keep rail,
 // bracket and the slot's lit endcap out of the tiled middle.
 Item {
     id: chassis

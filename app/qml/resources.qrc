@@ -57,6 +57,9 @@
         <file>shells/robco-blue/assets/window1.png</file>
         <file>shells/robco-blue/assets/window2.png</file>
         <file>shells/robco-blue/assets/knob.png</file>
+        <file>shells/robco-blue/assets/prev.png</file>
+        <file>shells/robco-blue/assets/next.png</file>
+        <file>shells/robco-blue/assets/pagewin.png</file>
         <file>displays/led/Display.qml</file>
         <file>displays/led/Metrics.qml</file>
         <file>images/crt256.png</file>

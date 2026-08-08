@@ -20,26 +20,28 @@
 import QtQml
 
 // The blue appliance's fixed furniture, measured off the reference mock
-// (1448x1086): sixteen windows punched straight into the chassis at a 61px
-// pitch, a full-height selector rail 41px wide on the left, dark stamped
-// numerals ending 20px short of the strip, 33px of chassis right of the
-// windows before the CRT bezel.
+// (1448x1086): windows punched straight into the chassis at a 60.8px pitch
+// (61 in whole pixels), a full-height selector rail 41px wide on the left,
+// dark stamped numerals ending 25px short of the strip, and the recessed
+// page selector standing at the bank's foot. How many windows show is the
+// window height's business, never a number of this file's.
 QtObject {
-    // The rail's stand-off from the bank's left edge and the groove's from
-    // the top and bottom.
+    // The rail's stand-off from the bank's left edge.
     readonly property int bankPadding: 29
-    readonly property int topPadding: 95
-    // Row 16 runs to 30px of the mock's foot; less bottom air than the rail.
-    readonly property int bottomPadding: 10
-    readonly property int rightPadding: 33
-    // 46px of window bezel, 15px of bare chassis between windows.
-    readonly property int rowSpacing: 15
-    readonly property int columnGap: 20
-    readonly property int numeralWidth: 63
-    // The strip (18px) sits centred in a 46px window: 14px of panel above
-    // and below, and the pitch lands at exactly 61.
-    readonly property int stripPadding: 14
-    readonly property int minRowHeight: 46
-    // The full-height carrier rail, x 29..70 on the mock.
+    // Row 1's window top on the mock.
+    readonly property int topPadding: 64
+    // Chassis under the selector group's bevel line (1022) to the foot.
+    readonly property int bottomPadding: 63
+    // The window bezels run to 4px of the bank's right edge.
+    readonly property int rightPadding: 4
+    // 43px of window bezel, 18px of bare chassis between windows: pitch 61.
+    readonly property int rowSpacing: 18
+    readonly property int columnGap: 25
+    readonly property int numeralWidth: 54
+    // The strip (18px) sits centred in a 43px window; minRowHeight pins the
+    // mock's bezel height, since padding alone lands one short.
+    readonly property int stripPadding: 12
+    readonly property int minRowHeight: 43
+    // The full-height carrier rail, x 29..69 on the mock.
     readonly property int trackWidth: 41
 }

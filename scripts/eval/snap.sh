@@ -72,7 +72,7 @@ if [ -n "$UNITS" ]; then
     # plus 12px a character. Default character count is 12.
     case "$PROFILE" in
         "RobCo Amber") FIXED=152 ;;
-        "RobCo Blue")  FIXED=206 ;;
+        "RobCo Blue")  FIXED=178 ;;
         *)             FIXED=54 ;;   # moulded-plastic, glow
     esac
     START=$((FIXED + 12 * 12 + 2))

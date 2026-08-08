@@ -37,7 +37,7 @@ Item {
     // Bound from the shell's own Metrics.columnGap by the row.
     property int numeralGap: 20
 
-    readonly property color numeralInk: "#0d0b08"
+    readonly property color numeralInk: "#060503"
     readonly property color numeralEdge: "#4a4132"
     readonly property color panelDark: "#090d0d"
 
@@ -54,9 +54,9 @@ Item {
             y: 1
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.family: "Liberation Sans"
-            font.bold: false
-            font.pixelSize: 36
+            font.family: "Liberation Sans Narrow"
+            font.bold: true
+            font.pixelSize: 34
             text: furniture.numeralText
             color: furniture.numeralEdge
         }
@@ -64,9 +64,9 @@ Item {
             id: stamped
             width: numeral.width
             horizontalAlignment: Text.AlignRight
-            font.family: "Liberation Sans"
-            font.bold: false
-            font.pixelSize: 36
+            font.family: "Liberation Sans Narrow"
+            font.bold: true
+            font.pixelSize: 34
             text: furniture.numeralText
             color: furniture.numeralInk
         }
