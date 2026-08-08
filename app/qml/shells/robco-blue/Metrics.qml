@@ -21,13 +21,17 @@ import QtQml
 
 // The blue appliance's fixed furniture, measured off the reference mock
 // (1448x1086): windows punched straight into the chassis at a 60.8px pitch
-// (61 in whole pixels), a full-height selector rail 41px wide on the left,
-// dark stamped numerals ending 25px short of the strip, and the recessed
-// page selector standing at the bank's foot. How many windows show is the
-// window height's business, never a number of this file's.
+// (61 in whole pixels), a full-height carrier rail 41px wide baked into the
+// chassis slice on the left, dark stamped numerals ending 25px short of the
+// strip, and the recessed page selector standing at the bank's foot. How
+// many windows show is the window height's business, never a number of
+// this file's.
 QtObject {
-    // The rail's stand-off from the bank's left edge.
-    readonly property int bankPadding: 29
+    // The bank's left shoulder: 29px of chassis before the rail, the baked
+    // rail's 41, and the 25 between rail and numerals. The profile marks
+    // the current channel by glow, so no live lane is reserved on top of
+    // this; the rail in the slice is bare furniture.
+    readonly property int bankPadding: 95
     // Row 1's window top on the mock.
     readonly property int topPadding: 64
     // Chassis under the selector group's bevel line (1022) to the foot.
@@ -42,6 +46,12 @@ QtObject {
     // mock's bezel height, since padding alone lands one short.
     readonly property int stripPadding: 12
     readonly property int minRowHeight: 43
-    // The full-height carrier rail, x 29..69 on the mock.
+    // Dark panel above and below the strip inside the punched hole (inner
+    // panel 38px, strip 18): the mock keeps that glass unlit, so the lamps'
+    // throw is swallowed across it and lands on the bezel rim.
+    readonly property int panelPadY: 10
+    // The full-height carrier rail, x 29..69 on the mock. Its width stands
+    // folded into bankPadding above (the glow profile reserves no lane);
+    // shellMetrics always exposes trackWidth for a profile that asks.
     readonly property int trackWidth: 41
 }

@@ -65,7 +65,10 @@ Item {
         id: pageDisplay
 
         x: pager.winX + 46 - 12
-        y: 34
+        // Scaled about its centre, the strip renders across y19..73 of the
+        // recess when it sits at 37: the lit digits land centred in the
+        // window's 933..1018, as the mock's embossed figures are.
+        y: 37
         scale: 3.0
         // Resolved against this shell's directory, so the kit path walks
         // back to the QML root first.

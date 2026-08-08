@@ -80,6 +80,12 @@ Item {
     // reaches the window above or below.
     readonly property int spillMarginY: Math.round(implicitHeight * 0.8)
     readonly property int spillMarginX: Math.round(implicitHeight * 1.1)
+    // Dark panel standing between the strip and the window's lip, above and
+    // below: the shell's punched hole is taller than the strip, and the
+    // reference mocks keep that glass dead black - lamps never paint their
+    // own panel. The throw is swallowed across this band and only lands on
+    // the metal past it. Zero for a strip that fills its hole.
+    property int spillClearanceY: 0
     // A lit window always glows a little on its surround; the current one
     // glows enough to mark itself. The switch is a fade, not a cut.
     property real spillStrength: powered ? (bright ? 1.0 : 0.3) : 0.0
@@ -129,8 +135,8 @@ Item {
             fill: parent
             leftMargin: -ledStrip.spillMarginX
             rightMargin: -ledStrip.spillMarginX
-            topMargin: -ledStrip.spillMarginY
-            bottomMargin: -ledStrip.spillMarginY
+            topMargin: -(ledStrip.spillMarginY + ledStrip.spillClearanceY)
+            bottomMargin: -(ledStrip.spillMarginY + ledStrip.spillClearanceY)
         }
         // The margin is plastic seen through added light, so it has to blend.
         blending: true
@@ -147,7 +153,14 @@ Item {
         // Where the window sits inside the grown item, as a fraction of it.
         property point spillMargin: Qt.point(
             matrix.width > 0 ? ledStrip.spillMarginX / matrix.width : 0,
-            matrix.height > 0 ? ledStrip.spillMarginY / matrix.height : 0)
+            matrix.height > 0 ? (ledStrip.spillMarginY + ledStrip.spillClearanceY)
+                                / matrix.height : 0)
+        // The dead share of each margin: the panel band the glass swallows
+        // before any light reaches the metal.
+        property point spillDead: Qt.point(
+            0,
+            ledStrip.spillClearanceY
+                / Math.max(1, ledStrip.spillMarginY + ledStrip.spillClearanceY))
         property real spillStrength: ledStrip.spillStrength
 
         // The lamps come up to heat rather than snapping, so a channel switch

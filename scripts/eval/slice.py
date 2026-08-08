@@ -106,13 +106,18 @@ def amber():
     out.mkdir(parents=True, exist_ok=True)
 
     # Bank column: plate, screws, moulding and patina stay; windows,
-    # numerals, pager labels and key caps are cleaned back to plate.
+    # numerals, pager labels and key caps are cleaned back to plate. The
+    # donor band starts under window 19's shadow (its bottom bevel line
+    # sits at ~916) and stops over the labels, so nothing engraved rides
+    # into the cleaned fields; the key rects run to 1052 to take the caps'
+    # bright seat lines with them (the bottom screws stand clear at x<47
+    # and x>300).
     bank = src.crop((0, 0, 344, 1086))
-    clean(bank, (0, 917, 344, 952), [
+    clean(bank, (0, 922, 344, 950), [
         (42, 50, 310, 922),     # numerals + window column
         (40, 946, 300, 980),    # PREV/NEXT labels and arrows
-        (62, 978, 140, 1036),   # PREV key cap
-        (210, 978, 286, 1036),  # NEXT key cap
+        (62, 978, 140, 1052),   # PREV key cap, seat included
+        (210, 978, 286, 1052),  # NEXT key cap, seat included
     ])
     bank.save(out / "bank.png")
 
@@ -153,10 +158,11 @@ def blue():
                         rects=[(119, 56, 382, 124), (106, 124, 382, 905)],
                         band_at=110, band_h=13, pitch=60.8, count=14,
                         first_cell_y=64)
-    # The selector's stations and the chassis foot get the wide band of
-    # bare chassis under row 14 instead: the foot stands exposed at
-    # runtime, and narrow mirrored bands would lace it.
-    bank = clean(bank, (0, 901, 382, 930), [(106, 905, 382, 1060)])
+    # The selector's stations and the chassis foot get a band of bare
+    # chassis from below the selector's bevel line instead: the band under
+    # row 14 carries the recesses' top corners at its foot (y927..930),
+    # and mirror-tiling those printed ghost glyphs over the exposed foot.
+    bank = clean(bank, (0, 1030, 382, 1058), [(106, 905, 382, 1060)])
     bank.save(out / "bank.png")
 
     # Window bezels from rows 2 and 3. Outer x 172..379, h 43, pitch 60.8
