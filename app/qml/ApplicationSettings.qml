@@ -70,6 +70,10 @@ QtObject {
     property string _backgroundColor: "#000000"
     property string _fontColor: "#ff8100"
     property string _frameColor: "#ffffff"
+    // How the bank marks the channel on screen: "glow" lights the window
+    // itself, "pointer" runs a mechanical selector up the bank's left edge.
+    // A profile written before the key existed gets "glow", the older look.
+    property string channelIndicator: "glow"
     property string saturatedColor: Utils.mix(Utils.strToColor(_fontColor), Utils.strToColor("#FFFFFF"), (saturationColor * 0.5))
     property color fontColor: Utils.mix(Utils.strToColor(_backgroundColor), Utils.strToColor(saturatedColor), (0.7 + (contrast * 0.3)))
     property color backgroundColor: Utils.mix(Utils.strToColor(saturatedColor), Utils.strToColor(_backgroundColor), (0.7 + (contrast * 0.3)))
@@ -224,7 +228,8 @@ QtObject {
             "frameColor": _frameColor,
             "frameShininess": _frameShininess,
             "ledFontName": ledFontName,
-            "ledCharacters": ledCharacters
+            "ledCharacters": ledCharacters,
+            "channelIndicator": channelIndicator
         }
         return profile
     }
@@ -335,6 +340,11 @@ QtObject {
 
         ledFontName = settings.ledFontName !== undefined ? settings.ledFontName : ledFontName
         ledCharacters = settings.ledCharacters !== undefined ? settings.ledCharacters : ledCharacters
+
+        // The one key that falls back to a constant rather than to what is
+        // loaded: leaving the old profile's pointer standing in a profile that
+        // never asked for one would be the switch failing to switch.
+        channelIndicator = settings.channelIndicator !== undefined ? settings.channelIndicator : "glow"
     }
 
     function storeCustomProfiles() {
@@ -863,6 +873,80 @@ QtObject {
                 "frameSize": 0,
                 "frameColor": "#cdcdcd",
                 "frameShininess": 0.2
+            }'
+            builtin: true
+        }
+        // Default Amber in a dark brown appliance: amber dots in near-black
+        // plastic, the current channel marked by its window's own light.
+        ListElement {
+            text: "RobCo Amber"
+            obj_string: '{
+                "ambientLight": 0.3,
+                "backgroundColor": "#000000",
+                "bloom": 0.6,
+                "brightness": 0.5,
+                "burnIn": 0.3,
+                "chromaColor": 0.2,
+                "contrast": 0.8,
+                "flickering": 0.1,
+                "fontColor": "#ff8100",
+                "fontName": "TERMINESS_SCALED",
+                "fontSource": 0,
+                "fontWidth": 1,
+                "lineSpacing": 0.1,
+                "glowingLine": 0.2,
+                "horizontalSync": 0.1,
+                "jitter": 0.2,
+                "rasterization": 0,
+                "rgbShift": 0,
+                "saturationColor": 0.2,
+                "screenCurvature": 0.2,
+                "screenRadius": 0.1,
+                "staticNoise": 0.1,
+                "windowOpacity": 1,
+                "margin": 0.3,
+                "blinkingCursor": false,
+                "frameSize": 0.1,
+                "frameColor": "#3a2f24",
+                "frameShininess": 0.3,
+                "channelIndicator": "glow"
+            }'
+            builtin: true
+        }
+        // Deep Blue in weathered grey metal, with the mechanical selector
+        // riding its track down the left edge of the bank.
+        ListElement {
+            text: "RobCo Blue"
+            obj_string: '{
+                "ambientLight": 0.3,
+                "backgroundColor": "#000000",
+                "bloom": 0.6,
+                "brightness": 0.5,
+                "burnIn": 0.3,
+                "chromaColor": 1.0,
+                "contrast": 0.8,
+                "flickering": 0.1,
+                "fontColor": "#7fb4ff",
+                "fontName": "BIGBLUE_TERMINAL_SCALED",
+                "fontSource": 0,
+                "fontWidth": 1,
+                "lineSpacing": 0.1,
+                "glowingLine": 0.2,
+                "horizontalSync": 0.1,
+                "jitter": 0.2,
+                "rasterization": 0,
+                "rgbShift": 0,
+                "saturationColor": 0.2,
+                "screenCurvature": 0.4,
+                "screenRadius": 0.1,
+                "staticNoise": 0.1,
+                "windowOpacity": 1,
+                "margin": 0.3,
+                "blinkingCursor": false,
+                "frameSize": 0.1,
+                "frameColor": "#a29a86",
+                "frameShininess": 0.15,
+                "channelIndicator": "pointer"
             }'
             builtin: true
         }
