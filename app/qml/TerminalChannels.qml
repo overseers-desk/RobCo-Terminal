@@ -377,7 +377,22 @@ Item {
         // buried row's last screen stands there in the meantime.
         channelsModel.setProperty(row, "buried", true)
         _rebuildState()
+        // Every channel is the same rectangle of glass, so the bank's grid is
+        // the whole client's size; tmux has to hear it once before its windows
+        // are drawn at somebody else's.
+        _publishClientSize()
     }
+
+    // One client, one geometry: the grid of whichever channel is on the air.
+    // QMLTermWidget's terminalSize is QSize(lines, columns), so the width of
+    // that size is the number of rows and its height the number of columns;
+    // tmux is told columns first, the way it says them back.
+    function _publishClientSize() {
+        if (tmuxGateway && terminalSize.width > 0 && terminalSize.height > 0)
+            tmuxGateway.setClientSize(terminalSize.height, terminalSize.width)
+    }
+
+    onTerminalSizeChanged: _publishClientSize()
 
     // The gateway speaks; the bank moves. Remote titles belong to tmux: they
     // are set here from its notifications, never by the delegate.
