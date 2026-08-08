@@ -85,6 +85,11 @@ Item {
         }
         Binding {
             target: furniture.item
+            property: "numeralGap"
+            value: channelRow.columnGap
+        }
+        Binding {
+            target: furniture.item
             property: "open"
             value: channelRow.open
         }

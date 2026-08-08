@@ -32,9 +32,9 @@ Item {
     property bool open: false
     property bool current: false
 
-    // The breathing room between the numeral column and the window, this
-    // shell's own measure (Metrics.columnGap).
-    readonly property int numeralGap: 10
+    // The breathing room between the numeral column and the window, fed by
+    // the row, which reads it off this shell's Metrics.
+    property int numeralGap: 10
 
     Item {
         id: numeral
