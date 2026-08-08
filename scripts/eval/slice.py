@@ -14,8 +14,9 @@ mock PNGs, at mock scale (1448x1086), into app/qml/shells/<shell>/assets/:
   window*.png, knob.png (a slotted screw head, the carriage's knob),
   frame.png (deep bezel + margins, barrel glass carved).
 
-The judge's carve-outs (CRT glass interior, LED window inner panels) are
-never baked: those interiors are alpha 0 in every slice that crosses them.
+The carve-outs kept out of comparison (CRT glass interior, LED window
+inner panels) are never baked: those interiors are alpha 0 in every slice
+that crosses them.
 Cleaning uses full-width donor bands from the same mock, mirror-tiled
 vertically, so columns stay aligned and no horizontal seam is introduced.
 """
@@ -82,7 +83,7 @@ def clean_banded(img, rects, band_at, band_h, pitch, count, first_cell_y):
 
 
 def carve(rgba, box, radius, feather):
-    """Set alpha 0 inside the rounded rect (the judge's carve-outs)."""
+    """Set alpha 0 inside the rounded rect (the compared-out interiors)."""
     hole = rounded_mask(rgba.size, box, radius, feather)
     a = np.array(rgba.getchannel("A"), dtype=np.int16)
     a = np.clip(a - np.array(hole, dtype=np.int16), 0, 255).astype(np.uint8)

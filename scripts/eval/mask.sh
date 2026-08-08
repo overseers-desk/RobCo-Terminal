@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Blacken the judged-out regions of a terminal image, from a mock-metrics JSON.
+# Blacken the compared-out regions of a terminal image, from a mock-metrics
+# JSON (authored by hand from measurements of the mock).
 #
-# The judge compares furniture, not content, so the same carve-outs are cut
+# Comparison keys on furniture, not content, so the same carve-outs are cut
 # from mock and screenshot alike: the CRT glass rounded rect (widened by a
 # shine band, because the bezel edge beside the well reflects the live glass
 # and differs run to run), and every LED window's inner panel (row 1's rect

@@ -73,8 +73,8 @@ Item {
         }
     }
 
-    // The dark floor of the punched hole, under the lamps; the judge carves
-    // this interior out, the live display lights it.
+    // The dark floor of the punched hole, under the lamps; the live display
+    // lights this interior.
     Rectangle {
         x: furniture.displayRect.x - 6
         y: 4
