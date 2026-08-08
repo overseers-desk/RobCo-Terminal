@@ -26,6 +26,11 @@ import QtQuick
 Item {
     id: pager
 
+    // Unread here now that the keys no longer thread it onward: the mock's
+    // own plate carries its colour. Kept because ChannelBank's generic
+    // Loader Binding assigns pager.item.plastic for every shell alike;
+    // deleting it breaks this shell's Pager instance with a non-obvious
+    // error at Binding time.
     property color plastic: "#241e19"
     property int pageIndex: 0
     property int pageCount: 1
@@ -106,7 +111,6 @@ Item {
         y: 38
         width: 56
         height: 40
-        plastic: pager.plastic
         onClicked: pager.step(-1)
     }
 
@@ -115,7 +119,6 @@ Item {
         y: 38
         width: 56
         height: 40
-        plastic: pager.plastic
         onClicked: pager.step(1)
     }
 }

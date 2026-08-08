@@ -28,6 +28,10 @@ import QtQuick
 Item {
     id: track
 
+    // Unread here: the carriage is cut from the mock's own photograph and
+    // carries no live colour. Kept because ChannelBank's generic selector
+    // Loader Binding assigns item.plastic for every shell's SelectorTrack
+    // alike; deleting it breaks instantiation here with a non-obvious error.
     property color plastic: "#4f4737"
     // Where the carriage belongs, as a centre in this item's coordinates.
     property real targetY: height / 2

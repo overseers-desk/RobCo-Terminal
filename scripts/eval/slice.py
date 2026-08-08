@@ -84,6 +84,15 @@ def clean_banded(img, rects, band_at, band_h, pitch, count, first_cell_y):
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
+def save_atomic(img, path):
+    """Save to a temp name in the same directory and rename into place, so a
+    PIL/ImageMagick error mid-write can never leave a truncated file under
+    the name the qrc actually ships."""
+    tmp = path.with_name(path.stem + ".tmp" + path.suffix)
+    img.save(tmp)
+    tmp.rename(path)
+
+
 def carve(rgba, box, radius, feather):
     """Set alpha 0 inside the rounded rect (the compared-out interiors)."""
     hole = rounded_mask(rgba.size, box, radius, feather)
@@ -119,7 +128,7 @@ def amber():
         (62, 978, 140, 1052),   # PREV key cap, seat included
         (210, 978, 286, 1052),  # NEXT key cap, seat included
     ])
-    bank.save(out / "bank.png")
+    save_atomic(bank, out / "bank.png")
 
     # Window bezels from three different rows, for per-window irregularity.
     # Outer rect x 92..303, h 44, pitch 45.06 from y 61; 3px margin baked,
@@ -130,17 +139,17 @@ def amber():
         # Inner panel 98..298, y +5..+40 within the window, radius 5.
         w = with_outer_mask(w, radius=11, feather=2.0)
         w = carve(w, (9, 7, 209, 44), 5, 1.0)
-        w.save(out / f"window{n}.png")
+        save_atomic(w, out / f"window{n}.png")
 
     # One ridged key cap (PREV's), 3px of its shadow margin kept.
     key = src.crop((69, 983, 132, 1029))
     key = with_outer_mask(key, radius=5, feather=1.5)
-    key.save(out / "key.png")
+    save_atomic(key, out / "key.png")
 
     # The CRT frame: everything right of the bank, glass carved out.
     frame = src.crop((344, 0, 1448, 1086)).convert("RGBA")
     frame = carve(frame, (368 - 344, 22, 1430 - 344, 1068), 55, 1.5)
-    frame.save(out / "frame.png")
+    save_atomic(frame, out / "frame.png")
 
 
 def blue():
@@ -163,7 +172,7 @@ def blue():
     # row 14 carries the recesses' top corners at its foot (y927..930),
     # and mirror-tiling those printed ghost glyphs over the exposed foot.
     bank = clean(bank, (0, 1030, 382, 1058), [(106, 905, 382, 1060)])
-    bank.save(out / "bank.png")
+    save_atomic(bank, out / "bank.png")
 
     # Window bezels from rows 2 and 3. Outer x 172..379, h 43, pitch 60.8
     # from y 64; 8px margin left, inner panel carved.
@@ -173,39 +182,48 @@ def blue():
         # Inner panel 174..377, y +2..+40 within the window, radius 2.
         w = with_outer_mask(w, radius=6, feather=2.0)
         w = carve(w, (10, 6, 214, 44), 2, 1.0)
-        w.save(out / f"window{n}.png")
+        save_atomic(w, out / f"window{n}.png")
 
     # The carriage's knob: the bracket's right screw head, cut round.
     knob = src.crop((89, 71, 116, 98))
     knob = with_outer_mask(knob, radius=13, feather=1.5)
-    knob.save(out / "knob.png")
+    save_atomic(knob, out / "knob.png")
 
     # The page selector's three recessed pieces, each with the bright bevel
     # lip the punched holes carry at their feet (y=1022 on the mock; the
     # chassis between them carries none, so they slice apart cleanly).
     prev = src.crop((104, 927, 184, 1027))
     prev = with_outer_mask(prev, radius=6, feather=2.0)
-    prev.save(out / "prev.png")
+    save_atomic(prev, out / "prev.png")
 
     nxt = src.crop((304, 927, 384, 1027))
     nxt = with_outer_mask(nxt, radius=6, feather=2.0)
-    nxt.save(out / "next.png")
+    save_atomic(nxt, out / "next.png")
 
     # The page-number window: an LED panel like the rows', interior carved
     # for the live display.
     pagewin = src.crop((199, 926, 290, 1028))
     pagewin = with_outer_mask(pagewin, radius=6, feather=2.0)
     pagewin = carve(pagewin, (207 - 199, 933 - 926, 283 - 199, 1018 - 926), 2, 1.0)
-    pagewin.save(out / "pagewin.png")
+    save_atomic(pagewin, out / "pagewin.png")
 
     # The CRT frame: deep bezel and chassis margins, barrel glass carved
     # along the tuned rounded rect (its overshoot lands on the dark wall).
     frame = src.crop((382, 0, 1448, 1086)).convert("RGBA")
     frame = carve(frame, (430 - 382, 18, 1398 - 382, 1049), 110, 1.5)
-    frame.save(out / "frame.png")
+    save_atomic(frame, out / "frame.png")
 
 
 if __name__ == "__main__":
-    amber()
-    blue()
+    try:
+        amber()
+        blue()
+    except Exception as exc:
+        # Loud and non-zero: a truncated slice under a shipped name is worse
+        # than a script that visibly refuses to finish. save_atomic keeps any
+        # already-written asset intact; this stops the qrc from picking up a
+        # half-run silently.
+        print(f"slice.py failed, assets left as they were: {exc}",
+              file=sys.stderr)
+        sys.exit(1)
     print("sliced into " + str(SHELLS), file=sys.stderr)

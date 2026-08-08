@@ -111,7 +111,7 @@ Item {
         // Truncated from the head: a title too long for the window is a path,
         // and its tail is the part that names the session.
         text: ledStrip.powered
-              ? ledStrip.text.slice(-(ledStrip.characters
+              ? ledStrip.text.slice(-Math.max(1, ledStrip.characters
                                       - ledStrip.padCellsLeft
                                       - ledStrip.padCellsRight))
               : ""

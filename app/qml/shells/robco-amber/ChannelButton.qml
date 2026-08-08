@@ -25,7 +25,6 @@ import QtQuick
 Item {
     id: presetButton
 
-    property color plastic: "#241e19"
     property bool pressed: false
 
     signal clicked()

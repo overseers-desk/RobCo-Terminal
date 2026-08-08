@@ -30,6 +30,11 @@ import QtQuick
 Item {
     id: pager
 
+    // Unread here: the mock's own pieces carry their own colour. Kept
+    // because ChannelBank's generic Loader Binding assigns pager.item.plastic
+    // for every shell alike; deleting it breaks this shell's Pager instance
+    // with a "no such property" error at Binding time, not at a call site
+    // that names this file.
     property color plastic: "#4f4737"
     property int pageIndex: 0
     property int pageCount: 1
@@ -47,6 +52,16 @@ Item {
     readonly property int nextX: width - 70 - 3
     // The page window, centred between the keys.
     readonly property int winX: Math.round((prevX + 70 + nextX) / 2 - 45)
+
+    // The keys' natural 70px station overlaps the window sprite once the
+    // bank has squeezed past ~15 characters, since winX slides toward prevX
+    // long before nextX would let the two keys touch each other. Each key's
+    // hit-region is clamped to stop at the window's own laid-out edge (91px
+    // wide, pager.winX its left edge), so a click on the window can never
+    // land on PREV or NEXT instead.
+    readonly property int prevKeyWidth: Math.max(0, Math.min(70, winX - prevX))
+    readonly property int nextKeyX: Math.max(nextX, winX + 91)
+    readonly property int nextKeyWidth: Math.max(0, nextX + 70 - nextKeyX)
 
     // The dark floor of the page window's punched hole, under the lamps.
     Rectangle {
@@ -144,7 +159,7 @@ Item {
         Rectangle {
             x: 5
             y: 5
-            width: 61
+            width: Math.max(0, key.width - 9)
             height: 76
             radius: 4
             color: "black"
@@ -162,10 +177,12 @@ Item {
 
     Key {
         x: pager.prevX
+        width: pager.prevKeyWidth
         direction: -1
     }
     Key {
-        x: pager.nextX
+        x: pager.nextKeyX
+        width: pager.nextKeyWidth
         direction: 1
     }
 }

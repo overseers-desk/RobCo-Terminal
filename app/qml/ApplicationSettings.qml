@@ -333,7 +333,11 @@ QtObject {
         customCommand = settings.customCommand
                 !== undefined ? settings.customCommand : customCommand
 
-        ledCharacters = settings.ledCharacters !== undefined ? settings.ledCharacters : ledCharacters
+        // Clamped here as the SpinBox and seam-drag paths already are: a
+        // stored value at or below the display's pad cells makes Display.qml's
+        // title slice(-n) degenerate into the whole string.
+        ledCharacters = settings.ledCharacters !== undefined
+                ? Math.max(minLedCharacters, settings.ledCharacters) : ledCharacters
     }
 
     function loadProfileString(profileString) {

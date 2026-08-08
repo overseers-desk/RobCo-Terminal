@@ -41,6 +41,12 @@ Item {
     readonly property color numeralShadow: "#14100c"
     readonly property color panelDark: "#0d0700"
 
+    // ChannelRow pads numeralText to 2 digits and label never exceeds
+    // TerminalChannels.channelCap (99), so a 3-digit numeral cannot reach
+    // this component through the bank's own wiring today. clip stands here
+    // anyway, so a future cap change or a font substitution wider than
+    // expected fails by truncating quietly in the plate rather than by
+    // painting over the window bezel to its right.
     Item {
         id: numeral
 
@@ -48,6 +54,7 @@ Item {
         width: furniture.displayRect.x - furniture.numeralGap
         height: engraved.implicitHeight
         anchors.verticalCenter: parent.verticalCenter
+        clip: true
 
         // Embossed: the dark shadow lies under and right of the lit figure.
         Text {
