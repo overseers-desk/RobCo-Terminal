@@ -6,7 +6,13 @@
 # or offer a stale window of the same class. A scratch HOME keeps the
 # settings database and single-instance socket away from any real session.
 #
-# usage: snap.sh <binary> <profile> <out.png> [width] [height] [channels]
+# usage: snap.sh <binary> <profile> <out.png> [width] [height] [channels] [units]
+#
+# UNITS, when given, re-fits the LED strips to that character count the way
+# the user does it: a pointer drag on the seam between the bank and the
+# screen well. The seam lands where the bank's implicitWidth puts it, so the
+# grab point is computed from the shell's fixed furniture plus 12px per
+# character (the LED display's unitWidth at the default font).
 set -euo pipefail
 
 BIN=$(realpath "${1:?binary}")
@@ -15,10 +21,11 @@ OUT=$(realpath -m "${3:?output png}")
 W=${4:-1448}
 H=${5:-1086}
 CHANNELS=${6:-16}
+UNITS=${7:-}
 
 if [ -z "${SNAP_INNER:-}" ]; then
     exec env SNAP_INNER=1 xvfb-run -a -s "-screen 0 ${W}x${H}x24" \
-        "$0" "$BIN" "$PROFILE" "$OUT" "$W" "$H" "$CHANNELS"
+        "$0" "$BIN" "$PROFILE" "$OUT" "$W" "$H" "$CHANNELS" "$UNITS"
 fi
 
 SCRATCH=$(mktemp -d /tmp/robco-snap.XXXXXX)
@@ -57,6 +64,36 @@ for _ in $(seq 2 "$CHANNELS"); do
     xdotool key --clearmodifiers ctrl+shift+t
     sleep 0.25
 done
+
+if [ -n "$UNITS" ]; then
+    # The bank's width at N characters: the shell's fixed furniture
+    # (contentX + numeralWidth + columnGap + rightPadding, per its Metrics)
+    # plus 12px a character. Default character count is 12.
+    case "$PROFILE" in
+        "RobCo Amber") FIXED=152 ;;
+        "RobCo Blue")  FIXED=206 ;;
+        *)             FIXED=54 ;;   # moulded-plastic, glow
+    esac
+    START=$((FIXED + 12 * 12 + 2))
+    TARGET=$((FIXED + 12 * UNITS + 2))
+
+    eval "$(xdotool getwindowgeometry --shell "$WID")" # sets X, Y
+    MIDY=$((Y + H / 2))
+
+    xdotool mousemove --sync $((X + START)) "$MIDY"
+    xdotool mousedown 1
+    STEP=$(( TARGET > START ? 24 : -24 ))
+    POS=$START
+    while [ $(( (TARGET - POS) * STEP )) -gt 0 ]; do
+        POS=$((POS + STEP))
+        if [ $(( (TARGET - POS) * STEP )) -lt 0 ]; then POS=$TARGET; fi
+        xdotool mousemove --sync $((X + POS)) "$MIDY"
+        sleep 0.05
+    done
+    xdotool mousemove --sync $((X + TARGET)) "$MIDY"
+    sleep 0.2
+    xdotool mouseup 1
+fi
 
 # Let shells print their prompts and the tube settle.
 sleep 3
