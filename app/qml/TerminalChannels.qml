@@ -338,7 +338,7 @@ Item {
         var row = _rowOf(currentChannel)
         if (row < 0)
             return
-        // Buried rows are off the air, so the wheel rolls past them.
+        // Buried rows are off the air, so cycling steps past them.
         for (var step = 1; step <= channelsModel.count; step++) {
             var next = ((row + direction * step) % channelsModel.count
                         + channelsModel.count) % channelsModel.count
