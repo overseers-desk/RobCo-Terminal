@@ -43,8 +43,6 @@ Item {
     readonly property int rowSpacing: 6
     readonly property int columnGap: 6
     readonly property int numeralWidth: 20
-    readonly property int buttonWidth: 24
-    readonly property int buttonHeight: 18
     // Sized so a channel row's pitch sits near two terminal text rows
     // (25 px at the default profile), the bank's readability target.
     readonly property int stripPadding: 10
@@ -54,7 +52,7 @@ Item {
     readonly property int stripHeight: appSettings.ledCellHeight * appSettings.ledDotPitch
     readonly property int rowHeight: Math.max(minRowHeight, stripHeight + 2 * stripPadding)
 
-    implicitWidth: 2 * bankPadding + numeralWidth + columnGap + buttonWidth + columnGap + stripWidth
+    implicitWidth: 2 * bankPadding + numeralWidth + columnGap + stripWidth
 
     // Rows per page, measured rather than bound: a live count would reflow the
     // bank on every frame of a window drag.
@@ -169,8 +167,6 @@ Item {
                 plastic: bank.plastic
                 numeralWidth: bank.numeralWidth
                 columnGap: bank.columnGap
-                buttonWidth: bank.buttonWidth
-                buttonHeight: bank.buttonHeight
                 stripPadding: bank.stripPadding
                 open: slotTitle !== undefined
                 title: slotTitle !== undefined ? slotTitle : ""

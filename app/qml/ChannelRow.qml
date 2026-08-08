@@ -19,8 +19,9 @@
 *******************************************************************************/
 import QtQuick
 
-// One slot of the bank: the numeral engraved in the plastic, the preset button
-// that selects it, and the LED strip carrying that session's title. The row
+// One slot of the bank: the numeral printed in the plastic beside the LED
+// window carrying that session's title. The window itself is the key: pressing
+// it reaches the channel, so the row carries no separate button. The row
 // reads nothing from the model; the bank feeds it and takes the press back.
 // The numeral is the label, counted within the page; the channel behind it is
 // absolute.
@@ -37,14 +38,16 @@ Item {
     // The bank owns the panel's layout; a row carries no opinion of its own.
     required property int numeralWidth
     required property int columnGap
-    required property int buttonWidth
-    required property int buttonHeight
     required property int stripPadding
 
     signal activated()
 
     implicitHeight: ledStrip.height + 2 * stripPadding
-    implicitWidth: numeralWidth + columnGap + buttonWidth + columnGap + ledStrip.width
+    implicitWidth: numeralWidth + columnGap + ledStrip.width
+
+    // Two digits always, as the panel printer stamped them.
+    readonly property string numeralText:
+        label < 10 ? "0" + label : String(label)
 
     // The confirmation the panel gives when the current session is stored onto this slot.
     function blink() {
@@ -66,7 +69,7 @@ Item {
             font.pixelSize: 13
             font.bold: true
             font.letterSpacing: 0.5
-            text: channelRow.label
+            text: channelRow.numeralText
             color: Qt.lighter(channelRow.plastic, 1.55)
         }
         Text {
@@ -76,53 +79,65 @@ Item {
             font.pixelSize: 13
             font.bold: true
             font.letterSpacing: 0.5
-            text: channelRow.label
+            text: channelRow.numeralText
             color: Qt.darker(channelRow.plastic, 2.1)
         }
     }
 
-    ChannelButton {
-        id: presetButton
+    // The dish the window is sunk into: shading alone, no outline. It tints
+    // whatever plastic lies behind rather than laying down a sheet of its own,
+    // so a translucent profile still sees through the bank.
+    Rectangle {
+        id: dish
 
-        x: channelRow.numeralWidth + channelRow.columnGap
-        width: channelRow.buttonWidth
-        height: channelRow.buttonHeight
-        anchors.verticalCenter: parent.verticalCenter
-        plastic: channelRow.plastic
-        pressed: channelRow.current
-        onClicked: channelRow.activated()
+        x: recess.x - 4
+        y: recess.y - 4
+        width: recess.width + 8
+        height: recess.height + 8
+        radius: 6
+        antialiasing: true
+
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.34) }
+            GradientStop { position: 0.62; color: Qt.rgba(0, 0, 0, 0.10) }
+            GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.07) }
+        }
     }
 
+    // The window body. Darker under its top lip, where the moulding shades it.
     Rectangle {
         id: recess
 
-        x: presetButton.x + presetButton.width + channelRow.columnGap - 2
-        width: ledStrip.width + 4
-        height: ledStrip.height + 4
+        x: channelRow.numeralWidth + channelRow.columnGap - 3
+        width: ledStrip.width + 6
+        height: ledStrip.height + 6
+        radius: 3
+        antialiasing: true
         anchors.verticalCenter: parent.verticalCenter
-        color: Qt.darker(channelRow.plastic, 3.4)
-        border.width: 1
-        border.color: Qt.darker(channelRow.plastic, 2.2)
 
-        Rectangle {
-            anchors {
-                left: parent.left
-                right: parent.right
-                bottom: parent.bottom
-                bottomMargin: -1
-            }
-            height: 1
-            color: Qt.lighter(channelRow.plastic, 1.3)
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.darker(channelRow.plastic, 5.0) }
+            GradientStop { position: 0.45; color: Qt.darker(channelRow.plastic, 3.6) }
+            GradientStop { position: 1.0; color: Qt.darker(channelRow.plastic, 2.9) }
         }
     }
 
     ChannelLedStrip {
         id: ledStrip
 
-        x: recess.x + 2
+        x: recess.x + 3
         anchors.verticalCenter: parent.verticalCenter
         text: channelRow.title
         powered: channelRow.open
+        bright: channelRow.current
+    }
+
+    // The window is the key. No Control and no focus: the terminal keeps the
+    // keyboard, as the button this replaced was careful to.
+    MouseArea {
+        anchors.fill: recess
+        acceptedButtons: Qt.LeftButton
+        onClicked: channelRow.activated()
     }
 
     SequentialAnimation {
