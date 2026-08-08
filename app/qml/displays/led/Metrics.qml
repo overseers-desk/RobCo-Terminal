@@ -30,8 +30,12 @@ QtObject {
     readonly property int minUnits: appSettings.minLedCharacters
 
     // Rounded, not truncated: at a fractional dot pitch a floored strip would
-    // leave the row half a pixel short of the window it has to hold.
+    // leave the row half a pixel short of the window it has to hold. n counts
+    // visible characters; the bank strip's end-pad cells ride on top, part of
+    // the fixed furniture rather than the count.
     function widthForUnits(n) {
-        return Math.round(appSettings.ledCellWidth * n * appSettings.ledDotPitch)
+        return Math.round(appSettings.ledCellWidth
+                          * (n + 2 * appSettings.ledSidePadCells)
+                          * appSettings.ledDotPitch)
     }
 }
