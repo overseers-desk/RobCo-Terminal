@@ -931,7 +931,8 @@ QtObject {
             }'
             builtin: true
         }
-        // The amber appliance of the reference mock: a gunmetal plate of LED
+        // The amber appliance of the reference mock (RoboCo-Amber.png,
+        // 1448x1086): a gunmetal plate of LED
         // windows beside a slim-bezelled tube, the current channel marked by
         // its window's own light. The frameColor leans cold because the base
         // colour law folds in a fifth of the amber phosphor; this value lands
@@ -973,7 +974,8 @@ QtObject {
             }'
             builtin: true
         }
-        // The blue appliance of the reference mock: warm olive-grey gunmetal
+        // The blue appliance of the reference mock (Metalic-Blue.png,
+        // 1448x1086): warm olive-grey gunmetal
         // (all the blue in that mock is emitted light, none of it paint),
         // windows punched into the chassis, a bare carrier rail down the
         // bank's left edge. The rail is chassis furniture and carries no
