@@ -22,13 +22,15 @@ import QtQml
 // The blue appliance's fixed furniture, measured off the reference mock
 // Metalic-Blue.png (1448x1086): windows punched straight into the chassis at
 // the mock's 60.8px pitch (how many fit is the window's business, not a
-// number of this file's), a full-height selector rail 41px wide on the left,
-// dark stamped numerals ending 27px short of the strip, and the three-piece
-// page selector always standing at the bank's foot.
+// number of this file's), a full-height carrier rail 41px wide drawn by the
+// chassis on the left, dark stamped numerals ending 27px short of the strip,
+// and the three-piece page selector always standing at the bank's foot.
 QtObject {
-    // The rail's stand-off from the bank's left edge and the groove's from
-    // the top and bottom.
-    readonly property int bankPadding: 29
+    // The bank's left shoulder: 29px of chassis before the rail, the rail's
+    // 41, and the 27 between rail and numerals. The profile marks the
+    // current channel by glow, so no live lane is reserved on top of this;
+    // the rail is the chassis's own furniture.
+    readonly property int bankPadding: 97
     // Row 1's window top sits at the mock's y 64.
     readonly property int topPadding: 64
     // The selector's bevel line ends at y 1023; 63px of chassis follow.
@@ -44,6 +46,13 @@ QtObject {
     // window's outer height to the mock's 43.
     readonly property int stripPadding: 12
     readonly property int minRowHeight: 43
-    // The full-height carrier rail, x 29..69 on the mock.
+    // Dark panel above and below the strip inside the punched hole (the
+    // recessed panel stands 39px in the 43px window, the strip 18): that
+    // glass stays unlit on the mock, so the lamps' throw is swallowed
+    // across it and lands on the cut ring.
+    readonly property int panelPadY: 10
+    // The full-height carrier rail, x 29..69 on the mock. Its width stands
+    // folded into bankPadding above (the glow profile reserves no lane);
+    // shellMetrics always exposes trackWidth for a profile that asks.
     readonly property int trackWidth: 41
 }
