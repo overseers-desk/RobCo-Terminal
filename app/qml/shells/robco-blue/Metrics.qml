@@ -19,29 +19,34 @@
 *******************************************************************************/
 import QtQuick
 
-// The blue appliance's fixed furniture, measured off the reference mock
-// Metalic-Blue.png (1448x1086): windows punched straight into the chassis at
-// the mock's 60.8px pitch (how many fit is the window's business, not a
-// number of this file's), a full-height carrier rail 41px wide drawn by the
-// chassis on the left, dark stamped numerals ending 27px short of the strip,
+// The blue appliance's fixed furniture: windows punched straight into the
+// chassis at the mock's 60.8px pitch (how many fit is the window's business,
+// not a number of this file's), a full-height carrier rail 41px wide drawn
+// by the chassis on the left, dark stamped numerals hard against the rail,
 // and the three-piece page selector always standing at the bank's foot.
+// Horizontally the panel is cut close: rail, numerals and windows stand a
+// sliver apart, just enough unbroken metal that the chassis reads as one
+// piece.
 QtObject {
-    // The bank's left shoulder: 29px of chassis before the rail, the rail's
-    // 41, and the 27 between rail and numerals. The profile marks the
-    // current channel by glow, so no live lane is reserved on top of this;
-    // the rail is the chassis's own furniture.
-    readonly property int bankPadding: 97
+    // The bank's left shoulder: 29px of chassis before the rail (the
+    // bracket's ground), the rail's 41, and a sliver between rail and
+    // numerals. The profile marks the current channel by glow, so no live
+    // lane is reserved on top of this; the rail is the chassis's own
+    // furniture.
+    readonly property int bankPadding: 76
     // Row 1's window top sits at the mock's y 64.
     readonly property int topPadding: 64
     // The selector's bevel line ends at y 1023; 63px of chassis follow.
     readonly property int bottomPadding: 63
-    // Strip right edge 378, bezel plate edge 408, plate inset 6: 24 of bank.
-    readonly property int rightPadding: 24
+    // A sliver of chassis past the punch's cut ring before the bezel plate.
+    readonly property int rightPadding: 8
     // 43px of window bezel; the mock's pitch is 60.8, so the air between
     // windows carries the fraction.
     readonly property real rowSpacing: 17.8
-    readonly property int columnGap: 27
-    readonly property int numeralWidth: 50
+    // The air between the numerals and the punch: a sliver, as stamped.
+    readonly property int columnGap: 8
+    // Just the stamped digits' own width; no blank lane rides with them.
+    readonly property int numeralWidth: 36
     // The strip (18px) sits centred in the window; minRowHeight pins the
     // window's outer height to the mock's 43.
     readonly property int stripPadding: 12

@@ -19,10 +19,12 @@
 *******************************************************************************/
 import QtQuick
 
-// The amber appliance's PREV/NEXT rocker, at the mock's own stations: labels
-// engraved in the plate above the keys, solid arrows pointing outward beside
-// them, ridged key caps below. The whole block keeps the height the mock
-// gives it, so the bank fits its nineteen rows above.
+// The amber appliance's PREV/NEXT rocker: labels engraved in the plate above
+// the keys, solid arrows pointing outward beside them, ridged key caps
+// below. The pair rides centred in the bank's content lane at the mock's key
+// spread, closing ranks when a narrow strip leaves less lane than the spread
+// asks. The whole block keeps the height the mock gives it, so the bank fits
+// its nineteen rows above.
 Item {
     id: pager
 
@@ -41,6 +43,13 @@ Item {
     // Key tops sit 38px into the block; the plate runs on below them.
     implicitHeight: 130
 
+    // The mock's key cap and the air between the caps; the pair stands
+    // centred in whatever lane the bank hands over.
+    readonly property int keyWidth: 56
+    readonly property real keySpread: Math.min(92, width - 2 * keyWidth - 8)
+    readonly property real prevKeyX: (width - 2 * keyWidth - keySpread) / 2
+    readonly property real nextKeyX: prevKeyX + keyWidth + keySpread
+
     // A solid triangle at label height, pointing away from its key and
     // standing clear of its label, as the mock prints them.
     component Arrow: Text {
@@ -49,12 +58,13 @@ Item {
     }
 
     Arrow {
-        x: 56
+        x: prevLabel.x - width - 8
         y: 6
         text: "\u25C0"
     }
     Text {
-        x: 102 - width / 2
+        id: prevLabel
+        x: pager.prevKeyX + pager.keyWidth / 2 - width / 2
         y: 5
         font.pixelSize: 15
         font.bold: true
@@ -64,7 +74,8 @@ Item {
     }
 
     Text {
-        x: 247 - width / 2
+        id: nextLabel
+        x: pager.nextKeyX + pager.keyWidth / 2 - width / 2
         y: 5
         font.pixelSize: 15
         font.bold: true
@@ -73,24 +84,24 @@ Item {
         color: pager.labelColor
     }
     Arrow {
-        x: 274
+        x: nextLabel.x + nextLabel.width + 8
         y: 6
         text: "\u25B6"
     }
 
     ChannelButton {
-        x: 64
+        x: pager.prevKeyX
         y: 38
-        width: 56
+        width: pager.keyWidth
         height: 40
         plastic: pager.plastic
         onClicked: pager.step(-1)
     }
 
     ChannelButton {
-        x: 212
+        x: pager.nextKeyX
         y: 38
-        width: 56
+        width: pager.keyWidth
         height: 40
         plastic: pager.plastic
         onClicked: pager.step(1)

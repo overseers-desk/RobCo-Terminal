@@ -19,20 +19,25 @@
 *******************************************************************************/
 import QtQuick
 
-// The amber appliance's fixed furniture, measured off the reference mock
-// (1448x1086): a raised plate carrying 19 windows at a 45px pitch, numerals
-// ending 24px short of the LED strip, and 50px of plate standing between the
-// strips and the CRT bezel.
+// The amber appliance's fixed furniture: a raised plate carrying windows at
+// the mock's 45px pitch, cut close at the sides the way a real panel is
+// punched - numerals and windows run to the plate's edges with only a sliver
+// of unbroken metal keeping the plate whole, and the corner screws overlap
+// the content columns rather than owning lanes of their own.
 QtObject {
-    readonly property int bankPadding: 8
+    readonly property int bankPadding: 3
     // The plate's headroom above row 1: screws and blank metal.
     readonly property int topPadding: 61
     readonly property int bottomPadding: 8
-    readonly property int rightPadding: 50
+    // A sliver of plate past the window bezels' right lip, enough that the
+    // punch does not break the plate edge, before the CRT bezel takes over.
+    readonly property int rightPadding: 14
     // Window outer bezels nearly touch on the mock: 43px of bezel, 2px of air.
     readonly property int rowSpacing: 2
     readonly property int columnGap: 24
-    readonly property int numeralWidth: 70
+    // Just the struck digits' own width: the column starts a sliver off the
+    // plate edge and holds no blank lane of its own.
+    readonly property int numeralWidth: 38
     // The strip (18px) sits in a 43px window: the mock's outer bezel height,
     // held by minRowHeight so the pitch lands at 45 regardless of padding sums.
     readonly property int stripPadding: 12
