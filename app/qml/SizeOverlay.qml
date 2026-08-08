@@ -41,7 +41,10 @@ Rectangle {
         id: textSize
         anchors.centerIn: parent
         color: "white"
-        text: terminalSize.width + "x" + terminalSize.height
+        // QMLTermWidget's terminalSize is QSize(lines, columns), so the width
+        // of that size is the number of rows and its height the number of
+        // columns; shown here the conventional way round, columns x rows.
+        text: terminalSize.height + "x" + terminalSize.width
     }
     Timer {
         id: sizetimer
