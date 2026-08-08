@@ -41,15 +41,19 @@ Item {
 
     readonly property int bankPadding: 10
     readonly property int rowSpacing: 6
-    readonly property int columnGap: 6
-    readonly property int numeralWidth: 20
+    readonly property int columnGap: 10
+    readonly property int numeralWidth: 34
     // Sized so a channel row's pitch sits near two terminal text rows
     // (25 px at the default profile), the bank's readability target.
-    readonly property int stripPadding: 10
+    readonly property int stripPadding: 13
     readonly property int minRowHeight: 26
 
-    readonly property int stripWidth: appSettings.ledCellWidth * appSettings.ledCharacters * appSettings.ledDotPitch
-    readonly property int stripHeight: appSettings.ledCellHeight * appSettings.ledDotPitch
+    // Rounded, not truncated: at a fractional dot pitch a floored strip would
+    // leave the row half a pixel short of the window it has to hold.
+    readonly property int stripWidth: Math.round(
+        appSettings.ledCellWidth * appSettings.ledCharacters * appSettings.ledDotPitch)
+    readonly property int stripHeight: Math.round(
+        (appSettings.ledCellHeight + appSettings.ledPadCells) * appSettings.ledDotPitch)
     readonly property int rowHeight: Math.max(minRowHeight, stripHeight + 2 * stripPadding)
 
     // The profile decides how the channel on screen is marked. The pointer look

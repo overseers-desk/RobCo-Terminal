@@ -38,7 +38,10 @@ Item {
     readonly property color litColor: colors.lit
 
     readonly property int gridW: appSettings.ledCellWidth * appSettings.ledCharacters
-    readonly property int gridH: appSettings.ledCellHeight
+    // A band of unlit lamps above and below the glyphs, so the text sits in a
+    // lamp field instead of running into the window's lips.
+    readonly property int gridH: appSettings.ledCellHeight + appSettings.ledPadCells
+    readonly property int topPadCells: Math.floor(appSettings.ledPadCells / 2)
 
     implicitWidth: gridW * appSettings.ledDotPitch
     implicitHeight: gridH * appSettings.ledDotPitch
@@ -61,11 +64,16 @@ Item {
         id: ledText
 
         renderType: Text.NativeRendering
+        // Drawn low by half the pad, in glyph pixels, so the grid the strip
+        // reads has an unlit row or two above the text as well as below.
+        topPadding: ledStrip.topPadCells
         font.family: appSettings.ledFontFamily
         font.pixelSize: appSettings.ledFontPixelSize
         color: "white"
         maximumLineCount: 1
-        text: ledStrip.powered ? ledStrip.text.substring(0, appSettings.ledCharacters) : ""
+        // Truncated from the head: a title too long for the window is a path,
+        // and its tail is the part that names the session.
+        text: ledStrip.powered ? ledStrip.text.slice(-appSettings.ledCharacters) : ""
     }
 
     ShaderEffectSource {
@@ -97,7 +105,7 @@ Item {
         property color litColor: ledStrip.colors.lit
         property color dimColor: ledStrip.colors.dim
         property color panelColor: ledStrip.colors.panel
-        property real dotRadius: 0.36
+        property real dotRadius: 0.40
         property real threshold: 0.4
         property real glow: ledStrip.bright ? 0.55 : 0.3
         property real pixelsPerCell: appSettings.ledDotPitch

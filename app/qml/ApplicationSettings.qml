@@ -39,6 +39,9 @@ QtObject {
 
     readonly property real ledDotPitch: 1.5
     readonly property int minLedCharacters: 8
+    // Rows of unlit lamps added above and below the glyph field, so the text
+    // sits in a panel of lamps rather than filling the window lip to lip.
+    readonly property int ledPadCells: 4
 
     property bool isMacOS: Qt.platform.os === "osx"
 

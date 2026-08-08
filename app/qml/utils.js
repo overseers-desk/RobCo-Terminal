@@ -78,8 +78,8 @@ function ledWindowColors(fontColor, powered, bright) {
         lit = mix(lit, Qt.rgba(1.0, 1.0, 1.0, 1.0), 0.08);
     return {
         lit: lit,
-        dim: scaleColor(lit, powered ? 0.22 : 0.10),
-        panel: scaleColor(lit, powered ? 0.12 : 0.055)
+        dim: scaleColor(lit, powered ? 0.20 : 0.13),
+        panel: scaleColor(lit, powered ? 0.09 : 0.045)
     };
 }
 
