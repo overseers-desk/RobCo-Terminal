@@ -19,23 +19,16 @@
 *******************************************************************************/
 import QtQuick 2.0
 
-import "../../utils.js" as Utils
-
-// The blue appliance's deep barrel-mouthed bezel. Geometry skeleton: the
-// moulded-plastic lighting law stands in for the scratched gunmetal until the
-// paint pass; the well's depth comes from the profile's frameSize and the
-// barrel sweep from its screenRadius and curvature.
+// The blue appliance's deep barrel-mouthed bezel: aged dark bronze gunmetal
+// from the metal shader pair. Light from the upper left, a bright ridge
+// along the bezel plate's outer moulding, a deep shaded well dropping to the
+// glass, heavy grain and stains, corners pooling to black.
 ShaderEffect {
-    // The instantiation site used to set this; the frame is opaque plastic
+    // The instantiation site used to set this; the frame is opaque metal
     // either way, so it travels with the component now.
     blending: false
 
-    property color frameColor: Utils.frameBaseColor(
-        appSettings.frameColor,
-        appSettings.fontColor,
-        appSettings.backgroundColor,
-        appSettings.ambientLight
-    )
+    Metrics { id: metrics }
 
     property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
 
@@ -49,8 +42,31 @@ ShaderEffect {
 
     property real ambientLight: appSettings.ambientLight
 
-    vertexShader: "qrc:/shaders/terminal_frame.vert.qsb"
-    fragmentShader: "qrc:/shaders/terminal_frame.frag.qsb"
+    property vector2d lightDir: metrics.castingLightDir
+    property color bezelColor: "#2e2820"
+    property color chassisColor: metrics.castingColor
+    property color ridgeColor: "#8c8068"
+    // Bezel plate edge insets, in px: left, top, right, bottom.
+    property vector4d bezelMargins: Qt.vector4d(6, 10, 14, 12)
+    property real outerRadius: 45
+    property real wellDepth: 45
+    property real wellFloor: 0.16
+    property real ridgeGain: 0.45
+    property real troughGain: 0.0
+    // The mock's plate is lit only in a band along its own moulding; deeper
+    // in, the face is the well's dark wall however far the glass still is,
+    // with the bright rim standing on the wall around the opening.
+    property real faceBandPx: 12
+    property real rimDistPx: 14
+    property real rimGain: 1.6
+    property real grainAmount: 0.35
+    property real mottleAmount: 1.0
+    property real scratchAmount: 0.55
+    property real vignetteStrength: 0.35
+    property real fillGain: 0.35
+
+    vertexShader: "qrc:/shaders/frame_metal.vert.qsb"
+    fragmentShader: "qrc:/shaders/frame_metal.frag.qsb"
 
     onStatusChanged: if (log) console.log(log) //Print warning messages
 }

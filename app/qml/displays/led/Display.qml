@@ -32,6 +32,17 @@ Item {
     property bool powered: true
     // The channel on screen: its lamps run hotter and throw a wider halo.
     property bool bright: false
+    // The window's width in characters. The bank's strips follow the
+    // setting; a fixture with a window of its own (the blue shell's page
+    // counter) names its width here.
+    property int characters: appSettings.ledCharacters
+    // Unlit lamps ahead of and behind the text. The reference mocks never
+    // light the column against either of the window's lips, and a glyph
+    // standing there reads as cut off by the plate, its glow thrown onto
+    // the metal; one dark cell each side keeps the letters clear. Fixtures
+    // that fill their window edge to edge set them to 0.
+    property int padCellsLeft: 1
+    property int padCellsRight: 1
 
     // The LED window's colours, all struck from the profile's font colour: the
     // lamp driven to full, and that same hue sunk towards black for the unlit
@@ -54,7 +65,7 @@ Item {
         appSettings.fontColor, powered, bright)
     readonly property color litColor: colors.lit
 
-    readonly property int gridW: appSettings.ledCellWidth * appSettings.ledCharacters
+    readonly property int gridW: appSettings.ledCellWidth * characters
     // A band of unlit lamps above and below the glyphs, so the text sits in a
     // lamp field instead of running into the window's lips.
     readonly property int gridH: appSettings.ledCellHeight + appSettings.ledPadCells
@@ -69,6 +80,12 @@ Item {
     // reaches the window above or below.
     readonly property int spillMarginY: Math.round(implicitHeight * 0.8)
     readonly property int spillMarginX: Math.round(implicitHeight * 1.1)
+    // Dark panel standing between the strip and the window's lip, above and
+    // below: the shell's punched hole is taller than the strip, and the
+    // reference mocks keep that glass dead black - lamps never paint their
+    // own panel. The throw is swallowed across this band and only lands on
+    // the metal past it. Zero for a strip that fills its hole.
+    property int spillClearanceY: 0
     // A lit window always glows a little on its surround; the current one
     // glows enough to mark itself. The switch is a fade, not a cut.
     property real spillStrength: powered ? (bright ? 1.0 : 0.3) : 0.0
@@ -84,13 +101,20 @@ Item {
         // Drawn low by half the pad, in glyph pixels, so the grid the strip
         // reads has an unlit row or two above the text as well as below.
         topPadding: ledStrip.topPadCells
+        // And drawn in by the pad cells, so the first letter's lamps stand
+        // clear of the window's left lip.
+        leftPadding: ledStrip.padCellsLeft * appSettings.ledCellWidth
         font.family: appSettings.ledFontFamily
         font.pixelSize: appSettings.ledFontPixelSize
         color: "white"
         maximumLineCount: 1
         // Truncated from the head: a title too long for the window is a path,
         // and its tail is the part that names the session.
-        text: ledStrip.powered ? ledStrip.text.slice(-appSettings.ledCharacters) : ""
+        text: ledStrip.powered
+              ? ledStrip.text.slice(-(ledStrip.characters
+                                      - ledStrip.padCellsLeft
+                                      - ledStrip.padCellsRight))
+              : ""
     }
 
     ShaderEffectSource {
@@ -111,8 +135,8 @@ Item {
             fill: parent
             leftMargin: -ledStrip.spillMarginX
             rightMargin: -ledStrip.spillMarginX
-            topMargin: -ledStrip.spillMarginY
-            bottomMargin: -ledStrip.spillMarginY
+            topMargin: -(ledStrip.spillMarginY + ledStrip.spillClearanceY)
+            bottomMargin: -(ledStrip.spillMarginY + ledStrip.spillClearanceY)
         }
         // The margin is plastic seen through added light, so it has to blend.
         blending: true
@@ -129,7 +153,14 @@ Item {
         // Where the window sits inside the grown item, as a fraction of it.
         property point spillMargin: Qt.point(
             matrix.width > 0 ? ledStrip.spillMarginX / matrix.width : 0,
-            matrix.height > 0 ? ledStrip.spillMarginY / matrix.height : 0)
+            matrix.height > 0 ? (ledStrip.spillMarginY + ledStrip.spillClearanceY)
+                                / matrix.height : 0)
+        // The dead share of each margin: the panel band the glass swallows
+        // before any light reaches the metal.
+        property point spillDead: Qt.point(
+            0,
+            ledStrip.spillClearanceY
+                / Math.max(1, ledStrip.spillMarginY + ledStrip.spillClearanceY))
         property real spillStrength: ledStrip.spillStrength
 
         // The lamps come up to heat rather than snapping, so a channel switch

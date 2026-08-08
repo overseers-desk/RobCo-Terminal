@@ -16,6 +16,7 @@ layout(std140, binding = 0) uniform ubuf {
     float pixelsPerCell;
     vec2 spillMargin;
     float spillStrength;
+    vec2 spillDead;
 };
 
 layout(binding = 1) uniform sampler2D source;
@@ -52,13 +53,23 @@ void main() {
     if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
         vec2 edge = clamp(uv, vec2(0.0), vec2(1.0));
         vec2 away = (uv - edge) * window / max(spillMargin, vec2(1e-4));
-        // How far out of the window we are, as a fraction of the margin: 0 at
-        // the lip, 1 where the light has to be gone.
-        float d = clamp(length(away), 0.0, 1.0);
+        // How far out of the strip we are, as a fraction of the margin: 0 at
+        // the lamps' edge, 1 where the light has to be gone. The penumbra's
+        // width follows this physical distance.
+        float dPhys = clamp(length(away), 0.0, 1.0);
+        // The margin's first share may be the window's own dead panel (the
+        // glass swallows the throw there); the visible light lives on what
+        // remains, so the falloff is measured past that band.
+        vec2 live = max(abs(away) - spillDead, vec2(0.0))
+                    / max(vec2(1.0) - spillDead, vec2(1e-4));
+        float d = clamp(length(live), 0.0, 1.0);
         float falloff = 1.0 - d;
+        // Nothing lands on the panel band itself, and the light comes up
+        // over the lip's first quarter rather than jumping in at the rim.
+        float rise = smoothstep(0.0, 0.25, d);
         vec2 inward = -normalize(away + vec2(1e-6));
-        float a = spillStrength * clamp(2.2 * edgeBrightness(edge, inward, d), 0.0, 1.0)
-                  * falloff * falloff * 0.6;
+        float a = spillStrength * clamp(2.2 * edgeBrightness(edge, inward, dPhys), 0.0, 1.0)
+                  * rise * falloff * falloff * 0.6;
         // Premultiplied: light added to the plastic, never a sheet over it.
         fragColor = vec4(litColor.rgb * a, a) * qt_Opacity;
         return;

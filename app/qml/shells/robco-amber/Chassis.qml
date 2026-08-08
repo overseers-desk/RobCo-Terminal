@@ -19,32 +19,19 @@
 *******************************************************************************/
 import QtQuick
 
-import "../../utils.js" as Utils
+import "../common"
 
-// The amber appliance's chassis: the frame's lighting field continued under
-// the bank, with the raised bank plate screwed onto it. The field is the
-// moulded-plastic law for now; the plate, its bevel and its four corner
-// screws are the mock's geometry, painted in the mock's plate palette.
+// The amber appliance's chassis: the frame's near-black metal continued under
+// the bank, with the raised bank plate screwed over it. The plate is aged
+// patinated gunmetal from the plate shader: blotchy mottling, grain, worn
+// bright edges, a lit top bevel and four slotted screws on their bosses.
 ShaderEffect {
     id: chassis
 
-    // The item the frame shader fills; this plastic continues its field.
+    Metrics { id: metrics }
+
+    // The item the frame shader fills; this metal continues its field.
     property Item frameRegion
-
-    property color frameColor: Utils.frameBaseColor(
-        appSettings.frameColor,
-        appSettings.fontColor,
-        appSettings.backgroundColor,
-        appSettings.ambientLight
-    )
-
-    property real screenCurvature: appSettings.screenCurvature * appSettings.screenCurvatureSize * terminalWindow.normalizedScreenScale
-
-    property real frameShininess: appSettings.frameShininess
-
-    property real frameSize: appSettings.frameSize * terminalWindow.normalizedScreenScale
-
-    property real screenRadius: appSettings.screenRadius
 
     property size viewportSize: Qt.size(_fieldWidth, _fieldHeight)
 
@@ -57,23 +44,29 @@ ShaderEffect {
     readonly property real _fieldWidth: frameRegion ? Math.max(1, frameRegion.width) : 1
     readonly property real _fieldHeight: frameRegion ? Math.max(1, frameRegion.height) : 1
 
+    // The frame's own chassis law, continued leftwards: one casting, one
+    // shared light and metal color, read off this shell's Metrics.
+    property vector2d lightDir: metrics.castingLightDir
+    property color chassisColor: metrics.castingColor
+    property real grainAmount: 0.16
+    property real mottleAmount: 0.4
+    property real scratchAmount: 0.08
+    property real vignetteStrength: 0.42
+
     opacity: appSettings.windowOpacity * 0.3 + 0.7
 
     blending: false
 
-    vertexShader: "qrc:/shaders/chassis_plastic.vert.qsb"
-    fragmentShader: "qrc:/shaders/chassis_plastic.frag.qsb"
+    vertexShader: "qrc:/shaders/chassis_metal.vert.qsb"
+    fragmentShader: "qrc:/shaders/chassis_metal.frag.qsb"
 
     onStatusChanged: if (log) console.log(log)
 
-    // The plate the bank is punched into, sitting proud of the chassis: base
-    // colour from the mock, a lit top bevel, a shaded right edge where it
-    // drops back to the chassis. Measured rect: 8..343 x 2..1077 on the mock.
-    readonly property color plateBase: "#241e19"
-    readonly property color plateHighlight: "#c1a585"
-    readonly property color plateShadow: "#1a110a"
-
-    Rectangle {
+    // The plate the bank is punched into, sitting proud of the chassis.
+    // Measured rect: 8..343 x 2..1077 on the mock. Key light high and
+    // slightly left: top bevel brightest, right edge dropping to shadow,
+    // corners pooling dark.
+    ShaderEffect {
         id: plate
 
         anchors {
@@ -83,58 +76,34 @@ ShaderEffect {
             rightMargin: 0
             bottomMargin: 8
         }
-        radius: 6
-        antialiasing: true
 
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.lighter(chassis.plateBase, 1.5) }
-            GradientStop { position: 0.04; color: chassis.plateBase }
-            GradientStop { position: 0.96; color: chassis.plateBase }
-            GradientStop { position: 1.0; color: chassis.plateShadow }
-        }
+        property size sizePx: Qt.size(width, height)
+        property vector2d lightDir: Qt.vector2d(-0.22, -0.98)
+        property color baseColor: "#2b241c"
+        property color highlightColor: "#c1a585"
+        property color shadowColor: "#0e0905"
+        property real cornerRadius: 6
+        property real bevelPx: 2.5
+        property real grainAmount: 0.3
+        property real mottleAmount: 1.0
+        property real scratchAmount: 0.5
+        property real vignetteStrength: 0.42
+        property real wearAmount: 0.7
+        property real seamGain: 1.0
+        property real seed: 0.17
 
-        // The top bevel edge that catches the key light.
-        Rectangle {
-            anchors {
-                left: parent.left
-                right: parent.right
-                top: parent.top
-                leftMargin: parent.radius
-                rightMargin: parent.radius
-            }
-            height: 1
-            color: chassis.plateHighlight
-            opacity: 0.55
-        }
-    }
+        vertexShader: "qrc:/shaders/plate_metal.vert.qsb"
+        fragmentShader: "qrc:/shaders/plate_metal.frag.qsb"
 
-    // A slotted screw head: a shaded disc, glint on the upper left where the
-    // mock's key light lands.
-    component Screw: Rectangle {
-        width: 28
-        height: 28
-        radius: width / 2
-        antialiasing: true
-
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: chassis.plateHighlight }
-            GradientStop { position: 0.35; color: Qt.lighter(chassis.plateBase, 1.7) }
-            GradientStop { position: 1.0; color: chassis.plateShadow }
-        }
-
-        Rectangle {
-            anchors.centerIn: parent
-            width: parent.width * 0.7
-            height: 2
-            rotation: 40
-            color: chassis.plateShadow
-        }
+        onStatusChanged: if (log) console.log(log)
     }
 
     // Screw centres from the mock: (32,30) (317,29) top, and 39px above the
     // bottom edge at (32,·) (315,·); the lower pair rides the plate's foot.
-    Screw { x: 32 - 14; y: 30 - 14 }
-    Screw { x: 317 - 14; y: 29 - 14 }
-    Screw { x: 32 - 14; anchors.bottom: parent.bottom; anchors.bottomMargin: 25 }
-    Screw { x: 315 - 14; anchors.bottom: parent.bottom; anchors.bottomMargin: 25 }
+    // The right-hand pair keeps its distance from the plate's right edge
+    // (26px centre inset on the mock), so a narrower window keeps its screws.
+    ScrewHead { x: 32 - 14; y: 30 - 14; slotAngle: 24 }
+    ScrewHead { anchors.right: parent.right; anchors.rightMargin: 12; y: 29 - 14; slotAngle: -49 }
+    ScrewHead { x: 32 - 14; anchors.bottom: parent.bottom; anchors.bottomMargin: 25; slotAngle: 78 }
+    ScrewHead { anchors.right: parent.right; anchors.rightMargin: 14; anchors.bottom: parent.bottom; anchors.bottomMargin: 25; slotAngle: -11 }
 }

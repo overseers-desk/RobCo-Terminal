@@ -39,6 +39,10 @@ Item {
     required property int numeralWidth
     required property int columnGap
     required property int stripPadding
+    // Dark panel between the strip and its window's lips, above and below:
+    // shell furniture whose punched hole stands taller than the lamps. Zero
+    // for a moulding that hugs the strip.
+    property int panelPadY: 0
 
     signal activated()
 
@@ -121,6 +125,14 @@ Item {
             target: display.item
             property: "bright"
             value: channelRow.current
+        }
+        // Dark panel the shell's window keeps above and below the strip;
+        // the display's throw is swallowed across it. The measure is the
+        // shell's own: a moulded window hugging its strip declares none.
+        Binding {
+            target: display.item
+            property: "spillClearanceY"
+            value: channelRow.panelPadY
         }
     }
 

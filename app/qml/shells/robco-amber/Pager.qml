@@ -41,60 +41,41 @@ Item {
     // Key tops sit 38px into the block; the plate runs on below them.
     implicitHeight: 130
 
-    // A solid triangle at label height, pointing away from its key.
-    component Arrow: Canvas {
-        property color tint: "#6a5642"
-        // -1 points left, 1 right.
-        property int direction: -1
-
-        width: 10
-        height: 12
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.reset()
-            ctx.fillStyle = tint
-            ctx.beginPath()
-            if (direction < 0) {
-                ctx.moveTo(width, 0); ctx.lineTo(width, height); ctx.lineTo(0, height / 2)
-            } else {
-                ctx.moveTo(0, 0); ctx.lineTo(0, height); ctx.lineTo(width, height / 2)
-            }
-            ctx.closePath()
-            ctx.fill()
-        }
-        onTintChanged: requestPaint()
+    // A solid triangle at label height, pointing away from its key and
+    // standing clear of its label, as the mock prints them.
+    component Arrow: Text {
+        font.pixelSize: 14
+        color: pager.labelColor
     }
 
     Arrow {
-        x: 52
+        x: 56
         y: 6
-        direction: -1
-        tint: pager.labelColor
+        text: "\u25C0"
     }
     Text {
         x: 102 - width / 2
-        y: 3
+        y: 5
         font.pixelSize: 15
         font.bold: true
-        font.letterSpacing: 1
+        font.letterSpacing: 2
         text: "PREV"
         color: pager.labelColor
     }
 
     Text {
         x: 247 - width / 2
-        y: 3
+        y: 5
         font.pixelSize: 15
         font.bold: true
-        font.letterSpacing: 1
+        font.letterSpacing: 2
         text: "NEXT"
         color: pager.labelColor
     }
     Arrow {
-        x: 262
+        x: 274
         y: 6
-        direction: 1
-        tint: pager.labelColor
+        text: "\u25B6"
     }
 
     ChannelButton {

@@ -33,6 +33,7 @@
         <file>shells/moulded-plastic/Pager.qml</file>
         <file>shells/moulded-plastic/ChannelButton.qml</file>
         <file>shells/moulded-plastic/Metrics.qml</file>
+        <file>shells/common/ScrewHead.qml</file>
         <file>shells/robco-amber/Frame.qml</file>
         <file>shells/robco-amber/Chassis.qml</file>
         <file>shells/robco-amber/RowFurniture.qml</file>
@@ -76,6 +77,12 @@
         <file>../shaders/terminal_dynamic.vert.qsb</file>
         <file>../shaders/terminal_static.vert.qsb</file>
         <file>../shaders/terminal_frame.vert.qsb</file>
+        <file>../shaders/frame_metal.vert.qsb</file>
+        <file>../shaders/frame_metal.frag.qsb</file>
+        <file>../shaders/chassis_metal.vert.qsb</file>
+        <file>../shaders/chassis_metal.frag.qsb</file>
+        <file>../shaders/plate_metal.vert.qsb</file>
+        <file>../shaders/plate_metal.frag.qsb</file>
         <file>../shaders/burn_in.vert.qsb</file>
         <file>../shaders/terminal_dynamic_raster0_burn0_frame0_chroma0.frag.qsb</file>
         <file>../shaders/terminal_dynamic_raster0_burn0_frame0_chroma1.frag.qsb</file>
