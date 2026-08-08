@@ -12,8 +12,10 @@
 # the user does it: a pointer drag on the seam between the bank and the
 # screen well. The seam lands where the bank's implicitWidth puts it, so the
 # grab point is computed from the shell's fixed furniture plus 12px per
-# character (the LED display's unitWidth at the default font). FIXED below
-# must be re-derived by hand if a shell's Metrics.qml changes.
+# visible character (the LED display's unitWidth at the default font). The
+# strip's two end-pad cells sit outside the character count, so their 24px
+# ride with the fixed furniture. FIXED below must be re-derived by hand if a
+# shell's Metrics.qml changes.
 set -euo pipefail
 
 BIN=$(realpath "${1:?binary}")
@@ -67,13 +69,14 @@ for _ in $(seq 2 "$CHANNELS"); do
 done
 
 if [ -n "$UNITS" ]; then
-    # The bank's width at N characters: the shell's fixed furniture
+    # The bank's width at N visible characters: the shell's fixed furniture
     # (contentX + numeralWidth + columnGap + rightPadding, per its Metrics)
-    # plus 12px a character. Default character count is 12.
+    # plus the strip's 24px of end-pad cells, plus 12px a character. Default
+    # character count is 12.
     case "$PROFILE" in
-        "RobCo Amber") FIXED=152 ;;
-        "RobCo Blue")  FIXED=198 ;;
-        *)             FIXED=54 ;;   # moulded-plastic, glow
+        "RobCo Amber") FIXED=176 ;;   # 8+70+24+50 + 24
+        "RobCo Blue")  FIXED=222 ;;   # 97+50+27+24 + 24
+        *)             FIXED=78 ;;    # moulded-plastic, glow: 10+34+10+0 + 24
     esac
     START=$((FIXED + 12 * 12 + 2))
     TARGET=$((FIXED + 12 * UNITS + 2))

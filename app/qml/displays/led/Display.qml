@@ -32,17 +32,18 @@ Item {
     property bool powered: true
     // The channel on screen: its lamps run hotter and throw a wider halo.
     property bool bright: false
-    // The window's width in characters. The bank's strips follow the
-    // setting; a fixture with a window of its own (the blue shell's page
-    // counter) names its width here.
+    // The window's width in visible characters: the title gets this many
+    // cells whole. The bank's strips follow the setting; a fixture with a
+    // window of its own (the blue shell's page counter) names its width here.
     property int characters: appSettings.ledCharacters
-    // Unlit lamps ahead of and behind the text. The reference mocks never
-    // light the column against either of the window's lips, and a glyph
-    // standing there reads as cut off by the plate, its glow thrown onto
-    // the metal; one dark cell each side keeps the letters clear. Fixtures
-    // that fill their window edge to edge set them to 0.
-    property int padCellsLeft: 1
-    property int padCellsRight: 1
+    // Unlit lamps ahead of and behind the text, added on top of the
+    // character count. The reference mocks never light the column against
+    // either of the window's lips, and a glyph standing there reads as cut
+    // off by the plate, its glow thrown onto the metal; one dark cell each
+    // side keeps the letters clear. Fixtures that fill their window edge to
+    // edge set them to 0.
+    property int padCellsLeft: appSettings.ledSidePadCells
+    property int padCellsRight: appSettings.ledSidePadCells
 
     // The LED window's colours, all struck from the profile's font colour: the
     // lamp driven to full, and that same hue sunk towards black for the unlit
@@ -65,7 +66,8 @@ Item {
         appSettings.fontColor, powered, bright)
     readonly property color litColor: colors.lit
 
-    readonly property int gridW: appSettings.ledCellWidth * characters
+    readonly property int gridW: appSettings.ledCellWidth
+        * (characters + padCellsLeft + padCellsRight)
     // A band of unlit lamps above and below the glyphs, so the text sits in a
     // lamp field instead of running into the window's lips.
     readonly property int gridH: appSettings.ledCellHeight + appSettings.ledPadCells
@@ -111,9 +113,7 @@ Item {
         // Truncated from the head: a title too long for the window is a path,
         // and its tail is the part that names the session.
         text: ledStrip.powered
-              ? ledStrip.text.slice(-(ledStrip.characters
-                                      - ledStrip.padCellsLeft
-                                      - ledStrip.padCellsRight))
+              ? ledStrip.text.slice(-ledStrip.characters)
               : ""
     }
 

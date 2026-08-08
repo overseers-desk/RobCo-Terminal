@@ -42,6 +42,11 @@ QtObject {
     // Rows of unlit lamps added above and below the glyph field, so the text
     // sits in a panel of lamps rather than filling the window lip to lip.
     readonly property int ledPadCells: 4
+    // Unlit cells a bank strip adds at each end, outside the character count:
+    // ledCharacters means visible characters, and these stand on the fixed-
+    // furniture side of the width arithmetic. The display and its Metrics
+    // both read this one number.
+    readonly property int ledSidePadCells: 1
 
     property bool isMacOS: Qt.platform.os === "osx"
 
