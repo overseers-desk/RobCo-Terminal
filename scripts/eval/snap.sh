@@ -74,8 +74,8 @@ if [ -n "$UNITS" ]; then
     # plus the strip's 24px of end-pad cells, plus 12px a character. Default
     # character count is 12.
     case "$PROFILE" in
-        "RobCo Amber") FIXED=176 ;;   # 8+70+24+50 + 24
-        "RobCo Blue")  FIXED=222 ;;   # 97+50+27+24 + 24
+        "RobCo Amber") FIXED=103 ;;   # 3+38+24+14 + 24
+        "RobCo Blue")  FIXED=152 ;;   # 76+36+8+8 + 24
         *)             FIXED=78 ;;    # moulded-plastic, glow: 10+34+10+0 + 24
     esac
     START=$((FIXED + 12 * 12 + 2))

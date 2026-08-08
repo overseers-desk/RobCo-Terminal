@@ -171,14 +171,15 @@ ShaderEffect {
         // The hinge bracket over the rail's head: an angular sheet-metal
         // plate, wider at the left, its right end tapering toward the numeral
         // column with the top corner cut, three slotted screws holding it
-        // down. Bank coordinates [18,48]-[116,120]; the rail starts at bank
-        // x 29, y 29.
+        // down. Bank coordinates [18,48]-[78,120]: the tab ends a sliver
+        // short of the stamped digits, whose column starts hard after the
+        // rail. The rail starts at bank x 29, y 29.
         Item {
             id: bracket
 
             x: -11
             y: 19
-            width: 98
+            width: 60
             height: 72
 
             // The bracket's shadow on rail and chassis.
@@ -285,7 +286,8 @@ ShaderEffect {
                 ctx.closePath()
             }
 
-            // Screw centres in bank coordinates: (46,69) (102,84) (47,102).
+            // Screw centres in bank coordinates: (46,69) (64,84) (47,102);
+            // the middle one rides the tab.
             ScrewHead {
                 x: 46 - 18 - 11; y: 69 - 48 - 11
                 width: 22; height: 22
@@ -296,7 +298,7 @@ ShaderEffect {
                 slotAngle: 32
             }
             ScrewHead {
-                x: 102 - 18 - 11; y: 84 - 48 - 11
+                x: 64 - 18 - 11; y: 84 - 48 - 11
                 width: 22; height: 22
                 metalLight: rail.bracketLight
                 metalMid: "#4a4234"
