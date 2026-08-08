@@ -56,6 +56,11 @@ QtObject {
 
     property bool blinkingCursor: false
 
+    // How many characters of a channel title the LED windows carry. The user
+    // sets it by the seam drag or the settings spinner and it is theirs, not a
+    // profile's: switching look does not re-fit the bank.
+    property int ledCharacters: 12
+
 
     // PROFILE SETTINGS ///////////////////////////////////////////////////////
     property real windowOpacity: 1.0
@@ -107,7 +112,6 @@ QtObject {
     property real margin: Utils.lint(1.0, 40.0, _margin) + (1.0 - Math.SQRT1_2) * screenRadius
 
     property string ledFontName: "UNSCII_8_SCALED"
-    property int ledCharacters: 12
 
     readonly property bool frameEnabled: ambientLight > 0 || _frameSize > 0 || screenCurvature > 0
 
@@ -191,7 +195,8 @@ QtObject {
             "bloomQuality": bloomQuality,
             "burnInQuality": burnInQuality,
             "useCustomCommand": useCustomCommand,
-            "customCommand": customCommand
+            "customCommand": customCommand,
+            "ledCharacters": ledCharacters
         }
         return stringify(settings)
     }
@@ -227,7 +232,6 @@ QtObject {
             "frameColor": _frameColor,
             "frameShininess": _frameShininess,
             "ledFontName": ledFontName,
-            "ledCharacters": ledCharacters,
             "channelIndicator": channelIndicator
         }
         return profile
@@ -288,6 +292,8 @@ QtObject {
                 !== undefined ? settings.useCustomCommand : useCustomCommand
         customCommand = settings.customCommand
                 !== undefined ? settings.customCommand : customCommand
+
+        ledCharacters = settings.ledCharacters !== undefined ? settings.ledCharacters : ledCharacters
     }
 
     function loadProfileString(profileString) {
@@ -338,7 +344,6 @@ QtObject {
         blinkingCursor = settings.blinkingCursor !== undefined ? settings.blinkingCursor : blinkingCursor
 
         ledFontName = settings.ledFontName !== undefined ? settings.ledFontName : ledFontName
-        ledCharacters = settings.ledCharacters !== undefined ? settings.ledCharacters : ledCharacters
 
         // The one key that falls back to a constant rather than to what is
         // loaded: leaving the old profile's pointer standing in a profile that
