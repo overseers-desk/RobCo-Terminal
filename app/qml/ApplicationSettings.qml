@@ -172,7 +172,7 @@ QtObject {
     // back to the default, warned once: a look can go missing between
     // versions, and a bank that fails to paint would be worse than one that
     // paints plainly.
-    readonly property var knownShells: ["moulded-plastic"]
+    readonly property var knownShells: ["moulded-plastic", "robco-amber", "robco-blue"]
     readonly property var knownDisplays: ["led"]
     property var _warnedLooks: ({})
 
@@ -925,8 +925,12 @@ QtObject {
             }'
             builtin: true
         }
-        // Default Amber in a dark brown appliance: amber dots in near-black
-        // plastic, the current channel marked by its window's own light.
+        // The amber appliance of the reference mock: a gunmetal plate of LED
+        // windows beside a slim-bezelled tube, the current channel marked by
+        // its window's own light. The frameColor leans cold because the base
+        // colour law folds in a fifth of the amber phosphor; this value lands
+        // the mix on the mock's plate. frameSize and screenRadius are fitted
+        // to the mock's glass opening (inset ~22px, corner radius ~55).
         ListElement {
             text: "RobCo Amber"
             obj_string: '{
@@ -950,20 +954,26 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.2,
                 "screenCurvature": 0.2,
-                "screenRadius": 0.1,
+                "screenRadius": 0.44,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
                 "blinkingCursor": false,
-                "frameSize": 0.1,
-                "frameColor": "#3a2f24",
+                "frameSize": 0.45,
+                "frameColor": "#001735",
                 "frameShininess": 0.3,
-                "channelIndicator": "glow"
+                "channelIndicator": "glow",
+                "shell": "robco-amber"
             }'
             builtin: true
         }
-        // Deep Blue in weathered grey metal, with the mechanical selector
-        // riding its track down the left edge of the bank.
+        // The blue appliance of the reference mock: warm olive-grey gunmetal
+        // (all the blue in that mock is emitted light, none of it paint),
+        // windows punched into the chassis, the mechanical selector riding a
+        // full-height rail down the bank's left edge. frameSize sits between
+        // the mock's shallow top inset and its deep bottom trough; the
+        // screenRadius ceiling plus the strong curvature approximates the
+        // barrel-curved glass mouth.
         ListElement {
             text: "RobCo Blue"
             obj_string: '{
@@ -987,15 +997,16 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.2,
                 "screenCurvature": 0.4,
-                "screenRadius": 0.1,
+                "screenRadius": 1.0,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
                 "blinkingCursor": false,
-                "frameSize": 0.1,
-                "frameColor": "#a29a86",
+                "frameSize": 0.7,
+                "frameColor": "#a77d37",
                 "frameShininess": 0.15,
-                "channelIndicator": "pointer"
+                "channelIndicator": "pointer",
+                "shell": "robco-blue"
             }'
             builtin: true
         }
