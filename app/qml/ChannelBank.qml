@@ -59,11 +59,13 @@ Item {
     readonly property int trackWidth: pointerIndicator ? 14 : 0
     readonly property int trackGap: pointerIndicator ? columnGap : 0
 
-    // The ground left to the rows once the selector has taken its lane.
+    // The ground left to the rows once the selector has taken its lane. It
+    // runs to the bank's right edge: the frame's moulding is the strips'
+    // right frame, so no padding of the bank's own stands before it.
     readonly property int contentX: bankPadding + trackWidth + trackGap
-    readonly property int contentWidth: width - contentX - bankPadding
+    readonly property int contentWidth: width - contentX
 
-    implicitWidth: contentX + numeralWidth + columnGap + stripWidth + bankPadding
+    implicitWidth: contentX + numeralWidth + columnGap + stripWidth
 
     // Rows per page, measured rather than bound: a live count would reflow the
     // bank on every frame of a window drag.

@@ -197,7 +197,10 @@ ApplicationWindow {
     MouseArea {
         id: seam
 
-        x: channelBank.width - 5
+        // The strips run to the boundary, so the grab strip leans into the
+        // moulding: it takes 3 px of the LED windows' clickable right edge
+        // and 7 px of inert plastic.
+        x: channelBank.width - 3
         width: 10
         anchors {
             top: parent.top
@@ -212,8 +215,7 @@ ApplicationWindow {
             var windowX = mapToItem(null, mouse.x, 0).x
             var chars = Math.min(channelBank.charactersForWidth(windowX),
                                  channelBank.charactersForWidth(terminalWindow.width - terminalWindow.crtMinimumWidth))
-            chars = Math.max(appSettings.minLedCharacters,
-                             Math.min(appSettings.maxLedCharacters, chars))
+            chars = Math.max(appSettings.minLedCharacters, chars)
             if (chars !== appSettings.ledCharacters)
                 appSettings.ledCharacters = chars
         }

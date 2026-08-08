@@ -69,7 +69,10 @@ ColumnLayout {
                 id: ledCharactersChanger
                 Layout.fillWidth: true
                 from: appSettings.minLedCharacters
-                to: appSettings.maxLedCharacters
+                // The widget demands a ceiling; this one sits beyond any
+                // window's reach. The real bound is the drag's: the screen
+                // well keeps its minimum width.
+                to: 9999
                 value: appSettings.ledCharacters
                 onValueModified: appSettings.ledCharacters = value
                 Connections {
