@@ -212,6 +212,32 @@ Item {
         _rebuildState()
     }
 
+    // A channel's program has entered tmux control mode and handed up its
+    // gateway, or left it and handed up null. The remote windows do not become
+    // channels yet; for now the bank only says out loud what the gateway sees.
+    function attachGateway(channel, gateway) {
+        if (!gateway) {
+            console.log("channel " + channel + ": tmux gateway gone")
+            return
+        }
+        console.log("channel " + channel + ": tmux gateway on host " + gateway.host)
+        gateway.hostChanged.connect(function() {
+            console.log("channel " + channel + ": tmux host " + gateway.host)
+        })
+        gateway.windowAdded.connect(function(windowId, paneId, name) {
+            console.log("channel " + channel + ": tmux window added " + windowId + " " + paneId + " " + name)
+        })
+        gateway.windowClosed.connect(function(windowId) {
+            console.log("channel " + channel + ": tmux window closed " + windowId)
+        })
+        gateway.windowRenamed.connect(function(windowId, name) {
+            console.log("channel " + channel + ": tmux window renamed " + windowId + " " + name)
+        })
+        gateway.detached.connect(function() {
+            console.log("channel " + channel + ": tmux detached")
+        })
+    }
+
     function activateCurrent() {
         var item = channelRepeater.itemAt(currentIndex)
         if (item)
@@ -261,6 +287,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     onSessionFinished: channelsRoot.closeChannel(channelNumber)
+                    onTmuxGateway: (gateway) => channelsRoot.attachGateway(channelNumber, gateway)
                     onTerminalSizeChanged: publishTerminalSize()
                     StackLayout.onIsCurrentItemChanged: publishTerminalSize()
 

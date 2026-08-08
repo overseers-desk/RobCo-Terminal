@@ -30,6 +30,10 @@ Item{
     id: terminalContainer
     signal sessionFinished()
 
+    // This channel's program has entered (gateway non-null) or left (null)
+    // tmux control mode.
+    signal tmuxGateway(var gateway)
+
     property size virtualResolution: Qt.size(kterminal.totalWidth, kterminal.totalHeight)
     property alias mainTerminal: kterminal
 
@@ -125,6 +129,8 @@ Item{
             onFinished: {
                 terminalContainer.sessionFinished()
             }
+
+            onTmuxGatewayChanged: terminalContainer.tmuxGateway(ksession.tmuxGateway)
         }
 
         QMLTermScrollbar {
