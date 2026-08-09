@@ -145,10 +145,9 @@ Item {
         property color litColor: ledStrip.colors.lit
         property color dimColor: ledStrip.colors.dim
         property color panelColor: ledStrip.colors.panel
-        property real dotRadius: 0.40
+        property real dotRadius: 0.50
         property real threshold: 0.4
         property real glow: ledStrip.bright ? 0.55 : 0.3
-        property real pixelsPerCell: appSettings.ledDotPitch
         // Where the window sits inside the grown item, as a fraction of it.
         property point spillMargin: Qt.point(
             matrix.width > 0 ? ledStrip.spillMarginX / matrix.width : 0,

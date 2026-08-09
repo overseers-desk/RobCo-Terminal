@@ -13,7 +13,6 @@ layout(std140, binding = 0) uniform ubuf {
     float dotRadius;
     float threshold;
     float glow;
-    float pixelsPerCell;
     vec2 spillMargin;
     float spillStrength;
     vec2 spillDead;
@@ -83,9 +82,15 @@ void main() {
     vec3 glyph = texture(source, (idx + vec2(0.5)) / gridSize).rgb;
     float lit = step(threshold, max(glyph.r, max(glyph.g, glyph.b)));
 
-    float aa = 1.0 / max(pixelsPerCell, 1.0);
+    // One screen pixel measured in cell widths, taken from the rasteriser
+    // rather than from the strip's own pitch: the bank is drawn scaled, so the
+    // pitch alone says a pixel is far wider than it is and every lamp bleeds
+    // into its neighbours. The lamp is a lamp, not a smudge.
+    float aa = max(0.5 * fwidth(d), 0.002);
     float disk = 1.0 - smoothstep(dotRadius - aa, dotRadius + aa, d);
-    float halo = glow * lit * (1.0 - smoothstep(dotRadius, dotRadius + 2.0 * aa, d));
+    // The bloom around a lit lamp, a fixed penumbra in cell widths so it stays
+    // a glow and never widens into a second dot.
+    float halo = glow * lit * (1.0 - smoothstep(dotRadius, dotRadius + 0.45, d));
 
     vec3 color = mix(panelColor.rgb, litColor.rgb, halo);
     color = mix(color, mix(dimColor.rgb, litColor.rgb, lit), disk);

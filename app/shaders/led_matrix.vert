@@ -13,7 +13,6 @@ layout(std140, binding = 0) uniform ubuf {
     float dotRadius;
     float threshold;
     float glow;
-    float pixelsPerCell;
     vec2 spillMargin;
     float spillStrength;
 };
