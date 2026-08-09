@@ -152,9 +152,6 @@ ApplicationWindow {
         onStoreToSlot: function (slot) {
             terminalChannels.moveCurrentTo(channelBank.absoluteSlot(slot))
         }
-        onCycleOpen: function (direction) {
-            terminalChannels.cycleOpen(direction)
-        }
         slotPrefixExists: channelBank.slotPrefixExists
 
         // A page flip re-labels the numerals, so digits typed against the old
@@ -175,6 +172,16 @@ ApplicationWindow {
         sequence: appSettings.isMacOS ? "Meta+PgDown" : "Alt+PgDown"
         context: Qt.WindowShortcut
         onActivated: channelBank.step(1)
+    }
+    Shortcut {
+        sequence: "Ctrl+PgUp"
+        context: Qt.WindowShortcut
+        onActivated: terminalChannels.cycleOpen(-1)
+    }
+    Shortcut {
+        sequence: "Ctrl+PgDown"
+        context: Qt.WindowShortcut
+        onActivated: terminalChannels.cycleOpen(1)
     }
     // The bank's plastic, continuing the frame's moulding leftwards. Nothing
     // stands between the frame and the window on the other three sides: the

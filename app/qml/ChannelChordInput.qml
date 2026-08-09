@@ -20,8 +20,8 @@
 import QtQuick
 
 // Chord input for channel slots: hold the modifier, type digits, release to
-// commit. The host wires selectSlot/storeToSlot/cycleOpen and the
-// slotPrefixExists predicate; this component knows nothing about the model.
+// commit. The host wires selectSlot/storeToSlot and the slotPrefixExists
+// predicate; this component knows nothing about the model.
 Item {
     id: chordInput
 
@@ -30,7 +30,6 @@ Item {
 
     signal selectSlot(int slot)
     signal storeToSlot(int slot)
-    signal cycleOpen(int direction)
 
     // True when some slot the chord could still name has buf as a strict
     // prefix; while true the chord keeps waiting for more digits instead of
@@ -216,15 +215,5 @@ Item {
         context: Qt.WindowShortcut
         autoRepeat: false
         onActivated: chordInput.feedDigit("9", true)
-    }
-    Shortcut {
-        sequence: "Ctrl+PgUp"
-        context: Qt.WindowShortcut
-        onActivated: chordInput.cycleOpen(-1)
-    }
-    Shortcut {
-        sequence: "Ctrl+PgDown"
-        context: Qt.WindowShortcut
-        onActivated: chordInput.cycleOpen(1)
     }
 }
