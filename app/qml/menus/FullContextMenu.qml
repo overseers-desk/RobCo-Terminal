@@ -40,6 +40,21 @@ Menu {
         MenuItem {
             action: newChannelAction
         }
+        MenuItem {
+            action: newLocalChannelAction
+        }
+        // Off the menu entirely with no session attached: the host they name
+        // does not exist then.
+        MenuItem {
+            action: newRemoteChannelAction
+            visible: newRemoteChannelAction.enabled
+            height: visible ? implicitHeight : 0
+        }
+        MenuItem {
+            action: detachAction
+            visible: detachAction.enabled
+            height: visible ? implicitHeight : 0
+        }
         MenuSeparator {}
         MenuItem {
             action: quitAction

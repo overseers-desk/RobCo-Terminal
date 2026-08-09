@@ -30,6 +30,18 @@ Item{
     id: terminalContainer
     signal sessionFinished()
 
+    // This channel's program has entered (gateway non-null) or left (null)
+    // tmux control mode.
+    signal tmuxGateway(var gateway)
+
+    // What this channel shows: a local shell, or a remote tmux window fed
+    // through the named gateway. (The property is remoteGateway because the
+    // upward signal above already took the tmuxGateway name.)
+    property string channelKind: "local"
+    property string tmuxWindowId: ""
+    property string tmuxPaneId: ""
+    property var remoteGateway: null
+
     property size virtualResolution: Qt.size(kterminal.totalWidth, kterminal.totalHeight)
     property alias mainTerminal: kterminal
 
@@ -125,6 +137,8 @@ Item{
             onFinished: {
                 terminalContainer.sessionFinished()
             }
+
+            onTmuxGatewayChanged: terminalContainer.tmuxGateway(ksession.tmuxGateway)
         }
 
         QMLTermScrollbar {
@@ -167,6 +181,17 @@ Item{
         }
 
         function startSession() {
+            if (terminalContainer.channelKind === "remote") {
+                // A remote window runs no local program: the pty stays empty
+                // and the gateway wires this emulation to its tmux pane.
+                ksession.startRemoteWindow(terminalContainer.remoteGateway,
+                                           terminalContainer.tmuxWindowId,
+                                           terminalContainer.tmuxPaneId)
+                // No focus grab here: remote channels arrive in batches behind
+                // the selected one, and selection owns the focus.
+                return
+            }
+
             // Retrieve the variable set in main.cpp if arguments are passed.
             if (defaultCmd) {
                 ksession.setShellProgram(defaultCmd);
