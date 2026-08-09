@@ -49,7 +49,19 @@ void main() {
     vec2 window = max(vec2(1.0) - 2.0 * spillMargin, vec2(1e-4));
     vec2 uv = (qt_TexCoord0 - spillMargin) / window;
 
-    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+    // A strip whose height is a whole number of half pixels puts its far lip
+    // exactly on a row of fragment centres, where uv reads 1.0 to within the
+    // couple of ulps the rasteriser rounds differently for each half of the
+    // item's quad: the same row then comes up lamps on one side of the quad's
+    // diagonal and plastic on the other, a hard step partway along the window.
+    // The window's edges are settled a twentieth of a pixel wide instead --
+    // thousands of times the noise, far under anything the eye can see -- and
+    // the rasteriser's own rule decides the tie: a fragment centre sitting on
+    // the far lip belongs to the plastic beyond it, as it would if the lamp
+    // field were a rectangle the hardware filled.
+    vec2 tol = 0.05 * fwidth(uv);
+
+    if (any(lessThan(uv, -tol)) || any(greaterThan(uv, vec2(1.0) - tol))) {
         vec2 edge = clamp(uv, vec2(0.0), vec2(1.0));
         vec2 away = (uv - edge) * window / max(spillMargin, vec2(1e-4));
         // How far out of the strip we are, as a fraction of the margin: 0 at
