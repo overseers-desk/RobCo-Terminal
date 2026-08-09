@@ -105,9 +105,9 @@ Item {
     Rectangle {
         id: panel
 
-        x: furniture.displayRect.x - 1
+        x: furniture.displayRect.x
         y: 2
-        width: furniture.displayRect.width + 2
+        width: furniture.displayRect.width
         height: parent.height - 4
         radius: 2
         antialiasing: true

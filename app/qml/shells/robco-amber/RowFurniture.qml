@@ -147,9 +147,9 @@ Item {
     Rectangle {
         id: panel
 
-        x: furniture.displayRect.x - 4
-        y: 5
-        width: furniture.displayRect.width + 8
+        x: furniture.displayRect.x
+        y: 4
+        width: furniture.displayRect.width
         height: parent.height - 8
         radius: 5
         antialiasing: true
