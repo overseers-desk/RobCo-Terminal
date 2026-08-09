@@ -23,6 +23,7 @@
         <file>SettingsAdvancedTab.qml</file>
         <file>TerminalContainer.qml</file>
         <file>TerminalChannels.qml</file>
+        <file>TerminalTabStrip.qml</file>
         <file>ChannelBank.qml</file>
         <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>

@@ -61,6 +61,12 @@ Item {
     // A session has landed on a slot: the bank acknowledges it on that row.
     signal channelStored(int channel)
 
+    // The open channels as a dense list, sorted by slot: the sparse slot
+    // space seen without its dark slots. A consumer keys rows by their
+    // channel role, never by position, because closing a channel shifts the
+    // rows below it while the slots themselves never renumber.
+    readonly property alias openChannels: channelsModel
+
     // channelsModel rows are kept sorted ascending by channel.
     ListModel {
         id: channelsModel
@@ -135,6 +141,13 @@ Item {
         currentChannel = channel
         currentIndex = _rowOf(channel)
         activateCurrent()
+    }
+
+    // Select by position among the open channels: the tab strip's own
+    // vocabulary, where the Nth tab is the Nth open session.
+    function selectAt(row) {
+        if (row >= 0 && row < channelsModel.count)
+            selectChannel(channelsModel.get(row).channel)
     }
 
     function moveCurrentTo(channel) {

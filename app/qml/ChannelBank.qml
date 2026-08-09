@@ -135,6 +135,9 @@ Item {
     onRowHeightChanged: settleTimer.restart()
     onCurrentChannelChanged: ensureVisible(currentChannel)
     onPageCountChanged: pageIndex = Math.min(pageIndex, pageCount - 1)
+    // A page flip re-labels the numerals, so digits typed against the old
+    // page are abandoned, never committed against the new one.
+    onPageIndexChanged: chordInput.cancel()
 
     Component.onCompleted: settle()
 
@@ -200,6 +203,30 @@ Item {
         id: settleTimer
         interval: 150
         onTriggered: bank.settle()
+    }
+
+    // The chord names a key on the page the bank is showing, as the numerals
+    // engraved beside those keys read; the bank turns it into a slot. It
+    // lives with the bank: no bank, no numerals, no chord.
+    ChannelChordInput {
+        id: chordInput
+        onSelectSlot: function (slot) {
+            terminalChannels.selectChannel(bank.absoluteSlot(slot))
+        }
+        onStoreToSlot: function (slot) {
+            terminalChannels.moveCurrentTo(bank.absoluteSlot(slot))
+        }
+        slotPrefixExists: bank.slotPrefixExists
+    }
+    Shortcut {
+        sequence: appSettings.isMacOS ? "Meta+PgUp" : "Alt+PgUp"
+        context: Qt.WindowShortcut
+        onActivated: bank.step(-1)
+    }
+    Shortcut {
+        sequence: appSettings.isMacOS ? "Meta+PgDown" : "Alt+PgDown"
+        context: Qt.WindowShortcut
+        onActivated: bank.step(1)
     }
 
     Connections {

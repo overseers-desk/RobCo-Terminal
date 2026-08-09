@@ -49,7 +49,10 @@ ApplicationWindow {
     // The least screen the well is ever given; the seam's travel stops here too.
     readonly property int crtMinimumWidth: 320
 
-    minimumWidth: channelBank.implicitWidth + crtMinimumWidth
+    // The bank's footprint, zero for a profile without the channel function.
+    readonly property int bankWidth: channelBankLoader.item ? channelBankLoader.item.implicitWidth : 0
+
+    minimumWidth: bankWidth + crtMinimumWidth
     minimumHeight: 240
 
     visible: false
@@ -142,37 +145,6 @@ ApplicationWindow {
         shortcut: appSettings.isMacOS ? "Meta+W" : "Ctrl+Shift+W"
         onTriggered: terminalChannels.closeChannel(terminalChannels.currentChannel)
     }
-    // The chord names a key on the page the bank is showing, as the numerals
-    // engraved beside those keys read; the bank turns it into a slot.
-    ChannelChordInput {
-        id: channelChordInput
-        onSelectSlot: function (slot) {
-            terminalChannels.selectChannel(channelBank.absoluteSlot(slot))
-        }
-        onStoreToSlot: function (slot) {
-            terminalChannels.moveCurrentTo(channelBank.absoluteSlot(slot))
-        }
-        slotPrefixExists: channelBank.slotPrefixExists
-
-        // A page flip re-labels the numerals, so digits typed against the old
-        // page are abandoned, never committed against the new one.
-        Connections {
-            target: channelBank
-            function onPageIndexChanged() {
-                channelChordInput.cancel()
-            }
-        }
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+PgUp" : "Alt+PgUp"
-        context: Qt.WindowShortcut
-        onActivated: channelBank.step(-1)
-    }
-    Shortcut {
-        sequence: appSettings.isMacOS ? "Meta+PgDown" : "Alt+PgDown"
-        context: Qt.WindowShortcut
-        onActivated: channelBank.step(1)
-    }
     Shortcut {
         sequence: "Ctrl+PgUp"
         context: Qt.WindowShortcut
@@ -183,13 +155,46 @@ ApplicationWindow {
         context: Qt.WindowShortcut
         onActivated: terminalChannels.cycleOpen(1)
     }
+    // The screen well stands first in the file: the selector loaders below
+    // resolve terminalChannels by id while they complete, so the store has to
+    // exist before either of them builds.
+    Item {
+        id: crtRegion
+        anchors {
+            left: channelBankLoader.right
+            right: parent.right
+            top: tabStripLoader.bottom
+            bottom: parent.bottom
+        }
+        TerminalChannels {
+            id: terminalChannels
+            anchors.fill: parent
+        }
+    }
+    // The channel store has two faces, one standing at a time: a profile with
+    // the channel function raises the bank in its chassis, any other gets the
+    // tab strip. Loaders rather than hidden items: an unraised face loads no
+    // metrics, holds no width, and owns no shortcuts.
+    Loader {
+        id: tabStripLoader
+
+        active: !appSettings.channels
+        anchors {
+            left: channelBankLoader.right
+            right: parent.right
+            top: parent.top
+        }
+        height: item ? item.implicitHeight : 0
+        source: "TerminalTabStrip.qml"
+    }
     // The bank's plastic, continuing the frame's moulding leftwards. Nothing
     // stands between the frame and the window on the other three sides: the
     // frame is the outermost thing there, as it is upstream.
     Loader {
         id: chassisLoader
 
-        anchors.fill: channelBank
+        active: appSettings.channels
+        anchors.fill: channelBankLoader
         source: appSettings.shellUrl("Chassis")
 
         // The chassis lives in a file of its own, where this window's ids do
@@ -200,26 +205,17 @@ ApplicationWindow {
             value: crtRegion
         }
     }
-    ChannelBank {
-        id: channelBank
+    Loader {
+        id: channelBankLoader
+
+        active: appSettings.channels
         anchors {
             left: parent.left
             top: parent.top
             bottom: parent.bottom
         }
-    }
-    Item {
-        id: crtRegion
-        anchors {
-            left: channelBank.right
-            right: parent.right
-            top: parent.top
-            bottom: parent.bottom
-        }
-        TerminalChannels {
-            id: terminalChannels
-            anchors.fill: parent
-        }
+        width: terminalWindow.bankWidth
+        source: "ChannelBank.qml"
     }
     // The seam where the bank's plastic meets the screen well. Nothing is
     // drawn: the cursor's change of shape is the only tell. A drag re-fits
@@ -231,22 +227,25 @@ ApplicationWindow {
         // The strips run to the boundary, so the grab strip leans into the
         // moulding: it takes 3 px of the LED windows' clickable right edge
         // and 7 px of inert plastic.
-        x: channelBank.width - 3
+        x: terminalWindow.bankWidth - 3
         width: 10
         anchors {
             top: parent.top
             bottom: parent.bottom
         }
         z: 2
+        visible: appSettings.channels
+        enabled: visible
         cursorShape: Qt.SplitHCursor
         acceptedButtons: Qt.LeftButton
         onPositionChanged: function (mouse) {
-            if (!pressed)
+            var bank = channelBankLoader.item
+            if (!pressed || !bank)
                 return
             var windowX = mapToItem(null, mouse.x, 0).x
-            var chars = Math.min(channelBank.charactersForWidth(windowX),
-                                 channelBank.charactersForWidth(terminalWindow.width - terminalWindow.crtMinimumWidth))
-            chars = Math.max(channelBank.minUnits, chars)
+            var chars = Math.min(bank.charactersForWidth(windowX),
+                                 bank.charactersForWidth(terminalWindow.width - terminalWindow.crtMinimumWidth))
+            chars = Math.max(bank.minUnits, chars)
             if (chars !== appSettings.ledCharacters)
                 appSettings.ledCharacters = chars
         }
