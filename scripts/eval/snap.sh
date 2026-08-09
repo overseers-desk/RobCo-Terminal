@@ -10,12 +10,9 @@
 #
 # UNITS, when given, re-fits the LED strips to that character count the way
 # the user does it: a pointer drag on the seam between the bank and the
-# screen well. The seam lands where the bank's implicitWidth puts it, so the
-# grab point is computed from the shell's fixed furniture plus 12px per
-# visible character (the LED display's unitWidth at the default font). The
-# strip's two end-pad cells sit outside the character count, so their 24px
-# ride with the fixed furniture. FIXED below must be re-derived by hand if a
-# shell's Metrics.qml changes.
+# screen well. The bank's width is measured off the live window rather than
+# tabulated: the window exports minimumWidth, the bank's implicitWidth plus
+# the screen well's floor, as the X11 program-specified minimum size.
 set -euo pipefail
 
 BIN=$(realpath "${1:?binary}")
@@ -69,17 +66,32 @@ for _ in $(seq 2 "$CHANNELS"); do
 done
 
 if [ -n "$UNITS" ]; then
-    # The bank's width at N visible characters: the shell's fixed furniture
-    # (contentX + numeralWidth + columnGap + rightPadding, per its Metrics)
-    # plus the strip's 24px of end-pad cells, plus 12px a character. Default
-    # character count is 12.
-    case "$PROFILE" in
-        "RobCo Amber") FIXED=103 ;;   # 3+38+24+14 + 24
-        "RobCo Blue")  FIXED=152 ;;   # 76+36+8+8 + 24
-        *) echo "profile has no channel bank; UNITS is meaningless" >&2; exit 1 ;;
-    esac
-    START=$((FIXED + 12 * 12 + 2))
-    TARGET=$((FIXED + 12 * UNITS + 2))
+    # The screen well's floor, read from the source beside this script;
+    # 320 when the script runs against a binary outside its tree.
+    CRT_MIN=$(sed -n 's/.*crtMinimumWidth: \([0-9]*\).*/\1/p' \
+        "$(dirname "$(realpath "$0")")/../../app/qml/TerminalWindow.qml" 2>/dev/null | head -1)
+    CRT_MIN=${CRT_MIN:-320}
+
+    # The bank's live width: the window's program-specified minimum size
+    # less the well's floor.
+    bank_width() {
+        xprop -id "$WID" WM_NORMAL_HINTS \
+            | sed -n 's/.*program specified minimum size: \([0-9]*\) by.*/\1/p' \
+            | awk -v m="$CRT_MIN" '{print $1 - m}'
+    }
+
+    START_BANK=$(bank_width)
+    if [ "${START_BANK:-0}" -le 0 ]; then
+        echo "profile has no channel bank; UNITS is meaningless" >&2
+        exit 1
+    fi
+
+    # Grab 2px into the seam's lean past the bank's edge. 12px a character
+    # is the LED display's unitWidth at the default font (displays/led/
+    # Metrics.qml), from the default count of 12 (ApplicationSettings.qml
+    # ledCharacters), both guaranteed by --default-settings.
+    START=$((START_BANK + 2))
+    TARGET=$((START + 12 * (UNITS - 12)))
 
     eval "$(xdotool getwindowgeometry --shell "$WID")" # sets X, Y
     MIDY=$((Y + H / 2))
@@ -97,6 +109,16 @@ if [ -n "$UNITS" ]; then
     xdotool mousemove --sync $((X + TARGET)) "$MIDY"
     sleep 0.2
     xdotool mouseup 1
+
+    # Verify the fit against the same instrument: a drag that missed by a
+    # character or more is a loud warning, never a quietly wrong picture.
+    sleep 0.5
+    END_BANK=$(bank_width)
+    WANT=$((START_BANK + 12 * (UNITS - 12)))
+    DIFF=$((END_BANK - WANT)); [ "$DIFF" -lt 0 ] && DIFF=$((-DIFF))
+    if [ "$DIFF" -ge 12 ]; then
+        echo "warning: seam drag landed at bank width $END_BANK, wanted $WANT" >&2
+    fi
 fi
 
 # Let shells print their prompts and the tube settle.
