@@ -52,10 +52,6 @@ QtObject {
     // 2px above and below are the panel's own inset into the ring.
     readonly property int stripPadding: 2
     readonly property int minRowHeight: 43
-    // Lamp rows riding above and below the glyphs, counted together: enough to
-    // carry the field across the whole recessed panel, so no dead glass stands
-    // between the outermost lamps and the cut ring.
-    readonly property int padCellsY: 18
     // The full-height carrier rail, x 29..69 on the mock. Its width stands
     // folded into bankPadding above (the glow profile reserves no lane);
     // shellMetrics always exposes trackWidth for a profile that asks.

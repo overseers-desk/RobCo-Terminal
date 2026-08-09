@@ -46,10 +46,6 @@ QtObject {
     // is what the hole's own inset leaves.
     readonly property int stripPadding: 4
     readonly property int minRowHeight: 43
-    // Lamp rows riding above and below the glyphs, counted together: enough to
-    // carry the field across the whole hole, so no dead glass stands between
-    // the outermost lamps and the machined lip.
-    readonly property int padCellsY: 15
     // Glow profile: no selector lane, but shellMetrics always exposes trackWidth.
     readonly property int trackWidth: 14
 

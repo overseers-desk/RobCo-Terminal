@@ -68,10 +68,15 @@ Item {
     readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 34
     readonly property int stripPadding: shellMetrics.item?.stripPadding ?? 13
     readonly property int minRowHeight: shellMetrics.item?.minRowHeight ?? 26
-    // Unlit lamp rows above and below the glyphs, counted together: how deep a
-    // window this shell punches. A shell that says nothing takes the display's
-    // own band, its windows moulded around the strip.
-    readonly property int padCellsY: shellMetrics.item?.padCellsY ?? appSettings.ledPadCells
+    // Unlit lamp rows above and below the glyphs, counted together: as many as
+    // the shell's punched hole holds beyond the text, so the lamp field runs
+    // to the window's lips. The hole is what the window's outer height leaves
+    // inside the bezel; a shell whose windows hug their strips has no fixed
+    // hole and takes the display's own band.
+    readonly property int windowHoleHeight: minRowHeight - 2 * stripPadding
+    readonly property int padCellsY: Math.max(appSettings.ledPadCells,
+        Math.round(windowHoleHeight / appSettings.ledDotPitch)
+            - appSettings.ledCellHeight)
 
     readonly property int stripWidth: displayMetrics.item
         ? displayMetrics.item.widthForUnits(appSettings.ledCharacters) : 0
