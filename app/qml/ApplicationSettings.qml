@@ -297,20 +297,24 @@ QtObject {
         return stringify(composeProfileObject())
     }
 
+    // True when the database had a settings and profile pair to restore, so
+    // the caller knows whether this start is a first one.
     function loadSettings() {
         var settingsString = storage.getSetting("_CURRENT_SETTINGS")
         var profileString = storage.getSetting("_CURRENT_PROFILE")
 
         if (!settingsString)
-            return
+            return false
         if (!profileString)
-            return
+            return false
 
         loadSettingsString(settingsString)
         loadProfileString(profileString)
 
         if (verbose)
             console.log("Loading settings: " + settingsString + profileString)
+
+        return true
     }
 
     function storeSettings() {
@@ -467,6 +471,11 @@ QtObject {
     }
 
     // PROFILES ///////////////////////////////////////////////////////////////
+    // The face the terminal wears when nobody has said otherwise: the built-in
+    // profile a first start and --default-settings both land on. The QML
+    // property values above are the schema's floor, not the app's look.
+    readonly property string defaultProfileName: "RobCo Amber"
+
     property ListModel profilesList: ListModel {
         ListElement {
             text: "Default Amber"
@@ -1051,11 +1060,21 @@ QtObject {
         if (args.indexOf("--verbose") !== -1) {
             verbose = true
         }
+        var restored = false
         if (args.indexOf("--default-settings") === -1) {
-            loadSettings()
+            restored = loadSettings()
         }
 
         loadCustomProfiles()
+
+        // Nothing to restore, so the terminal comes up as itself: the amber
+        // appliance, bank and all. A profile named on the command line is a
+        // later word than this one and still wins.
+        if (!restored) {
+            var defaultIndex = getProfileIndexByName(defaultProfileName)
+            if (defaultIndex !== -1)
+                loadProfile(defaultIndex)
+        }
 
         var profileArgPosition = args.indexOf("--profile")
         if (profileArgPosition !== -1) {
