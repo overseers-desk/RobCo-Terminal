@@ -79,11 +79,18 @@ Item {
     // A session has landed on a slot: the bank acknowledges it on that row.
     signal channelStored(int channel)
 
-    // The open channels as a dense list, sorted by slot: the sparse slot
-    // space seen without its dark slots. A consumer keys rows by their
-    // channel role, never by position, because closing a channel shifts the
-    // rows below it while the slots themselves never renumber.
-    readonly property alias openChannels: channelsModel
+    // The channels on the air as a dense list, sorted by slot: the sparse
+    // slot space seen without its dark slots and without buried rows. A
+    // derived cache like channelState, with _rebuildState its single writer,
+    // so the tab strip can bind a Repeater to it and never meet a ghost row
+    // for a buried gateway. Consumers key rows by their channel role, never
+    // by position: closing a channel shifts the rows below it while the
+    // slots themselves never renumber.
+    readonly property alias airChannels: airModel
+
+    ListModel {
+        id: airModel
+    }
 
     // channelsModel rows are kept sorted ascending by channel.
     ListModel {
@@ -116,6 +123,27 @@ Item {
         // assignment notifies bindings on channelState.
         channelState = state
         currentIndex = _rowOf(currentChannel)
+
+        // Merge the unburied rows into airModel in place: both are sorted by
+        // slot, and a title-only change touches one row's property, so the
+        // strip's delegates survive a prompt changing a title.
+        var pos = 0
+        for (var j = 0; j < channelsModel.count; j++) {
+            var r = channelsModel.get(j)
+            if (r.buried)
+                continue
+            while (pos < airModel.count && airModel.get(pos).channel < r.channel)
+                airModel.remove(pos)
+            if (pos < airModel.count && airModel.get(pos).channel === r.channel) {
+                if (airModel.get(pos).title !== r.title)
+                    airModel.setProperty(pos, "title", r.title)
+            } else {
+                airModel.insert(pos, { channel: r.channel, title: r.title })
+            }
+            pos++
+        }
+        while (airModel.count > pos)
+            airModel.remove(pos)
     }
 
     function openChannel(channel) {
@@ -289,11 +317,11 @@ Item {
         activateCurrent()
     }
 
-    // Select by position among the open channels: the tab strip's own
-    // vocabulary, where the Nth tab is the Nth open session.
+    // Select by position among the channels on the air: the tab strip's own
+    // vocabulary, where the Nth tab is the Nth visible session.
     function selectAt(row) {
-        if (row >= 0 && row < channelsModel.count)
-            selectChannel(channelsModel.get(row).channel)
+        if (row >= 0 && row < airModel.count)
+            selectChannel(airModel.get(row).channel)
     }
 
     function moveCurrentTo(channel) {

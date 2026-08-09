@@ -29,16 +29,24 @@ Item {
     id: strip
 
     readonly property int innerPadding: 6
-    readonly property bool tabsShown: terminalChannels.openChannels.count > 1
+    readonly property bool tabsShown: terminalChannels.airChannels.count > 1
 
     implicitHeight: tabsShown ? tabRow.implicitHeight : 0
 
     // The bar writes its own currentIndex on a click, so a binding would go
     // stale at the first tap; the sync is owned by hand, the inequality test
-    // breaking the loop.
+    // breaking the loop. The bar's index is a position among the tabs on
+    // show, found from the air list rather than taken from the store's row
+    // index, which also counts buried rows.
     function syncCurrent() {
-        if (tabBar.currentIndex !== terminalChannels.currentIndex)
-            tabBar.currentIndex = terminalChannels.currentIndex
+        var air = terminalChannels.airChannels
+        for (var i = 0; i < air.count; i++) {
+            if (air.get(i).channel === terminalChannels.currentChannel) {
+                if (tabBar.currentIndex !== i)
+                    tabBar.currentIndex = i
+                return
+            }
+        }
     }
 
     Connections {
@@ -82,7 +90,7 @@ Item {
                 focusPolicy: Qt.NoFocus
 
                 Repeater {
-                    model: terminalChannels.openChannels
+                    model: terminalChannels.airChannels
                     TabButton {
                         id: tabButton
 
@@ -126,9 +134,11 @@ Item {
                 padding: strip.innerPadding
                 Layout.alignment: Qt.AlignVCenter
                 // Dark slots may all be taken: a full house disables the key
-                // instead of swallowing the press.
+                // instead of swallowing the press. The new tab follows the
+                // focus the way Ctrl+Shift+T does: another window on the
+                // session when the current tab is remote, a local shell else.
                 enabled: terminalChannels.firstFreeChannel > 0
-                onClicked: terminalChannels.openFirstFree()
+                onClicked: terminalChannels.newChannel()
             }
         }
     }
