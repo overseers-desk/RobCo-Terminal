@@ -34,10 +34,12 @@ QtObject {
     readonly property int rightPadding: 14
     // Window outer bezels nearly touch on the mock: 43px of bezel, 2px of air.
     readonly property int rowSpacing: 2
-    readonly property int columnGap: 24
-    // Just the struck digits' own width: the column starts a sliver off the
-    // plate edge and holds no blank lane of its own.
-    readonly property int numeralWidth: 38
+    readonly property int columnGap: 16
+    // The digits sit right-aligned in this column, so its width is what holds
+    // them off the plate's left edge: a printer leaves a margin there rather
+    // than running the ink to the cut. What the column takes, the gap gives
+    // back, so the windows stand where they did.
+    readonly property int numeralWidth: 46
     // The strip fills the punched hole (35px) inside a 43px window: the mock's
     // outer bezel height, held by minRowHeight so the pitch lands at 45
     // regardless of padding sums. The bezel takes 4px above and below, which
