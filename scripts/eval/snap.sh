@@ -76,7 +76,7 @@ if [ -n "$UNITS" ]; then
     case "$PROFILE" in
         "RobCo Amber") FIXED=103 ;;   # 3+38+24+14 + 24
         "RobCo Blue")  FIXED=152 ;;   # 76+36+8+8 + 24
-        *)             FIXED=78 ;;    # moulded-plastic, glow: 10+34+10+0 + 24
+        *) echo "profile has no channel bank; UNITS is meaningless" >&2; exit 1 ;;
     esac
     START=$((FIXED + 12 * 12 + 2))
     TARGET=$((FIXED + 12 * UNITS + 2))

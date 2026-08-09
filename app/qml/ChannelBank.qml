@@ -41,21 +41,23 @@ Item {
 
     // The shell's rule for the column's fixed measures, the display's for the
     // strips'. Synchronous loads: the bank's very first layout divides by
-    // these, so they cannot arrive a frame late. The fallbacks are the
-    // moulded-plastic numbers for the shell metrics and safe zeros for the
-    // display metrics, for the beat before the items exist.
+    // these, so they cannot arrive a frame late. A shell declares all of its
+    // measures; the fallbacks are safe zeros for the beat before the items
+    // exist, the same convention the display metrics keep.
     Loader {
         id: shellMetrics
         source: appSettings.shellUrl("Metrics")
+        onLoaded: bank.settle()
     }
     Loader {
         id: displayMetrics
         source: appSettings.displayUrl("Metrics")
+        onLoaded: bank.settle()
     }
 
-    readonly property int bankPadding: shellMetrics.item?.bankPadding ?? 10
+    readonly property int bankPadding: shellMetrics.item?.bankPadding ?? 0
     // A shell whose furniture is heavier at one edge than another may split
-    // the padding; one that says nothing gets the even air it always had.
+    // the padding; one that says nothing gets the even air instead.
     readonly property int topPadding: shellMetrics.item?.topPadding ?? bankPadding
     readonly property int bottomPadding: shellMetrics.item?.bottomPadding ?? bankPadding
     // Plate standing between the strips' right edge and the frame's moulding;
@@ -63,11 +65,11 @@ Item {
     readonly property int rightPadding: shellMetrics.item?.rightPadding ?? 0
     // Real, not int: a shell whose mock's row pitch is fractional carries the
     // fraction here, or fourteen rows drift three pixels by the bank's foot.
-    readonly property real rowSpacing: shellMetrics.item?.rowSpacing ?? 6
-    readonly property int columnGap: shellMetrics.item?.columnGap ?? 10
-    readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 34
-    readonly property int stripPadding: shellMetrics.item?.stripPadding ?? 13
-    readonly property int minRowHeight: shellMetrics.item?.minRowHeight ?? 26
+    readonly property real rowSpacing: shellMetrics.item?.rowSpacing ?? 0
+    readonly property int columnGap: shellMetrics.item?.columnGap ?? 0
+    readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 0
+    readonly property int stripPadding: shellMetrics.item?.stripPadding ?? 0
+    readonly property int minRowHeight: shellMetrics.item?.minRowHeight ?? 0
     // Unlit lamp rows above and below the glyphs, counted together: as many as
     // the shell's punched hole holds beyond the text, so the lamp field runs
     // to the window's lips. The hole is what the window's outer height leaves
@@ -90,7 +92,7 @@ Item {
     // gives the mechanical selector a lane of its own down the left edge; the
     // glow look has no selector and reserves nothing for one.
     readonly property bool pointerIndicator: appSettings.channelIndicator === "pointer"
-    readonly property int trackWidth: pointerIndicator ? (shellMetrics.item?.trackWidth ?? 14) : 0
+    readonly property int trackWidth: pointerIndicator ? (shellMetrics.item?.trackWidth ?? 0) : 0
     readonly property int trackGap: pointerIndicator ? columnGap : 0
 
     // The ground left to the rows once the selector has taken its lane. It
@@ -144,6 +146,10 @@ Item {
     // A reflow that leaves the row count where it was leaves the page there
     // too: a hand-picked page survives the window being nudged.
     function settle() {
+        // Zero metrics are the pre-load beat; a measurement against them
+        // would divide by nothing and explode the row count.
+        if (rowHeight <= 0)
+            return
         var rowsHeight = height - topPadding - bottomPadding - pager.height - rowSpacing
         var measured = Math.max(1, Math.floor((rowsHeight + rowSpacing) / (rowHeight + rowSpacing)))
         if (measured === rowsVisible)

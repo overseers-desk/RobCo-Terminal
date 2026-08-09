@@ -28,12 +28,6 @@
         <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>
         <file>PlainFrame.qml</file>
-        <file>shells/moulded-plastic/Chassis.qml</file>
-        <file>shells/moulded-plastic/RowFurniture.qml</file>
-        <file>shells/moulded-plastic/SelectorTrack.qml</file>
-        <file>shells/moulded-plastic/Pager.qml</file>
-        <file>shells/moulded-plastic/ChannelButton.qml</file>
-        <file>shells/moulded-plastic/Metrics.qml</file>
         <file>shells/common/ScrewHead.qml</file>
         <file>shells/robco-amber/Frame.qml</file>
         <file>shells/robco-amber/Chassis.qml</file>
@@ -145,8 +139,6 @@
         <file>../shaders/burn_in.frag.qsb</file>
         <file>../shaders/led_matrix.vert.qsb</file>
         <file>../shaders/led_matrix.frag.qsb</file>
-        <file>../shaders/chassis_plastic.vert.qsb</file>
-        <file>../shaders/chassis_plastic.frag.qsb</file>
         <file>fonts/unscii/unscii-8-thin.ttf</file>
         <file>fonts/unscii/unscii-16-full.ttf</file>
         <file>fonts/unscii/unscii-8.ttf</file>
