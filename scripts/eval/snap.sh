@@ -34,11 +34,21 @@ trap 'kill $APP_PID 2>/dev/null || true; wait $APP_PID 2>/dev/null || true; rm -
 mkdir -p "$SCRATCH/run"
 chmod 700 "$SCRATCH/run"
 
+mkdir -p "$SCRATCH/tmp"
+
+# TMPDIR with the rest: the single-instance socket is named under the system
+# temp directory, not under HOME, so a shot taken while the user has the
+# terminal open would otherwise reach their instance and ask it for a window
+# instead of raising one of its own. The platform is named too: a Wayland
+# session hands the child WAYLAND_DISPLAY, which the app prefers over the
+# Xvfb display this script just started.
 env HOME="$SCRATCH" \
     XDG_DATA_HOME="$SCRATCH/.local/share" \
     XDG_CONFIG_HOME="$SCRATCH/.config" \
     XDG_CACHE_HOME="$SCRATCH/.cache" \
     XDG_RUNTIME_DIR="$SCRATCH/run" \
+    TMPDIR="$SCRATCH/tmp" \
+    QT_QPA_PLATFORM=xcb \
     LIBGL_ALWAYS_SOFTWARE=1 \
     "$BIN" --default-settings --profile "$PROFILE" &
 APP_PID=$!
