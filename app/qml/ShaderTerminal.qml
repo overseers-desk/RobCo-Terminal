@@ -156,7 +156,7 @@ Item {
             Loader {
                 id: frameLoader
                 anchors.fill: parent
-                source: appSettings.shellUrl("Frame")
+                source: appSettings.frameUrl()
             }
         }
     }

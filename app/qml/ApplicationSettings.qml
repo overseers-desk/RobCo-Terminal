@@ -207,6 +207,12 @@ QtObject {
                 + "/" + part + ".qml"
     }
 
+    // A profile with no channel bank is not an appliance: it takes the plain
+    // moulded bezel, not a shell's casting.
+    function frameUrl() {
+        return channels ? shellUrl("Frame") : "PlainFrame.qml"
+    }
+
     signal initializedSettings
 
     function incrementScaling() {

@@ -27,7 +27,7 @@
         <file>ChannelBank.qml</file>
         <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>
-        <file>shells/moulded-plastic/Frame.qml</file>
+        <file>PlainFrame.qml</file>
         <file>shells/moulded-plastic/Chassis.qml</file>
         <file>shells/moulded-plastic/RowFurniture.qml</file>
         <file>shells/moulded-plastic/SelectorTrack.qml</file>

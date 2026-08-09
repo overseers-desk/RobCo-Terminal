@@ -19,8 +19,10 @@
 *******************************************************************************/
 import QtQuick 2.0
 
-import "../../utils.js" as Utils
+import "utils.js" as Utils
 
+// The frame a profile with no appliance wears: a moulded bezel around the
+// tube, coloured and polished by the profile's own frame settings.
 ShaderEffect {
     // The instantiation site used to set this; the frame is opaque plastic
     // either way, so it travels with the component now.
