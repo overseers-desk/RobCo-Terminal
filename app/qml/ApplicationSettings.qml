@@ -82,6 +82,10 @@ QtObject {
     property string _backgroundColor: "#000000"
     property string _fontColor: "#ff8100"
     property string _frameColor: "#ffffff"
+    // Whether the appliance carries the channel bank. A profile that says
+    // nothing is a plain terminal and takes the tab strip; the look keys
+    // below only matter when this is true.
+    property bool channels: false
     // How the bank marks the channel on screen: "glow" lights the window
     // itself, "pointer" runs a mechanical selector up the bank's left edge.
     // A profile written before the key existed gets "glow", the older look.
@@ -275,6 +279,7 @@ QtObject {
             "frameColor": _frameColor,
             "frameShininess": _frameShininess,
             "ledFontName": ledFontName,
+            "channels": channels,
             "channelIndicator": channelIndicator,
             "shell": shell,
             "channelDisplay": channelDisplay
@@ -391,9 +396,11 @@ QtObject {
 
         ledFontName = settings.ledFontName !== undefined ? settings.ledFontName : ledFontName
 
-        // The one key that falls back to a constant rather than to what is
-        // loaded: leaving the old profile's pointer standing in a profile that
-        // never asked for one would be the switch failing to switch.
+        // The keys that fall back to a constant rather than to what is
+        // loaded: leaving the old profile's bank or pointer standing in a
+        // profile that never asked for one would be the switch failing to
+        // switch.
+        channels = settings.channels !== undefined ? settings.channels : false
         channelIndicator = settings.channelIndicator !== undefined ? settings.channelIndicator : "glow"
         // Same convention, same reason: switching profiles has to switch the
         // look back, so a profile without the keys means the default look,
@@ -970,6 +977,7 @@ QtObject {
                 "frameColor": "#001735",
                 "frameShininess": 0.3,
                 "channelIndicator": "glow",
+                "channels": true,
                 "shell": "robco-amber"
             }'
             builtin: true
@@ -1016,6 +1024,7 @@ QtObject {
                 "frameColor": "#a77d37",
                 "frameShininess": 0.15,
                 "channelIndicator": "glow",
+                "channels": true,
                 "shell": "robco-blue"
             }'
             builtin: true
