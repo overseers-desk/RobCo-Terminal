@@ -42,10 +42,31 @@ MenuBar {
     Menu {
         id: viewMenu
         title: qsTr("View")
+
+        // Which row an action's item stands on, the end of the menu when
+        // none carries it.
+        function rowOf(what) {
+            for (var i = 0; i < count; i++)
+                if (itemAt(i) && itemAt(i).action === what)
+                    return i
+            return count
+        }
+
         Instantiator {
             model: !appSettings.isMacOS ? 1 : 0
             delegate: MenuItem { action: fullscreenAction }
             onObjectAdded: (index, object) => viewMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => viewMenu.removeItem(object)
+        }
+        // Built only for a profile that has a bank: a menu item hidden in
+        // place still holds its row, and a plain profile would carry the
+        // gap. The row is read off Zoom In rather than counted from the top:
+        // the two builders complete in no fixed order, and a fixed index
+        // lands the toggle between the zooms whenever this one goes first.
+        Instantiator {
+            model: appSettings.channels ? 1 : 0
+            delegate: MenuItem { action: channelBankAction }
+            onObjectAdded: (index, object) => viewMenu.insertItem(viewMenu.rowOf(zoomIn) + index, object)
             onObjectRemoved: (index, object) => viewMenu.removeItem(object)
         }
         MenuItem { action: zoomIn }

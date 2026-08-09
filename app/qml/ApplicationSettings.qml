@@ -69,6 +69,12 @@ QtObject {
     // profile's: switching look does not re-fit the bank.
     property int ledCharacters: 12
 
+    // Whether a channel profile raises its bank at all. Theirs and not a
+    // profile's, like the width above: a user who wants the whole window for
+    // the screen says so once, and every appliance obeys until told otherwise.
+    // The sessions are the store's and stand either way.
+    property bool channelBankShown: true
+
 
     // PROFILE SETTINGS ///////////////////////////////////////////////////////
     property real windowOpacity: 1.0
@@ -249,7 +255,8 @@ QtObject {
             "burnInQuality": burnInQuality,
             "useCustomCommand": useCustomCommand,
             "customCommand": customCommand,
-            "ledCharacters": ledCharacters
+            "ledCharacters": ledCharacters,
+            "channelBankShown": channelBankShown
         }
         return stringify(settings)
     }
@@ -355,6 +362,9 @@ QtObject {
 
         ledCharacters = settings.ledCharacters
                 !== undefined ? Math.max(minLedCharacters, settings.ledCharacters) : ledCharacters
+
+        channelBankShown = settings.channelBankShown
+                !== undefined ? settings.channelBankShown : channelBankShown
     }
 
     function loadProfileString(profileString) {

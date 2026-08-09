@@ -49,7 +49,12 @@ ApplicationWindow {
     // The least screen the well is ever given; the seam's travel stops here too.
     readonly property int crtMinimumWidth: 320
 
-    // The bank's footprint, zero for a profile without the channel function.
+    // Whether the bank stands: the profile has to carry the channel function
+    // and the user has to have left the column up. The one condition the
+    // bank, its chassis and their seam are all gated on.
+    readonly property bool bankStanding: appSettings.channels && appSettings.channelBankShown
+
+    // The bank's footprint, zero when no bank stands.
     readonly property int bankWidth: channelBankLoader.item ? channelBankLoader.item.implicitWidth : 0
 
     minimumWidth: bankWidth + crtMinimumWidth
@@ -80,6 +85,16 @@ ApplicationWindow {
         onTriggered: fullscreen = !fullscreen
         checkable: true
         checked: fullscreen
+    }
+    Action {
+        id: channelBankAction
+        text: qsTr("Channel Bank")
+        // Only an appliance has a bank to put away; the menus hide the item
+        // for every other profile.
+        enabled: appSettings.channels
+        onTriggered: appSettings.channelBankShown = !appSettings.channelBankShown
+        checkable: true
+        checked: appSettings.channelBankShown
     }
     Action {
         id: newWindowAction
@@ -174,7 +189,9 @@ ApplicationWindow {
     // The channel store has two faces, one standing at a time: a profile with
     // the channel function raises the bank in its chassis, any other gets the
     // tab strip. Loaders rather than hidden items: an unraised face loads no
-    // metrics, holds no width, and owns no shortcuts.
+    // metrics, holds no width, and owns no shortcuts. An appliance whose bank
+    // the user has put away shows neither face and gives the well the whole
+    // window: the strip belongs to the plain profiles, never a stand-in.
     Loader {
         id: tabStripLoader
 
@@ -193,7 +210,7 @@ ApplicationWindow {
     Loader {
         id: chassisLoader
 
-        active: appSettings.channels
+        active: terminalWindow.bankStanding
         anchors.fill: channelBankLoader
         source: appSettings.shellUrl("Chassis")
 
@@ -208,7 +225,7 @@ ApplicationWindow {
     Loader {
         id: channelBankLoader
 
-        active: appSettings.channels
+        active: terminalWindow.bankStanding
         anchors {
             left: parent.left
             top: parent.top
@@ -234,7 +251,7 @@ ApplicationWindow {
             bottom: parent.bottom
         }
         z: 2
-        visible: appSettings.channels
+        visible: terminalWindow.bankStanding
         enabled: visible
         cursorShape: Qt.SplitHCursor
         acceptedButtons: Qt.LeftButton

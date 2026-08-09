@@ -59,10 +59,21 @@ Menu {
         }
     }
     Menu {
+        id: viewMenu
         title: qsTr("View")
         MenuItem {
             action: fullscreenAction
             visible: fullscreenAction.enabled
+        }
+        // Built only for a profile that has a bank: a menu item hidden in
+        // place still holds its row, and a plain profile would carry the gap.
+        // Row 1, under the fullscreen item, which stands here in the file and
+        // is built before this one.
+        Instantiator {
+            model: appSettings.channels ? 1 : 0
+            delegate: MenuItem { action: channelBankAction }
+            onObjectAdded: (index, object) => viewMenu.insertItem(index + 1, object)
+            onObjectRemoved: (index, object) => viewMenu.removeItem(object)
         }
         MenuItem {
             action: zoomIn
