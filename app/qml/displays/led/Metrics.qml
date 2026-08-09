@@ -44,4 +44,13 @@ QtObject {
                           * (n + 2 * appSettings.ledSidePadCells)
                           * appSettings.ledDotPitch)
     }
+
+    // A fixture names the hole it punched in pixels and the display answers
+    // in lamp rows: the unlit band that fills the hole beyond the glyphs,
+    // never less than the settings' own floor.
+    function padCellsForHole(holeHeight) {
+        return Math.max(appSettings.ledPadCells,
+                        Math.round(holeHeight / appSettings.ledDotPitch)
+                            - appSettings.ledCellHeight)
+    }
 }

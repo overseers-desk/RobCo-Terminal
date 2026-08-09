@@ -76,9 +76,8 @@ Item {
     // inside the bezel; a shell whose windows hug their strips has no fixed
     // hole and takes the display's own band.
     readonly property int windowHoleHeight: minRowHeight - 2 * stripPadding
-    readonly property int padCellsY: Math.max(appSettings.ledPadCells,
-        Math.round(windowHoleHeight / appSettings.ledDotPitch)
-            - appSettings.ledCellHeight)
+    readonly property int padCellsY: displayMetrics.item
+        ? displayMetrics.item.padCellsForHole(windowHoleHeight) : 0
 
     readonly property int stripWidth: displayMetrics.item
         ? displayMetrics.item.widthForUnits(appSettings.ledCharacters) : 0
