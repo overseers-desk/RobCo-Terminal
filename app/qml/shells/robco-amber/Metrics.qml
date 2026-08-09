@@ -38,15 +38,16 @@ QtObject {
     // Just the struck digits' own width: the column starts a sliver off the
     // plate edge and holds no blank lane of its own.
     readonly property int numeralWidth: 38
-    // The strip (18px) sits in a 43px window: the mock's outer bezel height,
-    // held by minRowHeight so the pitch lands at 45 regardless of padding sums.
-    readonly property int stripPadding: 12
+    // The strip fills the punched hole (35px) inside a 43px window: the mock's
+    // outer bezel height, held by minRowHeight so the pitch lands at 45
+    // regardless of padding sums. The bezel takes 4px above and below, which
+    // is what the hole's own inset leaves.
+    readonly property int stripPadding: 4
     readonly property int minRowHeight: 43
-    // Dark panel above and below the strip inside the window's punched hole
-    // (the hole stands 35px in the 43px bezel, the strip 18): the mock keeps
-    // that glass unlit, so the lamps' throw is swallowed across it and lands
-    // on the machined lip.
-    readonly property int panelPadY: 8
+    // Lamp rows riding above and below the glyphs, counted together: enough to
+    // carry the field across the whole hole, so no dead glass stands between
+    // the outermost lamps and the machined lip.
+    readonly property int padCellsY: 15
     // Glow profile: no selector lane, but shellMetrics always exposes trackWidth.
     readonly property int trackWidth: 14
 

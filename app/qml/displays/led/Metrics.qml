@@ -25,9 +25,15 @@ QtObject {
     // One character's width on the panel, unrounded: the seam drag divides
     // by this to find the count nearest the hand.
     readonly property real unitWidth: appSettings.ledCellWidth * appSettings.ledDotPitch
-    readonly property int stripHeight: Math.round(
-        (appSettings.ledCellHeight + appSettings.ledPadCells) * appSettings.ledDotPitch)
     readonly property int minUnits: appSettings.minLedCharacters
+
+    // A strip's height for a given band of unlit rows above and below the
+    // glyphs. The fixture names the band, because it is the fixture's window
+    // the lamps have to reach the edges of.
+    function heightForPadCells(padCellsY) {
+        return Math.round(
+            (appSettings.ledCellHeight + padCellsY) * appSettings.ledDotPitch)
+    }
 
     // Rounded, not truncated: at a fractional dot pitch a floored strip would
     // leave the row half a pixel short of the window it has to hold. n counts

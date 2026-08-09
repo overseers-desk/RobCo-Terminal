@@ -68,13 +68,15 @@ Item {
     readonly property int numeralWidth: shellMetrics.item?.numeralWidth ?? 34
     readonly property int stripPadding: shellMetrics.item?.stripPadding ?? 13
     readonly property int minRowHeight: shellMetrics.item?.minRowHeight ?? 26
-    // Dark panel a shell's window keeps above and below the strip; a shell
-    // that says nothing has windows hugging their strips.
-    readonly property int panelPadY: shellMetrics.item?.panelPadY ?? 0
+    // Unlit lamp rows above and below the glyphs, counted together: how deep a
+    // window this shell punches. A shell that says nothing takes the display's
+    // own band, its windows moulded around the strip.
+    readonly property int padCellsY: shellMetrics.item?.padCellsY ?? appSettings.ledPadCells
 
     readonly property int stripWidth: displayMetrics.item
         ? displayMetrics.item.widthForUnits(appSettings.ledCharacters) : 0
-    readonly property int stripHeight: displayMetrics.item?.stripHeight ?? 0
+    readonly property int stripHeight: displayMetrics.item
+        ? displayMetrics.item.heightForPadCells(padCellsY) : 0
     // The fewest characters the display will hold; the seam drag's floor.
     readonly property int minUnits: displayMetrics.item?.minUnits ?? 1
     readonly property int rowHeight: Math.max(minRowHeight, stripHeight + 2 * stripPadding)
@@ -249,7 +251,7 @@ Item {
                 numeralWidth: bank.numeralWidth
                 columnGap: bank.columnGap
                 stripPadding: bank.stripPadding
-                panelPadY: bank.panelPadY
+                padCellsY: bank.padCellsY
                 open: slotTitle !== undefined
                 title: slotTitle !== undefined ? slotTitle : ""
                 current: bank.currentChannel === channel

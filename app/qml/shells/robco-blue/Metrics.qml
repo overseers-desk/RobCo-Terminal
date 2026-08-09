@@ -47,15 +47,15 @@ QtObject {
     readonly property int columnGap: 8
     // Just the stamped digits' own width; no blank lane rides with them.
     readonly property int numeralWidth: 36
-    // The strip (18px) sits centred in the window; minRowHeight pins the
-    // window's outer height to the mock's 43.
-    readonly property int stripPadding: 12
+    // The strip fills the recessed panel (39px) inside the window;
+    // minRowHeight pins the window's outer height to the mock's 43, and the
+    // 2px above and below are the panel's own inset into the ring.
+    readonly property int stripPadding: 2
     readonly property int minRowHeight: 43
-    // Dark panel above and below the strip inside the punched hole (the
-    // recessed panel stands 39px in the 43px window, the strip 18): that
-    // glass stays unlit on the mock, so the lamps' throw is swallowed
-    // across it and lands on the cut ring.
-    readonly property int panelPadY: 10
+    // Lamp rows riding above and below the glyphs, counted together: enough to
+    // carry the field across the whole recessed panel, so no dead glass stands
+    // between the outermost lamps and the cut ring.
+    readonly property int padCellsY: 18
     // The full-height carrier rail, x 29..69 on the mock. Its width stands
     // folded into bankPadding above (the glow profile reserves no lane);
     // shellMetrics always exposes trackWidth for a profile that asks.

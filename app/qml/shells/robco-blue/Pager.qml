@@ -290,6 +290,11 @@ Item {
                 }
                 Binding {
                     target: pageDisplay.item
+                    property: "padCellsY"
+                    value: 0
+                }
+                Binding {
+                    target: pageDisplay.item
                     property: "text"
                     value: pager.pageLabel
                 }
