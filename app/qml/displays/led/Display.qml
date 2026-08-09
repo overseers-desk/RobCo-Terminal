@@ -30,7 +30,8 @@ Item {
 
     property string text: ""
     property bool powered: true
-    // The channel on screen: its lamps run hotter and throw a wider halo.
+    // The channel on screen: its lamps run at full and throw a wider halo,
+    // where every other window sits at part power.
     property bool bright: false
     // The window's width in visible characters: the title gets this many
     // cells whole. The bank's strips follow the setting; a fixture with a
@@ -52,18 +53,19 @@ Item {
 
     // The LED window's colours, all struck from the profile's font colour: the
     // lamp driven to full, and that same hue sunk towards black for the unlit
-    // dots and for the panel they are set into. A dark slot sits darker still,
-    // and the current channel's lamps run a shade hotter. The law is this
-    // display's own; no other component reads it.
+    // dots and for the panel they are set into. A dark slot sits darker still.
+    // A window driven at full stands against one at part power, a shade under
+    // half current: the amber mock's own reading of its lit rows beside the row
+    // in use. The unlit dots and the panel take no notice: the
+    // glass is as dark behind a quiet window as behind a hot one. The law is
+    // this display's own; no other component reads it.
     function ledWindowColors(fontColor, powered, bright) {
         let peak = Math.max(fontColor.r, Math.max(fontColor.g, fontColor.b));
-        let lit = Utils.scaleColor(fontColor, peak > 0 ? 1.0 / peak : 1.0);
-        if (bright)
-            lit = Utils.mix(lit, Qt.rgba(1.0, 1.0, 1.0, 1.0), 0.08);
+        let full = Utils.scaleColor(fontColor, peak > 0 ? 1.0 / peak : 1.0);
         return {
-            lit: lit,
-            dim: Utils.scaleColor(lit, powered ? 0.20 : 0.13),
-            panel: Utils.scaleColor(lit, powered ? 0.09 : 0.045)
+            lit: bright ? full : Utils.scaleColor(full, 0.45),
+            dim: Utils.scaleColor(full, powered ? 0.20 : 0.13),
+            panel: Utils.scaleColor(full, powered ? 0.09 : 0.045)
         };
     }
 

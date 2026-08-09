@@ -88,16 +88,23 @@ Item {
     readonly property int rowHeight: Math.max(minRowHeight, stripHeight + 2 * stripPadding)
 
     // The profile decides how the channel on screen is marked. The pointer look
-    // gives the mechanical selector a lane of its own down the left edge; the
-    // glow look has no selector and reserves nothing for one.
+    // stands a mechanical selector down the left edge; the glow look drives the
+    // window of the channel on screen hotter than the rest.
     readonly property bool pointerIndicator: appSettings.channelIndicator === "pointer"
+    readonly property bool glowIndicator: !pointerIndicator
     readonly property int trackWidth: pointerIndicator ? (shellMetrics.item?.trackWidth ?? 0) : 0
-    readonly property int trackGap: pointerIndicator ? columnGap : 0
+    // A shell whose chassis carries the rail as fixed furniture has the lane
+    // inside its own padding already, and names where it runs; the bank cuts no
+    // second one out of the rows. A shell that draws its slot in the selector
+    // itself says nothing and gets the lane taken off the content ground.
+    readonly property bool laneInChassis: shellMetrics.item?.chassisCarriesTrack ?? false
+    readonly property int trackX: laneInChassis ? (shellMetrics.item?.trackX ?? 0) : bankPadding
+    readonly property int trackGap: (pointerIndicator && !laneInChassis) ? columnGap : 0
 
     // The ground left to the rows once the selector has taken its lane. It
     // runs to the bank's right edge: the frame's moulding is the strips'
     // right frame, so no padding of the bank's own stands before it.
-    readonly property int contentX: bankPadding + trackWidth + trackGap
+    readonly property int contentX: bankPadding + (laneInChassis ? 0 : trackWidth) + trackGap
     readonly property int contentWidth: width - contentX
 
     implicitWidth: contentX + numeralWidth + columnGap + stripWidth + rightPadding
@@ -247,7 +254,7 @@ Item {
         id: selector
 
         active: bank.pointerIndicator
-        x: bank.bankPadding
+        x: bank.trackX
         y: bank.bankPadding
         width: bank.trackWidth
         height: Math.max(0, bank.height - 2 * bank.bankPadding)
@@ -292,6 +299,7 @@ Item {
                 open: slotTitle !== undefined
                 title: slotTitle !== undefined ? slotTitle : ""
                 current: bank.currentChannel === channel
+                glowMarks: bank.glowIndicator
                 onActivated: bank.press(channel)
             }
         }

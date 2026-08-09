@@ -90,6 +90,8 @@ ColumnLayout {
     Loader {
         Layout.alignment: Qt.AlignHCenter
         source: appSettings.displayUrl("Display")
-        onLoaded: item.text = "channel preview"
+        // The window at full power: the setting is judged against a window in
+        // use, not one sitting by at part power.
+        onLoaded: { item.text = "channel preview"; item.bright = true }
     }
 }

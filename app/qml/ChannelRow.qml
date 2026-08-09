@@ -33,6 +33,11 @@ Item {
     property string title: ""
     property bool open: false
     property bool current: false
+    // Whether this panel marks the channel on screen by the window's own light,
+    // the others sitting at part power. Where a selector stands beside the rows
+    // instead, every open window is driven at full and the mark is the
+    // selector's to carry.
+    property bool glowMarks: true
     property color plastic: "#7a7168"
 
     // The bank owns the panel's layout; a row carries no opinion of its own.
@@ -123,7 +128,7 @@ Item {
         Binding {
             target: display.item
             property: "bright"
-            value: channelRow.current
+            value: channelRow.current || !channelRow.glowMarks
         }
         // How tall a lamp field the shell's window wants: the display fills
         // the hole it is given rather than sitting in the middle of it.

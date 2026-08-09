@@ -19,12 +19,11 @@
 *******************************************************************************/
 import QtQuick
 
-// The blue appliance's live carriage, kept for a profile that asks for the
-// pointer law: a bolted steel shoe with a specular ridge across its cap and
-// a hard shadow under its foot. The rail it once carried is the chassis's
-// own furniture now (the built-in profile marks the channel by glow), so
-// this item holds nothing but the shoe, centred in whatever lane the bank
-// reserves. It reads the panel and reports nothing back; there is no mouse
+// The blue appliance's live carriage: a bolted steel shoe with a specular
+// ridge across its cap and a hard shadow under its foot, parked beside the
+// channel on screen. The rail it rides is the chassis's own furniture, so
+// this item holds nothing but the shoe, centred in the lane the chassis cut
+// for it. It reads the panel and reports nothing back; there is no mouse
 // area.
 Item {
     id: track

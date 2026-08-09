@@ -30,9 +30,9 @@ import QtQuick
 QtObject {
     // The bank's left shoulder: 29px of chassis before the rail (the
     // bracket's ground), the rail's 41, and a sliver between rail and
-    // numerals. The profile marks the current channel by glow, so no live
-    // lane is reserved on top of this; the rail is the chassis's own
-    // furniture.
+    // numerals. The rail stands in this shoulder whatever the profile's
+    // indicator law, so the carriage rides it where it is and no second lane
+    // is cut out of the rows.
     readonly property int bankPadding: 76
     // Row 1's window top sits at the mock's y 64.
     readonly property int topPadding: 64
@@ -52,9 +52,10 @@ QtObject {
     // 2px above and below are the panel's own inset into the ring.
     readonly property int stripPadding: 2
     readonly property int minRowHeight: 43
-    // The full-height carrier rail, x 29..69 on the mock. Its width stands
-    // folded into bankPadding above (the glow profile reserves no lane);
-    // shellMetrics always exposes trackWidth for a profile that asks.
+    // The full-height carrier rail, x 29..69 on the mock, drawn by the chassis
+    // and standing inside bankPadding above. The carriage rides it there.
+    readonly property bool chassisCarriesTrack: true
+    readonly property int trackX: 29
     readonly property int trackWidth: 41
 
     // The chassis and frame are one casting poured from the metal shader

@@ -26,8 +26,9 @@ import "../common"
 // frame's chassis law continued under the bank and nothing more: heavy grain,
 // blotchy stains, wear streaks, the room's vignette pooling the corners dark.
 // The carrier rail and its hinge bracket stand on this metal as furniture:
-// the mock's channel is an uninterrupted groove with nothing riding it, so
-// the rail belongs to the chassis and survives the profile's indicator law.
+// the rail belongs to the chassis and survives the profile's indicator law,
+// while the shoe that rides it is the bank's, raised beside the channel on
+// screen.
 //
 // It occupies only the ground the bank stands on, never a sheet behind the
 // screen: a see-through profile has to look through the tube onto the desktop,
@@ -76,7 +77,7 @@ ShaderEffect {
     // sheet-metal hinge bracket bolted over its head with three slotted
     // screws. Measured off the mock: rail x 29..69, standing 29 off the
     // chassis top and foot, groove 46..55 in bank coordinates, bracket
-    // [18,48]-[116,120]. Bare furniture: nothing rides the slot.
+    // [18,48]-[116,120]. The slot is cut here; what rides it is the bank's.
     Metrics { id: metrics }
 
     Item {

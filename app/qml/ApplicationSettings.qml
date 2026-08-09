@@ -1010,10 +1010,11 @@ QtObject {
         // The blue appliance of the reference mock (Metalic-Blue.png,
         // 1448x1086): warm olive-grey gunmetal
         // (all the blue in that mock is emitted light, none of it paint),
-        // windows punched into the chassis, a bare carrier rail down the
-        // bank's left edge. The rail is chassis furniture and carries no
-        // live carriage: the mock's channel is an uninterrupted groove,
-        // and the window on screen marks itself by its own glow. frameSize
+        // windows punched into the chassis, a carrier rail down the bank's
+        // left edge. The mock draws that rail as a bare groove and lights its
+        // windows alike; the appliance puts the groove to work, driving the
+        // carriage down it to the channel on screen, so the panel marks by
+        // machinery where the amber one marks by light. frameSize
         // sits between the mock's shallow top inset and its deep bottom
         // trough; the screenRadius ceiling plus the strong curvature
         // approximates the barrel-curved glass mouth.
@@ -1048,7 +1049,7 @@ QtObject {
                 "frameSize": 0.7,
                 "frameColor": "#a77d37",
                 "frameShininess": 0.15,
-                "channelIndicator": "glow",
+                "channelIndicator": "pointer",
                 "channels": true,
                 "shell": "robco-blue"
             }'
