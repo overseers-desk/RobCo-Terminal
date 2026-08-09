@@ -1,8 +1,12 @@
 #include "fontmanager.h"
 
+#include <QBuffer>
 #include <QFont>
 #include <QFontDatabase>
+#include <QFontMetrics>
 #include <QFontMetricsF>
+#include <QImage>
+#include <QPainter>
 #include <QtGlobal>
 #include <QtMath>
 
@@ -90,6 +94,39 @@ QVariantMap FontManager::fontByName(const QString &name) const
     map.insert("family", font->family);
     map.insert("fallbackName", font->fallbackName);
     return map;
+}
+
+QString FontManager::ledTextImage(const QString &family,
+                                  int pixelSize,
+                                  const QString &text) const
+{
+    if (text.isEmpty()) {
+        return QString();
+    }
+
+    QFont font(family);
+    font.setPixelSize(pixelSize);
+    font.setStyleStrategy(
+        QFont::StyleStrategy(QFont::NoAntialias | QFont::NoSubpixelAntialias));
+
+    const QFontMetrics metrics(font);
+    const int width = qMax(1, metrics.horizontalAdvance(text));
+    const int height = qMax(1, metrics.height());
+
+    QImage image(width, height, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setFont(font);
+    painter.setPen(Qt::white);
+    painter.drawText(0, metrics.ascent(), text);
+    painter.end();
+
+    QByteArray png;
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer, "PNG");
+    return QStringLiteral("data:image/png;base64,")
+        + QString::fromLatin1(png.toBase64());
 }
 
 int FontManager::fontSource() const

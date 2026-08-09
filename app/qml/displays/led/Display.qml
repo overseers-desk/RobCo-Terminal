@@ -95,25 +95,32 @@ Item {
         NumberAnimation { duration: 150; easing.type: Easing.InOutQuad }
     }
 
-    Text {
+    // The glyph raster the lamps read: the title drawn on the CPU at one
+    // image pixel per font pixel with antialiasing off, so the grid gets the
+    // font's own on/off bitmap on every screen scale. A Text item instead
+    // would rasterise at device resolution and hand scaled screens grey
+    // edges, lighting lamps the font never inked.
+    Item {
         id: ledText
 
-        renderType: Text.NativeRendering
-        // Drawn low by half the pad, in glyph pixels, so the grid the strip
-        // reads has an unlit row or two above the text as well as below.
-        topPadding: ledStrip.topPadCells
-        // And drawn in by the pad cells, so the first letter's lamps stand
-        // clear of the window's left lip.
-        leftPadding: ledStrip.padCellsLeft * appSettings.ledCellWidth
-        font.family: appSettings.ledFontFamily
-        font.pixelSize: appSettings.ledFontPixelSize
-        color: "white"
-        maximumLineCount: 1
-        // Truncated from the head: a title too long for the window is a path,
-        // and its tail is the part that names the session.
-        text: ledStrip.powered
-              ? ledStrip.text.slice(-ledStrip.characters)
-              : ""
+        width: ledStrip.gridW
+        height: ledStrip.gridH
+
+        Image {
+            // In by the pad cells and down by half the pad, in grid cells,
+            // so unlit lamps frame the text on all sides.
+            x: ledStrip.padCellsLeft * appSettings.ledCellWidth
+            y: ledStrip.topPadCells
+            smooth: false
+            // Truncated from the head: a title too long for the window is a
+            // path, and its tail is the part that names the session.
+            source: ledStrip.powered && ledStrip.text.length > 0
+                    ? appSettings.fontManager.ledTextImage(
+                          appSettings.ledFontFamily,
+                          appSettings.ledFontPixelSize,
+                          ledStrip.text.slice(-ledStrip.characters))
+                    : ""
+        }
     }
 
     ShaderEffectSource {

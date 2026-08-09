@@ -34,6 +34,15 @@ public:
 
     Q_INVOKABLE QVariantMap fontByName(const QString &name) const;
 
+    // The LED strip's glyph raster: the text drawn one image pixel per font
+    // pixel with antialiasing off, delivered as a data URL. Rendered on the
+    // CPU so the lamp grid reads the font's own bitmap whatever the screen's
+    // scale factor; a Text item rasterises at device resolution and hands the
+    // strip grey-edged glyphs on scaled screens.
+    Q_INVOKABLE QString ledTextImage(const QString &family,
+                                     int pixelSize,
+                                     const QString &text) const;
+
     int fontSource() const;
     void setFontSource(int fontSource);
 
