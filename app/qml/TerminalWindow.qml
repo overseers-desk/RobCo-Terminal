@@ -135,13 +135,13 @@ ApplicationWindow {
     }
     Action {
         id: newChannelAction
-        text: qsTr("New Channel")
+        text: appSettings.channels ? qsTr("New Channel") : qsTr("New Tab")
         shortcut: appSettings.isMacOS ? "Meta+T" : "Ctrl+Shift+T"
         onTriggered: terminalChannels.openFirstFree()
     }
     Action {
         id: closeChannelAction
-        text: qsTr("Close Channel")
+        text: appSettings.channels ? qsTr("Close Channel") : qsTr("Close Tab")
         shortcut: appSettings.isMacOS ? "Meta+W" : "Ctrl+Shift+W"
         onTriggered: terminalChannels.closeChannel(terminalChannels.currentChannel)
     }
