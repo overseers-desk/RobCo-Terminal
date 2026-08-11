@@ -39,6 +39,10 @@ ShaderEffect {
     // The item the frame shader fills; this metal continues its field.
     property Item frameRegion
 
+    // What the tape label reads. Empty is bare plastic: the window pushes the
+    // attached session's host in here and takes it back out on detach.
+    property string tapeText: ""
+
     // The frame's own measurements, in the units its shader works in: this
     // metal is placed in that field, not in one of its own.
     property size viewportSize: Qt.size(_fieldWidth, _fieldHeight)
@@ -329,6 +333,6 @@ ShaderEffect {
         height: metrics.tapeHeight
         rotation: metrics.tapeRotation
         lightDir: metrics.castingLightDir
-        text: "YOGA"
+        text: chassis.tapeText
     }
 }
