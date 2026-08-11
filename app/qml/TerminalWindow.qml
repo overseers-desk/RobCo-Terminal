@@ -197,7 +197,7 @@ ApplicationWindow {
     Item {
         id: crtRegion
         anchors {
-            left: channelBankLoader.right
+            left: bankColumn.right
             right: parent.right
             top: tabStripLoader.bottom
             bottom: parent.bottom
@@ -218,42 +218,57 @@ ApplicationWindow {
 
         active: !appSettings.channels
         anchors {
-            left: channelBankLoader.right
+            left: bankColumn.right
             right: parent.right
             top: parent.top
         }
         height: item ? item.implicitHeight : 0
         source: "TerminalTabStrip.qml"
     }
-    // The bank's plastic, continuing the frame's moulding leftwards. Nothing
-    // stands between the frame and the window on the other three sides: the
-    // frame is the outermost thing there, as it is upstream.
-    Loader {
-        id: chassisLoader
+    // The appliance's left column, chassis and bank together, held in one
+    // cached texture. The tube's effects ask the window to repaint some
+    // twenty times a second and a repaint redraws every batch standing in it,
+    // this column's included, though nothing here has moved: the casting is a
+    // still casting and a lamp only changes when a channel does. Cached, a
+    // repaint composites one quad instead of running the metal shader over
+    // the column and a lamp pass over every row. The column pays again only
+    // when something in it changes.
+    Item {
+        id: bankColumn
 
-        active: terminalWindow.bankStanding
-        anchors.fill: channelBankLoader
-        source: appSettings.shellUrl("Chassis")
-
-        // The chassis lives in a file of its own, where this window's ids do
-        // not reach; the frame's region is handed over explicitly.
-        Binding {
-            target: chassisLoader.item
-            property: "frameRegion"
-            value: crtRegion
-        }
-    }
-    Loader {
-        id: channelBankLoader
-
-        active: terminalWindow.bankStanding
         anchors {
             left: parent.left
             top: parent.top
             bottom: parent.bottom
         }
         width: terminalWindow.bankWidth
-        source: "ChannelBank.qml"
+        layer.enabled: terminalWindow.bankStanding
+
+        // The bank's plastic, continuing the frame's moulding leftwards.
+        // Nothing stands between the frame and the window on the other three
+        // sides: the frame is the outermost thing there, as it is upstream.
+        Loader {
+            id: chassisLoader
+
+            active: terminalWindow.bankStanding
+            anchors.fill: parent
+            source: appSettings.shellUrl("Chassis")
+
+            // The chassis lives in a file of its own, where this window's ids
+            // do not reach; the frame's region is handed over explicitly.
+            Binding {
+                target: chassisLoader.item
+                property: "frameRegion"
+                value: crtRegion
+            }
+        }
+        Loader {
+            id: channelBankLoader
+
+            active: terminalWindow.bankStanding
+            anchors.fill: parent
+            source: "ChannelBank.qml"
+        }
     }
     // The seam where the bank's plastic meets the screen well. Nothing is
     // drawn: the cursor's change of shape is the only tell. A drag re-fits
