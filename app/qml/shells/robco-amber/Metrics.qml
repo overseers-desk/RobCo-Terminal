@@ -48,6 +48,12 @@ QtObject {
     readonly property int minRowHeight: 43
     // Glow profile: no selector lane, but shellMetrics always exposes trackWidth.
     readonly property int trackWidth: 14
+    // The session tape rides the plate's headroom between the two top screws
+    // (centres y 29-30, heads 28 tall): the strip matches the heads' band and
+    // leans the hair a hand-stuck label always leans.
+    readonly property int tapeY: 16
+    readonly property int tapeHeight: 28
+    readonly property real tapeRotation: -1.5
 
     // The chassis and frame are one casting poured from the metal shader
     // pair; both read this same light and metal color rather than keeping

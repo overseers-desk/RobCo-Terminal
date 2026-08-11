@@ -102,6 +102,18 @@ ShaderEffect {
     // bottom edge at (32,·) (315,·); the lower pair rides the plate's foot.
     // The right-hand pair keeps its distance from the plate's right edge
     // (26px centre inset on the mock), so a narrower window keeps its screws.
+    // The session's tape label, stuck on the plate between the two top
+    // screws: a real tape overlaps what it is stuck over, so it draws with
+    // the furniture and above the plate.
+    TapeLabel {
+        x: 8 + (parent.width - 8 - width) / 2
+        y: metrics.tapeY
+        height: metrics.tapeHeight
+        rotation: metrics.tapeRotation
+        lightDir: metrics.castingLightDir
+        text: "YOGA"
+    }
+
     ScrewHead { x: 32 - 14; y: 30 - 14; slotAngle: 24 }
     ScrewHead { anchors.right: parent.right; anchors.rightMargin: 12; y: 29 - 14; slotAngle: -49 }
     ScrewHead { x: 32 - 14; anchors.bottom: parent.bottom; anchors.bottomMargin: 25; slotAngle: 78 }
