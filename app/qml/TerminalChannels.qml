@@ -65,7 +65,16 @@ Item {
     // its titles carry and the slot the gateway gets back on detach.
     property var tmuxGateway: null
     property string tmuxHost: ""
+    property bool tmuxHostIsLocal: false
     property int gatewayChannel: 0
+
+    // A remote channel wears its host so it reads apart from a local tab and
+    // from a second host's tabs. On this machine there is no such host to name,
+    // and the bare "@yoga" is noise, so the suffix is dropped when the session
+    // is local.
+    function _remoteTitle(name) {
+        return tmuxHostIsLocal ? name : name + "@" + tmuxHost
+    }
 
     // The set only flinches once it is on: bringing up the first channel is
     // not a channel change.
@@ -135,7 +144,7 @@ Item {
         var asked = _followNextRemote
         _followNextRemote = false
         _insertRow({ channel: channel,
-                     title: normalizeTitle(name + "@" + tmuxHost),
+                     title: normalizeTitle(_remoteTitle(name)),
                      kind: "remote", windowId: windowId, paneId: paneId,
                      buried: false })
         var currentRow = _rowOf(currentChannel)
@@ -224,6 +233,7 @@ Item {
         }
         tmuxGateway = null
         tmuxHost = ""
+        tmuxHostIsLocal = false
         gatewayChannel = 0
         // Whatever was on the air went with the windows, so the dying row is
         // made current and _removeRow hands the air to its nearest neighbour.
@@ -420,6 +430,7 @@ Item {
 
         function onHostChanged() {
             channelsRoot.tmuxHost = channelsRoot.tmuxGateway.host
+            channelsRoot.tmuxHostIsLocal = channelsRoot.tmuxGateway.hostIsLocal
         }
         function onWindowAdded(windowId, paneId, name) {
             channelsRoot.openRemoteChannel(windowId, paneId, name)
@@ -427,7 +438,7 @@ Item {
         function onWindowRenamed(windowId, name) {
             var channel = channelsRoot._channelOfWindow(windowId)
             if (channel > 0)
-                channelsRoot.setTitle(channel, name + "@" + channelsRoot.tmuxHost)
+                channelsRoot.setTitle(channel, channelsRoot._remoteTitle(name))
         }
         function onWindowClosed(windowId) {
             var channel = channelsRoot._channelOfWindow(windowId)
@@ -468,6 +479,7 @@ Item {
         }
         tmuxGateway = null
         tmuxHost = ""
+        tmuxHostIsLocal = false
         gatewayChannel = 0
         if (home > 0 && _rowOf(home) >= 0)
             currentChannel = home
