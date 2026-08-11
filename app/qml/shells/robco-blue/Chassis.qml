@@ -318,4 +318,17 @@ ShaderEffect {
             }
         }
     }
+
+    // The session's tape label, stuck on the chassis headroom over the
+    // windows, clear of the hinge bracket at the rail's head. It is
+    // declared after the rail: a real tape overlaps what it is stuck over.
+    TapeLabel {
+        x: metrics.bankPadding
+           + (parent.width - metrics.bankPadding - metrics.rightPadding - width) / 2
+        y: metrics.tapeY
+        height: metrics.tapeHeight
+        rotation: metrics.tapeRotation
+        lightDir: metrics.castingLightDir
+        text: "YOGA"
+    }
 }

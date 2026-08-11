@@ -57,6 +57,13 @@ QtObject {
     readonly property bool chassisCarriesTrack: true
     readonly property int trackX: 29
     readonly property int trackWidth: 41
+    // The session tape rides the headroom over the windows, clear of the
+    // hinge bracket that owns the rail's head (bank x up to 78), leaning
+    // the other way from the amber shell's: two labels struck by the same
+    // hand never lean alike.
+    readonly property int tapeY: 18
+    readonly property int tapeHeight: 28
+    readonly property real tapeRotation: 1
 
     // The chassis and frame are one casting poured from the metal shader
     // pair; both read this same light and metal color rather than keeping
