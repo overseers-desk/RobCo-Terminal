@@ -175,8 +175,12 @@ xdotool key --clearmodifiers alt+3; sleep 1; retitle 3; wait_wm '^slot3 ' "slot 
 echo "-- 1: attach on channel 2 of 3: transport, title, no blank frame --"
 xdotool key --clearmodifiers alt+2; sleep 1
 type_line "tmux -S $SOCK1 -CC attach -t one"
-wait_wm "$ANCHOR_RE" "anchor on the air, titled for the machine"
+# The attach greets: its first window takes the air, a live prompt over a
+# bare window name, while the anchor stands by at slot 1.
+wait_wm '^bash$' "the attach's first window greets with the air"
 [ "$(clients "$SOCK1")" -eq 1 ] && ok "control client attached" || bad "no client on sock1"
+xdotool key --clearmodifiers alt+1
+wait_wm "$ANCHOR_RE" "the anchor stands at slot 1, titled for the machine"
 sleep 1
 shot flow1-attach.png
 # The glass must hold the frozen pre-attach screen: a blanked frame would
@@ -189,7 +193,7 @@ echo "-- 1b: the home slot is held dark and refuses --"
 xdotool key --clearmodifiers alt+Prior; sleep 1
 shot flow1-home-held.png
 xdotool key --clearmodifiers alt+2
-still_wm "$ANCHOR_RE" "chord on the held slot refused, air stays on the anchor"
+still_wm "$ANCHOR_RE" "chord on the held slot refused, air stays where it was"
 
 echo "-- 2a: Ctrl+Shift+T on home skips the held slot --"
 xdotool key --clearmodifiers ctrl+shift+t
@@ -238,7 +242,9 @@ shot flow3-relit.png
 echo "-- 4a: the anchor's input law, and Enter as its one live key --"
 tmux -S "$SOCK1" new-session -d -s one
 type_line "tmux -S $SOCK1 -CC attach -t one"
-wait_wm "$ANCHOR_RE" "re-attached"
+wait_wm '^bash$' "re-attached, the first window greeting"
+xdotool key --clearmodifiers alt+1
+wait_wm "$ANCHOR_RE" "chorded onto the anchor"
 sleep 2; shot flow4-anchor-still.png
 sleep 2; shot flow4-anchor-still2.png
 FLOOR=$(glass_rmse flow4-anchor-still.png flow4-anchor-still2.png)
@@ -288,7 +294,7 @@ wait_wm '^slot2 ' "landed home, relit, repainted"
 
 echo "-- 4e: detach by detach-client on the server --"
 type_line "tmux -S $SOCK1 -CC attach -t one"
-wait_wm "$ANCHOR_RE" "re-attached"
+wait_wm '^bash$' "re-attached, the first window greeting"
 tmux -S "$SOCK1" list-clients -F '#{client_name}' \
     | while read -r c; do tmux -S "$SOCK1" detach-client -t "$c"; done
 for _ in $(seq 20); do [ "$(clients "$SOCK1")" -eq 0 ] && break; sleep 0.5; done
@@ -297,7 +303,7 @@ wait_wm '^slot2 ' "landed home, relit, repainted"
 
 echo "-- 5: gateway death --"
 type_line "tmux -S $SOCK1 -CC attach -t one"
-wait_wm "$ANCHOR_RE" "re-attached"
+wait_wm '^bash$' "re-attached, the first window greeting"
 CPID=$(tmux -S "$SOCK1" list-clients -F '#{client_pid}' | head -1)
 kill -9 "$CPID"
 wait_wm '^slot2 ' "collapse on gateway death, landed home"
@@ -318,12 +324,12 @@ wait_wm '^home ' "channel 1 up"
 xdotool key --clearmodifiers ctrl+shift+t; sleep 1
 xdotool key --clearmodifiers alt+1; sleep 1; retitle 1; wait_wm '^slot1 ' "slot 1 retitled"
 type_line "tmux -S $SOCK1 -CC attach -t one"
-wait_wm "$ANCHOR_RE" "page A raised"
+wait_wm '^bash$' "page A raised, its first window greeting"
 xdotool key --clearmodifiers alt+Prior; sleep 1
 xdotool key --clearmodifiers alt+2
 wait_wm '^home ' "home channel 2 selected from the viewed page"
 type_line "tmux -S $SOCK2 -CC attach -t two"
-wait_wm "$ANCHOR_RE" "page B raised"
+wait_wm '^bash$' "page B raised, its first window greeting"
 [ "$(clients "$SOCK1")" -eq 1 ] && [ "$(clients "$SOCK2")" -eq 1 ] \
     && ok "both sockets hold a client" || bad "a client is missing"
 sleep 1

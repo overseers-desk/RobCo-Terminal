@@ -274,15 +274,20 @@ Item {
         var asked = pagesModel.get(pageRow).follow
         if (asked)
             pagesModel.setProperty(pageRow, "follow", false)
+        // An attach's first window also takes the air: the user who typed
+        // tmux -CC is greeted by a live prompt, the anchor standing by at
+        // slot 1, not by the anchor's own frozen glass.
+        var greets = currentPage === page && currentChannel === 1
+                && channel === 2
         _insertRow({ page: page, channel: channel,
                      title: normalizeTitle(name),
                      kind: "remote", windowId: windowId, paneId: paneId })
-        if (asked) {
+        if (asked || greets) {
             currentPage = page
             currentChannel = channel
         }
         _rebuildState()
-        if (asked)
+        if (asked || greets)
             activateCurrent()
     }
 
