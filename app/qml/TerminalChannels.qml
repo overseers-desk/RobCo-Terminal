@@ -460,6 +460,11 @@ Item {
     // reason for existing. On home a held slot refuses the way it refuses
     // everything: there is a channel abroad that owns it.
     function moveCurrentTo(page, channel) {
+        // The bank can be viewing one machine's page while another holds the
+        // air, and a store chord lands on the page on view: that is a store
+        // asked for on a page the session is not on, and there is no slot on
+        // it that the session could take without leaving its own machine.
+        // Nothing happens, which is the whole of the answer.
         if (page !== currentPage)
             return
         if (channel < 1 || channel > channelCap || channel === currentChannel)
@@ -632,10 +637,18 @@ Item {
     }
 
     // One client, one geometry: the grid of whichever channel is on the air,
-    // told to every attachment. QMLTermWidget's terminalSize is QSize(lines,
-    // columns), so the width of that size is the number of rows and its
-    // height the number of columns; tmux is told columns first, the way it
-    // says them back.
+    // told to every attachment and not only to the page holding it. There is
+    // one rectangle of glass in the appliance and every channel is laid into
+    // it, so an attachment's idea of its client is never its own; a gateway
+    // told only while its page held the air would keep whatever size it was
+    // last given across a window drag done on another page, and tmux sizes a
+    // session to the clients attached to it, so the stale number would not
+    // stay private but would be drawn into that session's windows on the
+    // user's return. A resize is rare and a machine is one line of protocol,
+    // so the broadcast is the cheap end of the bargain.
+    // QMLTermWidget's terminalSize is QSize(lines, columns), so the width of
+    // that size is the number of rows and its height the number of columns;
+    // tmux is told columns first, the way it says them back.
     function _publishClientSize() {
         if (terminalSize.width <= 0 || terminalSize.height <= 0)
             return

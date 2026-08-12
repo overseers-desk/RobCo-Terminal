@@ -172,9 +172,15 @@ Item {
     onCurrentChannelChanged: ensureVisible()
     onCurrentPageChanged: ensureVisible()
     onPageCountChanged: pageIndex = Math.min(pageIndex, pageCount - 1)
-    // A page flip re-labels the numerals, so digits typed against the old
-    // page are abandoned, never committed against the new one.
-    onPageIndexChanged: chordInput.cancel()
+    // Whatever re-labels the numerals abandons the digits typed against the
+    // old labels: they are never committed against the new ones. A flip of
+    // the pager is the ordinary way that happens, but not the only one. A
+    // page collapsing under a detach shortens the flattened space, and the
+    // same index then falls in another machine's stretch of it, crossing a
+    // band with no key pressed at all; what the chord watches is therefore
+    // the stretch on view rather than the index that picked it.
+    onViewedPageChanged: chordInput.cancel()
+    onPageBaseChanged: chordInput.cancel()
 
     Component.onCompleted: settle()
 
