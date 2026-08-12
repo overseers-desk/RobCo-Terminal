@@ -27,10 +27,18 @@ import QtQuick.Dialogs
 ApplicationWindow {
     readonly property real tabButtonPadding: 10
 
+    // One accent governs the whole window: the ground under the row on air,
+    // the Modified badge and the link across to the Effects tab all take
+    // their colour from here, and near-black text sits on that ground. The
+    // pages hold it as a property the window fills in, so the colour is
+    // written once.
+    readonly property color accentColor: "#e0532c"
+    readonly property color accentTextColor: "#141414"
+
     id: settings_window
     title: qsTr("Settings")
     width: 640
-    height: 520
+    height: 560
 
     Item {
         anchors { fill: parent; }
@@ -47,6 +55,7 @@ ApplicationWindow {
                 text: qsTr("Terminal")
             }
             TabButton {
+                id: effectsTabButton
                 padding: tabButtonPadding
                 text: qsTr("Effects")
             }
@@ -58,6 +67,10 @@ ApplicationWindow {
                 padding: tabButtonPadding
                 text: qsTr("Channels")
             }
+            TabButton {
+                padding: tabButtonPadding
+                text: qsTr("Profiles")
+            }
         }
 
         StackLayout {
@@ -65,17 +78,109 @@ ApplicationWindow {
                 top: bar.bottom
                 left: parent.left
                 right: parent.right
-                bottom: parent.bottom
+                bottom: statusBar.top
                 margins: 16
             }
 
             currentIndex: bar.currentIndex
 
-            SettingsGeneralTab { }
+            SettingsGeneralTab {
+                accentColor: settings_window.accentColor
+                accentTextColor: settings_window.accentTextColor
+                // The page names the tab it sends the user to; the bar reads
+                // the button's own place in it.
+                effectsTabIndex: effectsTabButton.TabBar.index
+                onRequestTab: (index) => bar.currentIndex = index
+            }
             SettingsTerminalTab { }
             SettingsEffectsTab { }
             SettingsAdvancedTab { }
             SettingsChannelsTab { }
+            SettingsProfilesTab {
+                accentColor: settings_window.accentColor
+                accentTextColor: settings_window.accentTextColor
+                onRequestSaveCurrent: statusBar.beginNaming()
+            }
+        }
+
+        // The look on air, and the way to keep it. The bar stands outside the
+        // tab stack, so whichever page is open the user reads what is running
+        // and can name it as a profile from there.
+        Rectangle {
+            id: statusBar
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; }
+            height: statusRow.implicitHeight + 16
+            color: Qt.darker(palette.window, 1.1)
+
+            // While a name is being taken the field holds the bar's right-hand
+            // corner; the button returns once the profile is kept.
+            property bool naming: false
+
+            function beginNaming() {
+                naming = true
+                nameField.text = ""
+                nameField.forceActiveFocus()
+            }
+
+            function commitName() {
+                var name = nameField.text.trim()
+                appSettings.saveCurrentAsProfile(name !== "" ? name : qsTr("My profile"))
+                naming = false
+            }
+
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; top: parent.top; }
+                height: 1
+                color: Qt.rgba(palette.text.r, palette.text.g, palette.text.b, 0.2)
+            }
+
+            RowLayout {
+                id: statusRow
+                anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                spacing: 8
+
+                Label {
+                    Layout.maximumWidth: statusBar.width * 0.5
+                    text: appSettings.screenName + " · " + appSettings.chassisName
+                    elide: Text.ElideRight
+                }
+                Rectangle {
+                    visible: appSettings.modified
+                    implicitWidth: modifiedLabel.implicitWidth + 10
+                    implicitHeight: modifiedLabel.implicitHeight + 4
+                    radius: 3
+                    color: Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.18)
+                    border.width: 1
+                    border.color: Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.6)
+                    Label {
+                        id: modifiedLabel
+                        anchors.centerIn: parent
+                        text: qsTr("Modified")
+                        color: accentColor
+                        font.pointSize: Qt.application.font.pointSize * 0.85
+                    }
+                }
+                Item {
+                    Layout.fillWidth: true
+                }
+                Button {
+                    visible: !statusBar.naming
+                    text: qsTr("Save as profile…")
+                    onClicked: statusBar.beginNaming()
+                }
+                TextField {
+                    id: nameField
+                    visible: statusBar.naming
+                    implicitWidth: 160
+                    placeholderText: qsTr("Profile name")
+                    onAccepted: statusBar.commitName()
+                }
+                Button {
+                    visible: statusBar.naming
+                    text: qsTr("Save")
+                    onClicked: statusBar.commitName()
+                }
+            }
         }
     }
 }

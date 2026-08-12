@@ -12,11 +12,11 @@
         <file>SimpleSlider.qml</file>
         <file>ColorButton.qml</file>
         <file>AboutDialog.qml</file>
-        <file>InsertNameDialog.qml</file>
         <file>SettingsEffectsTab.qml</file>
         <file>main.qml</file>
         <file>SettingsTerminalTab.qml</file>
         <file>SettingsChannelsTab.qml</file>
+        <file>SettingsProfilesTab.qml</file>
         <file>fonts/apple2/PrintChar21.ttf</file>
         <file>fonts/ibm-3278/3270NerdFontMono-Regular.ttf</file>
         <file>Storage.qml</file>

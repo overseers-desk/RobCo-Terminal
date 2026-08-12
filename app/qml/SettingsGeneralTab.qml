@@ -20,43 +20,122 @@
 import QtQuick 2.2
 import QtQuick.Controls 2.4
 import QtQuick.Layouts 1.1
-import QtQuick.Dialogs
 
-ColumnLayout {
-    RowLayout {
+// The two things a look is made of, side by side: the screen on the left with
+// its own knobs, the chassis around it on the right with its own. A row is
+// picked with a single click, and the row standing out is the one on air, not
+// the one last touched.
+RowLayout {
+    // The window fills these in; the accent lives in one place there.
+    property color accentColor
+    property color accentTextColor
+    property int effectsTabIndex
+
+    signal requestTab(int index)
+
+    readonly property real dimOpacity: 0.6
+    readonly property real smallPointSize: Qt.application.font.pointSize * 0.85
+    readonly property color frameColor: Qt.rgba(palette.text.r, palette.text.g,
+                                                palette.text.b, 0.25)
+    readonly property color dimTextColor: Qt.rgba(palette.text.r, palette.text.g,
+                                                  palette.text.b, dimOpacity)
+
+    id: generalTab
+    spacing: appSettings.defaultMargin
+
+    ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        // The screen column carries the longer names, so it takes the wider
+        // share of the page.
+        Layout.preferredWidth: 1150
+        spacing: 6
 
-        GroupBox {
-            title: qsTr("Screen")
+        RowLayout {
+            Layout.fillWidth: true
+            Label {
+                text: qsTr("Screen")
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            Label {
+                text: appSettings.screensList.count + " " + qsTr("available")
+                color: dimTextColor
+                font.pointSize: smallPointSize
+            }
+        }
+
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            padding: appSettings.defaultMargin
+            color: palette.base
+            radius: 3
+            border.width: 1
+            border.color: frameColor
+
             ColumnLayout {
-                anchors.fill: parent
+                anchors { fill: parent; margins: 1 }
+                spacing: 0
+
                 ListView {
                     id: screensView
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.margins: 1
                     model: appSettings.screensList
                     clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { }
                     delegate: Rectangle {
-                        width: screenLabel.width
-                        height: screenLabel.height
-                        color: (index == screensView.currentIndex) ? palette.highlight : palette.base
-                        Label {
-                            id: screenLabel
-                            text: appSettings.screensList.get(index).text
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: screensView.currentIndex = index
-                                onDoubleClicked: appSettings.loadScreen(index)
+                        readonly property bool onAir: appSettings.screenName === model.text
+
+                        width: screensView.width
+                        height: screenLabel.implicitHeight + 10
+                        color: onAir
+                               ? accentColor
+                               : (screenArea.containsMouse
+                                  ? Qt.rgba(palette.text.r, palette.text.g,
+                                            palette.text.b, 0.08)
+                                  : "transparent")
+
+                        RowLayout {
+                            anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                            spacing: 8
+                            Rectangle {
+                                implicitWidth: 10
+                                implicitHeight: 10
+                                radius: 2
+                                color: appSettings.screenSwatch(index)
+                                border.width: 1
+                                border.color: Qt.rgba(1, 1, 1, 0.35)
                             }
+                            Label {
+                                id: screenLabel
+                                Layout.fillWidth: true
+                                text: model.text
+                                elide: Text.ElideRight
+                                color: onAir ? accentTextColor : palette.text
+                            }
+                        }
+                        MouseArea {
+                            id: screenArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: appSettings.loadScreen(index)
                         }
                     }
                 }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: frameColor
+                }
+
                 GridLayout {
                     Layout.fillWidth: true
+                    Layout.margins: appSettings.defaultMargin / 2
                     columns: 2
                     Label {
                         text: qsTr("Brightness")
@@ -89,39 +168,122 @@ ColumnLayout {
                         visible: !appSettings.isMacOS
                     }
                 }
+
+                // The rest of the screen's tuning lives on another page, and
+                // this line is the way there.
+                Label {
+                    Layout.fillWidth: true
+                    Layout.margins: appSettings.defaultMargin / 2
+                    Layout.topMargin: 0
+                    text: qsTr("Bloom, noise, curvature & more → Effects")
+                    color: accentColor
+                    font.pointSize: smallPointSize
+                    elide: Text.ElideRight
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: generalTab.requestTab(effectsTabIndex)
+                    }
+                }
+            }
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.preferredWidth: 1000
+        spacing: 6
+
+        RowLayout {
+            Layout.fillWidth: true
+            Label {
+                text: qsTr("Chassis")
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            Label {
+                text: appSettings.chassisList.count + " " + qsTr("available")
+                color: dimTextColor
+                font.pointSize: smallPointSize
             }
         }
 
-        GroupBox {
-            title: qsTr("Chassis")
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            padding: appSettings.defaultMargin
+            color: palette.base
+            radius: 3
+            border.width: 1
+            border.color: frameColor
+
             ColumnLayout {
-                anchors.fill: parent
+                anchors { fill: parent; margins: 1 }
+                spacing: 0
+
                 ListView {
                     id: chassisView
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.margins: 1
                     model: appSettings.chassisList
                     clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { }
                     delegate: Rectangle {
-                        width: chassisLabel.width
-                        height: chassisLabel.height
-                        color: (index == chassisView.currentIndex) ? palette.highlight : palette.base
-                        Label {
-                            id: chassisLabel
-                            text: appSettings.chassisList.get(index).text
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: chassisView.currentIndex = index
-                                onDoubleClicked: appSettings.loadChassis(index)
+                        readonly property bool onAir: appSettings.chassisName === model.text
+
+                        width: chassisView.width
+                        height: chassisColumn.implicitHeight + 10
+                        color: onAir
+                               ? accentColor
+                               : (chassisArea.containsMouse
+                                  ? Qt.rgba(palette.text.r, palette.text.g,
+                                            palette.text.b, 0.08)
+                                  : "transparent")
+
+                        ColumnLayout {
+                            id: chassisColumn
+                            anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
+                            spacing: 1
+                            Label {
+                                Layout.fillWidth: true
+                                text: model.text
+                                elide: Text.ElideRight
+                                color: onAir ? accentTextColor : palette.text
                             }
+                            Label {
+                                Layout.fillWidth: true
+                                text: model.description
+                                elide: Text.ElideRight
+                                font.pointSize: smallPointSize
+                                // On the accent the dimmed tone would wash
+                                // out, so the line goes darker instead.
+                                color: onAir
+                                       ? Qt.rgba(accentTextColor.r, accentTextColor.g,
+                                                 accentTextColor.b, 0.75)
+                                       : dimTextColor
+                            }
+                        }
+                        MouseArea {
+                            id: chassisArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: appSettings.loadChassis(index)
                         }
                     }
                 }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: frameColor
+                }
+
                 GridLayout {
                     Layout.fillWidth: true
+                    Layout.margins: appSettings.defaultMargin / 2
                     columns: 2
                     Label {
                         text: qsTr("Radius")
@@ -139,203 +301,6 @@ ColumnLayout {
                     }
                 }
             }
-        }
-    }
-
-    GroupBox {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        title: qsTr("Profiles")
-        padding: appSettings.defaultMargin
-        RowLayout {
-            anchors.fill: parent
-            ListView {
-                id: profilesView
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                model: appSettings.customProfilesList
-                clip: true
-                delegate: Rectangle {
-                    width: label.width
-                    height: label.height
-                    color: (index == profilesView.currentIndex) ? palette.highlight : palette.base
-                    Label {
-                        id: label
-                        text: appSettings.customProfilesList.get(index).text
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: profilesView.currentIndex = index
-                            onDoubleClicked: appSettings.loadCustomProfile(index)
-                        }
-                    }
-                }
-            }
-            ColumnLayout {
-                Layout.fillHeight: true
-                Layout.fillWidth: false
-                Button {
-                    Layout.fillWidth: true
-                    text: qsTr("Save")
-                    onClicked: {
-                        insertname.profileName = ""
-                        insertname.show()
-                    }
-                }
-                Button {
-                    Layout.fillWidth: true
-                    property alias currentIndex: profilesView.currentIndex
-                    enabled: currentIndex >= 0
-                    text: qsTr("Load")
-                    onClicked: {
-                        var index = currentIndex
-                        if (index >= 0)
-                            appSettings.loadCustomProfile(index)
-                    }
-                }
-                Button {
-                    Layout.fillWidth: true
-                    text: qsTr("Remove")
-                    property alias currentIndex: profilesView.currentIndex
-
-                    enabled: currentIndex >= 0
-                    onClicked: {
-                        appSettings.customProfilesList.remove(currentIndex)
-                        profilesView.selection.clear()
-
-                        // TODO This is a very ugly workaround. The view didn't update on Qt 5.3.2.
-                        profilesView.model = 0
-                        profilesView.model = appSettings.customProfilesList
-                    }
-                }
-                Item {
-                    // Spacing
-                    Layout.fillHeight: true
-                }
-                Button {
-                    Layout.fillWidth: true
-                    text: qsTr("Import")
-                    onClicked: {
-                        fileDialog.selectExisting = true
-                        fileDialog.callBack = function (url) {
-                            loadFile(url)
-                        }
-                        fileDialog.open()
-                    }
-                    function loadFile(url) {
-                        try {
-                            if (appSettings.verbose)
-                                console.log("Loading file: " + url)
-
-                            var profileObject = JSON.parse(fileIO.read(url))
-                            var name = profileObject.name
-
-                            if (!name)
-                                throw "Profile doesn't have a name"
-
-                            var version = profileObject.profileVersion
-                                    !== undefined ? profileObject.profileVersion : 1
-                            if (version !== appSettings.profileVersion)
-                                throw "This profile is not supported on this version of CRT."
-
-                            delete profileObject.name
-                            delete profileObject.profileVersion
-
-                            appSettings.appendCustomProfile(name,
-                                                            JSON.stringify(
-                                                                profileObject))
-                        } catch (err) {
-                            messageDialog.text = qsTr(err)
-                            messageDialog.open()
-                        }
-                    }
-                }
-                Button {
-                    property alias currentIndex: profilesView.currentIndex
-
-                    Layout.fillWidth: true
-
-                    text: qsTr("Export")
-                    enabled: currentIndex >= 0
-                    onClicked: {
-                        fileDialog.selectExisting = false
-                        fileDialog.callBack = function (url) {
-                            storeFile(url)
-                        }
-                        fileDialog.open()
-                    }
-                    function storeFile(url) {
-                        try {
-                            var urlString = url.toString()
-
-                            // Fix the extension if it's missing.
-                            var extension = urlString.substring(
-                                        urlString.length - 5, urlString.length)
-                            var urlTail = (extension === ".json" ? "" : ".json")
-                            url += urlTail
-
-                            if (appSettings.verbose)
-                                console.log("Storing file: " + url)
-
-                            var profileObject = appSettings.customProfilesList.get(
-                                        currentIndex)
-                            var profileSettings = JSON.parse(
-                                        profileObject.obj_string)
-                            profileSettings["name"] = profileObject.text
-                            profileSettings["profileVersion"] = appSettings.profileVersion
-
-                            var result = fileIO.write(url, JSON.stringify(
-                                                          profileSettings,
-                                                          undefined, 2))
-                            if (!result)
-                                throw "The file could not be written."
-                        } catch (err) {
-                            console.log(err)
-                            messageDialog.text = qsTr(
-                                        "There has been an error storing the file.")
-                            messageDialog.open()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // DIALOGS ////////////////////////////////////////////////////////////////
-    InsertNameDialog {
-        id: insertname
-        onNameSelected: {
-            appSettings.appendCustomProfile(name,
-                                            appSettings.composeProfileString())
-        }
-    }
-    MessageDialog {
-        id: messageDialog
-        title: qsTr("File Error")
-        buttons: MessageDialog.Ok
-        onAccepted: {
-            messageDialog.close()
-        }
-    }
-    Loader {
-        property var callBack
-        property bool selectExisting: false
-        id: fileDialog
-
-        sourceComponent: FileDialog {
-            nameFilters: ["Json files (*.json)"]
-            fileMode: fileDialog.selectExisting ? FileDialog.OpenFile : FileDialog.SaveFile
-            onAccepted: callBack(selectedFile)
-        }
-
-        onSelectExistingChanged: reload()
-
-        function open() {
-            item.open()
-        }
-
-        function reload() {
-            active = false
-            active = true
         }
     }
 }

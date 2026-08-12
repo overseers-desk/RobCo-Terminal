@@ -83,6 +83,13 @@ QtObject {
 
 
     // PROFILE SETTINGS ///////////////////////////////////////////////////////
+    // What is on air, by name: the screen behind the glass and the chassis
+    // standing around it. The names travel with the look itself, so a restored
+    // session, a saved appliance and an exported file all say what they are
+    // wearing without anyone having to match measures back to a list.
+    property string screenName: defaultScreenName
+    property string chassisName: defaultChassisName
+
     property real windowOpacity: 1.0
     property real ambientLight: 0.2
     property real contrast: 0.80
@@ -308,6 +315,7 @@ QtObject {
     // in, which is what cuts the glass when no cabinet does.
     function composeScreenObject() {
         var screen = {
+            "name": screenName,
             "backgroundColor": _backgroundColor,
             "fontColor": _fontColor,
             "flickering": flickering,
@@ -344,6 +352,7 @@ QtObject {
     // bezel, and the way its bank marks the channel on air.
     function composeChassisObject() {
         var chassis = {
+            "name": chassisName,
             "shell": shell,
             "channelIndicator": channelIndicator,
             "channelDisplay": channelDisplay,
@@ -375,6 +384,21 @@ QtObject {
     function composeProfileString() {
         return stringify(composeProfileObject())
     }
+
+    // WHAT THE USER HAS TUNED ////////////////////////////////////////////////
+    // The appliance as it stands, written out afresh whenever any part of the
+    // screen or the chassis moves: the snapshot reads those properties to
+    // compose itself and so follows every one of them.
+    readonly property string profileSnapshot: composeProfileString()
+
+    // The appliance as it was handed over. Every path that establishes a look
+    // -- a screen taken, a chassis taken, a saved appliance loaded, the
+    // session restored, the defaults on a first start, a look saved under a
+    // name -- writes what it established here, and the difference between the
+    // two is the user's own tuning since. An imported profile is somebody
+    // else's work and leaves the mark standing.
+    property string loadedSnapshot: profileSnapshot
+    readonly property bool modified: profileSnapshot !== loadedSnapshot
 
     // True when the database had a settings, screen and chassis set to
     // restore, so the caller knows whether this start is a first one.
@@ -449,6 +473,11 @@ QtObject {
     }
 
     function loadScreenObject(settings) {
+        // A name is identity rather than a measure, so it never falls back to
+        // what is standing: a screen that arrives unnamed is the default one,
+        // never whatever was behind the glass a moment ago.
+        screenName = settings.name !== undefined ? settings.name : defaultScreenName
+
         _backgroundColor = settings.backgroundColor
                 !== undefined ? settings.backgroundColor : _backgroundColor
         _fontColor = settings.fontColor !== undefined ? settings.fontColor : _fontColor
@@ -503,7 +532,9 @@ QtObject {
         // Every key falls back to the default appliance's, never to what is
         // standing: taking a chassis has to change the machine, so one that
         // is silent about a measure or its kit means the annunciator's,
-        // never whatever the last chassis left in place.
+        // never whatever the last chassis left in place. The name goes with
+        // them: an unnamed cabinet is the annunciator.
+        chassisName = settings.name !== undefined ? settings.name : defaultChassisName
         _frameSizeChassis = settings.frameSize !== undefined ? settings.frameSize : 0.45
         _screenRadiusChassis = settings.screenRadius !== undefined ? settings.screenRadius : 0.44
         _frameColorChassis = settings.frameColor !== undefined ? settings.frameColor : "#001735"
@@ -520,6 +551,7 @@ QtObject {
     function loadProfileObject(profile) {
         loadScreenObject(profile.screen)
         loadChassisObject(profile.chassis)
+        loadedSnapshot = composeProfileString()
     }
 
     function loadProfileString(profileString) {
@@ -562,12 +594,19 @@ QtObject {
         return stringify(customProfiles)
     }
 
+    // A built-in blob carries measures and no name of its own: the row is
+    // where the name lives, so the list hands it over along with the look and
+    // no screen ever stands under the name of the one before it.
     function loadScreen(index) {
         loadScreenString(screensList.get(index).obj_string)
+        screenName = screensList.get(index).text
+        loadedSnapshot = composeProfileString()
     }
 
     function loadChassis(index) {
         loadChassisString(chassisList.get(index).obj_string)
+        chassisName = chassisList.get(index).text
+        loadedSnapshot = composeProfileString()
     }
 
     function loadCustomProfile(index) {
@@ -580,6 +619,15 @@ QtObject {
                                       "obj_string": profileString,
                                       "builtin": false
                                   })
+    }
+
+    // The look on air, kept under a name of the user's choosing. What they
+    // just saved is what they are standing on, so it becomes the appliance
+    // they were handed and the tuning mark starts again from there.
+    function saveCurrentAsProfile(name) {
+        var profileString = composeProfileString()
+        appendCustomProfile(name, profileString)
+        loadedSnapshot = profileString
     }
 
     // PROFILES ///////////////////////////////////////////////////////////////
@@ -1071,7 +1119,8 @@ QtObject {
     }
 
     // The cabinets a screen can be mounted in: the casting, the bezel it cuts
-    // the glass with, and the way its bank marks the channel on air.
+    // the glass with, and the way its bank marks the channel on air, which
+    // each one states in a line the lists show under its name.
     property ListModel chassisList: ListModel {
         // Fitted to the amber appliance of the reference mock
         // (RoboCo-Amber.png, 1448x1086): a gunmetal plate of LED windows
@@ -1083,6 +1132,7 @@ QtObject {
         // corner radius ~55).
         ListElement {
             text: "Annunciator"
+            description: "Channel windows lit by their own glow"
             obj_string: '{
                 "shell": "annunciator",
                 "channelIndicator": "glow",
@@ -1106,6 +1156,7 @@ QtObject {
         // screenRadius ceiling approximates the barrel-curved glass mouth.
         ListElement {
             text: "Slide Rule"
+            description: "Carriage pointer on a rail"
             obj_string: '{
                 "shell": "slide-rule",
                 "channelIndicator": "pointer",
@@ -1132,6 +1183,7 @@ QtObject {
         // corner radius ~90).
         ListElement {
             text: "Switchboard"
+            description: "Toggle switches with punch-tape labels"
             obj_string: '{
                 "shell": "switchboard",
                 "channelIndicator": "switch",
@@ -1148,6 +1200,25 @@ QtObject {
     // The appliances the user has built and named: a screen and a chassis
     // saved together, filled from the store at startup.
     property ListModel customProfilesList: ListModel {}
+
+    // The phosphor a screen row burns in, for the colour chip the list carries
+    // beside its name.
+    function screenSwatch(index) {
+        var screen = JSON.parse(screensList.get(index).obj_string)
+        return screen.fontColor !== undefined ? screen.fontColor : _fontColor
+    }
+
+    // What a saved appliance is made of, in one line: the screen it carries
+    // and the cabinet it stands in. A blob that names neither is read the way
+    // the loaders read it, as the default of its kind.
+    function profileCombo(index) {
+        var profile = JSON.parse(customProfilesList.get(index).obj_string)
+        var screen = profile.screen && profile.screen.name !== undefined
+                ? profile.screen.name : defaultScreenName
+        var chassis = profile.chassis && profile.chassis.name !== undefined
+                ? profile.chassis.name : defaultChassisName
+        return screen + " · " + chassis
+    }
 
     function getProfileIndexByName(list, name) {
         for (var i = 0; i < list.count; i++) {
@@ -1199,6 +1270,11 @@ QtObject {
                 console.log("Warning: selected profile is not valid; ignoring it")
             }
         }
+
+        // However the terminal arrived at the look it is wearing -- restored,
+        // defaulted or named on the command line -- that look is the one it
+        // was handed, and nothing is tuned until the user turns a knob.
+        loadedSnapshot = composeProfileString()
 
         initializedSettings()
     }
