@@ -82,7 +82,7 @@ Item {
         property real mottleAmount: 0.7
         property real scratchAmount: 0.5
         property real vignetteStrength: 0.3
-        property real wearAmount: 0.3
+        property real wearAmount: 0.4
         property real seamGain: 0.6
         property real seed: furniture.rowSeed
 
@@ -138,6 +138,8 @@ Item {
             color: "#05060a"
             opacity: 0.75
         }
+        // The paint face, struck twice a hair apart: the mock's stencil
+        // strokes are heavier than any weight this face carries.
         Text {
             id: stamped
             width: numeral.width
@@ -146,6 +148,14 @@ Item {
             font.pixelSize: 38
             font.bold: true
             font.letterSpacing: -2
+            text: furniture.numeralText
+            color: furniture.numeralPaint
+        }
+        Text {
+            x: 0.8
+            width: numeral.width
+            horizontalAlignment: Text.AlignHCenter
+            font: stamped.font
             text: furniture.numeralText
             color: furniture.numeralPaint
         }
@@ -211,8 +221,9 @@ Item {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.00; color: Qt.lighter(furniture.glowColor, 1.5) }
                 GradientStop { position: 0.14; color: furniture.glowColor }
-                GradientStop { position: 0.50; color: Qt.darker(furniture.glowColor, 2.4) }
-                GradientStop { position: 1.00; color: Qt.darker(furniture.glowColor, 7.0) }
+                GradientStop { position: 0.45; color: Qt.darker(furniture.glowColor, 2.6) }
+                GradientStop { position: 0.85; color: Qt.darker(furniture.glowColor, 6.0) }
+                GradientStop { position: 1.00; color: Qt.darker(furniture.glowColor, 9.0) }
             }
         }
 
@@ -325,17 +336,27 @@ Item {
                 ctx.beginPath()
                 ctx.roundedRect(2, 4, w - 16, h - 10, 6, 6)
                 ctx.clip()
-                for (var i = 0; i < 40; i++) {
+                for (var i = 0; i < 90; i++) {
                     var px = 2 + rnd() * (w - 18)
                     var py = 4 + rnd() * (h - 12)
-                    var dark = rnd() < 0.6
-                    ctx.strokeStyle = dark ? Qt.rgba(0, 0, 0, 0.10 + 0.12 * rnd())
-                                           : Qt.rgba(0.75, 0.78, 0.84, 0.05 + 0.08 * rnd())
-                    ctx.lineWidth = 1
+                    var dark = rnd() < 0.55
+                    ctx.strokeStyle = dark ? Qt.rgba(0, 0, 0, 0.10 + 0.14 * rnd())
+                                           : Qt.rgba(0.78, 0.81, 0.86, 0.06 + 0.11 * rnd())
+                    ctx.lineWidth = rnd() < 0.2 ? 1.6 : 1
                     ctx.beginPath()
                     ctx.moveTo(px, py)
-                    ctx.lineTo(px + (rnd() - 0.3) * 14, py + (rnd() - 0.5) * 4)
+                    ctx.lineTo(px + (rnd() - 0.3) * 18, py + (rnd() - 0.5) * 6)
                     ctx.stroke()
+                }
+                // Grime pooling toward the cap's lower half.
+                for (var b = 0; b < 10; b++) {
+                    var bx = 2 + rnd() * (w - 18)
+                    var by = h * 0.4 + rnd() * (h * 0.5)
+                    var br = 3 + rnd() * 8
+                    ctx.beginPath()
+                    ctx.ellipse(bx - br, by - br * 0.6, br * 2, br * 1.2)
+                    ctx.fillStyle = Qt.rgba(0, 0, 0, 0.05 + 0.07 * rnd())
+                    ctx.fill()
                 }
                 ctx.restore()
 
@@ -417,7 +438,7 @@ Item {
         property real mottleAmount: 0.7
         property real scratchAmount: 0.5
         property real vignetteStrength: 0.3
-        property real wearAmount: 0.3
+        property real wearAmount: 0.4
         property real seamGain: 0.6
         property real seed: furniture.rowSeed + 0.41
 

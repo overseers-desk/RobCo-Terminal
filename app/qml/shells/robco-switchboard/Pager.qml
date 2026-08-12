@@ -102,7 +102,7 @@ Item {
         property real mottleAmount: 0.7
         property real scratchAmount: 0.5
         property real vignetteStrength: 0.35
-        property real wearAmount: 0.35
+        property real wearAmount: 0.45
         property real seamGain: 0.6
         property real seed: 0.23
 
@@ -182,7 +182,7 @@ Item {
             property real mottleAmount: 0.65
             property real scratchAmount: 0.5
             property real vignetteStrength: 0.3
-            property real wearAmount: 0.35
+            property real wearAmount: 0.45
             property real seamGain: 0.7
             property real seed: key.wearSeed
 
@@ -224,8 +224,8 @@ Item {
                 id: arrow
 
                 anchors.centerIn: parent
-                width: Math.round(50 * pager.squeeze)
-                height: Math.round(36 * pager.squeeze)
+                width: Math.round(54 * pager.squeeze)
+                height: Math.round(40 * pager.squeeze)
 
                 onPaint: {
                     var ctx = getContext("2d")
@@ -297,7 +297,7 @@ Item {
         property real mottleAmount: 0.65
         property real scratchAmount: 0.5
         property real vignetteStrength: 0.3
-        property real wearAmount: 0.3
+        property real wearAmount: 0.4
         property real seamGain: 0.7
         property real seed: 0.53
 
@@ -354,9 +354,9 @@ Item {
             Text {
                 id: engraving
 
-                font.pixelSize: Math.max(9, Math.round(19 * pager.squeeze))
+                font.pixelSize: Math.max(9, Math.round(21 * pager.squeeze))
                 font.bold: true
-                font.letterSpacing: 4 * pager.squeeze
+                font.letterSpacing: 5 * pager.squeeze
                 text: "PAGE"
                 color: pager.engraveInk
             }
