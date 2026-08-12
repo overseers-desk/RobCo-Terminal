@@ -250,8 +250,8 @@ Item{
     // all: Return goes out as the bare carriage return tmux's control mode
     // reads as an empty line and answers by detaching, whose %exit comes
     // back up the same wire and collapses the page. Every other key is
-    // accepted and dropped, which is the whole of rule 6; pass-through is a
-    // power setting for another day.
+    // accepted and dropped, which is the whole of the anchor's keyboard;
+    // pass-through is a power setting for another day.
     FocusScope {
         id: anchorFilter
 

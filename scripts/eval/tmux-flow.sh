@@ -27,8 +27,8 @@ done
 # one still screen set between them.
 #
 # One tmux fact the flow leans on: an attached session cannot stand with
-# zero windows, killing the last one kills the session itself. So the rule-4
-# assertion is that the page outlives every window-close short of the
+# zero windows, killing the last one kills the session itself. So the
+# page-lifetime assertion is that the page outlives every window-close short of the
 # session's own death with no detach asked from our side, and the last
 # close collapses the page through tmux's own %exit, landing home.
 #
@@ -212,7 +212,7 @@ echo "-- 2c: a remote channel still takes the keyboard --"
 type_line "tmux -S $SOCK1 rename-window typed"
 wait_wm '^typed$' "typing reached the remote pane, and tmux renamed the window"
 
-echo "-- 3: rule 4, the page outlives its windows --"
+echo "-- 3: the page outlives its windows --"
 WINS=$(tmux -S "$SOCK1" list-windows -F '#{window_id}')
 COUNT=$(echo "$WINS" | wc -l)
 KILLED=0

@@ -37,6 +37,9 @@ Item {
     // follow marks a window this page asked tmux for, still on its way:
     // asking for a channel puts you in it, so the next window to arrive on
     // the page takes the air, while the ones tmux volunteers do not.
+    // A page's kind speaks its own vocabulary, "home" or "tmux"; a channel
+    // row's kind speaks another, "local", "remote" or "anchor". Same word,
+    // two enumerations, never compared across the two models.
     ListModel {
         id: pagesModel
         ListElement { kind: "home"; host: ""; homeSlot: 0; pageId: 0; follow: false }
@@ -258,7 +261,8 @@ Item {
     // A tmux window becomes an ordinary channel on the lowest free slot of
     // its page, from 2 up: the anchor holds 1. Windows the attach lists line
     // up behind the anchor without taking the air; a window this set asked
-    // for is the exception and takes it outright.
+    // for is the exception and takes it outright. The anchor holds slot 1,
+    // so windows land from slot 2 up.
     function openRemoteChannel(page, windowId, paneId, name) {
         var channel = _firstFree(page)
         if (channel < 1)
@@ -385,6 +389,9 @@ Item {
         _removeRow(page, channel)
     }
 
+    // The anchor's own shell died: collapse the page as a detach would,
+    // which lands its row home as a local channel, then remove that row,
+    // there being no live process to come home to.
     function _anchorDied(page) {
         var pageRow = _pageRowOf(page)
         if (pageRow < 0)
