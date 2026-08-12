@@ -39,6 +39,10 @@ Makefile*
 # Ubuntu SDk
 *.excludes
 *.json
+# The mock-measurement records under scripts/eval are the tree's, not
+# build debris: the mocks they were read from stay untracked, the
+# numbers do not.
+!scripts/eval/*.json
 
 # Excludes compiled files
 

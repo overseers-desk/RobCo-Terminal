@@ -1,0 +1,12 @@
+{
+    "comment": "Measured from Deep-Blue.png, the switchboard mock at the repo root (1448x1086, an untracked working file). Carve-outs for mask.sh: the CRT glass rounded rect, the 15 label wells (row 1's rect stepped down by the measured pitch; the artwork drifts a few pixels off the uniform step, so the rect carries margin), and the pager's counter window.",
+    "carveouts": {
+        "crt_glass": { "x0": 410, "y0": 8, "x1": 1435, "y1": 1062, "radius": 90 },
+        "led_panels": {
+            "row1": { "x0": 194, "y0": 33, "x1": 375, "y1": 84, "radius": 8 },
+            "pitch": 62.29,
+            "count": 15
+        },
+        "page_window": { "x0": 135, "y0": 999, "x1": 259, "y1": 1043, "radius": 6 }
+    }
+}
