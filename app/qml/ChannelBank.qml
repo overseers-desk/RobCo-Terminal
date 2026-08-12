@@ -160,6 +160,10 @@ Item {
                                       && currentChannel > pageBase && currentChannel <= pageBase + rowsOnPage)
         ? topPadding - bankPadding + (currentChannel - pageBase - 1) * (rowHeight + rowSpacing) + rowHeight / 2
         : pager.y + pager.height / 2 - bankPadding
+    // The carriage stands only where the air is on the viewed page's machine:
+    // parked at the pager it means "further along these slots", which is a lie
+    // when the air is a whole page away, so there it leaves the rail instead.
+    readonly property bool pointerShown: viewedPage === currentPage
 
     // The pager and the selector are shell components in files of their own,
     // where this file's ids do not reach; every property they take is pushed
@@ -313,6 +317,7 @@ Item {
         id: selector
 
         active: bank.pointerIndicator
+        visible: bank.pointerShown
         x: bank.trackX
         y: bank.bankPadding
         width: bank.trackWidth

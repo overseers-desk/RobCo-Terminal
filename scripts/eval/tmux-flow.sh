@@ -325,7 +325,28 @@ xdotool key --clearmodifiers ctrl+shift+t; sleep 1
 xdotool key --clearmodifiers alt+1; sleep 1; retitle 1; wait_wm '^slot1 ' "slot 1 retitled"
 type_line "tmux -S $SOCK1 -CC attach -t one"
 wait_wm '^bash$' "page A raised, its first window greeting"
+# The blue carriage marks the air only on its page. The rail lane is thick
+# with chassis furniture (screws, the groove, the pager), so no single-image
+# threshold isolates the carriage; the difference between two views does,
+# since only the carriage moves. Viewing the session page shows it at the
+# anchor's row 1; viewing home while the air is abroad must leave the lane
+# bare, above all with no carriage parked at the rail's pager end.
+LANE="-crop 41x1000+29+64 +repage"
+xdotool key --clearmodifiers alt+Next; sleep 1
+shot flow6-rail-session-view.png
 xdotool key --clearmodifiers alt+Prior; sleep 1
+shot flow6-rail-home-view.png
+convert "(" "$OUTDIR/flow6-rail-session-view.png" $LANE ")" \
+        "(" "$OUTDIR/flow6-rail-home-view.png" $LANE ")" \
+        -compose difference -composite -colorspace Gray "$OUTDIR/flow6-rail-diff.png"
+ROWD=$(convert "$OUTDIR/flow6-rail-diff.png" -crop 41x80+0+0   -format "%[fx:maxima]" info:)
+PARKD=$(convert "$OUTDIR/flow6-rail-diff.png" -crop 41x120+0+840 -format "%[fx:maxima]" info:)
+awk "BEGIN{exit !($ROWD > 0.3)}" \
+    && ok "the carriage moves between the two views (row-1 diff $ROWD)" \
+    || bad "the carriage never appears (row-1 diff $ROWD) - test blind, not a pass"
+awk "BEGIN{exit !($PARKD < 0.1)}" \
+    && ok "no carriage haunts the rail's pager end while the air is abroad (park diff $PARKD)" \
+    || bad "the carriage parked at the pager on the home view (park diff $PARKD)"
 xdotool key --clearmodifiers alt+2
 wait_wm '^home ' "home channel 2 selected from the viewed page"
 type_line "tmux -S $SOCK2 -CC attach -t two"
