@@ -213,7 +213,7 @@ ColumnLayout {
                     name: qsTr("Frame")
                     height: 50
                     Layout.fillWidth: true
-                    onColorSelected: appSettings._frameColor = color
+                    onColorSelected: appSettings.setFrameColor(color)
                     color: appSettings._frameColor
                 }
             }

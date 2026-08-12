@@ -24,6 +24,7 @@
         <file>TerminalContainer.qml</file>
         <file>TerminalChannels.qml</file>
         <file>ChannelBank.qml</file>
+        <file>ScreenFrame.qml</file>
         <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>
         <file>shells/common/ScrewHead.qml</file>

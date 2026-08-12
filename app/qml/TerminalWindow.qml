@@ -49,10 +49,6 @@ ApplicationWindow {
     // The least screen the well is ever given; the seam's travel stops here too.
     readonly property int crtMinimumWidth: 320
 
-    // Whether the bank stands: whether the user has left the column up. The
-    // one condition the bank, its chassis and their seam are all gated on.
-    readonly property bool bankStanding: appSettings.channelBankShown
-
     // The bank's footprint, zero when no bank stands.
     readonly property int bankWidth: channelBankLoader.item ? channelBankLoader.item.implicitWidth : 0
 
@@ -88,9 +84,9 @@ ApplicationWindow {
     Action {
         id: chassisAction
         text: qsTr("Chassis")
-        onTriggered: appSettings.channelBankShown = !appSettings.channelBankShown
+        onTriggered: appSettings.chassisShown = !appSettings.chassisShown
         checkable: true
-        checked: appSettings.channelBankShown
+        checked: appSettings.chassisShown
     }
     Action {
         id: newWindowAction
@@ -222,7 +218,7 @@ ApplicationWindow {
             bottom: parent.bottom
         }
         width: terminalWindow.bankWidth
-        layer.enabled: terminalWindow.bankStanding
+        layer.enabled: appSettings.chassisShown
 
         // The bank's plastic, continuing the frame's moulding leftwards.
         // Nothing stands between the frame and the window on the other three
@@ -230,7 +226,7 @@ ApplicationWindow {
         Loader {
             id: chassisLoader
 
-            active: terminalWindow.bankStanding
+            active: appSettings.chassisShown
             anchors.fill: parent
             source: appSettings.shellUrl("Chassis")
 
@@ -245,7 +241,7 @@ ApplicationWindow {
         Loader {
             id: channelBankLoader
 
-            active: terminalWindow.bankStanding
+            active: appSettings.chassisShown
             anchors.fill: parent
             source: "ChannelBank.qml"
         }
@@ -267,7 +263,7 @@ ApplicationWindow {
             bottom: parent.bottom
         }
         z: 2
-        visible: terminalWindow.bankStanding
+        visible: appSettings.chassisShown
         enabled: visible
         cursorShape: Qt.SplitHCursor
         acceptedButtons: Qt.LeftButton

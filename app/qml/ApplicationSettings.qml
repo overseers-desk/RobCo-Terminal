@@ -69,11 +69,12 @@ QtObject {
     // profile's: switching look does not re-fit the bank.
     property int ledCharacters: 12
 
-    // Whether a chassis raises its bank at all. Theirs and not a profile's,
-    // like the width above: a user who wants the whole window for the screen
-    // says so once, and every appliance obeys until told otherwise.
+    // Whether the appliance stands at all: its casting, its bezel and the bank
+    // that column carries, which come and go together. Theirs and not a
+    // profile's, like the width above: a user who wants the whole window for
+    // the screen says so once, and every appliance obeys until told otherwise.
     // The sessions are the store's and stand either way.
-    property bool channelBankShown: true
+    property bool chassisShown: true
 
     // The face the bank's windows are lettered in. A reading choice like the
     // width above: the user picks the type they can read across the room and
@@ -92,7 +93,6 @@ QtObject {
 
     property string _backgroundColor: "#000000"
     property string _fontColor: "#ff8100"
-    property string _frameColor: "#001735"
     // How the bank marks the channel on screen: "glow" lights the window
     // itself, "pointer" runs a mechanical selector up the bank's left edge,
     // "switch" leaves the mark to a thrown toggle in the shell's own row
@@ -106,7 +106,7 @@ QtObject {
     property string saturatedColor: Utils.mix(Utils.strToColor(_fontColor), Utils.strToColor("#FFFFFF"), (saturationColor * 0.5))
     property color fontColor: Utils.mix(Utils.strToColor(_backgroundColor), Utils.strToColor(saturatedColor), (0.7 + (contrast * 0.3)))
     property color backgroundColor: Utils.mix(Utils.strToColor(saturatedColor), Utils.strToColor(_backgroundColor), (0.7 + (contrast * 0.3)))
-    property color frameColor: Utils.strToColor(_frameColor)
+    readonly property color frameColor: Utils.strToColor(_frameColor)
 
     property real staticNoise: 0.12
     property real screenCurvature: 0.3
@@ -124,14 +124,53 @@ QtObject {
 
     property real rgbShift: 0.0
 
-    property real _frameShininess: 0.3
-    property real frameShininess: _frameShininess * 0.5
+    // THE BEZEL //////////////////////////////////////////////////////////////
+    // Two bezels are kept at once, because two things can cut the glass. A
+    // chassis is a cabinet built around a hole and carries the measurements of
+    // that hole; a screen is a tube that came out of a factory in a moulding
+    // of its own. Both records stand in store the whole time and travel with
+    // their own profile, and which of them the renderers see is the standing
+    // of the chassis: the cabinet's cut while it is around the tube, the
+    // tube's own moulding once it is out.
+    property real _frameShininessChassis: 0.3
+    property real _frameSizeChassis: 0.45
+    property real _screenRadiusChassis: 0.44
+    property string _frameColorChassis: "#001735"
 
-    property real _frameSize: 0.45
-    property real frameSize: _frameSize * 0.05
+    property real _frameShininessScreen: 0.3
+    property real _frameSizeScreen: 0.1
+    property real _screenRadiusScreen: 0.1
+    property string _frameColorScreen: "#cfcfcf"
 
-    property real _screenRadius: 0.44
-    property real screenRadius: Utils.lint(4.0, 120.0, _screenRadius)
+    // The governing surface: the bezel the glass is actually cut with. Every
+    // renderer reads these and none of them writes; the tuning UI moves the
+    // bezel on view through the setters below, which route to whichever side
+    // is governing, so a knob always moves the frame the user is looking at.
+    readonly property real _frameShininess: chassisShown ? _frameShininessChassis : _frameShininessScreen
+    readonly property real _frameSize: chassisShown ? _frameSizeChassis : _frameSizeScreen
+    readonly property real _screenRadius: chassisShown ? _screenRadiusChassis : _screenRadiusScreen
+    readonly property string _frameColor: chassisShown ? _frameColorChassis : _frameColorScreen
+
+    function setFrameShininess(value) {
+        if (chassisShown) _frameShininessChassis = value
+        else _frameShininessScreen = value
+    }
+    function setFrameSize(value) {
+        if (chassisShown) _frameSizeChassis = value
+        else _frameSizeScreen = value
+    }
+    function setScreenRadius(value) {
+        if (chassisShown) _screenRadiusChassis = value
+        else _screenRadiusScreen = value
+    }
+    function setFrameColor(value) {
+        if (chassisShown) _frameColorChassis = value
+        else _frameColorScreen = value
+    }
+
+    readonly property real frameShininess: _frameShininess * 0.5
+    readonly property real frameSize: _frameSize * 0.05
+    readonly property real screenRadius: Utils.lint(4.0, 120.0, _screenRadius)
 
     property real _margin: 0.5
     property real margin: Utils.lint(1.0, 40.0, _margin) + (1.0 - Math.SQRT1_2) * screenRadius
@@ -213,10 +252,12 @@ QtObject {
                 + "/" + part + ".qml"
     }
 
-    // The bezel is part of the chassis like everything else the user sees of
-    // the body: it always comes out of the shell's own kit.
+    // Where the bezel comes from. While a chassis stands the bezel is part of
+    // its body like everything else the user sees of it, and comes out of the
+    // shell's own kit; a screen standing with no chassis around it wears the
+    // moulding it came with.
     function frameUrl() {
-        return shellUrl("Frame")
+        return chassisShown ? shellUrl("Frame") : "ScreenFrame.qml"
     }
 
     signal initializedSettings
@@ -256,14 +297,15 @@ QtObject {
             "useCustomCommand": useCustomCommand,
             "customCommand": customCommand,
             "ledCharacters": ledCharacters,
-            "channelBankShown": channelBankShown,
+            "chassisShown": chassisShown,
             "ledFontName": ledFontName
         }
         return stringify(settings)
     }
 
     // The screen is everything behind the glass: phosphor, geometry, type and
-    // the effects that age them.
+    // the effects that age them, plus the moulding it came out of the factory
+    // in, which is what cuts the glass when no cabinet does.
     function composeScreenObject() {
         var screen = {
             "backgroundColor": _backgroundColor,
@@ -289,7 +331,11 @@ QtObject {
             "fontWidth": fontWidth,
             "lineSpacing": lineSpacing,
             "margin": _margin,
-            "blinkingCursor": blinkingCursor
+            "blinkingCursor": blinkingCursor,
+            "frameSize": _frameSizeScreen,
+            "screenRadius": _screenRadiusScreen,
+            "frameColor": _frameColorScreen,
+            "frameShininess": _frameShininessScreen
         }
         return screen
     }
@@ -301,10 +347,10 @@ QtObject {
             "shell": shell,
             "channelIndicator": channelIndicator,
             "channelDisplay": channelDisplay,
-            "frameSize": _frameSize,
-            "screenRadius": _screenRadius,
-            "frameColor": _frameColor,
-            "frameShininess": _frameShininess
+            "frameSize": _frameSizeChassis,
+            "screenRadius": _screenRadiusChassis,
+            "frameColor": _frameColorChassis,
+            "frameShininess": _frameShininessChassis
         }
         return chassis
     }
@@ -396,8 +442,8 @@ QtObject {
         ledCharacters = settings.ledCharacters
                 !== undefined ? Math.max(minLedCharacters, settings.ledCharacters) : ledCharacters
 
-        channelBankShown = settings.channelBankShown
-                !== undefined ? settings.channelBankShown : channelBankShown
+        chassisShown = settings.chassisShown
+                !== undefined ? settings.chassisShown : chassisShown
 
         ledFontName = settings.ledFontName !== undefined ? settings.ledFontName : ledFontName
     }
@@ -441,6 +487,11 @@ QtObject {
 
         _margin = settings.margin !== undefined ? settings.margin : _margin
 
+        _frameSizeScreen = settings.frameSize !== undefined ? settings.frameSize : _frameSizeScreen
+        _screenRadiusScreen = settings.screenRadius !== undefined ? settings.screenRadius : _screenRadiusScreen
+        _frameColorScreen = settings.frameColor !== undefined ? settings.frameColor : _frameColorScreen
+        _frameShininessScreen = settings.frameShininess !== undefined ? settings.frameShininess : _frameShininessScreen
+
         blinkingCursor = settings.blinkingCursor !== undefined ? settings.blinkingCursor : blinkingCursor
     }
 
@@ -449,10 +500,10 @@ QtObject {
     }
 
     function loadChassisObject(settings) {
-        _frameSize = settings.frameSize !== undefined ? settings.frameSize : _frameSize
-        _screenRadius = settings.screenRadius !== undefined ? settings.screenRadius : _screenRadius
-        _frameColor = settings.frameColor !== undefined ? settings.frameColor : _frameColor
-        _frameShininess = settings.frameShininess !== undefined ? settings.frameShininess : _frameShininess
+        _frameSizeChassis = settings.frameSize !== undefined ? settings.frameSize : _frameSizeChassis
+        _screenRadiusChassis = settings.screenRadius !== undefined ? settings.screenRadius : _screenRadiusChassis
+        _frameColorChassis = settings.frameColor !== undefined ? settings.frameColor : _frameColorChassis
+        _frameShininessChassis = settings.frameShininess !== undefined ? settings.frameShininess : _frameShininessChassis
 
         // The keys that fall back to a constant rather than to what is
         // standing: taking a chassis has to change the machine, so one that

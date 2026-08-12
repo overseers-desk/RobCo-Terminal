@@ -88,7 +88,7 @@ ColumnLayout {
             }
             CheckableSlider {
                 name: qsTr("Frame Shininess")
-                onNewValue: function(newValue) { appSettings._frameShininess = newValue }
+                onNewValue: function(newValue) { appSettings.setFrameShininess(newValue) }
                 value: appSettings._frameShininess
             }
         }
