@@ -97,18 +97,6 @@ Item {
     // A session has landed on a slot: the bank acknowledges it on that row.
     signal channelStored(int channel)
 
-    // The current page's channels on the air as a dense list, sorted by
-    // slot: the sparse slot space seen without its dark slots. A derived
-    // cache like channelState, with _rebuildState its single writer, so the
-    // tab strip can bind a Repeater to it. Consumers key rows by their
-    // channel role, never by position: closing a channel shifts the rows
-    // below it while the slots themselves never renumber.
-    readonly property alias pageChannels: pageList
-
-    ListModel {
-        id: pageList
-    }
-
     // channelsModel rows {page, channel, title, kind, windowId, paneId} are
     // kept sorted ascending by page then channel; pageIds only ever grow, so
     // the page order is the attach order with home first. kind is "local"
@@ -218,28 +206,6 @@ Item {
         slotStates = states
         channelState = states[currentPage] ?? []
         currentIndex = _rowOf(currentPage, currentChannel)
-
-        // Merge the current page's rows into pageList in place: both are
-        // sorted by slot, and a title-only change touches one row's
-        // property, so the strip's delegates survive a prompt changing a
-        // title.
-        var pos = 0
-        for (var j = 0; j < channelsModel.count; j++) {
-            var r = channelsModel.get(j)
-            if (r.page !== currentPage)
-                continue
-            while (pos < pageList.count && pageList.get(pos).channel < r.channel)
-                pageList.remove(pos)
-            if (pos < pageList.count && pageList.get(pos).channel === r.channel) {
-                if (pageList.get(pos).title !== r.title)
-                    pageList.setProperty(pos, "title", r.title)
-            } else {
-                pageList.insert(pos, { channel: r.channel, title: r.title })
-            }
-            pos++
-        }
-        while (pageList.count > pos)
-            pageList.remove(pos)
     }
 
     // Local shells live on home alone: an attachment's channels are tmux's
@@ -457,13 +423,6 @@ Item {
         currentChannel = channel
         _rebuildState()
         activateCurrent()
-    }
-
-    // Select by position among the channels on the air: the tab strip's own
-    // vocabulary, where the Nth tab is the Nth visible session.
-    function selectAt(row) {
-        if (row >= 0 && row < pageList.count)
-            selectChannel(currentPage, pageList.get(row).channel)
     }
 
     // The session on screen keeps its screen; its slot number moves. Slots

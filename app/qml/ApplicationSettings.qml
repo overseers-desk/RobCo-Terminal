@@ -100,7 +100,7 @@ QtObject {
     property string channelIndicator: "glow"
     // Which kit of components paints the appliance's body, and which display
     // sits in the bank's windows. Directories under shells/ and displays/;
-    // a chassis that names neither wears the amber appliance.
+    // a chassis that names neither wears the annunciator appliance.
     property string shell: "annunciator"
     property string channelDisplay: "led"
     property string saturatedColor: Utils.mix(Utils.strToColor(_fontColor), Utils.strToColor("#FFFFFF"), (saturationColor * 0.5))

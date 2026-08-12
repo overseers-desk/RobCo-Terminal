@@ -25,8 +25,8 @@ import QtQml 2.0
 import "Components"
 
 // The LED strip's font and width are the user's own settings, not a
-// profile's, so this page stands in every mode: values set here apply the
-// moment a channel profile is picked.
+// profile's, so this page's choices carry across every screen and chassis:
+// values set here apply the moment either is picked.
 ColumnLayout {
     GroupBox {
         title: qsTr("LED Strip")
