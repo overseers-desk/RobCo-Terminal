@@ -565,10 +565,14 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.2,
                 "screenCurvature": 0.2,
+                "screenRadius": 0.1,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.1,
+                "frameColor": "#cfcfcf",
+                "frameShininess": 0.3
             }'
             builtin: true
         }
@@ -595,10 +599,14 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.0,
                 "screenCurvature": 0.3,
+                "screenRadius": 0.2,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.1,
+                "frameColor": "#d4d4d4",
+                "frameShininess": 0.1
             }'
             builtin: true
         }
@@ -625,10 +633,14 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.2,
                 "screenCurvature": 0.4,
+                "screenRadius": 0.1,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.1,
+                "frameColor": "#ffffff",
+                "frameShininess": 0.9
             }'
             builtin: true
         }
@@ -655,10 +667,14 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0,
                 "screenCurvature": 0.5,
+                "screenRadius": 0.1,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.5,
+                "frameColor": "#999999",
+                "frameShininess": 0.0
             }'
             builtin: true
         }
@@ -685,10 +701,14 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0,
                 "screenCurvature": 0.7,
+                "screenRadius": 0.3,
                 "staticNoise": 0.2,
                 "windowOpacity": 1,
                 "margin": 0.2,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.5,
+                "frameColor": "#000000",
+                "frameShininess": 0.6
             }'
             builtin: true
         }
@@ -715,10 +735,14 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0,
                 "screenCurvature": 0.5,
+                "screenRadius": 0.3,
                 "staticNoise": 0.2,
                 "windowOpacity": 1,
                 "margin": 0.0,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.2,
+                "frameColor": "#ffffff",
+                "frameShininess": 0.8
             }'
             builtin: true
         }
@@ -745,10 +769,14 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0,
                 "screenCurvature": 0.4,
+                "screenRadius": 0.2,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.2,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.4,
+                "frameColor": "#cccccc",
+                "frameShininess": 0.3
             }'
             builtin: true
         }
@@ -775,10 +803,14 @@ QtObject {
                 "rgbShift": 0.1,
                 "saturationColor": 0,
                 "screenCurvature": 0.3,
+                "screenRadius": 0.1,
                 "staticNoise": 0.0,
                 "windowOpacity": 1,
                 "margin": 0.2,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0.1,
+                "frameColor": "#ffffff",
+                "frameShininess": 0.3
             }'
             builtin: true
         }
@@ -805,10 +837,14 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0,
                 "screenCurvature": 0,
+                "screenRadius": 0.0,
                 "staticNoise": 0.0,
                 "windowOpacity": 1,
                 "margin": 0.1,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0,
+                "frameColor": "#ffffff",
+                "frameShininess": 0.2
             }'
             builtin: true
         }
@@ -835,10 +871,14 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0.6,
                 "screenCurvature": 0,
+                "screenRadius": 0.0,
                 "staticNoise": 0.1,
                 "windowOpacity": 0.8,
                 "margin": 0.1,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0,
+                "frameColor": "#c3c3c3",
+                "frameShininess": 0.2
             }'
             builtin: true
         }
@@ -865,10 +905,14 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0.0,
                 "screenCurvature": 0,
+                "screenRadius": 0.0,
                 "staticNoise": 0.1,
                 "windowOpacity": 0.7,
                 "margin": 0.1,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0,
+                "frameColor": "#a7a7a7",
+                "frameShininess": 0.2
             }'
             builtin: true
         }
@@ -895,10 +939,14 @@ QtObject {
                 "rgbShift": 0.1,
                 "saturationColor": 0.8,
                 "screenCurvature": 0,
+                "screenRadius": 0.0,
                 "staticNoise": 0.1,
                 "windowOpacity": 1.0,
                 "margin": 0.1,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0,
+                "frameColor": "#d0d0d0",
+                "frameShininess": 0.2
             }'
             builtin: true
         }
@@ -925,10 +973,14 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.0,
                 "screenCurvature": 0,
+                "screenRadius": 0.0,
                 "staticNoise": 0.0,
                 "windowOpacity": 1.0,
                 "margin": 0.0,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0,
+                "frameColor": "#c0c0c0",
+                "frameShininess": 0.2
             }'
             builtin: true
         }
@@ -955,10 +1007,14 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0,
                 "screenCurvature": 0,
+                "screenRadius": 0.0,
                 "staticNoise": 0.0,
                 "windowOpacity": 1,
                 "margin": 0.1,
-                "blinkingCursor": false
+                "blinkingCursor": false,
+                "frameSize": 0,
+                "frameColor": "#cdcdcd",
+                "frameShininess": 0.2
             }'
             builtin: true
         }

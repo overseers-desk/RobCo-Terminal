@@ -160,8 +160,8 @@ windows()  { tmux -S "$1" list-windows 2>/dev/null | wc -l; }
 HOSTSHORT=$(hostname -s)
 ANCHOR_RE="^tmux -CC # @${HOSTSHORT}\$"
 
-echo "== phase 1: RobCo Amber, one attachment, the whole life of a page =="
-launch "RobCo Amber" phase1.log
+echo "== phase 1: Default Amber, one attachment, the whole life of a page =="
+launch "Default Amber" phase1.log
 SOCK1="$SCRATCH/tmp/sock1"
 tmux -S "$SOCK1" new-session -d -s one
 
@@ -313,8 +313,8 @@ grep -q "protocol lost" "$OUTDIR/phase1.log" && ok "client logged the lost proto
                                              || bad "no protocol-lost line in the log"
 shutdown_app
 
-echo "== phase 2: RobCo Blue, two sockets at once =="
-launch "RobCo Blue" phase2.log
+echo "== phase 2: Deep Blue, two sockets at once =="
+launch "Deep Blue" phase2.log
 SOCK1="$SCRATCH/tmp/sock1"
 SOCK2="$SCRATCH/tmp/sock2"
 tmux -S "$SOCK1" new-session -d -s one
