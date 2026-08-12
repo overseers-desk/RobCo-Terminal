@@ -104,8 +104,11 @@ int main(int argc, char *argv[])
         qWarning() << "KDSingleApplication: primary not reachable, continuing as independent instance.";
     }
 
-    QQmlApplicationEngine engine;
+    // The engine is declared after every object QML sees through a context
+    // property, so it is destroyed first: QML teardown may still call into
+    // them, and the reverse order would have it call into freed objects.
     FileIO fileIO;
+    QQmlApplicationEngine engine;
 
     qmlRegisterType<FontManager>("CoolRetroTerm", 1, 0, "FontManager");
     qmlRegisterUncreatableType<FontListModel>("CoolRetroTerm", 1, 0, "FontListModel", "FontListModel is created by FontManager");
