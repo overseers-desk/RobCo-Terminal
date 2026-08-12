@@ -476,18 +476,22 @@ void FontManager::updateComputedFont()
         return;
     }
 
+    // Copied out before any signal below: font points into a model's vector,
+    // and a slot may refill the model under it.
+    const bool lowResolutionFont = font->lowResolutionFont;
+
     const qreal totalFontScaling = m_baseFontScaling * m_fontScaling;
     const qreal targetPixelHeight = kBaseFontPixelHeight * totalFontScaling;
     const qreal lineSpacingFactor = m_lineSpacing;
 
     const int lineSpacing = qRound(targetPixelHeight * lineSpacingFactor);
-    const int pixelSize = font->lowResolutionFont
+    const int pixelSize = lowResolutionFont
         ? font->pixelSize
         : static_cast<int>(targetPixelHeight);
 
     const qreal nativeLineHeight = font->pixelSize + qRound(font->pixelSize * lineSpacingFactor);
     const qreal targetLineHeight = targetPixelHeight + lineSpacing;
-    const qreal screenScaling = font->lowResolutionFont
+    const qreal screenScaling = lowResolutionFont
         ? (nativeLineHeight > 0 ? targetLineHeight / nativeLineHeight : 1.0)
         : 1.0;
 
@@ -514,8 +518,8 @@ void FontManager::updateComputedFont()
 #endif
     setFontSubstitutions(fontFamily, fallbackChain);
 
-    if (m_lowResolutionFont != font->lowResolutionFont) {
-        m_lowResolutionFont = font->lowResolutionFont;
+    if (m_lowResolutionFont != lowResolutionFont) {
+        m_lowResolutionFont = lowResolutionFont;
         emit lowResolutionFontChanged();
     }
 
@@ -525,7 +529,7 @@ void FontManager::updateComputedFont()
                              screenScaling,
                              fontWidth,
                              fallbackFontFamily,
-                             font->lowResolutionFont);
+                             lowResolutionFont);
 }
 
 const FontEntry *FontManager::findFontByName(const QString &name) const
