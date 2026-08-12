@@ -63,8 +63,11 @@ ShaderTerminal {
         onTmuxGateway: (gateway) => mainShader.tmuxGateway(gateway)
     }
 
+    // Which of the terminal's two keyboards takes the focus is the
+    // terminal's own business: an anchor's keys go to a filter, everyone
+    // else's to the emulation.
     function activate() {
-        terminal.mainTerminal.forceActiveFocus()
+        terminal.activate()
     }
 
     //  EFFECTS  ////////////////////////////////////////////////////////////////

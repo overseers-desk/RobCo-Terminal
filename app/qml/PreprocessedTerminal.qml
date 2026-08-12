@@ -57,6 +57,28 @@ Item{
     property size terminalSize: kterminal.terminalSize
     property size fontMetrics: kterminal.fontMetrics
 
+    // An anchor is a session in tmux control mode: the pty below is the
+    // protocol's own channel, and the screen above it is the picture the
+    // shell left when it entered. Nothing the user types belongs on that
+    // wire but the empty line tmux reads as "detach". The glass is still a
+    // picture to read and copy from; it is no longer a surface to type at.
+    readonly property bool frozenGlass: terminalContainer.channelKind === "anchor"
+
+    // Where the keyboard goes when this channel takes the air. Live, not
+    // decided once: transport mutates the row's kind under a session that
+    // keeps running, and the focus has to follow the kind both ways.
+    function activate() {
+        if (frozenGlass)
+            anchorFilter.forceActiveFocus()
+        else
+            kterminal.forceActiveFocus()
+    }
+
+    onFrozenGlassChanged: {
+        if (kterminal.activeFocus || anchorFilter.activeFocus)
+            activate()
+    }
+
     // Manage copy and paste
     Connections {
         target: copyAction
@@ -71,7 +93,9 @@ Item{
         target: pasteAction
 
         onTriggered: {
-            if (terminalContainer.isActive) {
+            // Copy off the frozen picture, yes; paste onto the protocol's
+            // wire, never.
+            if (terminalContainer.isActive && !terminalContainer.frozenGlass) {
                 kterminal.pasteClipboard()
             }
         }
@@ -221,6 +245,28 @@ Item{
         }
     }
 
+    // The anchor's keyboard. It holds the focus in the terminal's place while
+    // this channel is an anchor, so no keystroke reaches the emulation at
+    // all: Return goes out as the bare carriage return tmux's control mode
+    // reads as an empty line and answers by detaching, whose %exit comes
+    // back up the same wire and collapses the page. Every other key is
+    // accepted and dropped, which is the whole of rule 6; pass-through is a
+    // power setting for another day.
+    FocusScope {
+        id: anchorFilter
+
+        anchors.fill: parent
+
+        Keys.onPressed: function (event) {
+            event.accepted = true
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                ksession.sendText("\r")
+        }
+        Keys.onReleased: function (event) {
+            event.accepted = true
+        }
+    }
+
     Component {
         id: shortContextMenu
         ShortContextMenu { }
@@ -241,37 +287,52 @@ Item{
         property real margin: appSettings.margin
         property real frameSize: appSettings.frameSize * terminalWindow.normalizedScreenScale
 
+        // Shift is what tells the emulation to mark the screen rather than
+        // forward the pointer to the program below, so on frozen glass the
+        // anchor holds it down on the user's behalf: dragging selects, the
+        // pointer keeps its I-beam, and nothing the mouse does is written to
+        // the control-mode wire.
+        readonly property bool marksSelection: terminalContainer.frozenGlass
+                                               || !kterminal.terminalUsesMouse
+        function marking(modifiers) {
+            return terminalContainer.frozenGlass ? modifiers | Qt.ShiftModifier : modifiers
+        }
+
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         anchors.fill: parent
-        cursorShape: kterminal.terminalUsesMouse ? Qt.ArrowCursor : Qt.IBeamCursor
+        cursorShape: marksSelection ? Qt.IBeamCursor : Qt.ArrowCursor
         onWheel: function(wheel) {
             if (wheel.modifiers & Qt.ControlModifier) {
                wheel.angleDelta.y > 0 ? zoomIn.trigger() : zoomOut.trigger();
             } else {
                 var coord = correctDistortion(wheel.x, wheel.y);
-                kterminal.simulateWheel(coord.x, coord.y, wheel.buttons, wheel.modifiers, wheel.angleDelta);
+                kterminal.simulateWheel(coord.x, coord.y, wheel.buttons, marking(wheel.modifiers), wheel.angleDelta);
             }
         }
         onDoubleClicked: function(mouse) {
             var coord = correctDistortion(mouse.x, mouse.y);
-            kterminal.simulateMouseDoubleClick(coord.x, coord.y, mouse.button, mouse.buttons, mouse.modifiers);
+            kterminal.simulateMouseDoubleClick(coord.x, coord.y, mouse.button, mouse.buttons, marking(mouse.modifiers));
         }
         onPressed: function(mouse) {
-            kterminal.forceActiveFocus()
-            if ((!kterminal.terminalUsesMouse || mouse.modifiers & Qt.ShiftModifier) && mouse.button == Qt.RightButton) {
+            terminalContainer.activate()
+            // The middle button pastes the primary selection, which is a
+            // paste like any other and inert on an anchor.
+            if (terminalContainer.frozenGlass && mouse.button == Qt.MiddleButton)
+                return;
+            if ((marksSelection || mouse.modifiers & Qt.ShiftModifier) && mouse.button == Qt.RightButton) {
                 contextmenu.popup();
             } else {
                 var coord = correctDistortion(mouse.x, mouse.y);
-                kterminal.simulateMousePress(coord.x, coord.y, mouse.button, mouse.buttons, mouse.modifiers)
+                kterminal.simulateMousePress(coord.x, coord.y, mouse.button, mouse.buttons, marking(mouse.modifiers))
             }
         }
         onReleased: function(mouse) {
             var coord = correctDistortion(mouse.x, mouse.y);
-            kterminal.simulateMouseRelease(coord.x, coord.y, mouse.button, mouse.buttons, mouse.modifiers);
+            kterminal.simulateMouseRelease(coord.x, coord.y, mouse.button, mouse.buttons, marking(mouse.modifiers));
         }
         onPositionChanged: function(mouse) {
             var coord = correctDistortion(mouse.x, mouse.y);
-            kterminal.simulateMouseMove(coord.x, coord.y, mouse.button, mouse.buttons, mouse.modifiers);
+            kterminal.simulateMouseMove(coord.x, coord.y, mouse.button, mouse.buttons, marking(mouse.modifiers));
         }
 
         function correctDistortion(x, y) {

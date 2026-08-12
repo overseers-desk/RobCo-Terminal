@@ -12,6 +12,14 @@
 # slot, and a fresh nonce per prompt is what lets "the shell's title escape
 # repaints on the next prompt" be observed as a change.
 #
+# The anchor's input law is read off tmux's own reading of the wire. A
+# control-mode client takes its stdin as a line of tmux commands, and the
+# empty line is the one that means "detach": so a swallowed `ls` followed by
+# Enter detaches, while an `ls` that reached the wire would make the line a
+# command tmux does not know and no detach would follow. That difference is
+# the assertion; the glass is checked besides, against a floor two shots of
+# one still screen set between them.
+#
 # One tmux fact the flow leans on: an attached session cannot stand with
 # zero windows, killing the last one kills the session itself. So the rule-4
 # assertion is that the page outlives every window-close short of the
@@ -123,6 +131,18 @@ shot() {
     import -window "$WID" "$OUTDIR/$1"
 }
 
+# How far apart two shots of the glass are, root-mean-square over the whole
+# frame. The tube burns and flickers of its own accord, so two shots of one
+# still screen are never identical and the number only means anything against
+# that floor.
+glass_rmse() {
+    compare -metric RMSE "$OUTDIR/$1" "$OUTDIR/$2" null: 2>&1 \
+        | sed -n 's/.*(\([0-9.e-]*\)).*/\1/p'
+}
+
+# a <= b: awk, the shell having no floats.
+le() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a <= b) }'; }
+
 # Retitle the shell on the air so its titles name its slot from here on.
 retitle() {
     type_line "PROMPT_COMMAND='printf \"\\033]0;slot$1 %s\\007\" \"\$RANDOM\$RANDOM\"'"
@@ -182,6 +202,10 @@ xdotool key --clearmodifiers ctrl+shift+t; sleep 2
 wait_wm '^bash$' "asked-for window took the air under its bare name"
 shot flow2-windows.png
 
+echo "-- 2c: a remote channel still takes the keyboard --"
+type_line "tmux -S $SOCK1 rename-window typed"
+wait_wm '^typed$' "typing reached the remote pane, and tmux renamed the window"
+
 echo "-- 3: rule 4, the page outlives its windows --"
 WINS=$(tmux -S "$SOCK1" list-windows -F '#{window_id}')
 COUNT=$(echo "$WINS" | wc -l)
@@ -205,17 +229,58 @@ wait_wm '^slot2 ' "landed home on the held slot, title repainted by the prompt"
 sleep 1
 shot flow3-relit.png
 
-echo "-- 4a: detach by Enter on the anchor --"
+echo "-- 4a: the anchor's input law, and Enter as its one live key --"
 tmux -S "$SOCK1" new-session -d -s one
 type_line "tmux -S $SOCK1 -CC attach -t one"
 wait_wm "$ANCHOR_RE" "re-attached"
+sleep 2; shot flow4-anchor-still.png
+sleep 2; shot flow4-anchor-still2.png
+FLOOR=$(glass_rmse flow4-anchor-still.png flow4-anchor-still2.png)
+
+xdotool type --clearmodifiers --delay 25 "the anchor swallows this line"
+sleep 2; shot flow4-anchor-typed.png
+TYPED=$(glass_rmse flow4-anchor-still2.png flow4-anchor-typed.png)
+le "$TYPED" "$(awk -v f="$FLOOR" 'BEGIN { print f * 2 + 0.0002 }')" \
+    && ok "typed keys never reached the glass (rmse $TYPED, still-floor $FLOOR)" \
+    || bad "the glass moved under typing (rmse $TYPED, still-floor $FLOOR)"
+[ "$(clients "$SOCK1")" -eq 1 ] && ok "typed keys never reached the wire either" \
+                                || bad "the client went away under plain typing"
+
+echo "-- 4b: paste is inert on the anchor --"
+# An empty line is the one thing tmux's control mode acts on, so a paste of
+# one is the paste whose arrival could not go unnoticed.
+printf '\n' | xclip -selection clipboard
+xdotool key --clearmodifiers ctrl+shift+v; sleep 2
+[ "$(clients "$SOCK1")" -eq 1 ] && ok "paste on the anchor did nothing" \
+                                || bad "a pasted empty line reached the wire"
+
+echo "-- 4c: the frozen glass can still be copied off --"
+# Down the first lines of the held screen and across. The emulation extends
+# a selection on motion, so the drag is walked rather than warped, and it
+# starts on a row that carries text: the band above the first line belongs to
+# the bezel, and a drag begun there selects nothing.
+xdotool mousemove --window "$WID" 330 90; sleep 0.3
+xdotool mousedown 1; sleep 0.3
+xdotool mousemove --window "$WID" 700 130; sleep 0.2
+xdotool mousemove --window "$WID" 1330 210; sleep 0.4
+xdotool mouseup 1
+sleep 1
+xdotool key --clearmodifiers ctrl+shift+c; sleep 1
+xclip -o -selection clipboard 2>/dev/null | grep -q "attach -t one" \
+    && ok "selection off the frozen screen copied" \
+    || bad "copy off the frozen screen came back empty [$(xclip -o -selection clipboard 2>/dev/null | tr '\n' '|')]"
+shot flow4-anchor-copied.png
+
+echo "-- 4d: Enter alone detaches --"
+xdotool type --clearmodifiers --delay 25 "ls"
 xdotool key --clearmodifiers Return
 for _ in $(seq 20); do [ "$(clients "$SOCK1")" -eq 0 ] && break; sleep 0.5; done
-[ "$(clients "$SOCK1")" -eq 0 ] && ok "Enter on the anchor detached the client" \
-                                || bad "client still attached after Enter"
+[ "$(clients "$SOCK1")" -eq 0 ] \
+    && ok "the swallowed ls left Enter to detach the client on its own" \
+    || bad "client still attached after ls<Enter>"
 wait_wm '^slot2 ' "landed home, relit, repainted"
 
-echo "-- 4b: detach by detach-client on the server --"
+echo "-- 4e: detach by detach-client on the server --"
 type_line "tmux -S $SOCK1 -CC attach -t one"
 wait_wm "$ANCHOR_RE" "re-attached"
 tmux -S "$SOCK1" list-clients -F '#{client_name}' \
