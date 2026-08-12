@@ -29,24 +29,24 @@
         <file>ChannelChordInput.qml</file>
         <file>PlainFrame.qml</file>
         <file>shells/common/ScrewHead.qml</file>
-        <file>shells/robco-amber/Frame.qml</file>
-        <file>shells/robco-amber/Chassis.qml</file>
-        <file>shells/robco-amber/RowFurniture.qml</file>
-        <file>shells/robco-amber/SelectorTrack.qml</file>
-        <file>shells/robco-amber/Pager.qml</file>
-        <file>shells/robco-amber/ChannelButton.qml</file>
-        <file>shells/robco-amber/Metrics.qml</file>
-        <file>shells/robco-blue/Frame.qml</file>
-        <file>shells/robco-blue/Chassis.qml</file>
-        <file>shells/robco-blue/RowFurniture.qml</file>
-        <file>shells/robco-blue/SelectorTrack.qml</file>
-        <file>shells/robco-blue/Pager.qml</file>
-        <file>shells/robco-blue/Metrics.qml</file>
-        <file>shells/robco-switchboard/Metrics.qml</file>
-        <file>shells/robco-switchboard/Chassis.qml</file>
-        <file>shells/robco-switchboard/Frame.qml</file>
-        <file>shells/robco-switchboard/RowFurniture.qml</file>
-        <file>shells/robco-switchboard/Pager.qml</file>
+        <file>shells/annunciator/Frame.qml</file>
+        <file>shells/annunciator/Chassis.qml</file>
+        <file>shells/annunciator/RowFurniture.qml</file>
+        <file>shells/annunciator/SelectorTrack.qml</file>
+        <file>shells/annunciator/Pager.qml</file>
+        <file>shells/annunciator/ChannelButton.qml</file>
+        <file>shells/annunciator/Metrics.qml</file>
+        <file>shells/slide-rule/Frame.qml</file>
+        <file>shells/slide-rule/Chassis.qml</file>
+        <file>shells/slide-rule/RowFurniture.qml</file>
+        <file>shells/slide-rule/SelectorTrack.qml</file>
+        <file>shells/slide-rule/Pager.qml</file>
+        <file>shells/slide-rule/Metrics.qml</file>
+        <file>shells/switchboard/Metrics.qml</file>
+        <file>shells/switchboard/Chassis.qml</file>
+        <file>shells/switchboard/Frame.qml</file>
+        <file>shells/switchboard/RowFurniture.qml</file>
+        <file>shells/switchboard/Pager.qml</file>
         <file>displays/led/Display.qml</file>
         <file>displays/led/Metrics.qml</file>
         <file>displays/tape/Display.qml</file>

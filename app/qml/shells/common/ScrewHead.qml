@@ -19,7 +19,7 @@
 *******************************************************************************/
 import QtQuick
 
-// A slotted screw head on its boss, shared by the RobCo shells: a recessed
+// A slotted screw head on its boss, shared by the chassis kits: a recessed
 // countersink ring, a raised domed head with its glint on the side the key
 // light lands, a dark slot with a lit lower edge, and a shadow arc opposite
 // the glint. All measures scale with the item's size; the slot angle is the

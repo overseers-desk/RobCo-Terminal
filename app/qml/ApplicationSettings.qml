@@ -101,7 +101,7 @@ QtObject {
     // Which kit of components paints the appliance's body, and which display
     // sits in the bank's windows. Directories under shells/ and displays/;
     // a channel profile that names neither gets the amber appliance.
-    property string shell: "robco-amber"
+    property string shell: "annunciator"
     property string channelDisplay: "led"
     property string saturatedColor: Utils.mix(Utils.strToColor(_fontColor), Utils.strToColor("#FFFFFF"), (saturationColor * 0.5))
     property color fontColor: Utils.mix(Utils.strToColor(_backgroundColor), Utils.strToColor(saturatedColor), (0.7 + (contrast * 0.3)))
@@ -189,7 +189,7 @@ QtObject {
     // back to the default, warned once: a look can go missing between
     // versions, and a bank that fails to paint would be worse than one that
     // paints plainly.
-    readonly property var knownShells: ["robco-amber", "robco-blue", "robco-switchboard"]
+    readonly property var knownShells: ["annunciator", "slide-rule", "switchboard"]
     readonly property var knownDisplays: ["led", "tape"]
     property var _warnedLooks: ({})
 
@@ -206,7 +206,7 @@ QtObject {
 
     // Relative URLs, resolved by the Loader against qrc:/.
     function shellUrl(part) {
-        return "shells/" + _validatedLook("shell", shell, knownShells, "robco-amber")
+        return "shells/" + _validatedLook("shell", shell, knownShells, "annunciator")
                 + "/" + part + ".qml"
     }
 
@@ -427,7 +427,7 @@ QtObject {
         // Same convention, same reason: switching profiles has to switch the
         // look back, so a profile without the keys means the default look,
         // never whatever the last profile left standing.
-        shell = settings.shell !== undefined ? settings.shell : "robco-amber"
+        shell = settings.shell !== undefined ? settings.shell : "annunciator"
         channelDisplay = settings.channelDisplay !== undefined ? settings.channelDisplay : "led"
     }
 
@@ -1005,7 +1005,7 @@ QtObject {
                 "frameShininess": 0.3,
                 "channelIndicator": "glow",
                 "channels": true,
-                "shell": "robco-amber"
+                "shell": "annunciator"
             }'
             builtin: true
         }
@@ -1053,7 +1053,7 @@ QtObject {
                 "frameShininess": 0.15,
                 "channelIndicator": "pointer",
                 "channels": true,
-                "shell": "robco-blue"
+                "shell": "slide-rule"
             }'
             builtin: true
         }
@@ -1102,7 +1102,7 @@ QtObject {
                 "frameShininess": 0.2,
                 "channelIndicator": "switch",
                 "channels": true,
-                "shell": "robco-switchboard",
+                "shell": "switchboard",
                 "channelDisplay": "tape"
             }'
             builtin: true

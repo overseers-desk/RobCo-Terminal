@@ -111,8 +111,8 @@ Item {
     }
 
     // The stamped numeral: raised paint catching the light on its face, its
-    // strike shadow thrown down and right, the inverse of the blue shell's
-    // ink-in-metal stamp.
+    // strike shadow thrown down and right, the inverse of the Slide Rule
+    // shell's ink-in-metal stamp.
     Item {
         id: numeral
 

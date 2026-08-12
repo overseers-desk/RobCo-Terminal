@@ -14,7 +14,7 @@ each part of it:
 | `powered` | the bank row: false is an empty slot |
 | `bright` | the bank row: the channel on screen, under the glow indicator law |
 | `padCellsY` | the bank: how tall a hole the shell punched |
-| `characters` | its own default is the setting; a fixture with a window of its own (robco-blue/Pager.qml) names its width |
+| `characters` | its own default is the setting; a fixture with a window of its own (slide-rule/Pager.qml) names its width |
 | `padCellsLeft`, `padCellsRight` | the same fixtures, to fill their window edge to edge |
 | `spillStrength` | the same fixtures, to quiet the light thrown on the plate |
 
