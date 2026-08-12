@@ -28,7 +28,11 @@ import "utils.js" as Utils
 //
 // The rows are a fixed-size window onto the slot space, paged: the numerals
 // read 1..N on every page, the way a car stereo reuses its preset keys across
-// FM1/FM2/FM3.
+// FM1/FM2/FM3. The pager walks one flattened space over every machine page
+// the store holds, home's slots first and then each attachment's, so the
+// same two keys are the band switch and the preset scroll. Stepping the
+// pager views a page without stealing the air: the channel on screen stays
+// put until a switch is pressed.
 Item {
     id: bank
 
@@ -116,22 +120,44 @@ Item {
     property int rowsVisible: 1
     property int pageIndex: 0
 
-    readonly property int pageBase: pageIndex * rowsVisible
-    // Every open slot has a page, and so does the next free one: the slot a new
-    // channel will take is always one the mouse can reach.
-    readonly property int pageCount: Math.max(1, Math.ceil(
-        Math.max(terminalChannels.highestOpenChannel,
-                 terminalChannels.firstFreeChannel) / rowsVisible))
+    // Each store page's stretch of the flattened pager space: within a page
+    // every open slot is reachable and so is the next free one, the slot a
+    // new channel will take.
+    readonly property var viewTable: terminalChannels.viewPages(rowsVisible)
+    readonly property int pageCount: {
+        var count = 0
+        for (var i = 0; i < viewTable.length; i++)
+            count += viewTable[i].count
+        return Math.max(1, count)
+    }
+    // The store page this bank page falls in, and where its stretch of slots
+    // begins there.
+    readonly property var _view: {
+        var index = Math.min(pageIndex, pageCount - 1)
+        for (var i = 0; i < viewTable.length; i++) {
+            if (index < viewTable[i].count)
+                return { page: viewTable[i].page, base: index * rowsVisible }
+            index -= viewTable[i].count
+        }
+        return { page: 0, base: 0 }
+    }
+    readonly property int viewedPage: _view.page
+    readonly property int pageBase: _view.base
+    // The viewed page's slots, dark ones as undefined; what the rows and the
+    // press read.
+    readonly property var viewedState: terminalChannels.slotStates[viewedPage] ?? []
     // The last page stops at the cap. No key is engraved for a slot that no
     // channel can ever take.
     readonly property int rowsOnPage: Math.min(rowsVisible, terminalChannels.channelCap - pageBase)
 
     readonly property int currentChannel: terminalChannels.currentChannel
+    readonly property int currentPage: terminalChannels.currentPage
 
     // Where the selector stands, in the track's own coordinates: beside the row
     // of the channel on screen, or down by the pager when that channel is on a
     // page this one is not showing.
-    readonly property real pointerY: (currentChannel > pageBase && currentChannel <= pageBase + rowsOnPage)
+    readonly property real pointerY: (viewedPage === currentPage
+                                      && currentChannel > pageBase && currentChannel <= pageBase + rowsOnPage)
         ? topPadding - bankPadding + (currentChannel - pageBase - 1) * (rowHeight + rowSpacing) + rowHeight / 2
         : pager.y + pager.height / 2 - bankPadding
 
@@ -143,7 +169,8 @@ Item {
 
     onHeightChanged: settleTimer.restart()
     onRowHeightChanged: settleTimer.restart()
-    onCurrentChannelChanged: ensureVisible(currentChannel)
+    onCurrentChannelChanged: ensureVisible()
+    onCurrentPageChanged: ensureVisible()
     onPageCountChanged: pageIndex = Math.min(pageIndex, pageCount - 1)
     // A page flip re-labels the numerals, so digits typed against the old
     // page are abandoned, never committed against the new one.
@@ -163,7 +190,7 @@ Item {
         if (measured === rowsVisible)
             return
         rowsVisible = measured
-        ensureVisible(currentChannel)
+        ensureVisible()
     }
 
     // The character count whose bank width sits nearest the given width,
@@ -190,25 +217,36 @@ Item {
             }
             return false
         }
-        return terminalChannels.pageSlotPrefixExists(buf, pageBase, rowsOnPage)
+        return terminalChannels.pageSlotPrefixExists(viewedPage, buf, pageBase, rowsOnPage)
     }
 
     function step(direction) {
         pageIndex = Math.max(0, Math.min(pageCount - 1, pageIndex + direction))
     }
 
-    function ensureVisible(channel) {
-        if (channel >= 1)
-            pageIndex = Math.floor((channel - 1) / rowsVisible)
+    // The bank turns to the channel on the air: its store page's stretch of
+    // the flattened space, then the bank page of its slot.
+    function ensureVisible() {
+        var flat = 0
+        for (var i = 0; i < viewTable.length; i++) {
+            if (viewTable[i].page === currentPage) {
+                var local = Math.floor((currentChannel - 1) / rowsVisible)
+                pageIndex = flat + Math.max(0, Math.min(viewTable[i].count - 1, local))
+                return
+            }
+            flat += viewTable[i].count
+        }
     }
 
     // The press of a preset: a dark slot starts a session on it, an open one
     // comes to the screen, and either way the shell gets the keyboard back.
+    // The press lands on the page on view, so this is where a viewed page
+    // takes the air; a held home slot refuses in the store.
     function press(channel) {
-        if (terminalChannels.channelState[channel] === undefined)
-            terminalChannels.openChannel(channel)
+        if (viewedState[channel] === undefined)
+            terminalChannels.openChannel(viewedPage, channel)
         else
-            terminalChannels.selectChannel(channel)
+            terminalChannels.selectChannel(viewedPage, channel)
         terminalChannels.activateCurrent()
     }
 
@@ -225,10 +263,10 @@ Item {
     ChannelChordInput {
         id: chordInput
         onSelectSlot: function (slot) {
-            terminalChannels.selectChannel(bank.absoluteSlot(slot))
+            terminalChannels.selectChannel(bank.viewedPage, bank.absoluteSlot(slot))
         }
         onStoreToSlot: function (slot) {
-            terminalChannels.moveCurrentTo(bank.absoluteSlot(slot))
+            terminalChannels.moveCurrentTo(bank.viewedPage, bank.absoluteSlot(slot))
         }
         slotPrefixExists: bank.slotPrefixExists
     }
@@ -246,10 +284,23 @@ Item {
     Connections {
         target: terminalChannels
         function onChannelStored(channel) {
+            // A store never crosses pages, so the blink only lands while the
+            // bank is showing the page it happened on.
+            if (bank.viewedPage !== bank.currentPage)
+                return
             var row = rows.itemAt(channel - bank.pageBase - 1)
             if (row)
                 row.blink()
         }
+    }
+
+    // The page the user is looking at, told to the store: Ctrl+Shift+T acts
+    // there. A profile with no bank never writes it, and the store falls
+    // back to the page the air is on.
+    Binding {
+        target: terminalChannels
+        property: "pageOnView"
+        value: bank.viewedPage
     }
 
     Loader {
@@ -287,7 +338,7 @@ Item {
 
             ChannelRow {
                 required property int index
-                readonly property var slotTitle: terminalChannels.channelState[channel]
+                readonly property var slotTitle: bank.viewedState[channel]
 
                 channel: bank.pageBase + index + 1
                 label: index + 1
@@ -300,7 +351,7 @@ Item {
                 padCellsY: bank.padCellsY
                 open: slotTitle !== undefined
                 title: slotTitle !== undefined ? slotTitle : ""
-                current: bank.currentChannel === channel
+                current: bank.viewedPage === bank.currentPage && bank.currentChannel === channel
                 glowMarks: bank.glowIndicator
                 onActivated: bank.press(channel)
             }

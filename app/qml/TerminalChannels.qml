@@ -21,39 +21,55 @@ import QtQuick
 import QtQuick.Layouts
 import QtQml.Models
 
-// Sessions occupy numbered channel slots. A slot whose shell has exited goes
-// dark and stays dark: no renumbering. New channels take the lowest free slot.
+// Sessions occupy numbered channel slots on machine-scoped pages. The home
+// page holds the local shells; every tmux -CC attachment is a page of its
+// own, anchored at channel 1 by the very channel that attached. Within a
+// page, a slot whose shell has exited goes dark and stays dark: no
+// renumbering. New channels take the lowest free slot of their page.
 Item {
     id: channelsRoot
 
     readonly property int channelCap: 99
 
-    // Dense array indexed by slot number; the title string of the open channel
-    // at that slot, undefined where the slot is dark.
-    property var channelState: []
+    // The machine selector's model: row 0 is home and never leaves; a tmux
+    // attachment appends {kind, host, homeSlot, pageId, follow} and collapse
+    // removes it. homeSlot is the home slot the anchor holds while abroad;
+    // follow marks a window this page asked tmux for, still on its way:
+    // asking for a channel puts you in it, so the next window to arrive on
+    // the page takes the air, while the ones tmux volunteers do not.
+    ListModel {
+        id: pagesModel
+        ListElement { kind: "home"; host: ""; homeSlot: 0; pageId: 0; follow: false }
+    }
+    property int _nextPageId: 1
+
+    // The gateways in a parallel map keyed by pageId: a ListModel cannot hold
+    // a QObject. Reassigned wholesale on every change, so bindings notice.
+    property var _gateways: ({})
+
+    // Which page the air is on, and which slot of it. currentIndex is the
+    // model row of that pair, the StackLayout's cue.
+    property int currentPage: 0
     property int currentChannel: 0
     property int currentIndex: -1
 
-    // Scans the rows, not channelState: a buried row is dark on the bank yet
-    // still holds its slot. channelState is read only so a model change
-    // re-evaluates this.
+    // The page the user is looking at: the bank binds its viewed page here
+    // while it steps the pager without stealing the air; a profile with no
+    // bank leaves it on the page the air is on. Ctrl+Shift+T acts here.
+    property int pageOnView: currentPage
+
+    // Every page's slots at once, pageId to a dense array indexed by slot
+    // number holding the open channel's title there; channelState is the
+    // current page's face of it, what the window title reads. Both are
+    // derived caches with _rebuildState their single writer, reassigned
+    // wholesale rather than mutated: only the assignment notifies bindings.
+    property var slotStates: ({})
+    property var channelState: []
+
     readonly property int firstFreeChannel: {
-        var stateDep = channelState
-        var taken = {}
-        for (var i = 0; i < channelsModel.count; i++)
-            taken[channelsModel.get(i).channel] = true
-        for (var n = 1; n <= channelCap; n++) {
-            if (!taken[n])
-                return n
-        }
-        return 0
-    }
-    readonly property int highestOpenChannel: {
-        for (var n = channelCap; n >= 1; n--) {
-            if (channelState[n] !== undefined)
-                return n
-        }
-        return 0
+        var stateDep = slotStates
+        var pagesDep = pagesModel.count
+        return _firstFree(currentPage)
     }
     readonly property string currentTitle: {
         var title = channelState[currentChannel]
@@ -61,38 +77,43 @@ Item {
     }
     property size terminalSize: Qt.size(0, 0)
 
-    // The tmux control-mode client while a channel is attached, with the host
-    // it reports and the slot the gateway gets back on detach.
-    property var tmuxGateway: null
-    property string tmuxHost: ""
-    property int gatewayChannel: 0
+    // The current page's machinery, for the menus: its host's name and its
+    // gateway, both empty on home. An action is enabled exactly while the
+    // page the air is on is an attachment.
+    readonly property string currentPageHost: {
+        var gatewayDep = _gateways
+        var row = _pageRowOf(currentPage)
+        return row >= 0 ? pagesModel.get(row).host : ""
+    }
+    readonly property var currentPageGateway: _gateways[currentPage] ?? null
 
     // The set only flinches once it is on: bringing up the first channel is
     // not a channel change.
     property bool _degaussArmed: false
 
-    // A window this set asked tmux for, still on its way. Asking for a channel
-    // puts you in it whether the shell is local or a session's away, so the
-    // next window to arrive takes the air; the ones tmux volunteers do not.
-    property bool _followNextRemote: false
-
     // A session has landed on a slot: the bank acknowledges it on that row.
     signal channelStored(int channel)
 
-    // The channels on the air as a dense list, sorted by slot: the sparse
-    // slot space seen without its dark slots and without buried rows. A
-    // derived cache like channelState, with _rebuildState its single writer,
-    // so the tab strip can bind a Repeater to it and never meet a ghost row
-    // for a buried gateway. Consumers key rows by their channel role, never
-    // by position: closing a channel shifts the rows below it while the
-    // slots themselves never renumber.
-    readonly property alias airChannels: airModel
+    // The current page's channels on the air as a dense list, sorted by
+    // slot: the sparse slot space seen without its dark slots. A derived
+    // cache like channelState, with _rebuildState its single writer, so the
+    // tab strip can bind a Repeater to it. Consumers key rows by their
+    // channel role, never by position: closing a channel shifts the rows
+    // below it while the slots themselves never renumber.
+    readonly property alias pageChannels: pageList
 
     ListModel {
-        id: airModel
+        id: pageList
     }
 
-    // channelsModel rows are kept sorted ascending by channel.
+    // channelsModel rows {page, channel, title, kind, windowId, paneId} are
+    // kept sorted ascending by page then channel; pageIds only ever grow, so
+    // the page order is the attach order with home first. kind is "local"
+    // for a shell of this machine's, "remote" for a tmux window fed through
+    // its page's gateway, "anchor" for the transported channel standing at a
+    // page's slot 1. Transport and collapse mutate a row in place rather
+    // than remove it: the row's delegate is the living session, and the
+    // glass never blanks.
     ListModel {
         id: channelsModel
     }
@@ -104,241 +125,356 @@ Item {
         return String(rawTitle).trim()
     }
 
-    function _rowOf(channel) {
+    function _rowOf(page, channel) {
         for (var i = 0; i < channelsModel.count; i++) {
-            if (channelsModel.get(i).channel === channel)
+            var row = channelsModel.get(i)
+            if (row.page === page && row.channel === channel)
                 return i
         }
         return -1
     }
 
-    function _rebuildState() {
-        var state = []
+    function _pageRowOf(pageId) {
+        for (var i = 0; i < pagesModel.count; i++) {
+            if (pagesModel.get(i).pageId === pageId)
+                return i
+        }
+        return -1
+    }
+
+    // A transported channel's home slot stays dark and held while it is
+    // abroad: the hold lives on the page object, not on any row.
+    function _slotHeld(channel) {
+        for (var i = 0; i < pagesModel.count; i++) {
+            var page = pagesModel.get(i)
+            if (page.kind === "tmux" && page.homeSlot === channel)
+                return true
+        }
+        return false
+    }
+
+    // The lowest free slot of a page. On home the held slots count as taken;
+    // on an attachment the anchor holds 1, so windows fill from 2.
+    function _firstFree(page) {
+        var taken = {}
         for (var i = 0; i < channelsModel.count; i++) {
             var row = channelsModel.get(i)
-            if (!row.buried)
-                state[row.channel] = row.title
+            if (row.page === page)
+                taken[row.channel] = true
         }
-        // Reassigned wholesale rather than mutated in place: only the
-        // assignment notifies bindings on channelState.
-        channelState = state
-        currentIndex = _rowOf(currentChannel)
+        if (page === 0) {
+            for (var j = 0; j < pagesModel.count; j++) {
+                var p = pagesModel.get(j)
+                if (p.kind === "tmux")
+                    taken[p.homeSlot] = true
+            }
+        }
+        for (var n = 1; n <= channelCap; n++) {
+            if (!taken[n])
+                return n
+        }
+        return 0
+    }
 
-        // Merge the unburied rows into airModel in place: both are sorted by
-        // slot, and a title-only change touches one row's property, so the
-        // strip's delegates survive a prompt changing a title.
+    function _highestOpen(page) {
+        var highest = 0
+        for (var i = 0; i < channelsModel.count; i++) {
+            var row = channelsModel.get(i)
+            if (row.page === page && row.channel > highest)
+                highest = row.channel
+        }
+        return highest
+    }
+
+    // The bank's pager walks one flattened space over every page: each page
+    // unrolls into as many bank pages as its slots need, every open slot
+    // reachable and so is the next free one, the slot a new channel will
+    // take. Returns {page, count} per page in selector order.
+    function viewPages(rowsVisible) {
+        var stateDep = slotStates
+        var pagesDep = pagesModel.count
+        var rows = Math.max(1, rowsVisible)
+        var pages = []
+        for (var i = 0; i < pagesModel.count; i++) {
+            var pageId = pagesModel.get(i).pageId
+            var span = Math.max(_highestOpen(pageId), _firstFree(pageId), 1)
+            pages.push({ page: pageId, count: Math.ceil(span / rows) })
+        }
+        return pages
+    }
+
+    function _rebuildState() {
+        var states = {}
+        for (var i = 0; i < channelsModel.count; i++) {
+            var row = channelsModel.get(i)
+            var state = states[row.page]
+            if (state === undefined)
+                state = states[row.page] = []
+            state[row.channel] = row.title
+        }
+        slotStates = states
+        channelState = states[currentPage] ?? []
+        currentIndex = _rowOf(currentPage, currentChannel)
+
+        // Merge the current page's rows into pageList in place: both are
+        // sorted by slot, and a title-only change touches one row's
+        // property, so the strip's delegates survive a prompt changing a
+        // title.
         var pos = 0
         for (var j = 0; j < channelsModel.count; j++) {
             var r = channelsModel.get(j)
-            if (r.buried)
+            if (r.page !== currentPage)
                 continue
-            while (pos < airModel.count && airModel.get(pos).channel < r.channel)
-                airModel.remove(pos)
-            if (pos < airModel.count && airModel.get(pos).channel === r.channel) {
-                if (airModel.get(pos).title !== r.title)
-                    airModel.setProperty(pos, "title", r.title)
+            while (pos < pageList.count && pageList.get(pos).channel < r.channel)
+                pageList.remove(pos)
+            if (pos < pageList.count && pageList.get(pos).channel === r.channel) {
+                if (pageList.get(pos).title !== r.title)
+                    pageList.setProperty(pos, "title", r.title)
             } else {
-                airModel.insert(pos, { channel: r.channel, title: r.title })
+                pageList.insert(pos, { channel: r.channel, title: r.title })
             }
             pos++
         }
-        while (airModel.count > pos)
-            airModel.remove(pos)
+        while (pageList.count > pos)
+            pageList.remove(pos)
     }
 
-    function openChannel(channel) {
+    // Local shells live on home alone: an attachment's channels are tmux's
+    // to give. A held slot refuses; it is a transported channel's berth.
+    function openChannel(page, channel) {
+        if (page !== 0)
+            return
         if (channel < 1 || channel > channelCap)
             return
-        if (_rowOf(channel) >= 0)
+        if (_rowOf(page, channel) >= 0 || _slotHeld(channel))
             return
-        _insertRow({ channel: channel, title: "", kind: "local",
-                     windowId: "", paneId: "", buried: false })
+        _insertRow({ page: 0, channel: channel, title: "", kind: "local",
+                     windowId: "", paneId: "" })
+        currentPage = 0
         currentChannel = channel
         _rebuildState()
     }
 
-    // A tmux window becomes an ordinary channel on the lowest free slot. Of the
-    // windows an attach lists, only the first pulls selection off the buried
-    // gateway; the rest line up behind it. A window this set asked for is the
-    // exception and takes the air outright.
-    function openRemoteChannel(windowId, paneId, name) {
-        var channel = firstFreeChannel
+    // A tmux window becomes an ordinary channel on the lowest free slot of
+    // its page, from 2 up: the anchor holds 1. Windows the attach lists line
+    // up behind the anchor without taking the air; a window this set asked
+    // for is the exception and takes it outright.
+    function openRemoteChannel(page, windowId, paneId, name) {
+        var channel = _firstFree(page)
         if (channel < 1)
             return
+        var pageRow = _pageRowOf(page)
+        if (pageRow < 0)
+            return
         // Whatever arrives next answers the request, and nothing after it does.
-        var asked = _followNextRemote
-        _followNextRemote = false
-        _insertRow({ channel: channel,
+        var asked = pagesModel.get(pageRow).follow
+        if (asked)
+            pagesModel.setProperty(pageRow, "follow", false)
+        _insertRow({ page: page, channel: channel,
                      title: normalizeTitle(name),
-                     kind: "remote", windowId: windowId, paneId: paneId,
-                     buried: false })
-        var currentRow = _rowOf(currentChannel)
-        if (asked || currentRow < 0 || channelsModel.get(currentRow).buried)
+                     kind: "remote", windowId: windowId, paneId: paneId })
+        if (asked) {
+            currentPage = page
             currentChannel = channel
+        }
         _rebuildState()
-        if (currentChannel === channel)
+        if (asked)
             activateCurrent()
     }
 
     function _insertRow(row) {
         var dest = 0
-        while (dest < channelsModel.count && channelsModel.get(dest).channel < row.channel)
+        while (dest < channelsModel.count && _lessThan(channelsModel.get(dest), row))
             dest++
         channelsModel.insert(dest, row)
     }
 
+    function _lessThan(a, b) {
+        return a.page !== b.page ? a.page < b.page : a.channel < b.channel
+    }
+
+    // A row whose page or channel was rewritten in place slides to where the
+    // sort order wants it. A move, never a remove: the delegate survives.
+    function _resortRow(index) {
+        var row = channelsModel.get(index)
+        var dest = 0
+        for (var i = 0; i < channelsModel.count; i++) {
+            if (i !== index && _lessThan(channelsModel.get(i), row))
+                dest++
+        }
+        if (dest !== index)
+            channelsModel.move(index, dest, 1)
+    }
+
     function openFirstFree() {
-        if (firstFreeChannel > 0)
-            openChannel(firstFreeChannel)
+        var slot = _firstFree(0)
+        if (slot > 0)
+            openChannel(0, slot)
     }
 
-    // A new channel follows the focus: asked for from a remote channel it is
-    // another window on that tmux session, from a local one the lowest free
-    // slot with a shell in it.
+    // A new channel goes to the page on view: on home the lowest free slot
+    // with a shell in it, on an attachment another window of that session.
     function newChannel() {
-        var row = _rowOf(currentChannel)
-        if (row >= 0 && channelsModel.get(row).kind === "remote" && tmuxGateway)
-            newRemoteChannel()
-        else
+        var pageRow = _pageRowOf(pageOnView)
+        var gateway = _gateways[pageOnView]
+        if (pageRow >= 0 && pagesModel.get(pageRow).kind === "tmux" && gateway) {
+            pagesModel.setProperty(pageRow, "follow", true)
+            gateway.newWindow()
+        } else {
             openFirstFree()
+        }
     }
 
-    // Ask the session for another window. The one door for it: the shortcut
-    // arrives here when the focus is remote, the menu item when it is asked
-    // for by name, and either way the bank goes to the window when it lands.
+    // Ask the current page's session for another window. The one door for
+    // it: the shortcut arrives here when that page is on view, the menu item
+    // when it is asked for by name, and either way the bank goes to the
+    // window when it lands.
     function newRemoteChannel() {
-        if (!tmuxGateway)
+        var gateway = currentPageGateway
+        if (!gateway)
             return
-        _followNextRemote = true
-        tmuxGateway.newWindow()
+        pagesModel.setProperty(_pageRowOf(currentPage), "follow", true)
+        gateway.newWindow()
     }
 
-    function closeChannel(channel) {
-        var row = _rowOf(channel)
+    // What the user's close asks for, by what the row is. An anchor detaches
+    // its page: tmux keeps the session, the channel comes home. A remote
+    // window is tmux's to kill, and the row goes when %window-close comes
+    // back. A local shell's row just goes; the last one anywhere switches
+    // the appliance off.
+    function closeChannel(page, channel) {
+        var row = _rowOf(page, channel)
         if (row < 0)
             return
         var target = channelsModel.get(row)
-        if (target.buried) {
-            // Only the gateway is buried, and it only closes when the program
-            // holding the session died: no %exit is coming and there is
-            // nothing to restore the slot to.
-            _gatewayDied(channel)
-            return
-        }
-        if (_visibleCount() <= 1) {
-            // The last thing on the air: with a gateway buried behind it the
-            // set detaches rather than going dark; without one the appliance
-            // switches off.
-            if (tmuxGateway)
-                tmuxGateway.detach()
-            else
-                terminalWindow.close()
+        var gateway = _gateways[page]
+        if (target.kind === "anchor") {
+            if (gateway)
+                gateway.detach()
             return
         }
         if (target.kind === "remote") {
-            // tmux owns the window: ask for the kill and remove the row when
-            // its %window-close comes back, same as a kill from anywhere else.
-            if (tmuxGateway)
-                tmuxGateway.killWindow(target.windowId)
+            if (gateway)
+                gateway.killWindow(target.windowId)
             return
         }
-        _removeRow(channel)
+        if (channelsModel.count <= 1) {
+            terminalWindow.close()
+            return
+        }
+        _removeRow(page, channel)
     }
 
-    // The gateway's program is gone (ssh killed, tmux -CC never said %exit).
-    // Its windows are unreachable and its own slot has no shell behind it any
-    // more, so the whole set goes, remote rows first: their sessions are the
-    // gateway client's wiring, and it dies with the row that owns it.
-    function _gatewayDied(channel) {
-        console.log("channel " + channel + ": tmux gateway died, dropping "
-                    + tmuxHost + " and its windows")
-        for (var i = channelsModel.count - 1; i >= 0; i--) {
-            if (channelsModel.get(i).kind === "remote")
-                channelsModel.remove(i)
+    // A row's own program died. For a local shell that is the ordinary end
+    // of a channel. For an anchor it is the gateway dying under the session
+    // (ssh killed, tmux -CC never said %exit): its windows are unreachable
+    // and the slot it would come home to has no shell behind it any more,
+    // so the page collapses and the returned row goes too.
+    function sessionDied(page, channel) {
+        var row = _rowOf(page, channel)
+        if (row < 0)
+            return
+        if (channelsModel.get(row).kind === "anchor") {
+            _anchorDied(page)
+            return
         }
-        tmuxGateway = null
-        tmuxHost = ""
-        gatewayChannel = 0
-        // Whatever was on the air went with the windows, so the dying row is
-        // made current and _removeRow hands the air to its nearest neighbour.
-        currentChannel = channel
-        _removeRow(channel)
+        if (channelsModel.count <= 1) {
+            terminalWindow.close()
+            return
+        }
+        _removeRow(page, channel)
+    }
+
+    function _anchorDied(page) {
+        var pageRow = _pageRowOf(page)
+        if (pageRow < 0)
+            return
+        var host = pagesModel.get(pageRow).host
+        var homeSlot = pagesModel.get(pageRow).homeSlot
+        console.log("page " + page + ": tmux gateway died, dropping "
+                    + host + " and its windows")
+        _collapsePage(page)
+        _removeRow(0, homeSlot)
         // Nothing survived it: the appliance has no channel left to show.
         if (channelsModel.count === 0)
             terminalWindow.close()
     }
 
-    // Where a single row goes: local closes and kill-window echoes land here.
-    // The bulk sweeps (detach, gateway death) clear their remote rows in their
-    // own loops and settle the bank once at the end.
-    function _removeRow(channel) {
-        var row = _rowOf(channel)
+    // Where a single row goes: local closes and kill-window echoes land
+    // here. The bulk sweep (collapse) clears its remote rows in its own loop
+    // and settles the bank once at the end.
+    function _removeRow(page, channel) {
+        var row = _rowOf(page, channel)
         if (row < 0)
             return
-        var wasCurrent = channel === currentChannel
+        var wasCurrent = page === currentPage && channel === currentChannel
         channelsModel.remove(row)
         if (wasCurrent) {
-            var next = _nearestVisibleRow(row)
-            if (next >= 0)
+            var next = _nearestRow(row, page)
+            if (next >= 0) {
+                currentPage = channelsModel.get(next).page
                 currentChannel = channelsModel.get(next).channel
+            }
         }
         _rebuildState()
         activateCurrent()
     }
 
-    // The visible row nearest the hole a removed row left: the one that slid
-    // into its place, else the nearest one before it.
-    function _nearestVisibleRow(row) {
+    // The row nearest the hole a removed row left, its own page's rows
+    // first: the one that slid into its place, else the nearest one before
+    // it, else whatever another page still holds.
+    function _nearestRow(row, page) {
         for (var after = row; after < channelsModel.count; after++) {
-            if (!channelsModel.get(after).buried)
+            if (channelsModel.get(after).page === page)
                 return after
         }
         for (var before = Math.min(row, channelsModel.count) - 1; before >= 0; before--) {
-            if (!channelsModel.get(before).buried)
+            if (channelsModel.get(before).page === page)
                 return before
         }
+        if (channelsModel.count > 0)
+            return Math.min(row, channelsModel.count - 1)
         return -1
     }
 
-    function _visibleCount() {
-        var count = 0
-        for (var i = 0; i < channelsModel.count; i++) {
-            if (!channelsModel.get(i).buried)
-                count++
-        }
-        return count
-    }
-
-    function selectChannel(channel) {
-        if (channelState[channel] === undefined)
+    function selectChannel(page, channel) {
+        var state = slotStates[page]
+        if (!state || state[channel] === undefined)
             return
+        currentPage = page
         currentChannel = channel
-        currentIndex = _rowOf(channel)
+        _rebuildState()
         activateCurrent()
     }
 
     // Select by position among the channels on the air: the tab strip's own
     // vocabulary, where the Nth tab is the Nth visible session.
     function selectAt(row) {
-        if (row >= 0 && row < airModel.count)
-            selectChannel(airModel.get(row).channel)
+        if (row >= 0 && row < pageList.count)
+            selectChannel(currentPage, pageList.get(row).channel)
     }
 
-    function moveCurrentTo(channel) {
+    // The session on screen keeps its screen; its slot number moves. Slots
+    // are a page's own numerals, so a store never crosses pages, and an
+    // anchor never moves off 1: the transported channel is the page's
+    // reason for existing. On home a held slot refuses the way it refuses
+    // everything: there is a channel abroad that owns it.
+    function moveCurrentTo(page, channel) {
+        if (page !== currentPage)
+            return
         if (channel < 1 || channel > channelCap || channel === currentChannel)
             return
         var origin = currentChannel
-        var from = _rowOf(origin)
-        if (from < 0)
+        var from = _rowOf(page, origin)
+        if (from < 0 || channelsModel.get(from).kind === "anchor")
             return
-        var to = _rowOf(channel)
-        // A buried row is off the air but still holds its slot: there is
-        // nothing there to swap with, so the store finds the slot taken by
-        // something it cannot move and does nothing at all.
-        if (to >= 0 && channelsModel.get(to).buried)
+        if (page === 0 && _slotHeld(channel))
             return
-        // The session on screen stays the same; its slot number moves. The LED
-        // blink is the store's acknowledgement, so the tube holds steady.
+        var to = _rowOf(page, channel)
+        if (to >= 0 && channelsModel.get(to).kind === "anchor")
+            return
+        // The LED blink is the store's acknowledgement, so the tube holds
+        // steady.
         _degaussArmed = false
         if (to >= 0) {
             // Occupied slot: the two sessions swap slots. Swap the rows, then
@@ -355,13 +491,7 @@ Item {
             channelsModel.setProperty(upper, "channel", upperChannel)
         } else {
             channelsModel.setProperty(from, "channel", channel)
-            var dest = 0
-            for (var i = 0; i < channelsModel.count; i++) {
-                if (i !== from && channelsModel.get(i).channel < channel)
-                    dest++
-            }
-            if (dest !== from)
-                channelsModel.move(from, dest, 1)
+            _resortRow(from)
         }
         currentChannel = channel
         _rebuildState()
@@ -373,28 +503,32 @@ Item {
         activateCurrent()
     }
 
+    // Cycling walks the current page: the other machines' channels are a
+    // pager step away, not a knob turn.
     function cycleOpen(direction) {
-        if (channelsModel.count === 0)
-            return
-        var row = _rowOf(currentChannel)
-        if (row < 0)
-            return
-        // Buried rows are off the air, so cycling steps past them.
-        for (var step = 1; step <= channelsModel.count; step++) {
-            var next = ((row + direction * step) % channelsModel.count
-                        + channelsModel.count) % channelsModel.count
-            if (!channelsModel.get(next).buried) {
-                selectChannel(channelsModel.get(next).channel)
-                return
-            }
+        var rows = []
+        var pos = -1
+        for (var i = 0; i < channelsModel.count; i++) {
+            var row = channelsModel.get(i)
+            if (row.page !== currentPage)
+                continue
+            if (row.channel === currentChannel)
+                pos = rows.length
+            rows.push(row.channel)
         }
+        if (rows.length === 0 || pos < 0)
+            return
+        var next = ((pos + direction) % rows.length + rows.length) % rows.length
+        selectChannel(currentPage, rows[next])
     }
 
-    // True when buf is a strict prefix of some open slot of the page rooted at
-    // base: the chord keeps waiting only for digits that can still land.
-    function pageSlotPrefixExists(buf, base, count) {
+    // True when buf is a strict prefix of some open slot of the named page's
+    // stretch rooted at base: the chord keeps waiting only for digits that
+    // can still land.
+    function pageSlotPrefixExists(page, buf, base, count) {
+        var state = slotStates[page] ?? []
         for (var n = 1; n <= count; n++) {
-            if (channelState[base + n] === undefined)
+            if (state[base + n] === undefined)
                 continue
             var s = String(n)
             if (s.length > buf.length && s.indexOf(buf) === 0)
@@ -403,8 +537,8 @@ Item {
         return false
     }
 
-    function setTitle(channel, rawTitle) {
-        var row = _rowOf(channel)
+    function setTitle(page, channel, rawTitle) {
+        var row = _rowOf(page, channel)
         if (row < 0)
             return
         channelsModel.setProperty(row, "title", normalizeTitle(rawTitle))
@@ -412,108 +546,163 @@ Item {
     }
 
     // A channel's program has entered tmux control mode and handed up its
-    // gateway: the channel leaves the air (row and delegate stay alive, its
-    // LED goes dark) and the gateway's windows run the bank until detach
-    // hands the slot back. A null arrival is the detach restore, which has its
-    // own signal. One gateway at a time is the law: a second channel entering
-    // control mode is detached where it stands and comes back a plain shell.
-    function attachGateway(channel, gateway) {
+    // gateway: the channel transports to slot 1 of a new page, titled for
+    // the machine the session is on, and its home slot is held dark behind
+    // it. The row mutates in place, never removes, so its delegate survives
+    // and the glass keeps the screen it was showing; nothing blanks. A null
+    // arrival is teardown's echo; collapse rides the detached signal.
+    function attachGateway(page, channel, gateway) {
         if (!gateway)
             return
-        if (tmuxGateway) {
-            console.log("channel " + channel + ": second tmux gateway refused, "
-                        + tmuxHost + " already has the bank")
-            gateway.detach()
+        var row = _rowOf(page, channel)
+        if (row < 0 || channelsModel.get(row).kind !== "local")
             return
+        var pageId = _nextPageId++
+        _setGateway(pageId, gateway)
+        pagesModel.append({ kind: "tmux", host: gateway.host, homeSlot: channel,
+                            pageId: pageId, follow: false })
+        var wasCurrent = page === currentPage && channel === currentChannel
+        // The session on screen stays the same session: transport is a
+        // renumbering, not a channel change, so the tube holds steady.
+        _degaussArmed = false
+        channelsModel.setProperty(row, "page", pageId)
+        channelsModel.setProperty(row, "channel", 1)
+        channelsModel.setProperty(row, "kind", "anchor")
+        channelsModel.setProperty(row, "title", "tmux -CC # @" + gateway.host)
+        _resortRow(row)
+        if (wasCurrent) {
+            currentPage = pageId
+            currentChannel = 1
         }
-        var row = _rowOf(channel)
-        if (row < 0)
-            return
-        tmuxGateway = gateway
-        tmuxHost = gateway.host
-        gatewayChannel = channel
-        // The bank is empty only until the bootstrap listing answers, which is
-        // sub-second and never empty: a tmux session always has a window. The
-        // buried row's last screen stands there in the meantime.
-        channelsModel.setProperty(row, "buried", true)
         _rebuildState()
+        _degaussArmed = true
         // Every channel is the same rectangle of glass, so the bank's grid is
         // the whole client's size; tmux has to hear it once before its windows
         // are drawn at somebody else's.
         _publishClientSize()
     }
 
-    // One client, one geometry: the grid of whichever channel is on the air.
-    // QMLTermWidget's terminalSize is QSize(lines, columns), so the width of
-    // that size is the number of rows and its height the number of columns;
-    // tmux is told columns first, the way it says them back.
+    function _setGateway(pageId, gateway) {
+        var gateways = {}
+        for (var key in _gateways)
+            gateways[key] = _gateways[key]
+        if (gateway)
+            gateways[pageId] = gateway
+        else
+            delete gateways[pageId]
+        _gateways = gateways
+    }
+
+    // Detach or gateway death: the page's remote rows vanish, the anchor
+    // transports home to the slot it never gave up and relights, the user
+    // lands on it, and the shell's own title escape repaints the row on its
+    // next prompt: abroad the title was the model's, home it is the shell's
+    // again.
+    function _collapsePage(pageId) {
+        var pageRow = _pageRowOf(pageId)
+        if (pageRow < 0)
+            return
+        var homeSlot = pagesModel.get(pageRow).homeSlot
+        _degaussArmed = false
+        for (var i = channelsModel.count - 1; i >= 0; i--) {
+            var row = channelsModel.get(i)
+            if (row.page === pageId && row.kind === "remote")
+                channelsModel.remove(i)
+        }
+        var anchor = -1
+        for (var j = 0; j < channelsModel.count; j++) {
+            if (channelsModel.get(j).page === pageId) {
+                anchor = j
+                break
+            }
+        }
+        if (anchor >= 0) {
+            channelsModel.setProperty(anchor, "page", 0)
+            channelsModel.setProperty(anchor, "channel", homeSlot)
+            channelsModel.setProperty(anchor, "kind", "local")
+            _resortRow(anchor)
+        }
+        _setGateway(pageId, null)
+        pagesModel.remove(pageRow)
+        currentPage = 0
+        currentChannel = homeSlot
+        _rebuildState()
+        _degaussArmed = true
+        activateCurrent()
+    }
+
+    // One client, one geometry: the grid of whichever channel is on the air,
+    // told to every attachment. QMLTermWidget's terminalSize is QSize(lines,
+    // columns), so the width of that size is the number of rows and its
+    // height the number of columns; tmux is told columns first, the way it
+    // says them back.
     function _publishClientSize() {
-        if (tmuxGateway && terminalSize.width > 0 && terminalSize.height > 0)
-            tmuxGateway.setClientSize(terminalSize.height, terminalSize.width)
+        if (terminalSize.width <= 0 || terminalSize.height <= 0)
+            return
+        for (var key in _gateways)
+            _gateways[key].setClientSize(terminalSize.height, terminalSize.width)
     }
 
     onTerminalSizeChanged: _publishClientSize()
 
-    // The gateway speaks; the bank moves. Remote titles belong to tmux: they
-    // are set here from its notifications, never by the delegate.
-    Connections {
-        target: channelsRoot.tmuxGateway
+    // Each page's gateway speaks; the bank moves. One listener per page,
+    // raised and dropped with the page itself, its pageId closed over, so
+    // two attachments' notifications never cross. Remote titles belong to
+    // tmux: they are set here from its notifications, never by the delegate.
+    Instantiator {
+        model: pagesModel
 
-        function onHostChanged() {
-            channelsRoot.tmuxHost = channelsRoot.tmuxGateway.host
-        }
-        function onWindowAdded(windowId, paneId, name) {
-            channelsRoot.openRemoteChannel(windowId, paneId, name)
-        }
-        function onWindowRenamed(windowId, name) {
-            var channel = channelsRoot._channelOfWindow(windowId)
-            if (channel > 0)
-                channelsRoot.setTitle(channel, name)
-        }
-        function onWindowClosed(windowId) {
-            var channel = channelsRoot._channelOfWindow(windowId)
-            if (channel > 0)
-                channelsRoot._removeRow(channel)
-            // The last window died under the bank's feet: nothing visible is
-            // left, so give the air back to the gateway.
-            if (channelsRoot.tmuxGateway && channelsRoot._visibleCount() === 0)
-                channelsRoot.tmuxGateway.detach()
-        }
-        function onDetached() {
-            channelsRoot._restoreGateway()
+        delegate: Connections {
+            readonly property int page: model.pageId
+
+            target: model.kind === "tmux"
+                ? (channelsRoot._gateways[model.pageId] ?? null) : null
+
+            function onHostChanged() {
+                channelsRoot._hostChanged(page)
+            }
+            function onWindowAdded(windowId, paneId, name) {
+                channelsRoot.openRemoteChannel(page, windowId, paneId, name)
+            }
+            function onWindowRenamed(windowId, name) {
+                var channel = channelsRoot._channelOfWindow(page, windowId)
+                if (channel > 0)
+                    channelsRoot.setTitle(page, channel, name)
+            }
+            function onWindowClosed(windowId) {
+                var channel = channelsRoot._channelOfWindow(page, windowId)
+                if (channel > 0)
+                    channelsRoot._removeRow(page, channel)
+            }
+            function onDetached() {
+                channelsRoot._collapsePage(page)
+            }
         }
     }
 
-    function _channelOfWindow(windowId) {
+    // The host can resolve after the handshake: the page and its anchor's
+    // title follow it.
+    function _hostChanged(page) {
+        var gateway = _gateways[page]
+        var pageRow = _pageRowOf(page)
+        if (!gateway || pageRow < 0)
+            return
+        pagesModel.setProperty(pageRow, "host", gateway.host)
         for (var i = 0; i < channelsModel.count; i++) {
             var row = channelsModel.get(i)
-            if (row.kind === "remote" && row.windowId === windowId)
+            if (row.page === page && row.kind === "anchor")
+                channelsModel.setProperty(i, "title", "tmux -CC # @" + gateway.host)
+        }
+        _rebuildState()
+    }
+
+    function _channelOfWindow(page, windowId) {
+        for (var i = 0; i < channelsModel.count; i++) {
+            var row = channelsModel.get(i)
+            if (row.page === page && row.kind === "remote" && row.windowId === windowId)
                 return row.channel
         }
         return 0
-    }
-
-    // Detach: the remote channels vanish, the gateway comes back on the air
-    // at the slot it never gave up.
-    function _restoreGateway() {
-        for (var i = channelsModel.count - 1; i >= 0; i--) {
-            if (channelsModel.get(i).kind === "remote")
-                channelsModel.remove(i)
-        }
-        var home = gatewayChannel
-        for (var j = 0; j < channelsModel.count; j++) {
-            if (channelsModel.get(j).buried) {
-                channelsModel.setProperty(j, "buried", false)
-                home = channelsModel.get(j).channel
-            }
-        }
-        tmuxGateway = null
-        tmuxHost = ""
-        gatewayChannel = 0
-        if (home > 0 && _rowOf(home) >= 0)
-            currentChannel = home
-        _rebuildState()
-        activateCurrent()
     }
 
     function activateCurrent() {
@@ -523,13 +712,18 @@ Item {
     }
 
     Component.onCompleted: {
-        openChannel(1)
+        openChannel(0, 1)
         _degaussArmed = true
     }
 
-    // Turning the knob makes the tube flinch. Re-selecting the current channel
-    // never reaches here: currentChannel does not change.
+    // Turning the knob makes the tube flinch, and turning it to another
+    // machine's page no less. Re-selecting the current channel never reaches
+    // here: nothing changes.
     onCurrentChannelChanged: {
+        if (_degaussArmed)
+            degauss.restart()
+    }
+    onCurrentPageChanged: {
         if (_degaussArmed)
             degauss.restart()
     }
@@ -554,28 +748,30 @@ Item {
                 model: channelsModel
                 TerminalContainer {
                     property int channelNumber: model.channel
+                    property int channelPage: model.page
                     property string rowKind: model.kind
                     property bool shouldHaveFocus: terminalWindow.active && StackLayout.isCurrentItem
                     isActive: StackLayout.isCurrentItem
                     channelKind: model.kind
                     tmuxWindowId: model.windowId
                     tmuxPaneId: model.paneId
-                    remoteGateway: model.kind === "remote" ? channelsRoot.tmuxGateway : null
+                    remoteGateway: model.kind === "remote"
+                        ? (channelsRoot._gateways[model.page] ?? null) : null
                     onShouldHaveFocusChanged: {
                         if (shouldHaveFocus) {
                             activate()
                         }
                     }
-                    // A remote channel's title is tmux's to give; the
-                    // emulation's own ideas stay local.
+                    // A local shell's title is its own; abroad the model owns
+                    // it, and a remote channel's title is tmux's to give.
                     onTitleChanged: {
                         if (rowKind === "local")
-                            channelsRoot.setTitle(channelNumber, title)
+                            channelsRoot.setTitle(channelPage, channelNumber, title)
                     }
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    onSessionFinished: channelsRoot.closeChannel(channelNumber)
-                    onTmuxGateway: (gateway) => channelsRoot.attachGateway(channelNumber, gateway)
+                    onSessionFinished: channelsRoot.sessionDied(channelPage, channelNumber)
+                    onTmuxGateway: (gateway) => channelsRoot.attachGateway(channelPage, channelNumber, gateway)
                     onTerminalSizeChanged: publishTerminalSize()
                     StackLayout.onIsCurrentItemChanged: publishTerminalSize()
 

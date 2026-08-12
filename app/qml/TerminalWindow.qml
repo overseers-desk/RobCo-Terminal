@@ -152,12 +152,13 @@ ApplicationWindow {
         id: newChannelAction
         text: appSettings.channels ? qsTr("New Channel") : qsTr("New Tab")
         shortcut: appSettings.isMacOS ? "Meta+T" : "Ctrl+Shift+T"
-        // Follows the focus: on a remote channel this is a tmux window.
+        // Goes to the page on view: a tmux window on an attachment, a local
+        // shell on home.
         onTriggered: terminalChannels.newChannel()
     }
     // The two ends of the fork the shortcut chooses between, each nameable on
     // its own, plus the way back off the session. The remote pair only exists
-    // while a gateway does.
+    // while the page on the air is an attachment.
     Action {
         id: newLocalChannelAction
         text: qsTr("New local window")
@@ -165,21 +166,22 @@ ApplicationWindow {
     }
     Action {
         id: newRemoteChannelAction
-        text: qsTr("New window on %1").arg(terminalChannels.tmuxHost)
-        enabled: terminalChannels.tmuxGateway !== null
+        text: qsTr("New window on %1").arg(terminalChannels.currentPageHost)
+        enabled: terminalChannels.currentPageGateway !== null
         onTriggered: terminalChannels.newRemoteChannel()
     }
     Action {
         id: detachAction
-        text: qsTr("Detach from %1").arg(terminalChannels.tmuxHost)
-        enabled: terminalChannels.tmuxGateway !== null
-        onTriggered: terminalChannels.tmuxGateway.detach()
+        text: qsTr("Detach from %1").arg(terminalChannels.currentPageHost)
+        enabled: terminalChannels.currentPageGateway !== null
+        onTriggered: terminalChannels.currentPageGateway.detach()
     }
     Action {
         id: closeChannelAction
         text: appSettings.channels ? qsTr("Close Channel") : qsTr("Close Tab")
         shortcut: appSettings.isMacOS ? "Meta+W" : "Ctrl+Shift+W"
-        onTriggered: terminalChannels.closeChannel(terminalChannels.currentChannel)
+        onTriggered: terminalChannels.closeChannel(terminalChannels.currentPage,
+                                                   terminalChannels.currentChannel)
     }
     Shortcut {
         sequence: "Ctrl+PgUp"

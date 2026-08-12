@@ -21,25 +21,25 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// The dense face of the sparse channel space: one tab per open session, in
-// slot order, none for the dark slots. Closing a tab darkens its slot; the
-// others keep their numbers. The strip only stands when there is a choice to
-// make; a single session gets the whole window.
+// The dense face of the sparse channel space: one tab per open session of
+// the page on the air, in slot order, none for the dark slots. Closing a tab
+// darkens its slot; the others keep their numbers. The strip only stands
+// when there is a choice to make; a single session gets the whole window.
 Item {
     id: strip
 
     readonly property int innerPadding: 6
-    readonly property bool tabsShown: terminalChannels.airChannels.count > 1
+    readonly property bool tabsShown: terminalChannels.pageChannels.count > 1
 
     implicitHeight: tabsShown ? tabRow.implicitHeight : 0
 
     // The bar writes its own currentIndex on a click, so a binding would go
     // stale at the first tap; the sync is owned by hand, the inequality test
     // breaking the loop. The bar's index is a position among the tabs on
-    // show, found from the air list rather than taken from the store's row
-    // index, which also counts buried rows.
+    // show, found from the page list rather than taken from the store's row
+    // index, which counts every page's rows.
     function syncCurrent() {
-        var air = terminalChannels.airChannels
+        var air = terminalChannels.pageChannels
         for (var i = 0; i < air.count; i++) {
             if (air.get(i).channel === terminalChannels.currentChannel) {
                 if (tabBar.currentIndex !== i)
@@ -90,12 +90,12 @@ Item {
                 focusPolicy: Qt.NoFocus
 
                 Repeater {
-                    model: terminalChannels.airChannels
+                    model: terminalChannels.pageChannels
                     TabButton {
                         id: tabButton
 
                         focusPolicy: Qt.NoFocus
-                        onClicked: terminalChannels.selectChannel(model.channel)
+                        onClicked: terminalChannels.selectChannel(terminalChannels.currentPage, model.channel)
                         // The slot number the bank would engrave beside this
                         // session, still reachable from the strip.
                         ToolTip.visible: hovered
@@ -119,7 +119,7 @@ Item {
                                 focusPolicy: Qt.NoFocus
                                 padding: strip.innerPadding
                                 Layout.alignment: Qt.AlignVCenter
-                                onClicked: terminalChannels.closeChannel(model.channel)
+                                onClicked: terminalChannels.closeChannel(terminalChannels.currentPage, model.channel)
                             }
                         }
                     }
@@ -134,9 +134,9 @@ Item {
                 padding: strip.innerPadding
                 Layout.alignment: Qt.AlignVCenter
                 // Dark slots may all be taken: a full house disables the key
-                // instead of swallowing the press. The new tab follows the
-                // focus the way Ctrl+Shift+T does: another window on the
-                // session when the current tab is remote, a local shell else.
+                // instead of swallowing the press. The new tab goes to the
+                // page on show the way Ctrl+Shift+T does: another window on
+                // an attachment's session, a local shell on home.
                 enabled: terminalChannels.firstFreeChannel > 0
                 onClicked: terminalChannels.newChannel()
             }
