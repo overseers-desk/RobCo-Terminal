@@ -18,6 +18,9 @@
 
 #include <QLoggingCategory>
 
+#include <QStandardPaths>
+
+#include <crashlog.h>
 #include <fileio.h>
 #include <fontlistmodel.h>
 #include <fontmanager.h>
@@ -89,6 +92,9 @@ int main(int argc, char *argv[])
     app.setOrganizationName(QStringLiteral("cool-retro-term"));
     app.setOrganizationDomain(QStringLiteral("cool-retro-term"));
     app.setApplicationVersion(appVersion);
+
+    installCrashLog(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                    + QStringLiteral("/crashes"));
 
     KDSingleApplication singleApp(QStringLiteral("cool-retro-term"));
 

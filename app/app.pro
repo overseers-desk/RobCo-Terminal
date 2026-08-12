@@ -1,5 +1,8 @@
 QT += qml quick widgets sql quickcontrols2
 TARGET = cool-retro-term
+# Release binaries keep DWARF: a crash backtrace names file and line, and the
+# few extra megabytes never touch the runtime.
+CONFIG += force_debug_info
 APP_VERSION = $$system(git -C $$PWD/.. describe --tags --always --dirty=-dirty)
 isEmpty(APP_VERSION): APP_VERSION = "unknown"
 DEFINES += APP_VERSION=\\\"$$APP_VERSION\\\"
@@ -18,11 +21,13 @@ DEFINES += KDSINGLEAPPLICATION_STATIC_BUILD
 DESTDIR = $$OUT_PWD/../
 
 HEADERS += \
+    crashlog.h \
     fileio.h \
     fontmanager.h \
     fontlistmodel.h
 
 SOURCES += main.cpp \
+    crashlog.cpp \
     fileio.cpp \
     fontmanager.cpp \
     fontlistmodel.cpp
