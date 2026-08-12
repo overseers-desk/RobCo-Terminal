@@ -78,7 +78,7 @@ MenuBar {
                 }
             }
             onObjectAdded: function(index, object) { screensMenu.insertItem(index, object) }
-            onObjectRemoved: function(object) { screensMenu.removeItem(object) }
+            onObjectRemoved: function(index, object) { screensMenu.removeItem(object) }
         }
     }
     Menu {
@@ -93,14 +93,17 @@ MenuBar {
                 }
             }
             onObjectAdded: function(index, object) { chassisMenu.insertItem(index, object) }
-            onObjectRemoved: function(object) { chassisMenu.removeItem(object) }
+            onObjectRemoved: function(index, object) { chassisMenu.removeItem(object) }
         }
     }
     Menu {
         id: profilesMenu
         title: qsTr("Profiles")
-        visible: appSettings.customProfilesList.count > 0
-        height: visible ? implicitHeight : 0
+        // Greyed until the user has saved one. A submenu's own visible flag is
+        // what opens and closes it as a popup, so standing-or-not is said with
+        // enabled: the row keeps its place and tells the user the shelf is
+        // there to be filled.
+        enabled: appSettings.customProfilesList.count > 0
         Instantiator {
             model: appSettings.customProfilesList
             delegate: MenuItem {
@@ -110,7 +113,7 @@ MenuBar {
                 }
             }
             onObjectAdded: function(index, object) { profilesMenu.insertItem(index, object) }
-            onObjectRemoved: function(object) { profilesMenu.removeItem(object) }
+            onObjectRemoved: function(index, object) { profilesMenu.removeItem(object) }
         }
     }
     Menu {
