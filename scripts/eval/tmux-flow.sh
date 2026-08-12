@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Tools this flow leans on beyond snap.sh's own: xclip carries the clipboard
+# checks, xdotool the typed input. Missing ones fail here by name, not later
+# as a puzzling assertion.
+for tool in xclip xdotool tmux; do
+    command -v "$tool" > /dev/null || { echo "missing: $tool" >&2; exit 2; }
+done
 # Drive the tmux -CC page flow end to end and judge it: attach transport,
 # per-page windows, the page's lifetime, detach and gateway death, and two
 # simultaneous attachments. Same private-Xvfb / scratch-HOME / TMPDIR pattern
