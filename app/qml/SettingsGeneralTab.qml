@@ -23,10 +23,129 @@ import QtQuick.Layouts 1.1
 import QtQuick.Dialogs
 
 ColumnLayout {
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+
+        GroupBox {
+            title: qsTr("Screen")
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            padding: appSettings.defaultMargin
+            ColumnLayout {
+                anchors.fill: parent
+                ListView {
+                    id: screensView
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    model: appSettings.screensList
+                    clip: true
+                    delegate: Rectangle {
+                        width: screenLabel.width
+                        height: screenLabel.height
+                        color: (index == screensView.currentIndex) ? palette.highlight : palette.base
+                        Label {
+                            id: screenLabel
+                            text: appSettings.screensList.get(index).text
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: screensView.currentIndex = index
+                                onDoubleClicked: appSettings.loadScreen(index)
+                            }
+                        }
+                    }
+                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    Label {
+                        text: qsTr("Brightness")
+                    }
+                    SimpleSlider {
+                        onValueChanged: appSettings.brightness = value
+                        value: appSettings.brightness
+                    }
+                    Label {
+                        text: qsTr("Contrast")
+                    }
+                    SimpleSlider {
+                        onValueChanged: appSettings.contrast = value
+                        value: appSettings.contrast
+                    }
+                    Label {
+                        text: qsTr("Margin")
+                    }
+                    SimpleSlider {
+                        onValueChanged: appSettings._margin = value
+                        value: appSettings._margin
+                    }
+                    Label {
+                        text: qsTr("Opacity")
+                        visible: !appSettings.isMacOS
+                    }
+                    SimpleSlider {
+                        onValueChanged: appSettings.windowOpacity = value
+                        value: appSettings.windowOpacity
+                        visible: !appSettings.isMacOS
+                    }
+                }
+            }
+        }
+
+        GroupBox {
+            title: qsTr("Chassis")
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            padding: appSettings.defaultMargin
+            ColumnLayout {
+                anchors.fill: parent
+                ListView {
+                    id: chassisView
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    model: appSettings.chassisList
+                    clip: true
+                    delegate: Rectangle {
+                        width: chassisLabel.width
+                        height: chassisLabel.height
+                        color: (index == chassisView.currentIndex) ? palette.highlight : palette.base
+                        Label {
+                            id: chassisLabel
+                            text: appSettings.chassisList.get(index).text
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: chassisView.currentIndex = index
+                                onDoubleClicked: appSettings.loadChassis(index)
+                            }
+                        }
+                    }
+                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    Label {
+                        text: qsTr("Radius")
+                    }
+                    SimpleSlider {
+                        onValueChanged: appSettings._screenRadius = value
+                        value: appSettings._screenRadius
+                    }
+                    Label {
+                        text: qsTr("Frame size")
+                    }
+                    SimpleSlider {
+                        onValueChanged: appSettings._frameSize = value
+                        value: appSettings._frameSize
+                    }
+                }
+            }
+        }
+    }
+
     GroupBox {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        title: qsTr("Profile")
+        title: qsTr("Profiles")
         padding: appSettings.defaultMargin
         RowLayout {
             anchors.fill: parent
@@ -34,7 +153,7 @@ ColumnLayout {
                 id: profilesView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                model: appSettings.profilesList
+                model: appSettings.customProfilesList
                 clip: true
                 delegate: Rectangle {
                     width: label.width
@@ -42,11 +161,11 @@ ColumnLayout {
                     color: (index == profilesView.currentIndex) ? palette.highlight : palette.base
                     Label {
                         id: label
-                        text: appSettings.profilesList.get(index).text
+                        text: appSettings.customProfilesList.get(index).text
                         MouseArea {
                             anchors.fill: parent
                             onClicked: profilesView.currentIndex = index
-                            onDoubleClicked: appSettings.loadProfile(index)
+                            onDoubleClicked: appSettings.loadCustomProfile(index)
                         }
                     }
                 }
@@ -70,7 +189,7 @@ ColumnLayout {
                     onClicked: {
                         var index = currentIndex
                         if (index >= 0)
-                            appSettings.loadProfile(index)
+                            appSettings.loadCustomProfile(index)
                     }
                 }
                 Button {
@@ -78,15 +197,14 @@ ColumnLayout {
                     text: qsTr("Remove")
                     property alias currentIndex: profilesView.currentIndex
 
-                    enabled: currentIndex >= 0 && !appSettings.profilesList.get(
-                                 currentIndex).builtin
+                    enabled: currentIndex >= 0
                     onClicked: {
-                        appSettings.profilesList.remove(currentIndex)
+                        appSettings.customProfilesList.remove(currentIndex)
                         profilesView.selection.clear()
 
                         // TODO This is a very ugly workaround. The view didn't update on Qt 5.3.2.
                         profilesView.model = 0
-                        profilesView.model = appSettings.profilesList
+                        profilesView.model = appSettings.customProfilesList
                     }
                 }
                 Item {
@@ -114,12 +232,13 @@ ColumnLayout {
                             if (!name)
                                 throw "Profile doesn't have a name"
 
-                            var version = profileObject.version
-                                    !== undefined ? profileObject.version : 1
+                            var version = profileObject.profileVersion
+                                    !== undefined ? profileObject.profileVersion : 1
                             if (version !== appSettings.profileVersion)
                                 throw "This profile is not supported on this version of CRT."
 
                             delete profileObject.name
+                            delete profileObject.profileVersion
 
                             appSettings.appendCustomProfile(name,
                                                             JSON.stringify(
@@ -136,8 +255,7 @@ ColumnLayout {
                     Layout.fillWidth: true
 
                     text: qsTr("Export")
-                    enabled: currentIndex >= 0 && !appSettings.profilesList.get(
-                                 currentIndex).builtin
+                    enabled: currentIndex >= 0
                     onClicked: {
                         fileDialog.selectExisting = false
                         fileDialog.callBack = function (url) {
@@ -158,12 +276,12 @@ ColumnLayout {
                             if (true)
                                 console.log("Storing file: " + url)
 
-                            var profileObject = appSettings.profilesList.get(
+                            var profileObject = appSettings.customProfilesList.get(
                                         currentIndex)
                             var profileSettings = JSON.parse(
                                         profileObject.obj_string)
                             profileSettings["name"] = profileObject.text
-                            profileSettings["version"] = appSettings.profileVersion
+                            profileSettings["profileVersion"] = appSettings.profileVersion
 
                             var result = fileIO.write(url, JSON.stringify(
                                                           profileSettings,
@@ -178,61 +296,6 @@ ColumnLayout {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    GroupBox {
-        title: qsTr("Screen")
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        padding: appSettings.defaultMargin
-        GridLayout {
-            anchors.fill: parent
-            columns: 2
-            Label {
-                text: qsTr("Brightness")
-            }
-            SimpleSlider {
-                onValueChanged: appSettings.brightness = value
-                value: appSettings.brightness
-            }
-            Label {
-                text: qsTr("Contrast")
-            }
-            SimpleSlider {
-                onValueChanged: appSettings.contrast = value
-                value: appSettings.contrast
-            }
-            Label {
-                text: qsTr("Margin")
-            }
-            SimpleSlider {
-                onValueChanged: appSettings._margin = value
-                value: appSettings._margin
-            }
-            Label {
-                text: qsTr("Radius")
-            }
-            SimpleSlider {
-                onValueChanged: appSettings._screenRadius = value
-                value: appSettings._screenRadius
-            }
-            Label {
-                text: qsTr("Frame size")
-            }
-            SimpleSlider {
-                onValueChanged: appSettings._frameSize = value
-                value: appSettings._frameSize
-            }
-            Label {
-                text: qsTr("Opacity")
-                visible: !appSettings.isMacOS
-            }
-            SimpleSlider {
-                onValueChanged: appSettings.windowOpacity = value
-                value: appSettings.windowOpacity
-                visible: !appSettings.isMacOS
             }
         }
     }

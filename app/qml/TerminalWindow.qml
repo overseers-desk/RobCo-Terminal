@@ -49,10 +49,9 @@ ApplicationWindow {
     // The least screen the well is ever given; the seam's travel stops here too.
     readonly property int crtMinimumWidth: 320
 
-    // Whether the bank stands: the profile has to carry the channel function
-    // and the user has to have left the column up. The one condition the
-    // bank, its chassis and their seam are all gated on.
-    readonly property bool bankStanding: appSettings.channels && appSettings.channelBankShown
+    // Whether the bank stands: whether the user has left the column up. The
+    // one condition the bank, its chassis and their seam are all gated on.
+    readonly property bool bankStanding: appSettings.channelBankShown
 
     // The bank's footprint, zero when no bank stands.
     readonly property int bankWidth: channelBankLoader.item ? channelBankLoader.item.implicitWidth : 0
@@ -87,11 +86,8 @@ ApplicationWindow {
         checked: fullscreen
     }
     Action {
-        id: channelBankAction
-        text: qsTr("Channel Bank")
-        // Only an appliance has a bank to put away; the menus hide the item
-        // for every other profile.
-        enabled: appSettings.channels
+        id: chassisAction
+        text: qsTr("Chassis")
         onTriggered: appSettings.channelBankShown = !appSettings.channelBankShown
         checkable: true
         checked: appSettings.channelBankShown
@@ -150,7 +146,7 @@ ApplicationWindow {
     }
     Action {
         id: newChannelAction
-        text: appSettings.channels ? qsTr("New Channel") : qsTr("New Tab")
+        text: qsTr("New Channel")
         shortcut: appSettings.isMacOS ? "Meta+T" : "Ctrl+Shift+T"
         // Goes to the page on view: a tmux window on an attachment, a local
         // shell on home.
@@ -178,7 +174,7 @@ ApplicationWindow {
     }
     Action {
         id: closeChannelAction
-        text: appSettings.channels ? qsTr("Close Channel") : qsTr("Close Tab")
+        text: qsTr("Close Channel")
         shortcut: appSettings.isMacOS ? "Meta+W" : "Ctrl+Shift+W"
         onTriggered: terminalChannels.closeChannel(terminalChannels.currentPage,
                                                    terminalChannels.currentChannel)
@@ -193,39 +189,21 @@ ApplicationWindow {
         context: Qt.WindowShortcut
         onActivated: terminalChannels.cycleOpen(1)
     }
-    // The screen well stands first in the file: the selector loaders below
-    // resolve terminalChannels by id while they complete, so the store has to
-    // exist before either of them builds.
+    // The screen well stands first in the file: the chassis and bank loaders
+    // below resolve terminalChannels by id while they complete, so the store
+    // has to exist before either of them builds.
     Item {
         id: crtRegion
         anchors {
             left: bankColumn.right
             right: parent.right
-            top: tabStripLoader.bottom
+            top: parent.top
             bottom: parent.bottom
         }
         TerminalChannels {
             id: terminalChannels
             anchors.fill: parent
         }
-    }
-    // The channel store has two faces, one standing at a time: a profile with
-    // the channel function raises the bank in its chassis, any other gets the
-    // tab strip. Loaders rather than hidden items: an unraised face loads no
-    // metrics, holds no width, and owns no shortcuts. An appliance whose bank
-    // the user has put away shows neither face and gives the well the whole
-    // window: the strip belongs to the plain profiles, never a stand-in.
-    Loader {
-        id: tabStripLoader
-
-        active: !appSettings.channels
-        anchors {
-            left: bankColumn.right
-            right: parent.right
-            top: parent.top
-        }
-        height: item ? item.implicitHeight : 0
-        source: "TerminalTabStrip.qml"
     }
     // The appliance's left column, chassis and bank together, held in one
     // cached texture. The tube's effects ask the window to repaint some

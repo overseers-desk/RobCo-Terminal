@@ -56,40 +56,53 @@ MenuBar {
         id: viewMenu
         title: qsTr("View")
 
-        // Which row an action's item stands on, the end of the menu when
-        // none carries it.
-        function rowOf(what) {
-            for (var i = 0; i < count; i++)
-                if (itemAt(i) && itemAt(i).action === what)
-                    return i
-            return count
-        }
-
         Instantiator {
             model: !appSettings.isMacOS ? 1 : 0
             delegate: MenuItem { action: fullscreenAction }
             onObjectAdded: (index, object) => viewMenu.insertItem(index, object)
             onObjectRemoved: (index, object) => viewMenu.removeItem(object)
         }
-        // Built only for a profile that has a bank: a menu item hidden in
-        // place still holds its row, and a plain profile would carry the
-        // gap. The row is read off Zoom In rather than counted from the top:
-        // the two builders complete in no fixed order, and a fixed index
-        // lands the toggle between the zooms whenever this one goes first.
-        Instantiator {
-            model: appSettings.channels ? 1 : 0
-            delegate: MenuItem { action: channelBankAction }
-            onObjectAdded: (index, object) => viewMenu.insertItem(viewMenu.rowOf(zoomIn) + index, object)
-            onObjectRemoved: (index, object) => viewMenu.removeItem(object)
-        }
+        MenuItem { action: chassisAction }
         MenuItem { action: zoomIn }
         MenuItem { action: zoomOut }
     }
     Menu {
+        id: screensMenu
+        title: qsTr("Screens")
+        Instantiator {
+            model: appSettings.screensList
+            delegate: MenuItem {
+                text: model.text
+                onTriggered: {
+                    appSettings.loadScreenString(obj_string)
+                }
+            }
+            onObjectAdded: function(index, object) { screensMenu.insertItem(index, object) }
+            onObjectRemoved: function(object) { screensMenu.removeItem(object) }
+        }
+    }
+    Menu {
+        id: chassisMenu
+        title: qsTr("Chassis")
+        Instantiator {
+            model: appSettings.chassisList
+            delegate: MenuItem {
+                text: model.text
+                onTriggered: {
+                    appSettings.loadChassisString(obj_string)
+                }
+            }
+            onObjectAdded: function(index, object) { chassisMenu.insertItem(index, object) }
+            onObjectRemoved: function(object) { chassisMenu.removeItem(object) }
+        }
+    }
+    Menu {
         id: profilesMenu
         title: qsTr("Profiles")
+        visible: appSettings.customProfilesList.count > 0
+        height: visible ? implicitHeight : 0
         Instantiator {
-            model: appSettings.profilesList
+            model: appSettings.customProfilesList
             delegate: MenuItem {
                 text: model.text
                 onTriggered: {

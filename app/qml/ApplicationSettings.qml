@@ -25,7 +25,7 @@ import "utils.js" as Utils
 
 QtObject {
     readonly property string version: appVersion
-    readonly property int profileVersion: 2
+    readonly property int profileVersion: 1
 
     // STATIC CONSTANTS ////////////////////////////////////////////////////////
     readonly property real screenCurvatureSize: 0.6
@@ -69,11 +69,16 @@ QtObject {
     // profile's: switching look does not re-fit the bank.
     property int ledCharacters: 12
 
-    // Whether a channel profile raises its bank at all. Theirs and not a
-    // profile's, like the width above: a user who wants the whole window for
-    // the screen says so once, and every appliance obeys until told otherwise.
+    // Whether a chassis raises its bank at all. Theirs and not a profile's,
+    // like the width above: a user who wants the whole window for the screen
+    // says so once, and every appliance obeys until told otherwise.
     // The sessions are the store's and stand either way.
     property bool channelBankShown: true
+
+    // The face the bank's windows are lettered in. A reading choice like the
+    // width above: the user picks the type they can read across the room and
+    // every chassis letters its windows in it.
+    property string ledFontName: "UNSCII_8_SCALED"
 
 
     // PROFILE SETTINGS ///////////////////////////////////////////////////////
@@ -87,20 +92,15 @@ QtObject {
 
     property string _backgroundColor: "#000000"
     property string _fontColor: "#ff8100"
-    property string _frameColor: "#ffffff"
-    // Whether the appliance carries the channel bank. A profile that says
-    // nothing is a plain terminal and takes the tab strip; the look keys
-    // below only matter when this is true.
-    property bool channels: false
+    property string _frameColor: "#001735"
     // How the bank marks the channel on screen: "glow" lights the window
     // itself, "pointer" runs a mechanical selector up the bank's left edge,
     // "switch" leaves the mark to a thrown toggle in the shell's own row
     // hardware and keeps every open window level.
-    // A profile written before the key existed gets "glow", the older look.
     property string channelIndicator: "glow"
     // Which kit of components paints the appliance's body, and which display
     // sits in the bank's windows. Directories under shells/ and displays/;
-    // a channel profile that names neither gets the amber appliance.
+    // a chassis that names neither wears the amber appliance.
     property string shell: "annunciator"
     property string channelDisplay: "led"
     property string saturatedColor: Utils.mix(Utils.strToColor(_fontColor), Utils.strToColor("#FFFFFF"), (saturationColor * 0.5))
@@ -124,19 +124,17 @@ QtObject {
 
     property real rgbShift: 0.0
 
-    property real _frameShininess: 0.2
+    property real _frameShininess: 0.3
     property real frameShininess: _frameShininess * 0.5
 
-    property real _frameSize: 0.2
+    property real _frameSize: 0.45
     property real frameSize: _frameSize * 0.05
 
-    property real _screenRadius: 0.2
+    property real _screenRadius: 0.44
     property real screenRadius: Utils.lint(4.0, 120.0, _screenRadius)
 
     property real _margin: 0.5
     property real margin: Utils.lint(1.0, 40.0, _margin) + (1.0 - Math.SQRT1_2) * screenRadius
-
-    property string ledFontName: "UNSCII_8_SCALED"
 
     readonly property bool frameEnabled: ambientLight > 0 || _frameSize > 0 || screenCurvature > 0
 
@@ -215,10 +213,10 @@ QtObject {
                 + "/" + part + ".qml"
     }
 
-    // A profile with no channel bank is not an appliance: it takes the plain
-    // moulded bezel, not a shell's casting.
+    // The bezel is part of the chassis like everything else the user sees of
+    // the body: it always comes out of the shell's own kit.
     function frameUrl() {
-        return channels ? shellUrl("Frame") : "PlainFrame.qml"
+        return shellUrl("Frame")
     }
 
     signal initializedSettings
@@ -258,13 +256,16 @@ QtObject {
             "useCustomCommand": useCustomCommand,
             "customCommand": customCommand,
             "ledCharacters": ledCharacters,
-            "channelBankShown": channelBankShown
+            "channelBankShown": channelBankShown,
+            "ledFontName": ledFontName
         }
         return stringify(settings)
     }
 
-    function composeProfileObject() {
-        var profile = {
+    // The screen is everything behind the glass: phosphor, geometry, type and
+    // the effects that age them.
+    function composeScreenObject() {
+        var screen = {
             "backgroundColor": _backgroundColor,
             "fontColor": _fontColor,
             "flickering": flickering,
@@ -288,54 +289,84 @@ QtObject {
             "fontWidth": fontWidth,
             "lineSpacing": lineSpacing,
             "margin": _margin,
-            "blinkingCursor": blinkingCursor,
+            "blinkingCursor": blinkingCursor
+        }
+        return screen
+    }
+
+    // The chassis is the cabinet the screen is mounted in: its casting, its
+    // bezel, and the way its bank marks the channel on air.
+    function composeChassisObject() {
+        var chassis = {
+            "shell": shell,
+            "channelIndicator": channelIndicator,
+            "channelDisplay": channelDisplay,
             "frameSize": _frameSize,
             "screenRadius": _screenRadius,
             "frameColor": _frameColor,
-            "frameShininess": _frameShininess,
-            "ledFontName": ledFontName,
-            "channels": channels,
-            "channelIndicator": channelIndicator,
-            "shell": shell,
-            "channelDisplay": channelDisplay
+            "frameShininess": _frameShininess
         }
-        return profile
+        return chassis
+    }
+
+    // A whole appliance: the screen in the chassis it stands in. This is the
+    // shape a user's saved profile takes and the shape the session restores.
+    function composeProfileObject() {
+        return {
+            "screen": composeScreenObject(),
+            "chassis": composeChassisObject()
+        }
+    }
+
+    function composeScreenString() {
+        return stringify(composeScreenObject())
+    }
+
+    function composeChassisString() {
+        return stringify(composeChassisObject())
     }
 
     function composeProfileString() {
         return stringify(composeProfileObject())
     }
 
-    // True when the database had a settings and profile pair to restore, so
-    // the caller knows whether this start is a first one.
+    // True when the database had a settings, screen and chassis set to
+    // restore, so the caller knows whether this start is a first one.
     function loadSettings() {
         var settingsString = storage.getSetting("_CURRENT_SETTINGS")
-        var profileString = storage.getSetting("_CURRENT_PROFILE")
+        var screenString = storage.getSetting("_CURRENT_SCREEN")
+        var chassisString = storage.getSetting("_CURRENT_CHASSIS")
 
         if (!settingsString)
             return false
-        if (!profileString)
+        if (!screenString)
+            return false
+        if (!chassisString)
             return false
 
         loadSettingsString(settingsString)
-        loadProfileString(profileString)
+        loadScreenString(screenString)
+        loadChassisString(chassisString)
 
         if (verbose)
-            console.log("Loading settings: " + settingsString + profileString)
+            console.log("Loading settings: " + settingsString + screenString + chassisString)
 
         return true
     }
 
     function storeSettings() {
         var settingsString = composeSettingsString()
-        var profileString = composeProfileString()
+        var screenString = composeScreenString()
+        var chassisString = composeChassisString()
 
         storage.setSetting("_CURRENT_SETTINGS", settingsString)
-        storage.setSetting("_CURRENT_PROFILE", profileString)
+        storage.setSetting("_CURRENT_SCREEN", screenString)
+        storage.setSetting("_CURRENT_CHASSIS", chassisString)
 
         if (verbose) {
             console.log("Storing settings: " + settingsString)
-            console.log("Storing profile: " + profileString)
+            console.log("Storing screen: " + screenString)
+            console.log("Storing chassis: " + chassisString)
         }
     }
 
@@ -367,11 +398,11 @@ QtObject {
 
         channelBankShown = settings.channelBankShown
                 !== undefined ? settings.channelBankShown : channelBankShown
+
+        ledFontName = settings.ledFontName !== undefined ? settings.ledFontName : ledFontName
     }
 
-    function loadProfileString(profileString) {
-        var settings = JSON.parse(profileString)
-
+    function loadScreenObject(settings) {
         _backgroundColor = settings.backgroundColor
                 !== undefined ? settings.backgroundColor : _backgroundColor
         _fontColor = settings.fontColor !== undefined ? settings.fontColor : _fontColor
@@ -409,26 +440,40 @@ QtObject {
         lineSpacing = settings.lineSpacing !== undefined ? settings.lineSpacing : lineSpacing
 
         _margin = settings.margin !== undefined ? settings.margin : _margin
+
+        blinkingCursor = settings.blinkingCursor !== undefined ? settings.blinkingCursor : blinkingCursor
+    }
+
+    function loadScreenString(screenString) {
+        loadScreenObject(JSON.parse(screenString))
+    }
+
+    function loadChassisObject(settings) {
         _frameSize = settings.frameSize !== undefined ? settings.frameSize : _frameSize
         _screenRadius = settings.screenRadius !== undefined ? settings.screenRadius : _screenRadius
         _frameColor = settings.frameColor !== undefined ? settings.frameColor : _frameColor
         _frameShininess = settings.frameShininess !== undefined ? settings.frameShininess : _frameShininess
 
-        blinkingCursor = settings.blinkingCursor !== undefined ? settings.blinkingCursor : blinkingCursor
-
-        ledFontName = settings.ledFontName !== undefined ? settings.ledFontName : ledFontName
-
         // The keys that fall back to a constant rather than to what is
-        // loaded: leaving the old profile's bank or pointer standing in a
-        // profile that never asked for one would be the switch failing to
-        // switch.
-        channels = settings.channels !== undefined ? settings.channels : false
-        channelIndicator = settings.channelIndicator !== undefined ? settings.channelIndicator : "glow"
-        // Same convention, same reason: switching profiles has to switch the
-        // look back, so a profile without the keys means the default look,
-        // never whatever the last profile left standing.
+        // standing: taking a chassis has to change the machine, so one that
+        // is silent about its kit or its mark means the default appliance,
+        // never whatever the last chassis left in place.
         shell = settings.shell !== undefined ? settings.shell : "annunciator"
+        channelIndicator = settings.channelIndicator !== undefined ? settings.channelIndicator : "glow"
         channelDisplay = settings.channelDisplay !== undefined ? settings.channelDisplay : "led"
+    }
+
+    function loadChassisString(chassisString) {
+        loadChassisObject(JSON.parse(chassisString))
+    }
+
+    function loadProfileObject(profile) {
+        loadScreenObject(profile.screen)
+        loadChassisObject(profile.chassis)
+    }
+
+    function loadProfileString(profileString) {
+        loadProfileObject(JSON.parse(profileString))
     }
 
     function storeCustomProfiles() {
@@ -450,16 +495,14 @@ QtObject {
             if (verbose)
                 console.log("Loading custom profile: " + stringify(profile))
 
-            profilesList.append(profile)
+            customProfilesList.append(profile)
         }
     }
 
     function composeCustomProfilesString() {
         var customProfiles = []
-        for (var i = 0; i < profilesList.count; i++) {
-            var profile = profilesList.get(i)
-            if (profile.builtin)
-                continue
+        for (var i = 0; i < customProfilesList.count; i++) {
+            var profile = customProfilesList.get(i)
             customProfiles.push({
                                     "text": profile.text,
                                     "obj_string": profile.obj_string,
@@ -469,26 +512,36 @@ QtObject {
         return stringify(customProfiles)
     }
 
-    function loadProfile(index) {
-        var profile = profilesList.get(index)
-        loadProfileString(profile.obj_string)
+    function loadScreen(index) {
+        loadScreenString(screensList.get(index).obj_string)
+    }
+
+    function loadChassis(index) {
+        loadChassisString(chassisList.get(index).obj_string)
+    }
+
+    function loadCustomProfile(index) {
+        loadProfileString(customProfilesList.get(index).obj_string)
     }
 
     function appendCustomProfile(name, profileString) {
-        profilesList.append({
-                                "text": name,
-                                "obj_string": profileString,
-                                "builtin": false
-                            })
+        customProfilesList.append({
+                                      "text": name,
+                                      "obj_string": profileString,
+                                      "builtin": false
+                                  })
     }
 
     // PROFILES ///////////////////////////////////////////////////////////////
-    // The face the terminal wears when nobody has said otherwise: the built-in
-    // profile a first start and --default-settings both land on. The QML
-    // property values above are the schema's floor, not the app's look.
-    readonly property string defaultProfileName: "RobCo Amber"
+    // The face the terminal wears when nobody has said otherwise: the screen
+    // and the chassis a first start and --default-settings both land on. The
+    // QML property values above are the schema's floor, not the app's look.
+    readonly property string defaultScreenName: "Default Amber"
+    readonly property string defaultChassisName: "Annunciator"
 
-    property ListModel profilesList: ListModel {
+    // What is behind the glass. A screen says nothing about the cabinet it is
+    // mounted in, so any of these can be dropped into any chassis.
+    property ListModel screensList: ListModel {
         ListElement {
             text: "Default Amber"
             obj_string: '{
@@ -512,14 +565,10 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.2,
                 "screenCurvature": 0.2,
-                "screenRadius": 0.1,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false,
-                "frameSize": 0.1,
-                "frameColor": "#cfcfcf",
-                "frameShininess": 0.3
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -546,14 +595,10 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.0,
                 "screenCurvature": 0.3,
-                "screenRadius": 0.2,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false,
-                "frameSize": 0.1,
-                "frameColor": "#d4d4d4",
-                "frameShininess": 0.1
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -580,14 +625,10 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.2,
                 "screenCurvature": 0.4,
-                "screenRadius": 0.1,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false,
-                "frameSize": 0.1,
-                "frameColor": "#ffffff",
-                "frameShininess": 0.9
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -614,14 +655,10 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0,
                 "screenCurvature": 0.5,
-                "screenRadius": 0.1,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.3,
-                "blinkingCursor": false,
-                "frameSize": 0.5,
-                "frameColor": "#999999",
-                "frameShininess": 0.0
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -648,14 +685,10 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0,
                 "screenCurvature": 0.7,
-                "screenRadius": 0.3,
                 "staticNoise": 0.2,
                 "windowOpacity": 1,
                 "margin": 0.2,
-                "blinkingCursor": false,
-                "frameSize": 0.5,
-                "frameColor": "#000000",
-                "frameShininess": 0.6
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -682,14 +715,10 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0,
                 "screenCurvature": 0.5,
-                "screenRadius": 0.3,
                 "staticNoise": 0.2,
                 "windowOpacity": 1,
                 "margin": 0.0,
-                "blinkingCursor": false,
-                "frameSize": 0.2,
-                "frameColor": "#ffffff",
-                "frameShininess": 0.8
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -716,14 +745,10 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0,
                 "screenCurvature": 0.4,
-                "screenRadius": 0.2,
                 "staticNoise": 0.1,
                 "windowOpacity": 1,
                 "margin": 0.2,
-                "blinkingCursor": false,
-                "frameSize": 0.4,
-                "frameColor": "#cccccc",
-                "frameShininess": 0.3
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -750,14 +775,10 @@ QtObject {
                 "rgbShift": 0.1,
                 "saturationColor": 0,
                 "screenCurvature": 0.3,
-                "screenRadius": 0.1,
                 "staticNoise": 0.0,
                 "windowOpacity": 1,
                 "margin": 0.2,
-                "blinkingCursor": false,
-                "frameSize": 0.1,
-                "frameColor": "#ffffff",
-                "frameShininess": 0.3
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -784,14 +805,10 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0,
                 "screenCurvature": 0,
-                "screenRadius": 0.0,
                 "staticNoise": 0.0,
                 "windowOpacity": 1,
                 "margin": 0.1,
-                "blinkingCursor": false,
-                "frameSize": 0,
-                "frameColor": "#ffffff",
-                "frameShininess": 0.2
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -818,14 +835,10 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0.6,
                 "screenCurvature": 0,
-                "screenRadius": 0.0,
                 "staticNoise": 0.1,
                 "windowOpacity": 0.8,
                 "margin": 0.1,
-                "blinkingCursor": false,
-                "frameSize": 0,
-                "frameColor": "#c3c3c3",
-                "frameShininess": 0.2
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -852,14 +865,10 @@ QtObject {
                 "rgbShift": 0.0,
                 "saturationColor": 0.0,
                 "screenCurvature": 0,
-                "screenRadius": 0.0,
                 "staticNoise": 0.1,
                 "windowOpacity": 0.7,
                 "margin": 0.1,
-                "blinkingCursor": false,
-                "frameSize": 0,
-                "frameColor": "#a7a7a7",
-                "frameShininess": 0.2
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -886,14 +895,10 @@ QtObject {
                 "rgbShift": 0.1,
                 "saturationColor": 0.8,
                 "screenCurvature": 0,
-                "screenRadius": 0.0,
                 "staticNoise": 0.1,
                 "windowOpacity": 1.0,
                 "margin": 0.1,
-                "blinkingCursor": false,
-                "frameSize": 0,
-                "frameColor": "#d0d0d0",
-                "frameShininess": 0.2
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -920,14 +925,10 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0.0,
                 "screenCurvature": 0,
-                "screenRadius": 0.0,
                 "staticNoise": 0.0,
                 "windowOpacity": 1.0,
                 "margin": 0.0,
-                "blinkingCursor": false,
-                "frameSize": 0,
-                "frameColor": "#c0c0c0",
-                "frameShininess": 0.2
+                "blinkingCursor": false
             }'
             builtin: true
         }
@@ -954,164 +955,97 @@ QtObject {
                 "rgbShift": 0,
                 "saturationColor": 0,
                 "screenCurvature": 0,
-                "screenRadius": 0.0,
                 "staticNoise": 0.0,
                 "windowOpacity": 1,
                 "margin": 0.1,
-                "blinkingCursor": false,
-                "frameSize": 0,
-                "frameColor": "#cdcdcd",
-                "frameShininess": 0.2
-            }'
-            builtin: true
-        }
-        // The amber appliance of the reference mock (RoboCo-Amber.png,
-        // 1448x1086): a gunmetal plate of LED
-        // windows beside a slim-bezelled tube, the current channel marked by
-        // its window's own light. The frameColor leans cold because the base
-        // colour law folds in a fifth of the amber phosphor; this value lands
-        // the mix on the mock's plate. frameSize and screenRadius are fitted
-        // to the mock's glass opening (inset ~22px, corner radius ~55).
-        ListElement {
-            text: "RobCo Amber"
-            obj_string: '{
-                "ambientLight": 0.3,
-                "backgroundColor": "#000000",
-                "bloom": 0.6,
-                "brightness": 0.5,
-                "burnIn": 0.3,
-                "chromaColor": 0.2,
-                "contrast": 0.8,
-                "flickering": 0.1,
-                "fontColor": "#ff8100",
-                "fontName": "TERMINESS_SCALED",
-                "fontSource": 0,
-                "fontWidth": 1,
-                "lineSpacing": 0.1,
-                "glowingLine": 0.2,
-                "horizontalSync": 0.1,
-                "jitter": 0.2,
-                "rasterization": 0,
-                "rgbShift": 0,
-                "saturationColor": 0.2,
-                "screenCurvature": 0.2,
-                "screenRadius": 0.44,
-                "staticNoise": 0.1,
-                "windowOpacity": 1,
-                "margin": 0.3,
-                "blinkingCursor": false,
-                "frameSize": 0.45,
-                "frameColor": "#001735",
-                "frameShininess": 0.3,
-                "channelIndicator": "glow",
-                "channels": true,
-                "shell": "annunciator"
-            }'
-            builtin: true
-        }
-        // The blue appliance of the reference mock (Metalic-Blue.png,
-        // 1448x1086): warm olive-grey gunmetal
-        // (all the blue in that mock is emitted light, none of it paint),
-        // windows punched into the chassis, a carrier rail down the bank's
-        // left edge. The mock draws that rail as a bare groove and lights its
-        // windows alike; the appliance puts the groove to work, driving the
-        // carriage down it to the channel on screen, so the panel marks by
-        // machinery where the amber one marks by light. frameSize
-        // sits between the mock's shallow top inset and its deep bottom
-        // trough; the screenRadius ceiling plus the strong curvature
-        // approximates the barrel-curved glass mouth.
-        ListElement {
-            text: "RobCo Blue"
-            obj_string: '{
-                "ambientLight": 0.3,
-                "backgroundColor": "#000000",
-                "bloom": 0.6,
-                "brightness": 0.5,
-                "burnIn": 0.3,
-                "chromaColor": 1.0,
-                "contrast": 0.8,
-                "flickering": 0.1,
-                "fontColor": "#7fb4ff",
-                "fontName": "BIGBLUE_TERMINAL_SCALED",
-                "fontSource": 0,
-                "fontWidth": 1,
-                "lineSpacing": 0.1,
-                "glowingLine": 0.2,
-                "horizontalSync": 0.1,
-                "jitter": 0.2,
-                "rasterization": 0,
-                "rgbShift": 0,
-                "saturationColor": 0.2,
-                "screenCurvature": 0.4,
-                "screenRadius": 1.0,
-                "staticNoise": 0.1,
-                "windowOpacity": 1,
-                "margin": 0.3,
-                "blinkingCursor": false,
-                "frameSize": 0.7,
-                "frameColor": "#a77d37",
-                "frameShininess": 0.15,
-                "channelIndicator": "pointer",
-                "channels": true,
-                "shell": "slide-rule"
-            }'
-            builtin: true
-        }
-        // The switchboard of the reference mock (Deep-Blue.png, 1448x1086):
-        // fifteen heavy toggle switches in recessed wells down a near-neutral
-        // gunmetal panel, a mechanical page counter at its foot, cyan phosphor
-        // behind big round-cornered glass. The owner supersedes the artwork
-        // twice: the label plates carry embossed punch tape rather than the
-        // mock's glowing LED text, and the thrown switch is the sole mark of
-        // the channel on screen (the mock's brighter row-06 plate is void), so
-        // the profile asks for the switch law and every window sits level.
-        // The frameColor leans dark maroon because the base colour law folds
-        // in a fifth of the cyan phosphor; this value lands the mix on the
-        // mock's #232830 plate. frameSize and screenRadius are fitted to the
-        // mock's glass opening (inset ~10px, corner radius ~90).
-        ListElement {
-            text: "RobCo Switchboard"
-            obj_string: '{
-                "ambientLight": 0.3,
-                "backgroundColor": "#000000",
-                "bloom": 0.6,
-                "brightness": 0.5,
-                "burnIn": 0.3,
-                "chromaColor": 0.2,
-                "contrast": 0.8,
-                "fontColor": "#0edcfc",
-                "fontName": "TERMINESS_SCALED",
-                "fontSource": 0,
-                "fontWidth": 1,
-                "lineSpacing": 0.1,
-                "flickering": 0.1,
-                "glowingLine": 0.2,
-                "horizontalSync": 0.1,
-                "jitter": 0.2,
-                "rasterization": 0,
-                "rgbShift": 0,
-                "saturationColor": 0.2,
-                "screenCurvature": 0.2,
-                "screenRadius": 0.7,
-                "staticNoise": 0.1,
-                "windowOpacity": 1,
-                "margin": 0.3,
-                "blinkingCursor": false,
-                "frameSize": 0.2,
-                "frameColor": "#461725",
-                "frameShininess": 0.2,
-                "channelIndicator": "switch",
-                "channels": true,
-                "shell": "switchboard",
-                "channelDisplay": "tape"
+                "blinkingCursor": false
             }'
             builtin: true
         }
     }
 
-    function getProfileIndexByName(name) {
-        for (var i = 0; i < profilesList.count; i++) {
-            if (profilesList.get(i).text === name)
+    // The cabinets a screen can be mounted in: the casting, the bezel it cuts
+    // the glass with, and the way its bank marks the channel on air.
+    property ListModel chassisList: ListModel {
+        // Fitted to the amber appliance of the reference mock
+        // (RoboCo-Amber.png, 1448x1086): a gunmetal plate of LED windows
+        // beside a slim-bezelled tube, the current channel marked by its
+        // window's own light. The frameColor leans cold because the base
+        // colour law folds a fifth of the screen's phosphor into the plate;
+        // this value lands the mix on the mock's gunmetal. frameSize and
+        // screenRadius are fitted to the mock's glass opening (inset ~22px,
+        // corner radius ~55).
+        ListElement {
+            text: "Annunciator"
+            obj_string: '{
+                "shell": "annunciator",
+                "channelIndicator": "glow",
+                "channelDisplay": "led",
+                "frameSize": 0.45,
+                "screenRadius": 0.44,
+                "frameColor": "#001735",
+                "frameShininess": 0.3
+            }'
+            builtin: true
+        }
+        // Fitted to the blue appliance of the reference mock
+        // (Metalic-Blue.png, 1448x1086): warm olive-grey gunmetal (all the
+        // blue in that mock is emitted light, none of it paint), windows
+        // punched into the chassis, a carrier rail down the bank's left edge.
+        // The mock draws that rail as a bare groove and lights its windows
+        // alike; the appliance puts the groove to work, driving the carriage
+        // down it to the channel on screen, so this panel marks by machinery
+        // where the annunciator marks by light. frameSize sits between the
+        // mock's shallow top inset and its deep bottom trough; the
+        // screenRadius ceiling approximates the barrel-curved glass mouth.
+        ListElement {
+            text: "Slide Rule"
+            obj_string: '{
+                "shell": "slide-rule",
+                "channelIndicator": "pointer",
+                "channelDisplay": "led",
+                "frameSize": 0.7,
+                "screenRadius": 1.0,
+                "frameColor": "#a77d37",
+                "frameShininess": 0.15
+            }'
+            builtin: true
+        }
+        // Fitted to the switchboard of the reference mock (Deep-Blue.png,
+        // 1448x1086): fifteen heavy toggle switches in recessed wells down a
+        // near-neutral gunmetal panel, a mechanical page counter at its foot,
+        // big round-cornered glass. The owner supersedes the artwork twice:
+        // the label plates carry embossed punch tape rather than the mock's
+        // glowing LED text, and the thrown switch is the sole mark of the
+        // channel on screen (the mock's brighter row-06 plate is void), so
+        // this chassis asks for the switch law and every window sits level.
+        // The frameColor leans dark maroon because the base colour law folds
+        // a fifth of the screen's phosphor into the plate; this value lands
+        // the mix on the mock's #232830 gunmetal under cyan. frameSize and
+        // screenRadius are fitted to the mock's glass opening (inset ~10px,
+        // corner radius ~90).
+        ListElement {
+            text: "Switchboard"
+            obj_string: '{
+                "shell": "switchboard",
+                "channelIndicator": "switch",
+                "channelDisplay": "tape",
+                "frameSize": 0.2,
+                "screenRadius": 0.7,
+                "frameColor": "#461725",
+                "frameShininess": 0.2
+            }'
+            builtin: true
+        }
+    }
+
+    // The appliances the user has built and named: a screen and a chassis
+    // saved together, filled from the store at startup.
+    property ListModel customProfilesList: ListModel {}
+
+    function getProfileIndexByName(list, name) {
+        for (var i = 0; i < list.count; i++) {
+            if (list.get(i).text === name)
                 return i
         }
         return -1
@@ -1131,19 +1065,30 @@ QtObject {
         loadCustomProfiles()
 
         // Nothing to restore, so the terminal comes up as itself: the amber
-        // appliance, bank and all. A profile named on the command line is a
-        // later word than this one and still wins.
+        // screen in the annunciator cabinet, bank and all. A profile named on
+        // the command line is a later word than this one and still wins.
         if (!restored) {
-            var defaultIndex = getProfileIndexByName(defaultProfileName)
-            if (defaultIndex !== -1)
-                loadProfile(defaultIndex)
+            var screenIndex = getProfileIndexByName(screensList, defaultScreenName)
+            if (screenIndex !== -1)
+                loadScreen(screenIndex)
+
+            var chassisIndex = getProfileIndexByName(chassisList, defaultChassisName)
+            if (chassisIndex !== -1)
+                loadChassis(chassisIndex)
         }
 
+        // A name on the command line is read as a whole appliance first, since
+        // that is what the user saved under a name of their own; failing that
+        // it is a screen, which the cabinet standing takes without change.
         var profileArgPosition = args.indexOf("--profile")
         if (profileArgPosition !== -1) {
-            var profileIndex = getProfileIndexByName(args[profileArgPosition + 1])
-            if (profileIndex !== -1) {
-                loadProfile(profileIndex)
+            var profileName = args[profileArgPosition + 1]
+            var customIndex = getProfileIndexByName(customProfilesList, profileName)
+            var namedScreenIndex = getProfileIndexByName(screensList, profileName)
+            if (customIndex !== -1) {
+                loadCustomProfile(customIndex)
+            } else if (namedScreenIndex !== -1) {
+                loadScreen(namedScreenIndex)
             } else {
                 console.log("Warning: selected profile is not valid; ignoring it")
             }

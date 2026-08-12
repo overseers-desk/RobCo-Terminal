@@ -23,11 +23,9 @@
         <file>SettingsAdvancedTab.qml</file>
         <file>TerminalContainer.qml</file>
         <file>TerminalChannels.qml</file>
-        <file>TerminalTabStrip.qml</file>
         <file>ChannelBank.qml</file>
         <file>ChannelRow.qml</file>
         <file>ChannelChordInput.qml</file>
-        <file>PlainFrame.qml</file>
         <file>shells/common/ScrewHead.qml</file>
         <file>shells/annunciator/Frame.qml</file>
         <file>shells/annunciator/Chassis.qml</file>
