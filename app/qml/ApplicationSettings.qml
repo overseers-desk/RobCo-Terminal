@@ -190,7 +190,7 @@ QtObject {
     // versions, and a bank that fails to paint would be worse than one that
     // paints plainly.
     readonly property var knownShells: ["robco-amber", "robco-blue"]
-    readonly property var knownDisplays: ["led"]
+    readonly property var knownDisplays: ["led", "tape"]
     property var _warnedLooks: ({})
 
     function _validatedLook(kind, name, known, fallback) {

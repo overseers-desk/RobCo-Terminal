@@ -19,14 +19,14 @@
 *******************************************************************************/
 import QtQuick
 
-// An embossed punch-tape label stuck on the chassis, shared by the RobCo
-// shells: near-black glossy plastic with rounded ends, uppercase letters
-// raised out of it in whitened relief, lit by the same key as the casting so
-// its highlights sit with the metal's. The glyphs are rasterised on the CPU
-// by FontManager (the LED strip's own plumbing) at double the displayed
-// size, so the downscale hands the emboss shader soft-edged strokes to
-// light. The caller gives text, height, position and its small crooked
-// rotation; width follows the text.
+// One strip of embossed punch tape: near-black glossy plastic with rounded
+// ends, uppercase letters raised out of it in whitened relief, lit by the
+// key the caller names so its highlights sit with the surrounding metal's.
+// The glyphs are rasterised on the CPU by FontManager (the LED strip's own
+// plumbing) at double the displayed size, so the downscale hands the emboss
+// shader soft-edged strokes to light. The caller gives text, height and
+// position; width follows the text, a wheel cutting only as much tape as it
+// stamps. The tape display kit's Display lays one of these in its well.
 Item {
     id: tape
 

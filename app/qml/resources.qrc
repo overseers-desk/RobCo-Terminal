@@ -29,7 +29,6 @@
         <file>ChannelChordInput.qml</file>
         <file>PlainFrame.qml</file>
         <file>shells/common/ScrewHead.qml</file>
-        <file>shells/common/TapeLabel.qml</file>
         <file>shells/robco-amber/Frame.qml</file>
         <file>shells/robco-amber/Chassis.qml</file>
         <file>shells/robco-amber/RowFurniture.qml</file>
@@ -46,6 +45,9 @@
         <file>shells/robco-switchboard/Metrics.qml</file>
         <file>displays/led/Display.qml</file>
         <file>displays/led/Metrics.qml</file>
+        <file>displays/tape/Display.qml</file>
+        <file>displays/tape/Metrics.qml</file>
+        <file>displays/tape/TapeLabel.qml</file>
         <file>images/crt256.png</file>
         <file>utils.js</file>
         <file>images/allNoise512.png</file>
