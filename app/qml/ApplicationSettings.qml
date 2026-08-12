@@ -500,15 +500,14 @@ QtObject {
     }
 
     function loadChassisObject(settings) {
-        _frameSizeChassis = settings.frameSize !== undefined ? settings.frameSize : _frameSizeChassis
-        _screenRadiusChassis = settings.screenRadius !== undefined ? settings.screenRadius : _screenRadiusChassis
-        _frameColorChassis = settings.frameColor !== undefined ? settings.frameColor : _frameColorChassis
-        _frameShininessChassis = settings.frameShininess !== undefined ? settings.frameShininess : _frameShininessChassis
-
-        // The keys that fall back to a constant rather than to what is
+        // Every key falls back to the default appliance's, never to what is
         // standing: taking a chassis has to change the machine, so one that
-        // is silent about its kit or its mark means the default appliance,
+        // is silent about a measure or its kit means the annunciator's,
         // never whatever the last chassis left in place.
+        _frameSizeChassis = settings.frameSize !== undefined ? settings.frameSize : 0.45
+        _screenRadiusChassis = settings.screenRadius !== undefined ? settings.screenRadius : 0.44
+        _frameColorChassis = settings.frameColor !== undefined ? settings.frameColor : "#001735"
+        _frameShininessChassis = settings.frameShininess !== undefined ? settings.frameShininess : 0.3
         shell = settings.shell !== undefined ? settings.shell : "annunciator"
         channelIndicator = settings.channelIndicator !== undefined ? settings.channelIndicator : "glow"
         channelDisplay = settings.channelDisplay !== undefined ? settings.channelDisplay : "led"

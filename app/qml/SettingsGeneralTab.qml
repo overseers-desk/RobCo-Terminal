@@ -273,7 +273,7 @@ ColumnLayout {
                             var urlTail = (extension === ".json" ? "" : ".json")
                             url += urlTail
 
-                            if (true)
+                            if (appSettings.verbose)
                                 console.log("Storing file: " + url)
 
                             var profileObject = appSettings.customProfilesList.get(
