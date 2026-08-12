@@ -19,7 +19,7 @@ each part of it:
 | `spillStrength` | the same fixtures, to quiet the light thrown on the plate |
 
 A kit that has no use for one of them declares it anyway and ignores it: the
-five consumers bind blind.
+consumers bind blind.
 
 `Metrics.qml` (a QtObject) is the width contract, read by ChannelBank.qml and
 by the seam drag in TerminalWindow.qml: `unitWidth` (one character, unrounded,

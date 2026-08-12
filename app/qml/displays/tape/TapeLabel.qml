@@ -23,7 +23,7 @@ import QtQuick
 // ends, uppercase letters raised out of it in whitened relief, lit by the
 // key the caller names so its highlights sit with the surrounding metal's.
 // The glyphs are rasterised on the CPU by FontManager (the LED strip's own
-// plumbing) at double the displayed size, so the downscale hands the emboss
+// plumbing) at double the displayed size, so the downscale hands the tape
 // shader soft-edged strokes to light. The caller gives text, height and
 // position; width follows the text, a wheel cutting only as much tape as it
 // stamps. The tape display kit's Display lays one of these in its well.
