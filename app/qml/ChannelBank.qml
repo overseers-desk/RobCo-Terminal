@@ -88,10 +88,12 @@ Item {
     readonly property int rowHeight: Math.max(minRowHeight, stripHeight + 2 * stripPadding)
 
     // The profile decides how the channel on screen is marked. The pointer look
-    // stands a mechanical selector down the left edge; the glow look drives the
+    // stands a mechanical selector down the left edge; the switch look leaves
+    // the mark to the row furniture's thrown toggle; the glow look drives the
     // window of the channel on screen hotter than the rest.
     readonly property bool pointerIndicator: appSettings.channelIndicator === "pointer"
-    readonly property bool glowIndicator: !pointerIndicator
+    readonly property bool switchIndicator: appSettings.channelIndicator === "switch"
+    readonly property bool glowIndicator: !pointerIndicator && !switchIndicator
     readonly property int trackWidth: pointerIndicator ? (shellMetrics.item?.trackWidth ?? 0) : 0
     // A shell whose chassis carries the rail as fixed furniture has the lane
     // inside its own padding already, and names where it runs; the bank cuts no

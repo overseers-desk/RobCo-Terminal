@@ -93,7 +93,9 @@ QtObject {
     // below only matter when this is true.
     property bool channels: false
     // How the bank marks the channel on screen: "glow" lights the window
-    // itself, "pointer" runs a mechanical selector up the bank's left edge.
+    // itself, "pointer" runs a mechanical selector up the bank's left edge,
+    // "switch" leaves the mark to a thrown toggle in the shell's own row
+    // hardware and keeps every open window level.
     // A profile written before the key existed gets "glow", the older look.
     property string channelIndicator: "glow"
     // Which kit of components paints the appliance's body, and which display
