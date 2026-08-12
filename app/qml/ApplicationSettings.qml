@@ -189,7 +189,7 @@ QtObject {
     // back to the default, warned once: a look can go missing between
     // versions, and a bank that fails to paint would be worse than one that
     // paints plainly.
-    readonly property var knownShells: ["robco-amber", "robco-blue"]
+    readonly property var knownShells: ["robco-amber", "robco-blue", "robco-switchboard"]
     readonly property var knownDisplays: ["led", "tape"]
     property var _warnedLooks: ({})
 
@@ -1054,6 +1054,56 @@ QtObject {
                 "channelIndicator": "pointer",
                 "channels": true,
                 "shell": "robco-blue"
+            }'
+            builtin: true
+        }
+        // The switchboard of the reference mock (Deep-Blue.png, 1448x1086):
+        // fifteen heavy toggle switches in recessed wells down a near-neutral
+        // gunmetal panel, a mechanical page counter at its foot, cyan phosphor
+        // behind big round-cornered glass. The owner supersedes the artwork
+        // twice: the label plates carry embossed punch tape rather than the
+        // mock's glowing LED text, and the thrown switch is the sole mark of
+        // the channel on screen (the mock's brighter row-06 plate is void), so
+        // the profile asks for the switch law and every window sits level.
+        // The frameColor leans dark maroon because the base colour law folds
+        // in a fifth of the cyan phosphor; this value lands the mix on the
+        // mock's #232830 plate. frameSize and screenRadius are fitted to the
+        // mock's glass opening (inset ~10px, corner radius ~90).
+        ListElement {
+            text: "RobCo Switchboard"
+            obj_string: '{
+                "ambientLight": 0.3,
+                "backgroundColor": "#000000",
+                "bloom": 0.6,
+                "brightness": 0.5,
+                "burnIn": 0.3,
+                "chromaColor": 0.2,
+                "contrast": 0.8,
+                "fontColor": "#0edcfc",
+                "fontName": "TERMINESS_SCALED",
+                "fontSource": 0,
+                "fontWidth": 1,
+                "lineSpacing": 0.1,
+                "flickering": 0.1,
+                "glowingLine": 0.2,
+                "horizontalSync": 0.1,
+                "jitter": 0.2,
+                "rasterization": 0,
+                "rgbShift": 0,
+                "saturationColor": 0.2,
+                "screenCurvature": 0.2,
+                "screenRadius": 0.7,
+                "staticNoise": 0.1,
+                "windowOpacity": 1,
+                "margin": 0.3,
+                "blinkingCursor": false,
+                "frameSize": 0.2,
+                "frameColor": "#461725",
+                "frameShininess": 0.2,
+                "channelIndicator": "switch",
+                "channels": true,
+                "shell": "robco-switchboard",
+                "channelDisplay": "tape"
             }'
             builtin: true
         }
