@@ -39,10 +39,6 @@ ShaderEffect {
     // The item the frame shader fills; this metal continues its field.
     property Item frameRegion
 
-    // What the tape label reads. Empty is bare plastic: the window pushes the
-    // attached session's host in here and takes it back out on detach.
-    property string tapeText: ""
-
     // The frame's own measurements, in the units its shader works in: this
     // metal is placed in that field, not in one of its own.
     property size viewportSize: Qt.size(_fieldWidth, _fieldHeight)
@@ -321,18 +317,5 @@ ShaderEffect {
                 slotAngle: 74
             }
         }
-    }
-
-    // The session's tape label, stuck on the chassis headroom over the
-    // windows, clear of the hinge bracket at the rail's head. It is
-    // declared after the rail: a real tape overlaps what it is stuck over.
-    TapeLabel {
-        x: metrics.bankPadding
-           + (parent.width - metrics.bankPadding - metrics.rightPadding - width) / 2
-        y: metrics.tapeY
-        height: metrics.tapeHeight
-        rotation: metrics.tapeRotation
-        lightDir: metrics.castingLightDir
-        text: chassis.tapeText
     }
 }

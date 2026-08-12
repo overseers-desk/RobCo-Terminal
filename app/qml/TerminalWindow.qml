@@ -261,15 +261,6 @@ ApplicationWindow {
                 property: "frameRegion"
                 value: crtRegion
             }
-            // The tape label names whose session the channels belong to, so
-            // it exists only while one is attached and goes with it. The
-            // host is handed over as it is stored; the tape uppercases what
-            // it stamps, that being the wheel's business and not the model's.
-            Binding {
-                target: chassisLoader.item
-                property: "tapeText"
-                value: terminalChannels.tmuxGateway ? terminalChannels.tmuxHost : ""
-            }
         }
         Loader {
             id: channelBankLoader
