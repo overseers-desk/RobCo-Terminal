@@ -1,0 +1,6 @@
+list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}"
+send-keys -H -t %0 73 74 74 79 20 72 61 77 20 2d 65 63 68 6f 0a
+send-keys -H -t %1 73 74 74 79 20 72 61 77 20 2d 65 63 68 6f 0a
+send-keys -H -t %0 70 72 69 6e 74 66 20 27 62 61 63 6b 5c 5c 73 6c 61 73 68 5c 72 5c 6e 27 0a
+send-keys -H -t %1 63 61 74 20 2f 74 6d 70 2f 72 6f 62 63 6f 2d 74 6d 75 78 2d 63 63 2d 61 6c 6c 62 79 74 65 73 2e 62 69 6e 0a
+detach-client

@@ -1,0 +1,4 @@
+this-command-does-not-exist
+refresh-client -f pause-after=1
+send-keys -H -t %0 65 78 74 65 6e 64 65 64 0a
+detach-client

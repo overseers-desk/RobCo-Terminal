@@ -1,0 +1,867 @@
+//! The grid renderer: a screen of cells plus a thresholded atlas, drawn in one
+//! pass with every coordinate an integer before it reaches the GPU.
+//!
+//! Three things are load bearing and none of them is negotiable later:
+//!
+//! * **Layout happens once, in unscaled raster pixels.** The instance buffer
+//!   holds cell-grid geometry at 1x; the magnification is a uniform. Scaling
+//!   therefore cannot perturb the layout, because the layout has already
+//!   happened, and a DPR change costs one uniform write rather than a rebuild
+//!   of the atlas. The counterexample makes the property concrete:
+//!   re-rasterising Terminess at twice the size instead of scaling its
+//!   geometry moved 3960 pixels.
+//! * **The instance array is a fixed grid**, four blocks of `cols * rows` plus
+//!   a two-instance cursor tail and a row's worth of input-method composition
+//!   behind it. A damaged line is four contiguous ranges, so rio-vt's per-line
+//!   damage translates into `write_buffer` calls that touch only the lines that
+//!   changed instead of re-uploading the screen.
+//! * **Blank cells still occupy their slot**, as a degenerate zero-area quad.
+//!   Keeping the stride fixed is what makes the previous point arithmetic
+//!   rather than bookkeeping.
+
+use bytemuck::{Pod, Zeroable};
+use wgpu::util::DeviceExt as _;
+
+use crate::atlas::GlyphAtlas;
+use crate::cells::{Cell, CellGrid, CursorShape, CursorState};
+use crate::color::{Rgba, Scheme};
+use crate::gpu::{Gpu, Image, Target, TARGET_FORMAT};
+
+/// One quad. All integers: the CPU decides the exact pixels, the GPU only
+/// fills them in.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable, PartialEq)]
+pub struct Instance {
+    /// Top-left in unscaled raster pixels, relative to the grid origin.
+    dst: [i32; 2],
+    /// Size in unscaled raster pixels. Zero means "draw nothing".
+    size: [i32; 2],
+    /// Top-left of the glyph bitmap in the atlas, in texels. A negative x
+    /// marks a solid fill (background, underline, cursor block).
+    src: [i32; 2],
+    color: [f32; 4],
+}
+
+const SOLID: [i32; 2] = [-1, -1];
+
+const EMPTY: Instance = Instance {
+    dst: [0, 0],
+    size: [0, 0],
+    src: SOLID,
+    color: [0.0, 0.0, 0.0, 0.0],
+};
+
+/// Instance blocks, in draw order. Backgrounds first so glyphs land on top of
+/// them, decorations over the glyphs, cursor last.
+const BLOCK_BG: usize = 0;
+const BLOCK_GLYPH: usize = 1;
+const BLOCK_UNDERLINE: usize = 2;
+const BLOCK_STRIKEOUT: usize = 3;
+const BLOCKS: usize = 4;
+/// The cursor block and the glyph redrawn on top of it.
+const CURSOR_INSTANCES: usize = 2;
+/// What one cell of an input method's composition costs: the filled plate under
+/// it and the character struck into that plate. See [`GridRenderer::set_preedit`].
+const PREEDIT_BLOCKS: usize = 2;
+
+/// The whole instance array: the four grid blocks, the cursor's tail, and room
+/// for a composition as wide as the screen.
+///
+/// The pre-edit's room is fixed rather than grown per composition for the same
+/// reason every other block is: a fixed stride is what makes a partial upload
+/// arithmetic. A composition longer than the row is clipped at the row's end,
+/// matching how pre-edit text is bounded to the row it starts on.
+fn instance_count(cols: usize, rows: usize) -> usize {
+    BLOCKS * cols * rows + CURSOR_INSTANCES + PREEDIT_BLOCKS * cols
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct Uniforms {
+    viewport: [f32; 2],
+    scale: i32,
+    origin_x: i32,
+    origin_y: i32,
+    _pad: [i32; 3],
+}
+
+/// What one `sync` did, so a caller (and a test) can see that damage tracking
+/// is actually tracking damage rather than quietly redrawing everything.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SyncStats {
+    /// Every row was rebuilt: a resize, a scroll, or rio-vt reporting full
+    /// damage.
+    pub full: bool,
+    /// Rows whose instances were rewritten.
+    pub rows_updated: usize,
+    /// Rows rewritten only because the cursor entered or left them.
+    pub cursor_rows: usize,
+}
+
+pub struct GridRenderer {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
+    uniform_buffer: wgpu::Buffer,
+    instance_buffer: wgpu::Buffer,
+
+    atlas: GlyphAtlas,
+    scheme: Scheme,
+
+    cols: usize,
+    rows: usize,
+    /// The cells as last uploaded. Kept so a partial update can be built
+    /// without asking the terminal for rows it did not damage.
+    grid: CellGrid,
+    instances: Vec<Instance>,
+    cursor: Option<CursorState>,
+    /// What an input method is composing right now, drawn at the cursor and
+    /// belonging to no cell of the grid. See [`GridRenderer::set_preedit`].
+    preedit: String,
+    scale: u32,
+    origin: [i32; 2],
+}
+
+impl GridRenderer {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        atlas: GlyphAtlas,
+        cols: usize,
+        rows: usize,
+        scheme: Scheme,
+    ) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("robco grid renderer"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("robco grid bindings"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        // Unfilterable, so the type system agrees with the
+                        // shader: there is no sampler and nothing to filter
+                        // with.
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("robco grid layout"),
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
+        });
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("robco grid pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Instance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Sint32x2,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Sint32x2,
+                            offset: 8,
+                            shader_location: 1,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Sint32x2,
+                            offset: 16,
+                            shader_location: 2,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: 24,
+                            shader_location: 3,
+                        },
+                    ],
+                })],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: TARGET_FORMAT,
+                    // Premultiplied source over destination. With a binary
+                    // atlas this is a choice between two exact outcomes, so
+                    // overlapping quads cannot blend into a third; with a
+                    // coverage atlas it is what makes an antialiased glyph
+                    // composite over its cell background at all.
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let instances = vec![EMPTY; instance_count(cols, rows)];
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("robco grid instances"),
+            contents: bytemuck::cast_slice(&instances),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("robco grid uniforms"),
+            size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let bind_group = Self::make_bind_group(device, &bind_group_layout, &uniform_buffer, &atlas);
+
+        let grid = CellGrid::new(cols, rows, &scheme);
+        let mut this = Self {
+            pipeline,
+            bind_group_layout,
+            bind_group,
+            uniform_buffer,
+            instance_buffer,
+            atlas,
+            scheme,
+            cols,
+            rows,
+            grid,
+            instances,
+            cursor: None,
+            preedit: String::new(),
+            scale: 1,
+            origin: [0, 0],
+        };
+        this.upload_all(queue);
+        this
+    }
+
+    fn make_bind_group(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        uniforms: &wgpu::Buffer,
+        atlas: &GlyphAtlas,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("robco grid bind group"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniforms.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&atlas.view),
+                },
+            ],
+        })
+    }
+
+    pub fn atlas(&self) -> &GlyphAtlas {
+        &self.atlas
+    }
+
+    pub fn scheme(&self) -> &Scheme {
+        &self.scheme
+    }
+
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn scale(&self) -> u32 {
+        self.scale
+    }
+
+    /// The magnification, as an integer. Everything the sizing seam decides
+    /// arrives here: `ResolvedFont::integer_scale`.
+    ///
+    /// Nothing is rebuilt. That is the whole point: a monitor change moves
+    /// this number and the atlas, the layout and the instance buffer all stay
+    /// exactly as they were.
+    pub fn set_scale(&mut self, scale: u32) {
+        assert!(scale >= 1, "integer scale must be at least 1");
+        self.scale = scale;
+    }
+
+    /// Where the grid's top-left corner sits in the target, in physical
+    /// pixels. Whole pixels only, so centring cannot half-texel the glyphs.
+    pub fn set_origin(&mut self, x: i32, y: i32) {
+        self.origin = [x, y];
+    }
+
+    /// Swap in a rebuilt atlas: a font change, or a scalable face that really
+    /// does have to be re-rasterised. A DPR change is *not* one of these.
+    pub fn set_atlas(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, atlas: GlyphAtlas) {
+        self.atlas = atlas;
+        self.bind_group = Self::make_bind_group(
+            device,
+            &self.bind_group_layout,
+            &self.uniform_buffer,
+            &self.atlas,
+        );
+        self.upload_all(queue);
+    }
+
+    pub fn set_scheme(&mut self, queue: &wgpu::Queue, scheme: Scheme) {
+        self.scheme = scheme;
+        self.upload_all(queue);
+    }
+
+    pub fn resize(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, cols: usize, rows: usize) {
+        if cols == self.cols && rows == self.rows {
+            return;
+        }
+        self.cols = cols;
+        self.rows = rows;
+        self.grid.resize(cols, rows, &self.scheme);
+        self.instances = vec![EMPTY; instance_count(cols, rows)];
+        self.instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("robco grid instances"),
+            contents: bytemuck::cast_slice(&self.instances),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        self.upload_all(queue);
+    }
+
+    /// Pixel size of the whole grid at the current scale.
+    pub fn pixel_size(&self) -> (u32, u32) {
+        (
+            self.cols as u32 * self.atlas.cell.width * self.scale,
+            self.rows as u32 * self.atlas.cell.height * self.scale,
+        )
+    }
+
+    /// How many whole cells fit in a surface of this many physical pixels.
+    /// The inverse of `pixel_size`, and the function a resize handler needs.
+    pub fn cells_for_pixels(&self, width: u32, height: u32) -> (usize, usize) {
+        let cw = self.atlas.cell.width * self.scale;
+        let ch = self.atlas.cell.height * self.scale;
+        (
+            (width / cw.max(1)).max(1) as usize,
+            (height / ch.max(1)).max(1) as usize,
+        )
+    }
+
+    // ---- content ---------------------------------------------------------
+
+    /// Replace the whole screen. The path a test, a full-damage frame, or a
+    /// resize takes.
+    pub fn set_grid(&mut self, queue: &wgpu::Queue, grid: &CellGrid, cursor: Option<CursorState>) {
+        assert_eq!(grid.cols, self.cols);
+        assert_eq!(grid.rows, self.rows);
+        self.grid.cells.copy_from_slice(&grid.cells);
+        self.cursor = cursor;
+        self.upload_all(queue);
+    }
+
+    /// Replace one row. The path a damaged line takes.
+    pub fn set_row(&mut self, queue: &wgpu::Queue, row: usize, cells: &[Cell]) {
+        let n = cells.len().min(self.cols);
+        self.grid.row_mut(row)[..n].copy_from_slice(&cells[..n]);
+        self.build_row(row);
+        self.upload_row(queue, row);
+    }
+
+    pub fn set_cursor(&mut self, queue: &wgpu::Queue, cursor: Option<CursorState>) {
+        if cursor == self.cursor {
+            return;
+        }
+        self.cursor = cursor;
+        self.build_cursor();
+        self.upload_cursor(queue);
+        // A composition stands at the cursor, so it goes where the cursor goes,
+        // whichever path moved it (see [`Self::set_preedit`]).
+        if !self.preedit.is_empty() {
+            self.build_preedit();
+            self.upload_preedit(queue);
+        }
+    }
+
+    /// Draw what an input method is composing, at the cursor.
+    ///
+    /// The composition's geometry is one row high, starting at the cursor
+    /// cell, as many cells wide as the composition. What's painted there is
+    /// the default background, then a cursor-style fill over the *whole*
+    /// rectangle -- which for a block cursor with no explicit cursor colour
+    /// fills it in the foreground and inverts the character colour -- and
+    /// then the characters in that inverted colour. So a composition reads
+    /// as a run of block cursor with the half-typed word struck into it, and
+    /// that is what this draws: the plate in [`CursorState::color`], the
+    /// glyphs in [`CursorState::text_color`].
+    ///
+    /// It is drawn **in the grid**, not over the finished picture, so the
+    /// pre-edit goes through the CRT chain with everything else on the tube:
+    /// it bends with the curvature and glows with the phosphor instead of
+    /// floating flat above them.
+    ///
+    /// One cell per `char`, which is the same ruler the grid itself uses (the
+    /// cell path has no width table either), and clipped at the last column.
+    /// Empty text takes the composition off the screen, which is what a commit
+    /// and an abandoned composition both send.
+    pub fn set_preedit(&mut self, queue: &wgpu::Queue, text: &str) {
+        if self.preedit == text {
+            return;
+        }
+        self.preedit.clear();
+        self.preedit.push_str(text);
+        self.build_preedit();
+        self.upload_preedit(queue);
+    }
+
+    /// What [`Self::set_preedit`] was last given.
+    pub fn preedit(&self) -> &str {
+        &self.preedit
+    }
+
+    pub fn grid(&self) -> &CellGrid {
+        &self.grid
+    }
+
+    fn upload_all(&mut self, queue: &wgpu::Queue) {
+        for row in 0..self.rows {
+            self.build_row(row);
+        }
+        self.build_cursor();
+        self.build_preedit();
+        queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(&self.instances),
+        );
+    }
+
+    fn upload_row(&self, queue: &wgpu::Queue, row: usize) {
+        let stride = std::mem::size_of::<Instance>() as u64;
+        for block in 0..BLOCKS {
+            let start = block * self.cols * self.rows + row * self.cols;
+            queue.write_buffer(
+                &self.instance_buffer,
+                start as u64 * stride,
+                bytemuck::cast_slice(&self.instances[start..start + self.cols]),
+            );
+        }
+    }
+
+    fn upload_cursor(&self, queue: &wgpu::Queue) {
+        let stride = std::mem::size_of::<Instance>() as u64;
+        let start = BLOCKS * self.cols * self.rows;
+        queue.write_buffer(
+            &self.instance_buffer,
+            start as u64 * stride,
+            bytemuck::cast_slice(&self.instances[start..start + CURSOR_INSTANCES]),
+        );
+    }
+
+    fn preedit_base(&self) -> usize {
+        BLOCKS * self.cols * self.rows + CURSOR_INSTANCES
+    }
+
+    fn upload_preedit(&self, queue: &wgpu::Queue) {
+        let stride = std::mem::size_of::<Instance>() as u64;
+        let start = self.preedit_base();
+        let count = PREEDIT_BLOCKS * self.cols;
+        queue.write_buffer(
+            &self.instance_buffer,
+            start as u64 * stride,
+            bytemuck::cast_slice(&self.instances[start..start + count]),
+        );
+    }
+
+    fn slot(&self, block: usize, row: usize, col: usize) -> usize {
+        block * self.cols * self.rows + row * self.cols + col
+    }
+
+    fn build_row(&mut self, row: usize) {
+        let (bg_base, glyph_base, under_base, strike_base) = (
+            self.slot(BLOCK_BG, row, 0),
+            self.slot(BLOCK_GLYPH, row, 0),
+            self.slot(BLOCK_UNDERLINE, row, 0),
+            self.slot(BLOCK_STRIKEOUT, row, 0),
+        );
+        let cell_w = self.atlas.cell.width as i32;
+        let cell_h = self.atlas.cell.height as i32;
+        let baseline = self.atlas.cell.baseline;
+        for col in 0..self.cols {
+            let cell = self.grid.cells[row * self.cols + col];
+            let x = col as i32 * cell_w;
+            let y = row as i32 * cell_h;
+
+            self.instances[bg_base + col] = if cell.bg[3] > 0.0 {
+                Instance {
+                    dst: [x, y],
+                    size: [cell_w, cell_h],
+                    src: SOLID,
+                    color: cell.bg,
+                }
+            } else {
+                EMPTY
+            };
+
+            self.instances[glyph_base + col] =
+                glyph_instance(&self.atlas, cell.c, x, y + baseline, cell.fg);
+
+            // An underline sits one pixel below the baseline, a strikeout at
+            // a third of the ascent above it: unscaled raster pixels, so both
+            // magnify with everything else instead of thinning out.
+            self.instances[under_base + col] = if cell.underline {
+                Instance {
+                    dst: [x, y + (baseline + 1).min(cell_h - 1)],
+                    size: [cell_w, 1],
+                    src: SOLID,
+                    color: cell.line_color,
+                }
+            } else {
+                EMPTY
+            };
+            self.instances[strike_base + col] = if cell.strikeout {
+                Instance {
+                    dst: [x, y + (baseline - baseline / 3).max(0)],
+                    size: [cell_w, 1],
+                    src: SOLID,
+                    color: cell.line_color,
+                }
+            } else {
+                EMPTY
+            };
+        }
+    }
+
+    fn build_cursor(&mut self) {
+        let base = BLOCKS * self.cols * self.rows;
+        self.instances[base] = EMPTY;
+        self.instances[base + 1] = EMPTY;
+
+        let Some(cursor) = self.cursor else { return };
+        if cursor.shape == CursorShape::Hidden || cursor.row >= self.rows || cursor.col >= self.cols
+        {
+            return;
+        }
+
+        let cell_w = self.atlas.cell.width as i32;
+        let cell_h = self.atlas.cell.height as i32;
+        let baseline = self.atlas.cell.baseline;
+        let x = cursor.col as i32 * cell_w;
+        let y = cursor.row as i32 * cell_h;
+
+        let (dst, size) = match cursor.shape {
+            CursorShape::Block => ([x, y], [cell_w, cell_h]),
+            // Two unscaled pixels, so the bar is still visible at 1x and grows
+            // with the scale rather than staying hairline at 3x.
+            CursorShape::Underline => ([x, y + cell_h - 2], [cell_w, 2]),
+            CursorShape::Beam => ([x, y], [2, cell_h]),
+            CursorShape::Hidden => return,
+        };
+        self.instances[base] = Instance {
+            dst,
+            size,
+            src: SOLID,
+            color: cursor.color,
+        };
+        // Only a block cursor covers the character; the other shapes leave it
+        // legible and need no redraw.
+        if cursor.shape == CursorShape::Block {
+            let cell = self.grid.cells[cursor.row * self.cols + cursor.col];
+            self.instances[base + 1] =
+                glyph_instance(&self.atlas, cell.c, x, y + baseline, cursor.text_color);
+        }
+    }
+
+    /// Lay the composition into its tail block. See [`Self::set_preedit`] for
+    /// what it looks like and where the shape comes from.
+    fn build_preedit(&mut self) {
+        let base = self.preedit_base();
+        for slot in base..base + PREEDIT_BLOCKS * self.cols {
+            self.instances[slot] = EMPTY;
+        }
+        if self.preedit.is_empty() {
+            return;
+        }
+        // Uses the cursor's *position* and not its shape: wherever the cursor
+        // is, the composition paints its own block over that cell. A program
+        // that hid its cursor mid-composition still shows the composition.
+        let Some(cursor) = self.cursor else { return };
+        if cursor.row >= self.rows || cursor.col >= self.cols {
+            return;
+        }
+
+        let cell_w = self.atlas.cell.width as i32;
+        let cell_h = self.atlas.cell.height as i32;
+        let baseline = self.atlas.cell.baseline;
+        let y = cursor.row as i32 * cell_h;
+        // A block cursor with no cursor colour of its own fills the rectangle,
+        // with the characters inverted over it; both colours are already on
+        // the cursor state, which is where the grid's own cursor reads them
+        // from.
+        for (i, c) in self.preedit.chars().enumerate() {
+            let col = cursor.col + i;
+            if col >= self.cols {
+                break;
+            }
+            let x = col as i32 * cell_w;
+            self.instances[base + i * PREEDIT_BLOCKS] = Instance {
+                dst: [x, y],
+                size: [cell_w, cell_h],
+                src: SOLID,
+                color: cursor.color,
+            };
+            self.instances[base + i * PREEDIT_BLOCKS + 1] =
+                glyph_instance(&self.atlas, c, x, y + baseline, cursor.text_color);
+        }
+    }
+
+    // ---- drawing ---------------------------------------------------------
+
+    /// Record the grid into an existing pass target. `width`/`height` are the
+    /// target's size in physical pixels.
+    pub fn draw(
+        &self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        load: wgpu::LoadOp<wgpu::Color>,
+    ) {
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&Uniforms {
+                viewport: [width as f32, height as f32],
+                scale: self.scale as i32,
+                origin_x: self.origin[0],
+                origin_y: self.origin[1],
+                _pad: [0; 3],
+            }),
+        );
+
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("robco grid pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+        pass.draw(0..6, 0..self.instances.len() as u32);
+    }
+
+    /// Draw the grid into a fresh offscreen texture and read it back. The
+    /// measurement path: every pixel property in this crate is stated about
+    /// bytes this returned.
+    pub fn render_to_image(&self, gpu: &Gpu, clear: wgpu::Color) -> Image {
+        let (width, height) = self.pixel_size();
+        let target = Target::new(&gpu.device, width.max(1), height.max(1));
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        self.draw(
+            &gpu.queue,
+            &mut encoder,
+            &target.view,
+            target.width,
+            target.height,
+            wgpu::LoadOp::Clear(clear),
+        );
+        gpu.queue.submit(Some(encoder.finish()));
+        target.read_rgba(&gpu.device, &gpu.queue)
+    }
+}
+
+fn glyph_instance(atlas: &GlyphAtlas, c: char, x: i32, baseline_y: i32, color: Rgba) -> Instance {
+    match atlas.slot(c) {
+        // The pen sits at the cell's left edge on the baseline; the glyph's
+        // own bearing moves it from there. Integers throughout.
+        Some(slot) if color[3] > 0.0 => Instance {
+            dst: [x + slot.left, baseline_y - slot.top],
+            size: [slot.width as i32, slot.height as i32],
+            src: [slot.atlas_x as i32, slot.atlas_y as i32],
+            color,
+        },
+        _ => EMPTY,
+    }
+}
+
+/// Driving the renderer from a live rio-vt terminal.
+pub mod vt {
+    use super::*;
+    use crate::cells::vt::fill_row;
+    use crate::viewport::ScrollPosition;
+    use rio_vt::ansi::CursorShape as VtCursorShape;
+    use rio_vt::crosswords::grid::Dimensions;
+    use rio_vt::crosswords::Crosswords;
+    use rio_vt::crosswords::TermDamage;
+    use rio_vt::event::EventListener;
+
+    impl GridRenderer {
+        /// Pull one frame's worth of change out of the terminal.
+        ///
+        /// The damage rules, in the order they override each other:
+        ///
+        /// 1. A geometry change (resize) rebuilds everything.
+        /// 2. A viewport move rebuilds everything: rio-vt's per-line damage is
+        ///    in viewport coordinates and says nothing about lines that
+        ///    scrolled in from history.
+        /// 3. `TermDamage::Full` rebuilds everything.
+        /// 4. Otherwise only the damaged lines are rebuilt, plus the line the
+        ///    cursor left and the line it arrived on.
+        pub fn sync<L: EventListener>(
+            &mut self,
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            term: &mut Crosswords<L>,
+            viewport: &mut ScrollPosition,
+        ) -> SyncStats {
+            let mut stats = SyncStats::default();
+
+            let (cols, rows) = (term.grid.columns(), term.grid.screen_lines());
+            if cols != self.cols || rows != self.rows {
+                self.resize(device, queue, cols, rows);
+                stats.full = true;
+            }
+            if viewport.sync(term).moved {
+                stats.full = true;
+            }
+
+            let mut damaged: Vec<usize> = Vec::new();
+            match term.damage() {
+                TermDamage::Full => stats.full = true,
+                TermDamage::Partial(lines) => {
+                    damaged.extend(lines.filter(|l| l.damaged).map(|l| l.line));
+                }
+            }
+            term.reset_damage();
+
+            let cursor = cursor_state(term, &self.scheme);
+            let previous = self.cursor;
+
+            let mut scratch = vec![Cell::blank(&self.scheme); self.cols];
+            if stats.full {
+                for row in 0..self.rows {
+                    fill_row(term, row, &self.scheme, &mut scratch);
+                    self.grid.row_mut(row).copy_from_slice(&scratch);
+                }
+                self.cursor = cursor;
+                self.upload_all(queue);
+                stats.rows_updated = self.rows;
+                return stats;
+            }
+
+            // The cursor's own line has to be refreshed on both sides of a
+            // move: the block cursor paints over a cell, so the cell it left
+            // has to come back.
+            let mut rows_to_update: Vec<usize> = damaged;
+            if cursor != previous {
+                for state in [cursor, previous].into_iter().flatten() {
+                    if state.row < self.rows && !rows_to_update.contains(&state.row) {
+                        rows_to_update.push(state.row);
+                        stats.cursor_rows += 1;
+                    }
+                }
+            }
+            rows_to_update.sort_unstable();
+            rows_to_update.dedup();
+
+            let limit = self.rows;
+            for row in rows_to_update.iter().copied().filter(|r| *r < limit) {
+                fill_row(term, row, &self.scheme, &mut scratch);
+                self.grid.row_mut(row).copy_from_slice(&scratch);
+                self.build_row(row);
+                self.upload_row(queue, row);
+                stats.rows_updated += 1;
+            }
+
+            if cursor != previous {
+                self.cursor = cursor;
+                self.build_cursor();
+                self.upload_cursor(queue);
+                // The composition stands at the cursor, so a cursor that moved
+                // moves it too, redrawn against the same new cursor position.
+                if !self.preedit.is_empty() {
+                    self.build_preedit();
+                    self.upload_preedit(queue);
+                }
+            }
+
+            stats
+        }
+    }
+
+    fn cursor_state<L: EventListener>(
+        term: &Crosswords<L>,
+        scheme: &Scheme,
+    ) -> Option<CursorState> {
+        let state = term.cursor();
+        // A hidden cursor still *has* a position, and is carried as one rather
+        // than dropped: `build_cursor` draws nothing for `Hidden`, but
+        // `build_preedit` needs the position regardless of whether the cursor
+        // itself is being painted.
+        let shape = match state.content {
+            VtCursorShape::Block => CursorShape::Block,
+            VtCursorShape::Underline => CursorShape::Underline,
+            VtCursorShape::Beam => CursorShape::Beam,
+            VtCursorShape::Hidden => CursorShape::Hidden,
+        };
+        let row = state.pos.row.0;
+        if row < 0 {
+            return None;
+        }
+        // The character under a block cursor is redrawn in the background
+        // colour. A transparent background would make it vanish instead of
+        // invert, so fall back to opaque black in that case.
+        let mut text_color = scheme.background;
+        if text_color[3] == 0.0 {
+            text_color = [0.0, 0.0, 0.0, 1.0];
+        }
+        Some(CursorState {
+            col: state.pos.col.0,
+            row: row as usize,
+            shape,
+            color: scheme.cursor,
+            text_color,
+        })
+    }
+}

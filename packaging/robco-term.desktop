@@ -1,0 +1,34 @@
+# Installed verbatim by `xtask install` to
+# <prefix>/share/applications/robco-term.desktop. Nothing in it is templated:
+# the file name, the Icon name and the WM_CLASS the app presents are all the
+# binary's basename, which is the application's identity (`app::identity`), so
+# there is nothing for an installer to substitute.
+#
+# `Exec` names the binary rather than an absolute path: an entry that
+# hard-codes one prefix stops working the moment the tarball is unpacked
+# somewhere else, whereas a bare name follows PATH. `xtask install` says so
+# out loud when <prefix>/bin is not on PATH.
+[Desktop Entry]
+Type=Application
+Name=RobCo Terminal
+GenericName=Terminal emulator
+Comment=Use the command line the old way
+Exec=robco-term
+Icon=robco-term
+Terminal=false
+StartupNotify=true
+# The desktop file's own basename already equals the WM_CLASS the app sets, so
+# most shells associate the window without this; naming it anyway is what makes
+# the association survive a rename of the file.
+StartupWMClass=robco-term
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;terminal;crt;
+Actions=NewWindow;
+
+# A second invocation does not start a second application: it hands its request
+# to the running instance over the instance socket and that instance opens the
+# window (the single-instance rule `xtask verify` checks). So this action is
+# just the binary again.
+[Desktop Action NewWindow]
+Name=New Window
+Exec=robco-term

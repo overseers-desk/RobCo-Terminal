@@ -1,0 +1,47 @@
+[package]
+name = "robco-crt-render"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "RobCo Terminal CRT pass graph: the one librashader preset the screen is drawn through, covering terminal static/dynamic, frame, bloom, procedural metals, LED matrix, and tape label, plus shared colour helpers, the wall-clock pacing that feeds the time uniforms, the burn-in feedback slot, and the degauss transient hook."
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "crt"
+path = "src/lib.rs"
+
+[dependencies]
+robco-config = { path = "../config" }
+robco-term = { path = "../term" }
+# The frame-source slot's second occupant (`crt::preset::CHASSIS_FRAME`): its
+# body, `chassis::shaders::FRAME_METAL_SLANG`, and the uniform set that body
+# reads, `chassis::frame::frame_params` under the profile's own shell. The
+# chain switches that slot between the screen's own moulding and the shell's
+# bezel in a single expression and feeds whichever it loaded, so the chain has
+# to be able to name and to drive both. The arrow runs this way and only this
+# way -- `robco-chassis` depends on no part of this crate.
+robco-chassis = { path = "../chassis" }
+# Pass 0. The accumulator's shader, its decay clock and the mount contract all
+# come from here rather than being restated: `crt::preset` writes
+# `crt_burnin::BURN_IN_SLANG` into the generated preset and `crt::chain` drives
+# `crt_burnin::BurnInPass`. Its lib is `crt_burnin`. It also owns the one
+# headless GPU harness the tests mount passes on.
+robco-crt-burnin = { path = "../crt-burnin" }
+# The wgpu runtime is the only backend this crate needs; default features off
+# keeps d3d11/d3d12/vulkan/metal runtimes out of the graph.
+librashader = { version = "=0.12.0", default-features = false, features = [
+    "runtime-wgpu",
+    "presets",
+    "preprocess",
+] }
+# Exactly 30.0.0: librashader 0.12 links this version, and a wgpu::Device from
+# any other is a different, incompatible type at the FilterChain boundary.
+wgpu = "=30.0.0"
+log = "0.4"
+
+[dev-dependencies]
+anyhow = "1"
+# `tests/device_features.rs` asks the machine for an adapter, which is an async
+# call and the only thing left in this crate that blocks on one.
+pollster = "0.4"

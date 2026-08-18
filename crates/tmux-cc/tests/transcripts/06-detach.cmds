@@ -1,0 +1,1 @@
+list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}"

@@ -1,0 +1,287 @@
+//! The commands a control client sends, and the quoting they need.
+//!
+//! # The set
+//!
+//! One variant per command: a control client is not a shell, it sends eleven
+//! kinds of line and no others, and the closed set is what lets every reply be
+//! paired with a known question.
+//!
+//! `resize-window` is deliberately absent. A control client's screen size
+//! reaches tmux through `refresh-client -C`, which is the client-size law
+//! recorded in `app::channels`' module doc; `resize-window` sets
+//! one window's size against the client's, and a client sharing one bank
+//! geometry across every window has no use for it.
+//!
+//! # Quoting, measured against tmux 3.5a's own lexer
+//!
+//! A command line written to a control client's stdin is lexed by tmux, not by
+//! a shell, and the rules were read off the server rather than the manual
+//! (`tests/transcripts/09-quoting.txt`):
+//!
+//! * `#` **starts a comment**, anywhere on the line. `display-message -p
+//!   #{host_short}` is not an error: the argument silently vanishes and tmux
+//!   prints its default status line instead. This is why every format string
+//!   is quoted, and why an unquoted one fails so quietly.
+//! * Inside double quotes, `\"` is a quote, `\\` is a backslash, and
+//!   `${VAR}` **is expanded** from tmux's environment. `#{...}` is untouched by
+//!   the lexer and expanded later by the command itself.
+//! * Single quotes suppress `$` expansion and backslash escapes, but **not**
+//!   `#{...}`: format expansion happens in the command, after lexing.
+//!   `'#{host_short}'` still expands.
+//! * `;` inside quotes is literal; bare, it separates commands.
+//!
+//! So there is one quoting function here, [`quote_format`], and it is for
+//! format strings: it protects the quote, the backslash and the dollar, and
+//! deliberately leaves `#` alone, which is the whole point of quoting a
+//! format. Free user text never needs quoting at all, because the one command
+//! that carries it, `send-keys`, carries it as hex (see
+//! [`escape::hex_arguments`](crate::escape::hex_arguments)).
+
+use crate::escape::hex_arguments;
+use crate::ids::{PaneId, WindowId};
+
+/// One command per chunk keeps a large paste from building one huge line.
+pub const SEND_KEYS_CHUNK: usize = 256;
+
+/// The scrollback `capture-pane` asks for.
+pub const CAPTURE_HISTORY: u32 = 1000;
+
+/// One line of the control protocol, going out.
+///
+/// Every variant is exactly one wire line and therefore exactly one reply
+/// block. That one-to-one is what the codec's pairing queue rests on, so a
+/// command that would need two lines (a paste larger than
+/// [`SEND_KEYS_CHUNK`]) is built as several variants by
+/// [`Command::send_keys`] rather than as one variant that expands.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Command {
+    /// `display-message -p "#{host_short}"`: the name the appliance titles
+    /// the gateway with.
+    HostName,
+
+    /// The session listing shared by the bootstrap and the `%window-add`
+    /// re-query: one line per pane, across every window of the session.
+    ListPanes,
+
+    /// The window listing behind the rename sweep.
+    ListWindows,
+
+    /// One window's panes and which is active, the `%layout-change` re-query.
+    ListWindowPanes(WindowId),
+
+    /// A pane's screen and scrollback. `-p` to stdout, `-e` with escape
+    /// sequences, `-q` quiet, `-J` joining wrapped lines.
+    CapturePane { pane: PaneId, history: u32 },
+
+    /// Where that pane's cursor stands, and how tall the pane is. The height
+    /// is asked for because a capture ends on the pane's bottom row, so the
+    /// cursor is walked up from there rather than addressed absolutely.
+    CursorPosition(PaneId),
+
+    /// Keystrokes into a pane as hex bytes. Build with
+    /// [`Command::send_keys`], which chunks.
+    SendKeys { pane: PaneId, bytes: Vec<u8> },
+
+    /// Another window in this session. The window itself arrives later, as
+    /// `%window-add`.
+    NewWindow,
+
+    /// Close a window. Its channel goes when the close notification lands,
+    /// not here.
+    KillWindow(WindowId),
+
+    /// Ask tmux to let this client go. Teardown follows on `%exit`.
+    DetachClient,
+
+    /// The client-size law: tell tmux how big this client's screen is. One
+    /// size speaks for every window, because every channel shares the one
+    /// bank geometry.
+    ClientSize { columns: u16, rows: u16 },
+}
+
+impl Command {
+    /// Split a keystroke or paste into as many `send-keys` lines as it takes.
+    ///
+    /// Empty input is no commands, not one empty command: `send-keys -H -t %1`
+    /// with no bytes is a valid tmux command that does nothing, and a reply
+    /// block for it would be a pending entry bought for nothing.
+    pub fn send_keys(pane: &PaneId, bytes: &[u8]) -> Vec<Command> {
+        bytes
+            .chunks(SEND_KEYS_CHUNK)
+            .map(|chunk| Command::SendKeys {
+                pane: pane.clone(),
+                bytes: chunk.to_vec(),
+            })
+            .collect()
+    }
+
+    /// A capture with the standard scrollback depth.
+    pub fn capture_pane(pane: &PaneId) -> Command {
+        Command::CapturePane {
+            pane: pane.clone(),
+            history: CAPTURE_HISTORY,
+        }
+    }
+
+    /// The command as tmux reads it, without its terminating newline.
+    pub fn to_wire(&self) -> String {
+        match self {
+            Command::HostName => {
+                format!("display-message -p {}", quote_format("#{host_short}"))
+            }
+            Command::ListPanes => format!(
+                "list-panes -s -F {}",
+                quote_format("#{window_id} #{pane_id} #{pane_active} #{window_name}")
+            ),
+            Command::ListWindows => format!(
+                "list-windows -F {}",
+                quote_format("#{window_id} #{window_name}")
+            ),
+            Command::ListWindowPanes(window) => format!(
+                "list-panes -t {} -F {}",
+                window,
+                quote_format("#{pane_id} #{pane_active}")
+            ),
+            Command::CapturePane { pane, history } => {
+                // `-S -N` counts backwards from the top of the screen, so the
+                // sign is part of the number and not a flag.
+                format!("capture-pane -peqJ -t {pane} -S -{history}")
+            }
+            Command::CursorPosition(pane) => format!(
+                "display-message -p -t {} {}",
+                pane,
+                quote_format("#{cursor_x} #{cursor_y} #{pane_height}")
+            ),
+            Command::SendKeys { pane, bytes } => {
+                format!("send-keys -H -t {}{}", pane, hex_arguments(bytes))
+            }
+            Command::NewWindow => "new-window".to_string(),
+            Command::KillWindow(window) => format!("kill-window -t {window}"),
+            Command::DetachClient => "detach-client".to_string(),
+            Command::ClientSize { columns, rows } => {
+                format!("refresh-client -C {columns}x{rows}")
+            }
+        }
+    }
+}
+
+/// Wrap a tmux format string so the lexer hands it over whole.
+///
+/// Double quotes, because a format has to keep its `#{...}` live and double
+/// quotes are what tmux's lexer passes `#` through unread. The quote, the
+/// backslash and the dollar are escaped, in that order of concern: the first
+/// two would end or corrupt the argument, and the third would be substituted
+/// from the server's environment (`${VAR}` expands inside double quotes --
+/// measured, not documented).
+pub fn quote_format(format: &str) -> String {
+    let mut out = String::with_capacity(format.len() + 2);
+    out.push('"');
+    for ch in format.chars() {
+        if matches!(ch, '"' | '\\' | '$') {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out.push('"');
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pane(n: &str) -> PaneId {
+        PaneId::parse(n).unwrap()
+    }
+
+    #[test]
+    fn the_bootstrap_pair_is_the_references_own_text() {
+        assert_eq!(
+            Command::HostName.to_wire(),
+            r##"display-message -p "#{host_short}""##
+        );
+        assert_eq!(
+            Command::ListPanes.to_wire(),
+            r##"list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}""##
+        );
+    }
+
+    #[test]
+    fn the_rename_sweep_and_the_layout_requery() {
+        assert_eq!(
+            Command::ListWindows.to_wire(),
+            r##"list-windows -F "#{window_id} #{window_name}""##
+        );
+        assert_eq!(
+            Command::ListWindowPanes(WindowId::parse("@2").unwrap()).to_wire(),
+            r##"list-panes -t @2 -F "#{pane_id} #{pane_active}""##
+        );
+    }
+
+    #[test]
+    fn the_attach_pair_carries_the_references_flags_and_depth() {
+        assert_eq!(
+            Command::capture_pane(&pane("%5")).to_wire(),
+            "capture-pane -peqJ -t %5 -S -1000"
+        );
+        assert_eq!(
+            Command::CursorPosition(pane("%5")).to_wire(),
+            r##"display-message -p -t %5 "#{cursor_x} #{cursor_y} #{pane_height}""##
+        );
+    }
+
+    #[test]
+    fn the_short_commands() {
+        assert_eq!(Command::NewWindow.to_wire(), "new-window");
+        assert_eq!(Command::DetachClient.to_wire(), "detach-client");
+        assert_eq!(
+            Command::KillWindow(WindowId::parse("@7").unwrap()).to_wire(),
+            "kill-window -t @7"
+        );
+        assert_eq!(
+            Command::ClientSize {
+                columns: 100,
+                rows: 30
+            }
+            .to_wire(),
+            "refresh-client -C 100x30"
+        );
+    }
+
+    #[test]
+    fn send_keys_is_hex_and_needs_no_quoting() {
+        let cmds = Command::send_keys(&pane("%1"), b"a\"\\#\n");
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].to_wire(), "send-keys -H -t %1 61 22 5c 23 0a");
+    }
+
+    #[test]
+    fn a_paste_is_chunked_into_whole_commands() {
+        let paste = vec![b'x'; SEND_KEYS_CHUNK * 2 + 1];
+        let cmds = Command::send_keys(&pane("%1"), &paste);
+        assert_eq!(cmds.len(), 3);
+        // Every line is one command, so every line is one reply block.
+        let bytes: usize = cmds
+            .iter()
+            .map(|c| match c {
+                Command::SendKeys { bytes, .. } => bytes.len(),
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(bytes, paste.len());
+        assert_eq!(cmds[2].to_wire(), "send-keys -H -t %1 78");
+    }
+
+    #[test]
+    fn nothing_to_send_is_no_command_at_all() {
+        assert!(Command::send_keys(&pane("%1"), b"").is_empty());
+    }
+
+    #[test]
+    fn quoting_protects_the_three_that_bite_and_spares_the_hash() {
+        assert_eq!(quote_format("#{a} #{b}"), r##""#{a} #{b}""##);
+        assert_eq!(quote_format(r#"a"b"#), r#""a\"b""#);
+        assert_eq!(quote_format(r"a\b"), r#""a\\b""#);
+        assert_eq!(quote_format("a${V}b"), r#""a\${V}b""#);
+    }
+}

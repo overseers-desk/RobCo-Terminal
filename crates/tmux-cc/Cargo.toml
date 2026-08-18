@@ -1,0 +1,28 @@
+[package]
+name = "robco-tmux-cc"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "The tmux control-mode (tmux -CC) protocol codec: typed commands to the wire, wire bytes to typed events. Protocol only -- no session model, no PTY, no rendering."
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "tmux_cc"
+path = "src/lib.rs"
+
+# No dependencies, deliberately. The codec is a pure function of bytes: what it
+# knows about tmux is the grammar, and a grammar needs no runtime. Anything the
+# codec would have to import (a PTY, a session, a grid) belongs on the other
+# side of the seam, in D1b's host.
+[dependencies]
+
+[dev-dependencies]
+# The PTY, for the tests and the recorder that make the fixtures. tmux refuses
+# a control-mode client whose stdin is not a terminal ("tcgetattr failed:
+# Inappropriate ioctl for device"), so both the transcript recorder and the
+# live round-trip test have to raise one. This is the same PTY the shipping
+# gateway session uses (`term::Session`), reached directly rather than through
+# `robco-term` so that the codec's test tree does not pull in a grid, an atlas
+# and a GPU device to talk to a subprocess.
+rio-vt = { version = "=0.5.24", default-features = false, features = ["pty"] }

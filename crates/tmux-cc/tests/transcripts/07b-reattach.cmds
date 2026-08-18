@@ -1,0 +1,3 @@
+list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}"
+list-windows -F "#{window_id} #{window_name}"
+detach-client

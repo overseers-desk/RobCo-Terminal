@@ -1,0 +1,34 @@
+[package]
+name = "robco-chassis"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "RobCo Terminal chassis chrome: the cabinet the curved screen is set into. The bank frame's geometry contract, the seam drag that resizes the screen region, the three shells' fixed measures and drawing recipes, the LED and tape channel displays, and the procedural metal shaders the casting is poured from. Per R0(a) this chrome sits outside the CRT chain and composites over its output rather than running through it."
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "chassis"
+path = "src/lib.rs"
+
+[dependencies]
+# The profile's own choices (which shell, which display, how the channel on
+# screen is marked, how many characters the strips hold) arrive as typed
+# settings.
+robco-config = { path = "../config" }
+# The proven glyph raster (`fonts::led`) and its font catalogue: what both
+# display kits compose into a texture.
+robco-term = { path = "../term" }
+
+# Nothing from `robco-crt-render`: decision (b) is that the chassis stays off
+# the glass chain, in the dependency graph as well as in the pixels. The two
+# `utils.js` helpers both halves of the chrome need are in `src/color.rs`, and
+# the metal oracles came here whole with their shaders.
+
+[dev-dependencies]
+# The one headless GPU harness, in the lowest crate that owns a device. The
+# shader done-tests render a pass offscreen and read the pixels back through
+# it. Note the direction: this is a dev-dependency only, so no shipped chrome
+# reaches into the glass chain's half of the tree.
+robco-crt-burnin = { path = "../crt-burnin" }
+wgpu = "=30.0.0"

@@ -1,0 +1,15 @@
+P1000p%begin 1786799446 281 0
+%end 1786799446 281 0
+%session-changed $0 one
+%begin 1786799446 286 1
+parse error: unknown command: this-command-does-not-exist
+%error 1786799446 286 1
+%begin 1786799446 287 1
+%end 1786799446 287 1
+%begin 1786799447 288 1
+%end 1786799447 288 1
+%extended-output %0 0 : extended\015\012extended\015\012
+%begin 1786799447 289 1
+%end 1786799447 289 1
+%exit
+\

@@ -1,0 +1,74 @@
+[package]
+name = "robco-app"
+# The product's version lives in the workspace manifest, which is also where
+# `xtask dist` and `xtask deb` read it from. Inheriting it here is what makes
+# `app::VERSION` (and so `--version`) and the version stamped on a release
+# artifact the same string without a second place to remember.
+version.workspace = true
+edition = "2021"
+rust-version = "1.96.1"
+description = "RobCo Terminal application: the CLI contract, the single-instance shell, the winit window and its wgpu surface, the event loop driving a term session, input encoding, and the live settings handle."
+license = "GPL-3.0-or-later"
+publish = false
+
+# The binary's own basename is the application's identity (WM_CLASS, the
+# instance lock, the settings store), so a renamed copy runs side by side
+# with the stock one. Renaming this `[[bin]]` therefore renames the whole
+# identity, on purpose.
+[[bin]]
+name = "robco-term"
+path = "src/main.rs"
+
+[lib]
+name = "app"
+path = "src/lib.rs"
+
+[dependencies]
+robco-term = { path = "../term" }
+# The control-mode protocol codec, reached as `tmux_cc`: what the gateway in
+# `crate::tmux` speaks through. Protocol only; the session/window policy the
+# codec refuses to hold lives here, in the gateway.
+robco-tmux-cc = { path = "../tmux-cc" }
+# The config crate's lib is `config`, so it is reached under that name.
+robco-config = { path = "../config" }
+# The cabinet the screen is set into, reached as `chassis`: the bank's
+# geometry, the seam, and the minimum-size floor the window hint is built on.
+robco-chassis = { path = "../chassis" }
+# The CRT pass graph, reached as `crt`: what the wgpu device has to be
+# created with, and the chain the window draws its grid through on the way to
+# the swapchain.
+robco-crt-render = { path = "../crt-render" }
+# The chassis's casting is mounted here rather than in `robco-chassis`, which
+# owns no device and draws nothing (its own module doc), and not in
+# `robco-crt-render`, because the chain stops at the glass. So the one crate
+# that holds a device and a window mounts the one pass that composites over the
+# chain's output. Same version and feature set as the chain's, since both build
+# on the same `wgpu::Device`.
+librashader = { version = "=0.12.0", default-features = false, features = [
+    "runtime-wgpu",
+    "presets",
+    "preprocess",
+] }
+# wgpu is pinned to exactly 30.0.0 by librashader 0.12 (Wave 0, S1). Do not
+# float this: a minor bump breaks the shader chain, not just this crate.
+wgpu = "=30.0.0"
+# Default features stay on: the event loop needs a platform backend.
+winit = "0.30"
+libc = "0.2"
+directories = "5"
+log = "0.4"
+env_logger = "0.11"
+pollster = "0.4"
+notify = "8"
+arboard = "3"
+bytemuck = { version = "1", features = ["derive"] }
+
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+# The one headless GPU harness (and the machine-wide device lock that comes
+# with it): `tests/bank_column.rs` mounts the casting on a real device with no
+# window, the same way `robco-chassis`'s own shader tests do.
+robco-crt-burnin = { path = "../crt-burnin" }

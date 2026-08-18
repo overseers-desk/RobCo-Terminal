@@ -1,0 +1,18 @@
+# The same chain with the float accumulator turned off, so pass 0 runs at
+# librashader's default 8-bit framebuffer. Kept only so the test suite can
+# measure what that costs the decay ramp and keep the float requirement honest
+# rather than inherited.
+
+shaders = 2
+
+shader0 = burn_in.slang
+alias0 = Burn
+scale_type0 = source
+scale0 = 1.0
+filter_linear0 = false
+wrap_mode0 = clamp_to_edge
+
+shader1 = passthrough.slang
+scale_type1 = source
+scale1 = 1.0
+filter_linear1 = false

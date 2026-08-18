@@ -1,0 +1,872 @@
+//! Done-test for the composite: the bank column is drawn onto a frame that is
+//! already there, and it leaves the rest of that frame alone.
+//!
+//! This turns the "chassis chrome sits outside the CRT chain" rule into a
+//! measurement rather than a claim. The casting is chrome:
+//! it is not a stage the picture passes through, it goes on afterwards. Two
+//! things follow, and both are checked here on real GPU pixels:
+//!
+//! - the column's own rectangle carries the shell's metal, matching
+//!   `chassis::oracle::chassis_metal` at sampled points, which is only true if
+//!   the two sizes went into the mount the right way round (the drawn rectangle
+//!   is the bank's, `viewportSize` is the screen well's; see `app::column`);
+//! - every pixel outside that rectangle is exactly what was on the frame
+//!   before, to the bit. A second librashader chain pointed at the swapchain
+//!   would have cleared them, which is the whole reason `app::column` renders
+//!   offscreen and blits.
+//!
+//! And the hidden-chassis state, which is not a column of no width but no
+//! column: nothing is drawn at all, and the frame comes back untouched.
+
+use app::column::Column;
+use chassis::{oracle, Cabinet};
+use config::Config;
+use crt_burnin::headless;
+
+/// The window, at the default window size.
+const WINDOW_W: u32 = 1024;
+const WINDOW_H: u32 = 768;
+/// The shipped profile's bank, and the well it leaves.
+const BANK: u32 = 247;
+
+/// What the frame carries before the column goes on: a colour no metal
+/// produces, so "untouched" is unambiguous.
+const SENTINEL: [f32; 4] = [0.25, 0.5, 0.75, 1.0];
+
+/// A boot page whose channel on the air has been named, which is the appliance
+/// a second after launch: `BankStrips::cold_start` is the beat before the shell
+/// writes its OSC and the window is lit but blank -- an empty title at that
+/// point -- and a blank window puts no glyph on the strip for a pixel test to
+/// find.
+fn titled(rows: usize, title: &str) -> chassis::BankStrips {
+    let mut strips = chassis::BankStrips::cold_start(rows);
+    strips.rows[0].title = title.to_string();
+    strips
+}
+
+fn param(params: &[(&'static str, f32)], name: &str) -> f32 {
+    params
+        .iter()
+        .find(|(n, _)| *n == name)
+        .unwrap_or_else(|| panic!("no uniform named {name}"))
+        .1
+}
+
+/// The plate's oracle struct, read back out of the uniforms the mount pushed,
+/// for the same reason [`oracle_params`] does it for the casting.
+fn plate_params(params: &[(&'static str, f32)]) -> oracle::PlateMetalParams {
+    oracle::PlateMetalParams {
+        size_px: [param(params, "sizePxX"), param(params, "sizePxY")],
+        light_dir: [param(params, "lightDirX"), param(params, "lightDirY")],
+        base_color: [
+            param(params, "baseColorR"),
+            param(params, "baseColorG"),
+            param(params, "baseColorB"),
+        ],
+        highlight_color: [
+            param(params, "highlightColorR"),
+            param(params, "highlightColorG"),
+            param(params, "highlightColorB"),
+        ],
+        shadow_color: [
+            param(params, "shadowColorR"),
+            param(params, "shadowColorG"),
+            param(params, "shadowColorB"),
+        ],
+        corner_radius: param(params, "cornerRadius"),
+        bevel_px: param(params, "bevelPx"),
+        metal: oracle::MetalParams {
+            grain_amount: param(params, "grainAmount"),
+            mottle_amount: param(params, "mottleAmount"),
+            scratch_amount: param(params, "scratchAmount"),
+        },
+        vignette_strength: param(params, "vignetteStrength"),
+        wear_amount: param(params, "wearAmount"),
+        seam_gain: param(params, "seamGain"),
+        seed: param(params, "seed"),
+    }
+}
+
+/// The oracle's parameter struct, from the same uniform set the mount pushes.
+/// Reading it back out by name is deliberate: a uniform `chassis_params`
+/// spells differently from the shader reaches the shader as nothing at all,
+/// and only a comparison against the CPU form notices.
+fn oracle_params(params: &[(&'static str, f32)]) -> oracle::ChassisMetalParams {
+    oracle::ChassisMetalParams {
+        field_scale: [param(params, "fieldScaleX"), param(params, "fieldScaleY")],
+        field_offset: [param(params, "fieldOffsetX"), param(params, "fieldOffsetY")],
+        light_dir: [param(params, "lightDirX"), param(params, "lightDirY")],
+        chassis_color: [
+            param(params, "chassisColorR"),
+            param(params, "chassisColorG"),
+            param(params, "chassisColorB"),
+        ],
+        metal: oracle::MetalParams {
+            grain_amount: param(params, "grainAmount"),
+            mottle_amount: param(params, "mottleAmount"),
+            scratch_amount: param(params, "scratchAmount"),
+        },
+        vignette_strength: param(params, "vignetteStrength"),
+    }
+}
+
+/// Clear a frame to [`SENTINEL`], composite the column over it, read it back.
+fn frame_with_column(
+    gpu: &headless::Gpu,
+    column: &mut Column,
+    bank: u32,
+    scale_factor: f64,
+    params: &[(&'static str, f32)],
+) -> Vec<[f32; 4]> {
+    frame_with_furniture(gpu, column, bank, scale_factor, params, &[])
+}
+
+/// The same, with furniture on the casting.
+fn frame_with_furniture(
+    gpu: &headless::Gpu,
+    column: &mut Column,
+    bank: u32,
+    scale_factor: f64,
+    params: &[(&'static str, f32)],
+    pieces: &[chassis::Piece],
+) -> Vec<[f32; 4]> {
+    let output = gpu.make_output(WINDOW_W, WINDOW_H);
+    let view = output.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = gpu
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("bank column test"),
+        });
+
+    // Whatever the chain would have left on this image.
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("the frame the chain drew"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: &view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: f64::from(SENTINEL[0]),
+                    g: f64::from(SENTINEL[1]),
+                    b: f64::from(SENTINEL[2]),
+                    a: f64::from(SENTINEL[3]),
+                }),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+
+    column.render(
+        &gpu.device,
+        &gpu.queue,
+        &mut encoder,
+        &view,
+        (bank, WINDOW_H),
+        (WINDOW_W - bank, WINDOW_H),
+        scale_factor,
+        params,
+        pieces,
+        0,
+    );
+
+    let index = gpu.queue.submit([encoder.finish()]);
+    gpu.device
+        .poll(wgpu::PollType::Wait {
+            submission_index: Some(index),
+            timeout: None,
+        })
+        .expect("device poll");
+    gpu.read_output(&output, WINDOW_W, WINDOW_H)
+        .expect("readback")
+}
+
+#[test]
+fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
+    let cfg = Config::default();
+    let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
+    assert_eq!(cabinet.bank_width(), BANK);
+    let params = cabinet.chassis_params();
+
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+        .expect("the column's pass loads");
+
+    let frame = frame_with_column(&gpu, &mut column, BANK, 1.0, &params);
+
+    // The casting, against the closed form. `viewportSize` is the *well's*
+    // size, which is what `fieldScale`/`fieldOffset` are expressed against:
+    // the metal field is the bezel's, continued leftwards, so the grain runs
+    // across the boundary rather than restarting.
+    // At this scale factor the well's physical and logical sizes are the same
+    // number; the test below separates them.
+    let oracle_params = oracle_params(&params);
+    let well = [(WINDOW_W - BANK) as f32, WINDOW_H as f32];
+    for &(x, y) in &[
+        (0u32, 0u32),
+        (BANK / 2, WINDOW_H / 2),
+        (BANK - 1, 700),
+        (8, 383),
+    ] {
+        let uv = [
+            (x as f32 + 0.5) / BANK as f32,
+            (y as f32 + 0.5) / WINDOW_H as f32,
+        ];
+        let expected = oracle::chassis_metal(uv, well, &oracle_params);
+        let got = frame[headless::px_index(WINDOW_W, x, y)];
+        let tol = 0.01;
+        assert!(
+            (got[0] - expected[0]).abs() < tol
+                && (got[1] - expected[1]).abs() < tol
+                && (got[2] - expected[2]).abs() < tol,
+            "the casting at ({x},{y}) reads {:?} where the oracle says {expected:?}",
+            &got[0..3]
+        );
+    }
+
+    // ...and it is metal rather than a flat fill: the field varies across the
+    // column, so a mount that had dropped every uniform would not pass above
+    // by accident.
+    let a = frame[headless::px_index(WINDOW_W, 4, 4)];
+    let b = frame[headless::px_index(WINDOW_W, 200, 600)];
+    assert!(
+        (a[0] - b[0]).abs() > 1e-4 || (a[1] - b[1]).abs() > 1e-4,
+        "the column is a flat fill: {a:?} against {b:?}"
+    );
+
+    // The frame the chain drew, everywhere the column is not. Bit-exact,
+    // because a load-op the column got wrong would not be subtle.
+    for &(x, y) in &[
+        (BANK, 0),
+        (BANK, WINDOW_H / 2),
+        (BANK + 1, 400),
+        (WINDOW_W / 2, WINDOW_H / 2),
+        (WINDOW_W - 1, WINDOW_H - 1),
+    ] {
+        assert_eq!(
+            frame[headless::px_index(WINDOW_W, x, y)],
+            SENTINEL,
+            "the column reached ({x},{y}), which is the glass's"
+        );
+    }
+}
+
+/// The same well, on a 2x display: the field the casting is measured in is the
+/// well's *logical* size, so the metal at a given point on the column is the
+/// metal the oracle gives for a well of half the pixels.
+///
+/// This is the bank half of the frame's ruler. `frame_metal` divides its own
+/// `OutputSize` by `windowScaling * DPR` to land on logical pixels
+/// (`crt::params::Params::build`); the column has no window scaling to undo and
+/// reaches the same ruler by declaring the well over the ratio
+/// (`app::column::well_ruler`). Get one of the two wrong and the grain changes
+/// scale at the seam on every HiDPI display, which no test at ratio 1 can see.
+#[test]
+fn the_castings_field_is_the_wells_logical_size_on_a_hidpi_display() {
+    let cfg = Config::default();
+    let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
+    let params = cabinet.chassis_params();
+
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+        .expect("the column's pass loads");
+
+    let frame = frame_with_column(&gpu, &mut column, BANK, 2.0, &params);
+
+    let oracle_params = oracle_params(&params);
+    // Rounded, not halved: `well_ruler` hands the pass whole pixels, and this
+    // well is an odd 777 wide.
+    let logical_well = [
+        ((WINDOW_W - BANK) as f32 / 2.0).round(),
+        (WINDOW_H as f32 / 2.0).round(),
+    ];
+    let physical_well = [(WINDOW_W - BANK) as f32, WINDOW_H as f32];
+
+    // Only at the points where the two candidate wells actually disagree:
+    // procedural metal is not uniformly sensitive to its field, and a point
+    // where both answers are the same colour would pass whichever size the
+    // mount declared. The margins are narrow because this casting is *dark*
+    // (the switchboard's #232830 under a vignette reads around 0.05), so a
+    // visible change of field is a small change of number: the two wells part
+    // by at most 0.016 anywhere on the column. `TELLING` is more than three
+    // times `TOL`, so a pass is the logical well rather than a tolerance wide
+    // enough to swallow the difference. The sibling test above, which
+    // does not need to tell two wells apart, keeps the ordinary 0.01.
+    const TOL: f32 = 0.003;
+    const TELLING: f32 = 0.010;
+    let mut telling = 0;
+    for x in (0..BANK).step_by(11) {
+        for y in (0..WINDOW_H).step_by(29) {
+            let uv = [
+                (x as f32 + 0.5) / BANK as f32,
+                (y as f32 + 0.5) / WINDOW_H as f32,
+            ];
+            let expected = oracle::chassis_metal(uv, logical_well, &oracle_params);
+            let physical = oracle::chassis_metal(uv, physical_well, &oracle_params);
+            if (physical[0] - expected[0]).abs() < TELLING {
+                continue;
+            }
+            telling += 1;
+            let got = frame[headless::px_index(WINDOW_W, x, y)];
+            assert!(
+                (got[0] - expected[0]).abs() < TOL
+                    && (got[1] - expected[1]).abs() < TOL
+                    && (got[2] - expected[2]).abs() < TOL,
+                "the casting at ({x},{y}) reads {:?}; the logical well {logical_well:?} \
+                 says {expected:?} and the physical one {physical_well:?} says {physical:?}",
+                &got[0..3]
+            );
+        }
+    }
+    assert!(
+        telling >= 10,
+        "only {telling} sampled points tell the two wells apart, which is too few to \
+         prove which one the mount declared"
+    );
+}
+
+/// The furniture, piece by piece, on real pixels: the plate against its own
+/// oracle, a strip's lamps against the raster that was composed for it, and
+/// the glass still bit-identical to the frame that was there before.
+///
+/// This is the non-interference property the sibling test above proves for the
+/// bare casting, re-proved with the bank fully dressed, which is the state
+/// that can break it, since a strip's spill margin deliberately reaches past
+/// the column's own edges and the scissor cuts it there.
+#[test]
+fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
+    let cfg = Config::default();
+    let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
+    let rows = cabinet.rows_visible();
+    assert!(rows > 1, "a 768px bank shows more than one row, not {rows}");
+    let view = titled(rows as usize, "channel-1");
+    let pieces = cabinet.furniture(&view);
+    // The plate, the chassis's four screws, a row's furniture and a row's
+    // window per engraved key, and the pager: this order is pinned in
+    // `chassis::furniture`'s own tests and relied on here.
+    assert_eq!(pieces.len(), 1 + 4 + 2 * rows as usize + 1);
+    let row_furniture = |i: usize| &pieces[5 + 2 * i];
+    let strip_of = |i: usize| &pieces[6 + 2 * i];
+
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+        .expect("the column's pass loads");
+
+    let bare = frame_with_column(&gpu, &mut column, BANK, 1.0, &cabinet.chassis_params());
+    let frame = frame_with_furniture(
+        &gpu,
+        &mut column,
+        BANK,
+        1.0,
+        &cabinet.chassis_params(),
+        &pieces,
+    );
+
+    // --- the plate ----------------------------------------------------
+    //
+    // Deep inside the plate, away from the bevel band and the rounded
+    // corners the standalone `plate_metal` test already pins, the composite
+    // is the plate's own closed form, which is only true if the mount
+    // handed the pass the same `sizePx` the recipe was built with and put
+    // the result at the recipe's own rectangle.
+    let plate = &pieces[0];
+    assert_eq!(plate.pass, chassis::Pass::Plate);
+    let plate_oracle = plate_params(&plate.params);
+    let (px, py) = (plate.rect.x as u32, plate.rect.y as u32);
+    let (pw, ph) = (plate.rect.width as u32, plate.rect.height as u32);
+    // Points on the plate that no strip covers. The strips stand at the
+    // content ground past the numeral lane and reach a spill margin further
+    // in every direction, so the clear plate is the shoulder to their left and
+    // the headroom above row 1 (61px of it).
+    let strip0 = strip_of(0);
+    let clear_x = (strip0.rect.x - plate.rect.x) as u32;
+    let clear_y = (strip0.rect.y - plate.rect.y) as u32;
+    assert!(clear_x > 4 && clear_y > 4, "no clear plate to sample");
+    // ...and clear of the plate's *own* edge too: `plate_metal`'s coverage
+    // falls off across its 2.5px bevel and its 6px corner radius, which is
+    // the band the standalone `plate_metal` test deliberately does not pin.
+    // ...and clear of the furniture that now stands on the plate. The headroom
+    // above row 1 is the one band with nothing in it, and even there the two
+    // top screws own x 10..38 and 199..227 of the plate at y 13..42, so the
+    // samples sit between them or above them.
+    let _ = clear_y;
+    for &(dx, dy) in &[(pw / 2, 8u32), (60, 8), (100, 50), (149, 55)] {
+        let uv = [(dx as f32 + 0.5) / pw as f32, (dy as f32 + 0.5) / ph as f32];
+        let (color, coverage) = oracle::plate_metal(uv, &plate_oracle);
+        let got = frame[headless::px_index(WINDOW_W, px + dx, py + dy)];
+        // Premultiplied source-over onto the casting, which is what the
+        // mount's blend state does; deep inside the plate the coverage is 1
+        // and the casting under it contributes nothing.
+        let under = bare[headless::px_index(WINDOW_W, px + dx, py + dy)];
+        let expect = |i: usize| color[i] * coverage + under[i] * (1.0 - coverage);
+        let tol = 0.01;
+        assert!(
+            (got[0] - expect(0)).abs() < tol
+                && (got[1] - expect(1)).abs() < tol
+                && (got[2] - expect(2)).abs() < tol,
+            "the plate at ({dx},{dy}) reads {:?}; the oracle says {:?} at coverage {coverage}",
+            &got[0..3],
+            color
+        );
+    }
+    // ...and the plate is not the casting: it is a *raised* piece, so it has
+    // to differ from what was underneath.
+    let inside = headless::px_index(WINDOW_W, px + pw / 2, py + 8);
+    assert!(
+        (frame[inside][0] - bare[inside][0]).abs() > 1e-3,
+        "the plate left the casting unchanged at its own centre"
+    );
+
+    // --- a strip's lamps ----------------------------------------------
+    //
+    // The one powered window is row 1's. Its numeral pixels are the raster
+    // `chassis::furniture` composed, and the mount is right only if each
+    // lamp of that raster lands in its own cell of the drawn rectangle: a
+    // lit cell reads the lit colour and an unlit one the dim colour, the
+    // same law `chassis/tests/led_display.rs` proves against the shader
+    // alone.
+    let strip = strip_of(0);
+    assert_eq!(strip.pass, chassis::Pass::LedMatrix);
+    let raster = strip.source.as_ref().expect("a lamp grid");
+    let colors =
+        chassis::displays::led::window_colors(chassis::furniture::font_color(&cfg), true, true);
+    let grid = (
+        param(&strip.params, "gridSizeX") as u32,
+        param(&strip.params, "gridSizeY") as u32,
+    );
+    assert_eq!((raster.width, raster.height), grid);
+    // The window inside the grown rectangle: the spill margin is a fraction
+    // of that rectangle and the lamps live between the two margins.
+    let spill = (
+        f64::from(param(&strip.params, "spillMarginX")) * strip.rect.width,
+        f64::from(param(&strip.params, "spillMarginY")) * strip.rect.height,
+    );
+    let win = (
+        strip.rect.x + spill.0,
+        strip.rect.y + spill.1,
+        strip.rect.width - 2.0 * spill.0,
+        strip.rect.height - 2.0 * spill.1,
+    );
+
+    let mut lit_cells = 0;
+    let mut dim_cells = 0;
+    for gy in 0..grid.1 {
+        for gx in 0..grid.0 {
+            // The cell's centre, in column pixels.
+            let cx = win.0 + (f64::from(gx) + 0.5) * win.2 / f64::from(grid.0);
+            let cy = win.1 + (f64::from(gy) + 0.5) * win.3 / f64::from(grid.1);
+            if cx < 0.0 || cy < 0.0 || cx >= f64::from(BANK) || cy >= f64::from(WINDOW_H) {
+                continue;
+            }
+            let lit = raster.rgba[((gy * grid.0 + gx) * 4) as usize] >= 128;
+            let expected = if lit { colors.lit } else { colors.dim };
+            let got = frame[headless::px_index(WINDOW_W, cx as u32, cy as u32)];
+            let tol = 0.08;
+            assert!(
+                (got[0] - expected.r).abs() < tol
+                    && (got[1] - expected.g).abs() < tol
+                    && (got[2] - expected.b).abs() < tol,
+                "lamp ({gx},{gy}) lit={lit} at column ({cx:.1},{cy:.1}) reads {:?}, \
+                 the raster says {expected:?}",
+                &got[0..3]
+            );
+            if lit {
+                lit_cells += 1;
+            } else {
+                dim_cells += 1;
+            }
+        }
+    }
+    // A raster of nothing but dark lamps would pass the loop above without
+    // proving a numeral reached the glass at all.
+    assert!(
+        lit_cells > 0 && dim_cells > 0,
+        "the strip's raster carried {lit_cells} lit lamps and {dim_cells} dark ones"
+    );
+
+    // A dark slot's window is dark: row 2 has no session, so its lamps read
+    // the unpowered dim rather than the powered one.
+    let dark = strip_of(1);
+    let dark_colors =
+        chassis::displays::led::window_colors(chassis::furniture::font_color(&cfg), false, false);
+    assert!(dark_colors.dim.r < colors.dim.r);
+    let (dx, dy) = (
+        (dark.rect.x + dark.rect.width / 2.0) as u32,
+        (dark.rect.y + dark.rect.height / 2.0) as u32,
+    );
+    let got = frame[headless::px_index(WINDOW_W, dx, dy)];
+    assert!(
+        (got[0] - dark_colors.dim.r).abs() < 0.08,
+        "the dark slot's window at ({dx},{dy}) reads {:?}, not the unpowered dim {:?}",
+        &got[0..3],
+        dark_colors.dim
+    );
+
+    // --- the painted furniture ----------------------------------------
+    //
+    // A row's numerals and moulding, and one of the plate's screws, are
+    // `Pass::Painted`: no shader, a CPU raster of the vector description that
+    // the mount blits premultiplied. So the proof is the raster itself: every
+    // pixel of it, against the frame it landed on, composited the way the
+    // blend state says. This is what says the mount put the picture at the
+    // piece's own rectangle and at the window's own ratio, and that the
+    // rasteriser and the blit agree about premultiplication (get that wrong
+    // and a half-covered moulding lip reads twice as bright).
+    // The "before" is not the bare casting but the column with everything the
+    // plan draws *ahead of* this piece on it (the plate and the screws)
+    // because that is what a source-over lands on.
+    let before_row = frame_with_furniture(
+        &gpu,
+        &mut column,
+        BANK,
+        1.0,
+        &cabinet.chassis_params(),
+        &pieces[..5],
+    );
+    let with_row = frame_with_furniture(
+        &gpu,
+        &mut column,
+        BANK,
+        1.0,
+        &cabinet.chassis_params(),
+        &pieces[..6],
+    );
+    let painted = row_furniture(0);
+    assert_eq!(painted.pass, chassis::Pass::Painted);
+    let picture = chassis::paint::rasterize(
+        painted.paint.as_ref().expect("a painted row"),
+        (painted.rect.width as u32, painted.rect.height as u32),
+        1.0,
+    );
+    let (rx, ry) = (painted.rect.x as u32, painted.rect.y as u32);
+    let mut struck = 0;
+    let mut clear = 0;
+    for y in 0..picture.height {
+        for x in 0..picture.width {
+            if rx + x >= BANK || ry + y >= WINDOW_H {
+                continue;
+            }
+            let i = ((y * picture.width + x) * 4) as usize;
+            let src = [
+                f32::from(picture.rgba[i]) / 255.0,
+                f32::from(picture.rgba[i + 1]) / 255.0,
+                f32::from(picture.rgba[i + 2]) / 255.0,
+                f32::from(picture.rgba[i + 3]) / 255.0,
+            ];
+            let under = before_row[headless::px_index(WINDOW_W, rx + x, ry + y)];
+            let got = with_row[headless::px_index(WINDOW_W, rx + x, ry + y)];
+            // The raster is premultiplied, so source-over is `src + dst * (1 -
+            // a)` with no divide anywhere.
+            let expect = |c: usize| src[c] + under[c] * (1.0 - src[3]);
+            let tol = 1.0 / 255.0 + 1e-4;
+            assert!(
+                (got[0] - expect(0)).abs() < tol
+                    && (got[1] - expect(1)).abs() < tol
+                    && (got[2] - expect(2)).abs() < tol,
+                "painted pixel ({x},{y}) of the row at ({rx},{ry}) reads {:?}; \
+                 the raster {src:?} over {under:?} says {:?}",
+                &got[0..3],
+                [expect(0), expect(1), expect(2)]
+            );
+            if src[3] > 0.5 {
+                struck += 1;
+            } else if src[3] == 0.0 {
+                clear += 1;
+            }
+        }
+    }
+    // A row that painted nothing would pass that loop without drawing a thing:
+    // the numeral lane's left margin is bare plate and the moulding is not.
+    assert!(
+        struck > 500 && clear > 100,
+        "the row painted {struck} covered pixels and left {clear} bare"
+    );
+
+    // One screw, the same way: a screw's picture is drawn as a raster too,
+    // and it is round: the item's corners are outside the countersink and
+    // have to leave the plate showing.
+    let screw = &pieces[1];
+    assert_eq!(screw.pass, chassis::Pass::Painted);
+    let head = chassis::paint::rasterize(
+        screw.paint.as_ref().expect("a painted screw"),
+        (screw.rect.width as u32, screw.rect.height as u32),
+        1.0,
+    );
+    let (sx, sy) = (screw.rect.x as u32, screw.rect.y as u32);
+    let plate_only = frame_with_furniture(
+        &gpu,
+        &mut column,
+        BANK,
+        1.0,
+        &cabinet.chassis_params(),
+        &pieces[..1],
+    );
+    let with_screw = frame_with_furniture(
+        &gpu,
+        &mut column,
+        BANK,
+        1.0,
+        &cabinet.chassis_params(),
+        &pieces[..2],
+    );
+    assert_eq!(head.rgba[3], 0, "the screw's own corner is not transparent");
+    assert_eq!(
+        with_screw[headless::px_index(WINDOW_W, sx, sy)],
+        plate_only[headless::px_index(WINDOW_W, sx, sy)],
+        "the screw's transparent corner changed the plate under it"
+    );
+    let mid = ((head.height / 2 * head.width + head.width / 2) * 4) as usize;
+    assert!(head.rgba[mid + 3] > 200, "the screw's head is not opaque");
+    let got = with_screw[headless::px_index(WINDOW_W, sx + head.width / 2, sy + head.height / 2)];
+    assert!(
+        (got[0] - f32::from(head.rgba[mid]) / 255.0).abs() < 1.0 / 255.0 + 1e-4,
+        "the screw's own centre reads {:?}, not the raster's {}",
+        &got[0..3],
+        head.rgba[mid]
+    );
+
+    // --- the glass ----------------------------------------------------
+    //
+    // Bit-identical to the frame the chain drew, exactly as before the
+    // furniture went on, including the row of pixels just past the bank,
+    // which is where a spill margin would land if the clip were missing.
+    for &(x, y) in &[
+        (BANK, 0),
+        (BANK, WINDOW_H / 2),
+        (BANK + 1, 400),
+        (BANK + 2, (strip.rect.y + strip.rect.height / 2.0) as u32),
+        (WINDOW_W / 2, WINDOW_H / 2),
+        (WINDOW_W - 1, WINDOW_H - 1),
+    ] {
+        assert_eq!(
+            frame[headless::px_index(WINDOW_W, x, y)],
+            SENTINEL,
+            "the furniture reached ({x},{y}), which is the glass's"
+        );
+    }
+}
+
+/// The switchboard over tape: a shell with no plate at all, and a label whose
+/// letters are on the strip.
+#[test]
+fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
+    let mut cfg = Config::default();
+    cfg.chassis.shell = config::Shell::Switchboard;
+    cfg.chassis.channel_display = config::ChannelDisplay::Tape;
+    cfg.chassis.channel_indicator = config::ChannelIndicator::Switch;
+    let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
+    let bank = cabinet.bank_width();
+    let pieces = cabinet.furniture(&titled(4, "channel-1"));
+    // The switchboard shell has no plate region on the casting and no
+    // screws on it either, so the first piece is already a row. This shell's
+    // row is four: its own `plate_metal` plate, the painting that stands on it
+    // (rivets, numeral, switch well), the tape kit's painted slot, and the
+    // label lying in it.
+    assert_eq!(
+        pieces[..4].iter().map(|p| p.pass).collect::<Vec<_>>(),
+        vec![
+            chassis::Pass::Plate,
+            chassis::Pass::Painted,
+            chassis::Pass::Painted,
+            chassis::Pass::TapeLabel
+        ]
+    );
+
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+        .expect("the column's pass loads");
+    let frame = frame_with_furniture(
+        &gpu,
+        &mut column,
+        bank,
+        1.0,
+        &cabinet.chassis_params(),
+        &pieces,
+    );
+
+    // The tape body: the tape kit's own plastic colour, in the blank end pad
+    // where no glyph box reaches.
+    let label = &pieces[3];
+    let tape = chassis::displays::tape::tape_color();
+    let body = frame[headless::px_index(
+        WINDOW_W,
+        label.rect.x as u32 + 2,
+        (label.rect.y + label.rect.height / 2.0) as u32,
+    )];
+    assert!(
+        (body[0] - tape.r).abs() < 0.12 && (body[2] - tape.b).abs() < 0.12,
+        "the tape body reads {:?}, not {tape:?}",
+        &body[0..3]
+    );
+
+    // The letters: somewhere inside the glyph rectangle the label is much
+    // brighter than the tape it is punched into. Scanning it is the honest
+    // form: a single hand-picked pixel would depend on which glyph the
+    // placeholder title happens to be.
+    let letter = chassis::displays::tape::letter_color();
+    let gx = label.rect.x + f64::from(param(&label.params, "glyphRectPxX"));
+    let gy = label.rect.y + f64::from(param(&label.params, "glyphRectPxY"));
+    let gw = f64::from(param(&label.params, "glyphRectPxZ"));
+    let gh = f64::from(param(&label.params, "glyphRectPxW"));
+    assert!(gw > 1.0 && gh > 1.0, "the label has no glyph box");
+    let raster = label.source.as_ref().expect("a punched raster");
+    let inked = raster
+        .rgba
+        .iter()
+        .skip(3)
+        .step_by(4)
+        .filter(|&&a| a > 0)
+        .count();
+    assert!(
+        inked > 0,
+        "the punch wheel struck nothing: raster {}x{}, glyph box {gw}x{gh} at ({gx},{gy}) \
+         in a {}x{} label",
+        raster.width,
+        raster.height,
+        label.rect.width,
+        label.rect.height
+    );
+    // "Struck" is anything at least halfway from the tape to the letter face
+    // `tape_label` mixes to. The upper end is left open on purpose: the
+    // shader's sheen is specular and runs past 1.0, which an 8-bit swapchain
+    // clamps and this float measurement rig does not.
+    let face = letter.r * 0.74;
+    let struck_at = (tape.r + face) / 2.0;
+    let mut struck = 0;
+    let mut total = 0;
+    for y in 0..gh as u32 {
+        for x in 0..gw as u32 {
+            let px = frame[headless::px_index(WINDOW_W, gx as u32 + x, gy as u32 + y)];
+            total += 1;
+            if px[0] >= struck_at {
+                struck += 1;
+            }
+        }
+    }
+    assert!(
+        struck > 0,
+        "nothing in the glyph box reached {struck_at}; box {gw}x{gh} at ({gx},{gy}), \
+         label {}x{} at ({},{}), raster {}x{} with {inked} inked texels",
+        label.rect.width,
+        label.rect.height,
+        label.rect.x,
+        label.rect.y,
+        raster.width,
+        raster.height,
+    );
+    // ...and it is a letter rather than a flood: the wheel leaves most of the
+    // box unstruck, the way a numeral in a box of its own advance does.
+    assert!(
+        struck < total / 2,
+        "{struck} of {total} pixels in the glyph box are struck, which is a fill, \
+         not a letter"
+    );
+}
+
+/// A slot is reusable only by the kind of piece that built it.
+///
+/// The mount keeps one slot vector, and two functions build into it: a shaded
+/// piece gets a scratch and a `bind`, a painted piece gets a source texture and
+/// a `source_bind`. `ensure_painted_slot` reused any slot whose geometry
+/// matched, so a strip that had been shaded at this index handed the painted
+/// piece a slot with no `source_bind` -- the painting uploaded into it, and
+/// `draw_furniture`, which blits a painted piece through `source_bind` alone,
+/// drew nothing at all and logged nothing either. `chassis.channel_indicator`
+/// flips a strip between a shaded pass and a painted one at one geometry, so
+/// this is a live-reload away.
+///
+/// The two frames deliberately carry one piece each at one index: that is what
+/// makes the second piece land on the first one's slot.
+#[test]
+fn a_painted_piece_reaching_a_slot_a_shaded_piece_built_still_draws() {
+    let cfg = Config::default();
+    let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
+    let params = cabinet.chassis_params();
+
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+        .expect("the column's pass loads");
+
+    // One rectangle, well inside the bank, for both pieces.
+    let rect = chassis::Rect::new(40.0, 60.0, 64.0, 32.0);
+    let (rx, ry) = (rect.x as u32, rect.y as u32);
+    let (rw, rh) = (rect.width as u32, rect.height as u32);
+
+    // The shaded piece, with a source raster the size of its own rectangle:
+    // that is what makes the stale slot's `source_size` match and the reuse
+    // fire. (A pass whose source is smaller, like the plate's, never could.)
+    let shaded = chassis::Piece::shaded(
+        chassis::Pass::LedMatrix,
+        rect,
+        Vec::new(),
+        Some(chassis::furniture::Raster {
+            width: rw,
+            height: rh,
+            rgba: vec![0u8; (rw * rh * 4) as usize],
+        }),
+    );
+
+    // The painted piece: an opaque rectangle in a colour no metal and no lamp
+    // produces, filling the piece exactly.
+    let mut painting = chassis::paint::Painting::new();
+    painting.rect(chassis::paint::RectOp::solid(
+        chassis::Rect::new(0.0, 0.0, rect.width, rect.height),
+        0.0,
+        chassis::color::Rgba::new(1.0, 0.0, 1.0, 1.0),
+    ));
+    let painted = chassis::Piece::painted(rect, painting);
+
+    let bare = frame_with_column(&gpu, &mut column, BANK, 1.0, &params);
+    // Frame 1 builds the slot at index 0 as a shaded one...
+    let _ = frame_with_furniture(&gpu, &mut column, BANK, 1.0, &params, &[shaded]);
+    // ...and frame 2 asks for a painted piece at the same index and geometry.
+    let frame = frame_with_furniture(&gpu, &mut column, BANK, 1.0, &params, &[painted]);
+
+    for &(dx, dy) in &[(rw / 2, rh / 2), (2, 2), (rw - 3, rh - 3)] {
+        let i = headless::px_index(WINDOW_W, rx + dx, ry + dy);
+        assert!(
+            (frame[i][0] - 1.0).abs() < 0.02
+                && frame[i][1].abs() < 0.02
+                && (frame[i][2] - 1.0).abs() < 0.02,
+            "the painting is not on the casting at ({dx},{dy}): got {:?}, and the \
+             bare casting there reads {:?}",
+            &frame[i][0..3],
+            &bare[i][0..3]
+        );
+    }
+}
+
+#[test]
+fn a_hidden_chassis_draws_no_column_at_all() {
+    // A hidden chassis takes the bank with it, so this is not a bank of zero
+    // width but no bank: the well takes the whole window and nothing is
+    // composited over it.
+    let mut cfg = Config::default();
+    cfg.general.chassis_shown = false;
+    let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
+    assert_eq!(cabinet.bank_width(), 0);
+    assert!(!cabinet.is_shown());
+
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+        .expect("the column's pass loads");
+
+    let frame = frame_with_column(&gpu, &mut column, 0, 1.0, &cabinet.chassis_params());
+    for &(x, y) in &[(0u32, 0u32), (1, 1), (WINDOW_W / 2, WINDOW_H / 2)] {
+        assert_eq!(
+            frame[headless::px_index(WINDOW_W, x, y)],
+            SENTINEL,
+            "something was drawn at ({x},{y}) for a chassis that is not shown"
+        );
+    }
+}

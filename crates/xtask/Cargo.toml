@@ -1,0 +1,20 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+description = "Build tasks for RobCo Terminal: the eval harness (window-driven screenshot capture, carve-out masking, and screenshot comparison), the CLI/window contract check, and the Linux install/dist/deb targets"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+png = "0.18"
+tempfile = "3"
+# `install`/`dist`/`deb` read the product's version out of the workspace
+# manifest at run time (not `CARGO_PKG_VERSION`, which would be xtask's own).
+# Same version the config crate parses TOML with, so the workspace resolves one
+# copy.
+toml_edit = "0.25"

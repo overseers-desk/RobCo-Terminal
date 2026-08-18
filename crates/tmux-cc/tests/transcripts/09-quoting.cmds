@@ -1,0 +1,6 @@
+display-message -p #{host_short}
+display-message -p "#{host_short}"
+display-message -p "dollar ${MYVAR} end"
+display-message -p "quote \" backslash \\ end"
+display-message -p 'single #{host_short} quoted'
+detach-client

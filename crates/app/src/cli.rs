@@ -1,0 +1,274 @@
+//! Command-line parsing for the application shell.
+//!
+//! This is a hand-rolled parser rather than clap, for one reason that runs
+//! through the whole contract: `-e` **catches every argument after it**,
+//! including things that look like our own options, because the point of
+//! `-e` is to hand a command line to a child program: "This option will
+//! catch all following arguments, so use it as the last option" -- what every
+//! terminal emulator's `-e` does. Expressing it in clap means
+//! `trailing_var_arg` plus `allow_hyphen_values` plus a subcommand-free
+//! escape hatch; expressing it here is one `if`.
+//!
+//! The option set below is what `xtask contract` treats as normative:
+//!
+//! ```text
+//! --default-settings   ignore user config, start from built-in defaults
+//! --workdir <dir>      working directory for the session
+//! --program <prog>     program to run instead of the user's shell
+//! -e <cmd> [args...]   command to execute; catches all following arguments
+//! -p, --profile <prof> start from the named built-in profile
+//! --fullscreen         start fullscreen
+//! --verbose            print profiles/settings decisions to stderr
+//! -h, --help           print help
+//! -v, --version        print version
+//! ```
+//!
+//! One flag beyond that list is this rebuild's own: the live-preview
+//! throughput instrument needs a way to turn on from the CLI rather
+//! than only from a test, so `--frame-stats` joins the set. It logs a p50/p99
+//! line periodically and does nothing when absent (the instrument's default),
+//! so it does not change what `xtask verify`'s flag-presence check expects of
+//! the documented contract items above.
+
+use std::ffi::OsString;
+use std::path::PathBuf;
+
+/// Everything the shell needs off the command line.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Options {
+    /// `--default-settings`: start from built-in defaults, never touching
+    /// the user's real config file. Contract item 1.
+    pub default_settings: bool,
+    /// `-p`/`--profile <name>`: the built-in screen profile to seed from.
+    /// `None` means "whatever the config says".
+    pub profile: Option<String>,
+    /// `--workdir <dir>`. `None` means the process's current directory.
+    pub workdir: Option<PathBuf>,
+    /// `--program <prog>`: the program to run instead of the user's shell.
+    pub program: Option<OsString>,
+    /// `-e <cmd> [args...]`, split into the executable and its arguments.
+    ///
+    /// "No `-e`" (fall back to the shell) is a distinct case from "`-e cmd`
+    /// with no arguments of its own" (a command plus an *empty* argument
+    /// list). That distinction is `Option<Command>` here, with `args`
+    /// possibly empty.
+    pub command: Option<Command>,
+    /// `--fullscreen`. Also the payload of the new-window IPC message.
+    pub fullscreen: bool,
+    /// `--verbose`.
+    pub verbose: bool,
+    /// `--frame-stats`: the live-preview throughput instrument, off
+    /// the CLI's beaten path (see the module doc). Logs p50/p99 GPU pass
+    /// timings and the present interval every few seconds.
+    pub frame_stats: bool,
+}
+
+/// An `-e` command: the program and the arguments after it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Command {
+    pub program: OsString,
+    pub args: Vec<OsString>,
+}
+
+/// What `parse` decided the process should do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// Run the shell with these options.
+    Run(Options),
+    /// Print this text on stdout and exit 0 (`--help`, `--version`).
+    Print(String),
+    /// Print this on stderr and exit non-zero.
+    Fail(String),
+}
+
+/// Usage text.
+pub fn help(program_name: &str) -> String {
+    format!(
+        "Usage: {program_name} [--default-settings] [--workdir <dir>] [--program <prog>] \
+[-p|--profile <prof>] [--fullscreen] [-h|--help]\n\
+\x20 --default-settings  Run {program_name} with the default settings\n\
+\x20 --workdir <dir>     Change working directory to 'dir'\n\
+\x20 -e <cmd>            Command to execute. This option will catch all following arguments, so use it as the last option.\n\
+\x20 --program <prog>    Program to run instead of the user's shell.\n\
+\x20 --fullscreen        Run {program_name} in fullscreen.\n\
+\x20 -p|--profile <prof> Run {program_name} with the given profile.\n\
+\x20 -h|--help           Print this help.\n\
+\x20 --verbose           Print additional information such as profiles and settings.\n\
+\x20 --frame-stats       Log GPU frame-timing p50/p99 periodically (this rebuild only).\n"
+    )
+}
+
+/// Parse an argument list *without* argv[0]. `program_name` is the
+/// binary's basename, used only for the help and version text.
+pub fn parse<I, S>(program_name: &str, args: I) -> Outcome
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+{
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let mut opts = Options::default();
+    let mut i = 0;
+
+    while i < args.len() {
+        let arg = &args[i];
+        let text = arg.to_string_lossy().into_owned();
+        match text.as_str() {
+            // Answering -h/--help and -v/--version wherever they appear
+            // (before any `-e`), rather than only when they are the very
+            // first argument, is strictly friendlier and breaks nothing:
+            // `-e` swallowing is still checked first by position.
+            "-h" | "--help" => return Outcome::Print(help(program_name)),
+            "-v" | "--version" => {
+                return Outcome::Print(format!("{program_name} {}\n", crate::VERSION))
+            }
+            "--default-settings" => opts.default_settings = true,
+            "--fullscreen" => opts.fullscreen = true,
+            "--verbose" => opts.verbose = true,
+            "--frame-stats" => opts.frame_stats = true,
+            "-p" | "--profile" => match args.get(i + 1) {
+                Some(v) => {
+                    opts.profile = Some(v.to_string_lossy().into_owned());
+                    i += 1;
+                }
+                None => return Outcome::Fail(format!("{text} needs a profile name\n")),
+            },
+            "--workdir" => match args.get(i + 1) {
+                Some(v) => {
+                    opts.workdir = Some(PathBuf::from(v));
+                    i += 1;
+                }
+                None => return Outcome::Fail("--workdir needs a directory\n".into()),
+            },
+            "--program" => match args.get(i + 1) {
+                Some(v) => {
+                    opts.program = Some(v.clone());
+                    i += 1;
+                }
+                None => return Outcome::Fail("--program needs a program\n".into()),
+            },
+            "-e" => {
+                // Everything after `-e` belongs to the child, options and
+                // all. A bare trailing `-e` leaves the command unset.
+                let rest = &args[i + 1..];
+                if let Some((program, tail)) = rest.split_first() {
+                    opts.command = Some(Command {
+                        program: program.clone(),
+                        args: tail.to_vec(),
+                    });
+                }
+                return Outcome::Run(opts);
+            }
+            other => {
+                return Outcome::Fail(format!("unknown option: {other}\n{}", help(program_name)))
+            }
+        }
+        i += 1;
+    }
+
+    Outcome::Run(opts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(args: &[&str]) -> Options {
+        match parse("robco-term", args.iter().copied()) {
+            Outcome::Run(o) => o,
+            other => panic!("expected Run, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_command_line_is_all_defaults() {
+        assert_eq!(run(&[]), Options::default());
+    }
+
+    #[test]
+    fn contract_flags_parse() {
+        let o = run(&[
+            "--default-settings",
+            "--profile",
+            "Deep Blue",
+            "--workdir",
+            "/tmp",
+            "--fullscreen",
+            "--verbose",
+        ]);
+        assert!(o.default_settings);
+        assert_eq!(o.profile.as_deref(), Some("Deep Blue"));
+        assert_eq!(o.workdir, Some(PathBuf::from("/tmp")));
+        assert!(o.fullscreen);
+        assert!(o.verbose);
+    }
+
+    #[test]
+    fn frame_stats_flag_parses_and_defaults_off() {
+        assert!(!run(&[]).frame_stats);
+        assert!(run(&["--frame-stats"]).frame_stats);
+    }
+
+    #[test]
+    fn short_profile_flag_is_the_same_flag() {
+        assert_eq!(run(&["-p", "Plasma"]).profile.as_deref(), Some("Plasma"));
+    }
+
+    #[test]
+    fn dash_e_catches_everything_after_it() {
+        // The whole point: `--fullscreen` here is the child's argument,
+        // not ours, so the window must not come up fullscreen.
+        let o = run(&["-e", "sh", "-c", "echo hi", "--fullscreen"]);
+        let cmd = o.command.expect("command");
+        assert_eq!(cmd.program, OsString::from("sh"));
+        assert_eq!(
+            cmd.args,
+            vec![
+                OsString::from("-c"),
+                OsString::from("echo hi"),
+                OsString::from("--fullscreen")
+            ]
+        );
+        assert!(!o.fullscreen);
+    }
+
+    #[test]
+    fn our_flags_before_dash_e_still_count() {
+        let o = run(&["--fullscreen", "-e", "top"]);
+        assert!(o.fullscreen);
+        assert_eq!(o.command.unwrap().program, OsString::from("top"));
+    }
+
+    #[test]
+    fn dash_e_with_no_arguments_of_its_own_is_an_empty_arg_list() {
+        let cmd = run(&["-e", "htop"]).command.expect("command");
+        assert!(cmd.args.is_empty());
+    }
+
+    #[test]
+    fn bare_trailing_dash_e_leaves_no_command() {
+        assert!(run(&["-e"]).command.is_none());
+    }
+
+    #[test]
+    fn help_and_version_print_and_stop() {
+        assert!(matches!(parse("robco-term", ["--help"]), Outcome::Print(_)));
+        assert!(matches!(parse("robco-term", ["-v"]), Outcome::Print(_)));
+    }
+
+    #[test]
+    fn unknown_option_fails_loudly() {
+        assert!(matches!(parse("robco-term", ["--nope"]), Outcome::Fail(_)));
+    }
+
+    #[test]
+    fn missing_option_value_fails() {
+        assert!(matches!(
+            parse("robco-term", ["--profile"]),
+            Outcome::Fail(_)
+        ));
+        assert!(matches!(
+            parse("robco-term", ["--workdir"]),
+            Outcome::Fail(_)
+        ));
+    }
+}

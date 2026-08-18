@@ -1,0 +1,3 @@
+list-windows -F "#{window_id} #{window_name}"
+list-windows -F "#{window_id} #{window_name}"
+detach-client

@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/app",
+    "crates/chassis",
+    "crates/config",
+    "crates/crt-burnin",
+    "crates/crt-render",
+    "crates/term",
+    "crates/tmux-cc",
+    "crates/xtask",
+]
+
+# The product's version, in one place. `robco-app` inherits it, so
+# `app::VERSION` (what `--version` prints) and the number `xtask dist`/`xtask
+# deb` stamp on their artifacts are the same string by construction rather than
+# by anyone remembering to change two files. The library crates keep their own
+# `0.1.0` because they are `publish = false` internals whose versions nobody
+# reads; this one is the number a user sees.
+#
+# Bumping it is a release decision, not a packaging one: `dist` and `deb`
+# package whatever number is in the tree and never write to this file.
+[workspace.package]
+version = "0.1.0"
+
+# The emulation gaps esctest measures (DECSLRM/DECLRMM left-right margins,
+# origin mode, reverse wrap, cursor-stops-at-margin) are core grid semantics,
+# so they are fixed in the core rather than compensated around it. The fixes
+# live on the fork's `robco` branch, one commit per failing test family,
+# based at the commit the 0.5.24 release was cut from and pinned by rev; the
+# branch is both what this workspace builds and the series offered upstream.
+[patch.crates-io]
+rio-vt = { git = "https://github.com/overseers-desk/rio", rev = "41d2c76650dbd64c60903babaf2d174369cfa449" }

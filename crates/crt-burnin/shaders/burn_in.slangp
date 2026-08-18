@@ -1,0 +1,39 @@
+# Standalone burn-in chain: the accumulator plus a copy-out, and nothing else.
+#
+# This is the measurement chain, not the shipping one. The shipping graph mounts
+# pass 0 below into its own preset (see `MOUNT.md`); everything on pass 0 here
+# is part of that mount contract and has to be reproduced verbatim there.
+
+shaders = 2
+
+# The accumulator.
+#
+# `alias0` does two jobs: it is what gives the pass a feedback framebuffer at
+# all, and it is what names the sampler `BurnFeedback` inside the shader. Remove
+# it and the pass silently loses its previous frame.
+shader0 = burn_in.slang
+alias0 = Burn
+scale_type0 = source
+scale0 = 1.0
+# Nearest and clamp: the accumulator is read at exactly the coordinates it was
+# written at, and a linear filter would smear the ghost sideways every frame.
+filter_linear0 = false
+wrap_mode0 = clamp_to_edge
+# Required, not an optimisation. The decay is a subtraction of a
+# wall-clock-derived step, which at 60 Hz over a 0.52 s fade is ~0.032 per
+# frame; an 8-bit accumulator quantises both the ghost and that step to 1/255
+# and the ramp stops being linear. S1 measured the difference: 0.24% decay error
+# with the float framebuffer, 1.83% without.
+#
+# What `float_framebuffer` actually buys is fp16, not fp32: librashader gives
+# the pass an Rgba16Float target. Near 1.0 that is an ULP of 1/2048, so a 60 Hz
+# step of 0.032 is carried with about 1.5% of quantisation available to it, and
+# the rounding is one-directional, so the level drifts a fraction of a percent
+# over a long fade. Measured in `tests/burn_in.rs`; 8-bit is still four times
+# worse and this is the best the preset format offers.
+float_framebuffer0 = true
+
+shader1 = passthrough.slang
+scale_type1 = source
+scale1 = 1.0
+filter_linear1 = false

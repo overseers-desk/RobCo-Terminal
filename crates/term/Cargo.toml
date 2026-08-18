@@ -1,0 +1,55 @@
+[package]
+name = "robco-term"
+version = "0.1.0"
+edition = "2021"
+# rio-vt publishes no `rust-version`; the Rio workspace it is cut from pins
+# 1.96.1, so that is the floor the whole rebuild holds itself to.
+rust-version = "1.96.1"
+description = "RobCo Terminal core: the rio-vt session and its PTY read loop, the grid seam and what reads it (selection, search, hotspots), the bundled font catalogue, and the thresholded pixel-font glyph renderer."
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "term"
+path = "src/lib.rs"
+
+# The esctest harness. A terminal that answers escape sequences but draws
+# nothing, so the conformance suite can be run without a window server.
+[[bin]]
+name = "esctest-harness"
+path = "src/bin/esctest_harness.rs"
+
+[dependencies]
+# Exact pins, per the Wave 0 lessons: rio-vt's version tracks the Rio
+# application rather than the core, and wgpu is nailed to 30.0.0 by librashader.
+rio-vt = { version = "=0.5.24", default-features = false, features = ["pty"] }
+wgpu = "=30.0.0"
+cosmic-text = "0.19.0"
+# Not a new crate in the graph: `cosmic-text` already enables `fontdb`'s
+# fontconfig feature, so this is the parser the font enumeration reads
+# `/etc/fonts` with. `fonts::subpixel` reads the same files through the same
+# parser for `FC_RGBA`. The alternative, linking libfontconfig, would put a C
+# library, a pkg-config build input and a packaging dependency behind one
+# integer.
+fontconfig-parser = "0.5.8"
+bytemuck = { version = "1.23", features = ["derive"] }
+pollster = "0.4"
+log = "0.4"
+regex = "1.13"
+unicode-width = "0.2"
+ttf-parser = "0.25"
+swash = "0.2"
+
+[dev-dependencies]
+serde_json = "1.0.151"
+# `tests/font_parity.rs` decodes the checked-in reference rasters.
+png = "0.18"
+# The machine-wide GPU lock, and nothing else. `tests/pixel_properties.rs` and
+# `tests/scrollback.rs` stand up a real `term::gpu::Gpu`, and a second process
+# holding a device at the same time is what Wave 2b traced its wedged runs to;
+# `--test-threads=1` cannot reach across processes but
+# `crt_burnin::headless::GpuLock` can. Dev-only and cycle-free: `robco-crt-burnin`
+# depends on librashader, wgpu and pollster, and on nothing in this tree. The
+# shipping `term::gpu::Gpu` stays unlocked -- it is the application's device, and
+# an application that blocked on a test lock would be a defect.
+robco-crt-burnin = { path = "../crt-burnin" }

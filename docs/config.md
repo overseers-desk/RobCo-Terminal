@@ -1,0 +1,261 @@
+# Configuring RobCo Terminal
+
+There is no settings window. The terminal reads one TOML file, watches it,
+and reloads the moment you save. Editing that file *is* the settings UI:
+open it in whatever you write text in, change a number, and watch the glass
+change while the editor is still open.
+
+This document is for the person doing that. If instead you are writing a
+program that edits the file on a user's behalf (a dotfiles script, a
+settings GUI, a linter), the rules your writer has to obey are in
+[`config-format.md`](config-format.md).
+
+## Where the file is
+
+| Platform | Path |
+|---|---|
+| Linux | `$XDG_CONFIG_HOME/robco-term/config.toml`, or `~/.config/robco-term/config.toml` |
+| macOS | `~/Library/Application Support/robco-term/config.toml` |
+| Windows | `%APPDATA%\robco-term\config.toml` |
+
+Nothing creates it for you at install time, and a fresh install does not have
+one. That is not a broken state: a missing file means every setting takes its
+default, which is the appliance you see on first launch. Create the file when
+you have something to say. The terminal makes the directory itself so the
+watch has something to watch, so you can create the file inside it at any
+point in a running session and the next save will land.
+
+Two other locations, for orientation. Under `robco-term` in your cache
+directory the terminal writes the shader preset it generates at startup;
+every byte of it comes from constants inside the binary, so deleting it costs
+one regeneration and loses nothing. Under `robco-term` in your data
+directory it writes crash backtraces. Neither is configuration and neither
+needs backing up.
+
+## How an edit reaches the glass
+
+Save the file. That is the whole procedure.
+
+The terminal watches the file's *directory*, so it survives the
+write-to-temp-then-rename that careful editors do, and it reloads on its own.
+You do not need to restart it or signal it. If you would rather force a
+reload anyway (from a script, say, after generating the file), send the
+process `SIGUSR1` on Linux and macOS.
+
+If the file you saved does not parse, the terminal keeps the settings it
+already had and logs the parse error. It does not fall back to defaults and
+it does not go blank, so a stray bracket costs you the edit, not the session.
+Fix it and save again.
+
+Most edits are a uniform pushed into a running shader, which is why they look
+instantaneous. A handful rebuild the filter chain instead, because they
+change the shape of the pipeline rather than a number inside it: the rebuild
+is quick, but it clears whatever phosphor burn-in had accumulated, so the
+ghost of your last screenful starts over. Those keys are:
+
+`general.window_scaling`, `general.font_scaling`, `general.bloom_quality`,
+`general.burn_in_quality`, `general.chassis_shown`, `general.led_font_name`,
+`general.led_characters`, `screen.font_name`, `screen.font_source`,
+`screen.font_width`, `screen.line_spacing`, `screen.margin`,
+`screen.frame_size`, `chassis.shell`, `chassis.channel_indicator`,
+`chassis.channel_display`, `chassis.frame_size`.
+
+Nothing else about them is special. If you are not chasing a burn-in trail
+across an edit, you will not notice the difference.
+
+## The file is a diff, and `name` is what it is a diff against
+
+Every setting has a built-in default, so a key you do not write takes it. A
+useful config file is three or four lines long, not two hundred.
+
+The subtlety worth reading twice: `[screen]` and `[chassis]` each have a
+`name` key, and it is not a label. **It selects which built-in preset the
+rest of that table is measured against.**
+
+```toml
+[screen]
+name = "Deep Blue"
+bloom = 0.9
+```
+
+That is the whole Deep Blue preset with one value moved, not the default
+screen wearing Deep Blue's name. Change `name` to `"Vintage"` and every
+screen key you did *not* pin now resolves to Vintage's value instead of Deep
+Blue's; the two lines you did pin stay where you put them. A `name` matching
+no built-in preset is fine and means what a name always means for a look you
+saved yourself: the shipped default is the base, and your keys sit on top.
+
+The two axes resolve independently. Any screen can sit in any chassis, which
+is the point of splitting them.
+
+Built-in screen names: `Default Amber`, `Monochrome Green`, `Deep Blue`,
+`Commodore 64`, `Commodore PET`, `Apple ][`, `Atari 400`, `IBM VGA 8x16`,
+`IBM 3278 Reborn`, `Neon Cyan`, `Ghost Terminal`, `Plasma`, `Boring`,
+`E-Ink`.
+
+Built-in chassis names: `Annunciator`, `Slide Rule`, `Switchboard`.
+
+## Profiles
+
+A **profile** is a whole appliance kept under a name of your own: a screen
+and the chassis it stands in, and nothing else. General settings are yours,
+not a profile's, so putting on a different look never re-fits your LED bank
+or changes your window scaling.
+
+A profile is a file: `config.<name>.toml`, sitting beside `config.toml` in
+the same directory. It holds `[screen]` and `[chassis]` and no `[general]`.
+Because it is read through the same loader as the main file, the `name` rule
+above applies inside it too. A saved profile is a preset base plus your
+overrides, exactly like the main file.
+
+Start under one with `--profile`:
+
+```console
+$ robco-term --profile workshop
+```
+
+The name resolves in this order:
+
+1. **A saved profile**: `config.workshop.toml` beside your config file. Both
+   axes come from it; your general settings and everything else keep coming
+   from `config.toml`.
+2. **A built-in screen preset**: `robco-term --profile "Deep Blue"` puts
+   that screen behind the glass and leaves the cabinet standing.
+3. **Neither**: the terminal refuses to start and prints the built-in names
+   it does know.
+
+Refusing is deliberate: it is the answer that cannot quietly hand you the
+wrong look under the right name.
+
+The named look is applied on *every* load, not just at startup, so a live
+edit to `config.toml` while running under `--profile` will not silently take
+the profile back off. General keys are untouched by the overlay, which is why
+editing one in `config.toml` still reaches a run launched under `--profile`.
+
+`--default-settings` ignores your files entirely and starts from the built-in
+defaults. Under it, `--profile` can only name a built-in screen. A saved
+profile is user config, and that is what the flag is refusing to read.
+
+## The keys
+
+Defaults below are the shipped ones: `[general]`'s own declarations,
+`[screen]`'s from the `Default Amber` preset, `[chassis]`'s from
+`Annunciator`. Everything typed as a fraction runs `0.0` to `1.0` and is a
+slider by nature, and the interesting values are usually not the ends.
+
+### `[general]`
+
+The knobs that belong to you rather than to a look. These survive every
+profile switch.
+
+| Key | Default | What it does |
+|---|---|---|
+| `effects_frame_skip` | `3` | How many frames the effects clock holds a value before jumping. The CRT animates at 60/skip Hz, so the shipped `3` is 20 Hz. Lower it for a faster-moving picture at more GPU cost. |
+| `window_scaling` | `1.0` | Scales the whole appliance: glass, chassis and all. |
+| `font_scaling` | `1.0` | Scales the type, and so the number of rows and columns the window holds. |
+| `show_terminal_size` | `true` | Whether the size badge appears in the well while you drag the window. |
+| `bloom_quality` | `0.5` | Sizes the bloom framebuffer and sets the blur radius. Costs GPU; buys a smoother glow. |
+| `burn_in_quality` | `0.5` | Sizes the burn-in accumulator. |
+| `led_characters` | `12` | How many characters wide the bank's channel strips are. Dragging the seam between the bank and the screen well writes this key for you. |
+| `chassis_shown` | `true` | Whether the cabinet is drawn around the tube at all. With it off, the tube stands bare in its own moulding, and the `[screen]` table's frame keys govern rather than `[chassis]`'s (see below). |
+| `led_font_name` | `"UNSCII_8_SCALED"` | The face the bank's channel windows are lettered in. A name matching no bundled face falls back to the shipped one. |
+| `show_menubar` | `false` | Present in the schema; nothing in this build reads it. |
+| `use_custom_command` | `false` | As above. Use `--program` or `-e` to run something other than your shell. |
+| `custom_command` | `""` | As above. |
+
+### `[screen]`
+
+Everything behind the glass: the phosphor, the type, the geometry, and the
+effects that age them.
+
+| Key | Default | What it does |
+|---|---|---|
+| `name` | `"Default Amber"` | Selects the preset base. See above: this is not a label. |
+| `background_color` | `"#000000"` | The unlit tube. |
+| `font_color` | `"#ff8100"` | The phosphor. |
+| `brightness` | `0.5` | Overall picture brightness. |
+| `contrast` | `0.8` | Picture contrast. |
+| `ambient_light` | `0.3` | Room light falling on the glass, which is also what lifts the frame out of black. |
+| `window_opacity` | `1.0` | Translucency of the whole window. |
+| `saturation_color` | `0.2` | How far the phosphor colour pulls the picture toward itself. |
+| `chroma_color` | `0.2` | Colour bleed. |
+| `flickering` | `0.1` | Brightness flicker. |
+| `horizontal_sync` | `0.1` | Horizontal sync wobble. |
+| `static_noise` | `0.1` | Snow. |
+| `jitter` | `0.2` | Per-frame positional jitter. |
+| `rgb_shift` | `0.0` | Colour-channel separation. |
+| `glowing_line` | `0.2` | The travelling scan line. |
+| `burn_in` | `0.3` | How long a lit pixel's ghost survives after it goes dark. `0.0` turns the accumulator off. |
+| `bloom` | `0.6` | Glow intensity. Its *quality* is `general.bloom_quality`. |
+| `screen_curvature` | `0.2` | How far the tube bulges. Also what your clicks are mapped back through, so selection follows the curve. |
+| `rasterization` | `"no_rasterization"` | Which scanline/pixel grid is laid over the type. One of `no_rasterization`, `scanline_rasterization`, `pixel_rasterization`, `subpixel_rasterization`, `modern_rasterization`. |
+| `font_name` | `"TERMINESS_SCALED"` | The glyph face, by catalogue key (see below). A key naming nothing falls back to the shipped default rather than refusing to draw. |
+| `font_source` | `"bundled_fonts"` | `bundled_fonts` for the compiled-in catalogue, `system_fonts` to name a face installed on the machine. |
+| `font_width` | `1.0` | Cell width as a multiple of the face's own. Bitmap faces want pixel-exact ratios. |
+| `line_spacing` | `0.1` | Extra height per row. |
+| `margin` | `0.3` | Inset between the type and the bezel. |
+| `frame_size` | `0.1` | The tube's own moulding. Governs only when `general.chassis_shown` is off. |
+| `screen_radius` | `0.1` | Corner radius of that moulding, `4` to `120` pixels across the range. Governs only when `general.chassis_shown` is off. |
+| `frame_color` | `"#cfcfcf"` | As above: the bare tube's moulding. |
+| `frame_shininess` | `0.3` | As above. |
+| `blinking_cursor` | `false` | Carried for schema parity. The cursor does not blink in this build regardless of the value. |
+
+The four frame keys exist in both `[screen]` and `[chassis]` because a tube
+has its own moulding and a cabinet has another. Whichever is showing is the
+one that governs: with `general.chassis_shown = true` the `[chassis]` values
+win, and with it off the `[screen]` values do.
+
+Bundled `font_name` keys: `TERMINESS_SCALED`, `BIGBLUE_TERMINAL_SCALED`,
+`EXCELSIOR_SCALED`, `GREYBEARD_SCALED`, `COMMODORE_PET_SCALED`,
+`GOHU_11_SCALED`, `COZETTE_SCALED`, `UNSCII_8_SCALED`,
+`UNSCII_8_THIN_SCALED`, `UNSCII_16_SCALED`, `APPLE_II_SCALED`,
+`ATARI_400_SCALED`, `COMMODORE_64_SCALED`, `IBM_EGA_8x8`, `IBM_VGA_8x16`,
+`TERMINESS`, `HACK`, `FIRA_CODE`, `IOSEVKA`, `JETBRAINS_MONO`, `IBM_3278`,
+`SOURCE_CODE_PRO`, `DEPARTURE_MONO_SCALED`, `OPENDYSLEXIC`. The `_SCALED`
+ones are the low-resolution faces, drawn from their embedded bitmap strikes
+at integer scale; the rest are outline faces.
+
+### `[chassis]`
+
+The cabinet the tube is mounted in, and the way its bank marks which channel
+is on air.
+
+| Key | Default | What it does |
+|---|---|---|
+| `name` | `"Annunciator"` | Selects the preset base. |
+| `shell` | `"annunciator"` | Which kit paints the body: `annunciator`, `slide-rule`, or `switchboard`. Note the hyphen. |
+| `channel_indicator` | `"glow"` | How the bank marks the live channel: `glow`, `pointer`, or `switch`. |
+| `channel_display` | `"led"` | What the bank's channel windows are made of: `led` or `tape`. |
+| `frame_size` | `0.45` | The cabinet's bezel around the glass. |
+| `screen_radius` | `0.44` | Corner radius of that bezel, `4` to `120` pixels across the range. |
+| `frame_color` | `"#001735"` | Bezel colour. |
+| `frame_shininess` | `0.3` | How hard the bezel's highlight is. |
+
+The shells differ in more than colour: each has its own furniture, and
+the presets pair each with the indicator and display style it was built
+around. Mixing them works. A `slide-rule` shell with `tape` windows is a
+legitimate config, just not a combination anything shipped.
+
+## A worked example
+
+```toml
+# A quieter amber, in the wooden cabinet.
+[general]
+font_scaling = 1.2
+effects_frame_skip = 2
+
+[screen]
+name = "Default Amber"
+flickering = 0.0
+static_noise = 0.0
+burn_in = 0.15
+
+[chassis]
+name = "Slide Rule"
+```
+
+Four keys moved, one screen preset and one chassis preset named. Everything
+else comes from those two presets. That means every colour, every geometry,
+and every effect not listed. That is what "the file is a diff" buys you: this file
+still means the same thing after a release that retunes Default Amber, and it
+still means the same thing if you copy it to another machine.

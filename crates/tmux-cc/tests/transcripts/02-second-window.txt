@@ -1,0 +1,18 @@
+P1000p%begin 1786799427 281 0
+%end 1786799427 281 0
+%session-changed $0 one
+%begin 1786799428 286 1
+@0 %0 1 bash
+%end 1786799428 286 1
+%begin 1786799428 287 1
+%end 1786799428 287 1
+%session-window-changed $0 @1
+%window-add @1
+%begin 1786799428 290 1
+@0 %0 1 bash
+@1 %1 1 cat
+%end 1786799428 290 1
+%begin 1786799429 291 1
+%end 1786799429 291 1
+%exit
+\
