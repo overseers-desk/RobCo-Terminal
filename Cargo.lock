@@ -518,7 +518,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 [[package]]
 name = "corcovado"
 version = "0.5.24"
-source = "git+https://github.com/overseers-desk/rio?rev=41d2c76650dbd64c60903babaf2d174369cfa449#41d2c76650dbd64c60903babaf2d174369cfa449"
+source = "git+https://github.com/overseers-desk/rio?rev=b6b5a8e97996af7268a8aa7a07856243133d351c#b6b5a8e97996af7268a8aa7a07856243133d351c"
 dependencies = [
  "libc",
  "miow 0.5.0",
@@ -2673,7 +2673,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 [[package]]
 name = "rio-grapheme-width"
 version = "0.5.24"
-source = "git+https://github.com/overseers-desk/rio?rev=41d2c76650dbd64c60903babaf2d174369cfa449#41d2c76650dbd64c60903babaf2d174369cfa449"
+source = "git+https://github.com/overseers-desk/rio?rev=b6b5a8e97996af7268a8aa7a07856243133d351c#b6b5a8e97996af7268a8aa7a07856243133d351c"
 dependencies = [
  "phf",
  "ucd-trie",
@@ -2682,7 +2682,7 @@ dependencies = [
 [[package]]
 name = "rio-graphics"
 version = "0.5.24"
-source = "git+https://github.com/overseers-desk/rio?rev=41d2c76650dbd64c60903babaf2d174369cfa449#41d2c76650dbd64c60903babaf2d174369cfa449"
+source = "git+https://github.com/overseers-desk/rio?rev=b6b5a8e97996af7268a8aa7a07856243133d351c#b6b5a8e97996af7268a8aa7a07856243133d351c"
 dependencies = [
  "rustc-hash 2.1.3",
  "tracing",
@@ -2692,12 +2692,12 @@ dependencies = [
 [[package]]
 name = "rio-unicode"
 version = "0.5.24"
-source = "git+https://github.com/overseers-desk/rio?rev=41d2c76650dbd64c60903babaf2d174369cfa449#41d2c76650dbd64c60903babaf2d174369cfa449"
+source = "git+https://github.com/overseers-desk/rio?rev=b6b5a8e97996af7268a8aa7a07856243133d351c#b6b5a8e97996af7268a8aa7a07856243133d351c"
 
 [[package]]
 name = "rio-vt"
 version = "0.5.24"
-source = "git+https://github.com/overseers-desk/rio?rev=41d2c76650dbd64c60903babaf2d174369cfa449#41d2c76650dbd64c60903babaf2d174369cfa449"
+source = "git+https://github.com/overseers-desk/rio?rev=b6b5a8e97996af7268a8aa7a07856243133d351c#b6b5a8e97996af7268a8aa7a07856243133d351c"
 dependencies = [
  "base64",
  "bitflags 2.13.1",
@@ -3282,7 +3282,7 @@ dependencies = [
 [[package]]
 name = "teletypewriter"
 version = "0.5.24"
-source = "git+https://github.com/overseers-desk/rio?rev=41d2c76650dbd64c60903babaf2d174369cfa449#41d2c76650dbd64c60903babaf2d174369cfa449"
+source = "git+https://github.com/overseers-desk/rio?rev=b6b5a8e97996af7268a8aa7a07856243133d351c#b6b5a8e97996af7268a8aa7a07856243133d351c"
 dependencies = [
  "corcovado",
  "dirs",
