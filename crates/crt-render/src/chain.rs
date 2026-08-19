@@ -8,7 +8,7 @@
 //! config layer, but only for logging: it is informational, not load-bearing,
 //! and the two encodings are independent rather than agreeing by
 //! construction. What ties them together is that `Structure::from_config`
-//! reads a subset of the fields `app::settings::STRUCTURAL_KEYS` names, and a
+//! reads a subset of the fields `config::structural::STRUCTURAL` names, and a
 //! test in `crates/app` holds that subset relation.
 //!
 //! The chain's input is `term::gpu::Target`'s texture, which carries

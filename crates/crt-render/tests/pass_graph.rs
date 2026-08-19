@@ -134,7 +134,7 @@ fn a_parameter_change_takes_effect_next_frame_without_a_reload() {
     let dim = h.render(&mut chain, t0);
 
     // `brightness` is a parameter-level key: it is not in
-    // `app::settings::STRUCTURAL_KEYS`, so the chain must take it as a uniform.
+    // `config::structural::STRUCTURAL`, so the chain must take it as a uniform.
     // 0.0 -> 0.5 on the slider is 0.5x -> 1.0x on the screen, and the test bar
     // sits low enough that neither end clamps.
     cfg.screen.brightness = 0.5;
@@ -191,7 +191,7 @@ fn a_structural_change_rebuilds_the_chain() {
     );
     assert_eq!(chain.loads(), 1);
 
-    // `general.burn_in_quality` is in `STRUCTURAL_KEYS`: it is the accumulator's
+    // `general.burn_in_quality` is in `config::structural::STRUCTURAL`: it is the accumulator's
     // framebuffer size, which no uniform can change. Its default is 0.5, so the
     // change has to be to something else for this to test anything.
     let before = chain.structure();

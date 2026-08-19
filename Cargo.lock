@@ -2741,6 +2741,7 @@ dependencies = [
  "robco-crt-render",
  "robco-term",
  "robco-tmux-cc",
+ "serde_json",
  "signal-hook 0.3.18",
  "tempfile",
  "wgpu",

@@ -4,7 +4,7 @@
 //! runtime uniform. The exception is chain *structure*, which a uniform
 //! cannot express: how many passes there are, what resolution each renders at,
 //! and whether a framebuffer is float. Those come from
-//! `app::settings::STRUCTURAL_KEYS`, they are what [`Structure`] carries, and a
+//! `config::structural::STRUCTURAL`, they are what [`Structure`] carries, and a
 //! change to any of them writes a new preset and rebuilds the `FilterChain`,
 //! an accepted cost of ~10 ms and a reset burn-in ghost.
 //!

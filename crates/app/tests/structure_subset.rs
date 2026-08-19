@@ -1,35 +1,52 @@
-//! `crt::Structure` and `app::settings::STRUCTURAL_KEYS` are two independent
-//! encodings of "what forces a filter-chain rebuild": the render layer
-//! derives and compares `Structure`s itself on every settings change, and
-//! `app::settings::classify()` is only informational (logging). They are not
-//! tied together by construction, so this test holds the one relation that
-//! has to be true regardless: every config field `Structure::from_config`
-//! reads must be named in `STRUCTURAL_KEYS`, or a config change the render
-//! layer treats as structural would go unlogged as one.
-//!
-//! The field list below is hand-kept in step with `crt::preset::Structure`'s
-//! fields (there is no reflection to derive it from); adding a field to
-//! `Structure` means adding its config key here too.
-
-const STRUCTURE_FIELDS: &[&str] = &[
-    "general.window_scaling",
-    "general.bloom_quality",
-    "general.burn_in_quality",
-    // Not a framebuffer size like the other three: it decides which of the
-    // frame-source slot's two bodies the preset names
-    // (`crt::preset::CHASSIS_FRAME`).
-    "general.chassis_shown",
-];
+//! `crt::preset::Structure` decides for itself, from a `Config`, what the
+//! filter chain's shape is; `config::structural::STRUCTURAL` names the keys
+//! whose change forces a rebuild. The relation that has to hold: every
+//! config field `Structure::from_config` reads is a structural key, or a
+//! change the render layer treats as structural would classify as a live
+//! parameter push. The test below holds it by perturbation rather than by
+//! a second field list: it moves every serialized leaf of the config and
+//! checks that whenever `Structure` moves, the key is structural.
 
 #[test]
-fn structure_fields_are_a_subset_of_structural_keys() {
-    let structural_keys = app::settings::structural_keys();
-    for field in STRUCTURE_FIELDS {
-        assert!(
-            structural_keys.contains(field),
-            "`crt::preset::Structure::from_config` reads `{field}`, but it is \
-             missing from `app::settings::STRUCTURAL_KEYS`"
-        );
+fn structure_reads_only_structural_keys() {
+    let base = config::Config::default();
+    let base_structure = crt::preset::Structure::from_config(&base);
+    // Word-enum fields need a valid variant differing from the default;
+    // everything else perturbs generically by type.
+    let alternates: &[(&str, &str)] = &[
+        ("shell", "switchboard"),
+        ("channel_indicator", "switch"),
+        ("channel_display", "tape"),
+        ("rasterization", "scanline_rasterization"),
+        ("font_source", "system_fonts"),
+    ];
+    let document = serde_json::to_value(&base).expect("config serializes");
+    for (section, object) in document.as_object().expect("config is an object") {
+        for (key, leaf) in object.as_object().expect("section is an object") {
+            let mut moved_doc = document.clone();
+            let perturbed = match leaf {
+                serde_json::Value::Number(n) if n.is_f64() => {
+                    serde_json::Value::from(n.as_f64().unwrap() + 0.5)
+                }
+                serde_json::Value::Number(n) => serde_json::Value::from(n.as_i64().unwrap() + 1),
+                serde_json::Value::Bool(b) => serde_json::Value::from(!b),
+                serde_json::Value::String(s) => match alternates.iter().find(|(k, _)| k == key) {
+                    Some((_, alternate)) => serde_json::Value::from(*alternate),
+                    None => serde_json::Value::from(format!("{s}x")),
+                },
+                other => panic!("unexpected leaf shape at {section}.{key}: {other:?}"),
+            };
+            moved_doc[section][key] = perturbed;
+            let moved: config::Config =
+                serde_json::from_value(moved_doc).unwrap_or_else(|e| panic!("{section}.{key}: {e}"));
+            if crt::preset::Structure::from_config(&moved) != base_structure {
+                let dotted = format!("{section}.{key}");
+                assert!(
+                    config::structural::STRUCTURAL.contains(&dotted.as_str()),
+                    "`Structure::from_config` reads `{dotted}`, but it is not a structural key"
+                );
+            }
+        }
     }
 }
 

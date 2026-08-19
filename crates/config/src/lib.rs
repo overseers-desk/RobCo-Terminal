@@ -30,6 +30,7 @@ pub mod io;
 pub mod presets;
 pub mod profile;
 pub mod schema;
+pub mod structural;
 pub mod watch;
 
 pub use profile::{Profile, Tuning};
