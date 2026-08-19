@@ -31,3 +31,9 @@ version = "0.1.0"
 # branch is both what this workspace builds and the series offered upstream.
 [patch.crates-io]
 rio-vt = { git = "https://github.com/overseers-desk/rio", rev = "b6b5a8e97996af7268a8aa7a07856243133d351c" }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"

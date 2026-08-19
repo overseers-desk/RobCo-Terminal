@@ -28,8 +28,8 @@
 //!
 //! # Preset base plus overrides
 //!
-//! A preset is a full blob: all 28 measures of a screen (8 of a chassis)
-//! are named, and picking a preset by index overwrites the name over
+//! A preset is a full blob: every measure of a screen and a chassis is
+//! named, and picking a preset by index overwrites the name over
 //! whatever was already selected, so "which preset was this struck from"
 //! is carried by the selection rather than by the blob. The rebuild's
 //! config file is a diff against defaults (`docs/config-format.md`), so it
@@ -45,7 +45,7 @@
 //! ```
 //!
 //! is the Deep Blue preset with one measure moved, rather than the default
-//! screen wearing Deep Blue's name. A file that names all 28 measures (an
+//! screen wearing Deep Blue's name. A file that names every measure (an
 //! imported blob, say) resolves to itself, since every key is an override;
 //! a `name` matching no built-in preset (a look the user saved under their
 //! own name) resolves against the schema default, which is what the file
@@ -64,10 +64,7 @@ use std::path::Path;
 
 use crate::io::{self, ConfigError, Scalar};
 use crate::presets;
-use crate::schema::{
-    ChannelDisplay, ChannelIndicator, ChassisSettings, FontSource, Rasterization, ScreenSettings,
-    Shell,
-};
+use crate::schema::{ChassisSettings, ScreenSettings};
 use crate::Config;
 
 /// An imported profile carrying any other version is refused.
@@ -77,7 +74,7 @@ pub const PROFILE_VERSION: u32 = 1;
 ///
 /// This is the shape a user's saved profile takes, the shape the session
 /// restores, and the shape the snapshot equality compares.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 pub struct Profile {
     pub screen: ScreenSettings,
     pub chassis: ChassisSettings,
@@ -104,34 +101,15 @@ impl Profile {
     /// The appliance as a JSON document, two-space indented, every real
     /// rounded to four decimals.
     ///
-    /// This string *is* the equality. What it reads, in this fixed key
-    /// order:
-    ///
-    /// - **screen** (29 keys): `name`,
-    ///   `backgroundColor`, `fontColor`, `flickering`, `horizontalSync`,
-    ///   `staticNoise`, `chromaColor`, `saturationColor`,
-    ///   `screenCurvature`, `glowingLine`, `burnIn`, `bloom`,
-    ///   `rasterization`, `jitter`, `rgbShift`, `brightness`, `contrast`,
-    ///   `ambientLight`, `windowOpacity`, `fontName`, `fontSource`,
-    ///   `fontWidth`, `lineSpacing`, `margin`, `blinkingCursor`,
-    ///   `frameSize`, `screenRadius`, `frameColor`, `frameShininess`.
-    /// - **chassis** (8 keys): `name`, `shell`,
-    ///   `channelIndicator`, `channelDisplay`, `frameSize`, `screenRadius`,
-    ///   `frameColor`, `frameShininess`.
-    ///
-    /// Nothing else. In particular the general settings are absent, so
-    /// re-fitting the LED bank or hiding the chassis does not mark a
-    /// profile modified.
+    /// This string *is* the equality. It reads the two axes exactly as the
+    /// schema structs declare them ([`ScreenSettings`], [`ChassisSettings`]),
+    /// in declaration order, spelled the JSON format's way: camelCase keys,
+    /// `rasterization` and `fontSource` as integers. Nothing else. In
+    /// particular the general settings are absent, so re-fitting the LED
+    /// bank or hiding the chassis does not mark a profile modified.
     pub fn snapshot(&self) -> String {
         let mut out = String::new();
-        out.push_str("{\n");
-        out.push_str("  \"screen\": ");
-        write_object(&mut out, 2, &screen_fields(&self.screen));
-        out.push_str(",\n");
-        out.push_str("  \"chassis\": ");
-        write_object(&mut out, 2, &chassis_fields(&self.chassis));
-        out.push('\n');
-        out.push('}');
+        write_value(&mut out, 0, &json_value(self));
         out
     }
 }
@@ -219,19 +197,14 @@ impl std::error::Error for ProfileError {}
 /// The two added keys come after `screen` and `chassis`, keeping a fixed
 /// key order across every file this writes.
 pub fn export_json(name: &str, profile: &Profile) -> String {
+    let mut value = json_value(profile);
+    let map = value
+        .as_object_mut()
+        .expect("a profile serializes as an object");
+    map.insert("name".into(), serde_json::Value::from(name));
+    map.insert("profileVersion".into(), serde_json::Value::from(PROFILE_VERSION));
     let mut out = String::new();
-    out.push_str("{\n");
-    out.push_str("  \"screen\": ");
-    write_object(&mut out, 2, &screen_fields(&profile.screen));
-    out.push_str(",\n");
-    out.push_str("  \"chassis\": ");
-    write_object(&mut out, 2, &chassis_fields(&profile.chassis));
-    out.push_str(",\n  \"name\": ");
-    write_string(&mut out, name);
-    out.push_str(",\n  \"profileVersion\": ");
-    out.push_str(&PROFILE_VERSION.to_string());
-    out.push('\n');
-    out.push('}');
+    write_value(&mut out, 0, &value);
     out
 }
 
@@ -275,10 +248,27 @@ pub fn import_json(text: &str) -> Result<NamedProfile, ProfileError> {
     Ok(NamedProfile {
         name,
         profile: Profile {
-            screen: read_screen(object.get("screen")),
-            chassis: read_chassis(object.get("chassis")),
+            screen: read_axis(object.get("screen"))?,
+            chassis: read_axis(object.get("chassis"))?,
         },
     })
+}
+
+/// An axis the file does not carry (or carries as a non-object) is the
+/// default axis; one it does carry is read with every omitted key falling
+/// back to the default, per the schema structs' own `#[serde(default)]`.
+/// A value of the wrong shape refuses the import.
+fn read_axis<T: serde::de::DeserializeOwned + Default>(
+    value: Option<&serde_json::Value>,
+) -> Result<T, ProfileError> {
+    match value {
+        Some(value) if value.is_object() => {
+            let mut value = value.clone();
+            from_json_format(&mut value);
+            serde_json::from_value(value).map_err(|e| ProfileError::Malformed(e.to_string()))
+        }
+        _ => Ok(T::default()),
+    }
 }
 
 /// Resolve each axis's `name` key to the built-in preset it selects, then
@@ -337,38 +327,119 @@ fn resolve_axis(
 /// `[chassis]` tables, atomically, in one edit.
 ///
 /// This is the profile save, and it is the one place the writer had to
-/// grow: `io::write_key` moves a single key, and an appliance is 37 of
-/// them, which as 37 writes would be 37 reloads and 36 chances for a
-/// half-applied look to be observed. [`io::write_keys`] is that widening
-/// and no more -- one document, one atomic rename, and still nothing but a
-/// closed list of named scalars, so there is no general mutation path into
-/// the file.
+/// grow: `io::write_key` moves a single key, and an appliance is every
+/// measure of both axes, which as single-key writes would be that many
+/// reloads and chances for a half-applied look to be observed.
+/// [`io::write_keys`] is that widening and no more -- one document, one
+/// atomic rename, and still nothing but a closed list of named scalars, so
+/// there is no general mutation path into the file.
 ///
 /// Every measure is written, not just the ones that differ from the preset
 /// the profile names: a saved profile is a complete statement of a look,
 /// so it must not shift underneath the user when a later version changes a
 /// default. The general settings are not touched, because they are not
-/// part of a profile.
+/// part of a profile. The schema's own serialization supplies the keys and
+/// their spellings, so the config file's dotted keys carry no field list
+/// here.
 pub fn save_to(path: &Path, profile: &Profile) -> Result<(), ConfigError> {
-    io::write_keys(path, &profile_keys(profile))
+    let mut keys = Vec::new();
+    for (axis, settings) in [
+        ("screen", serde_json::to_value(&profile.screen)),
+        ("chassis", serde_json::to_value(&profile.chassis)),
+    ] {
+        let value = settings.expect("schema types serialize");
+        let object = value.as_object().expect("an axis serializes as a table");
+        for (key, value) in object {
+            keys.push((format!("{axis}.{key}"), to_scalar(value)));
+        }
+    }
+    io::write_keys(path, &keys)
 }
 
-/// The 37 dotted keys and values a profile save writes: the two axes, in
-/// schema order, spelled as the config file spells them.
-fn profile_keys(profile: &Profile) -> Vec<(String, Scalar)> {
-    let mut keys = Vec::with_capacity(37);
-    for (name, value) in screen_fields(&profile.screen) {
-        keys.push((format!("screen.{}", snake(name)), scalar(value)));
+/// The TOML value for one serialized field. The schema's serde spelling is
+/// already the config file's: snake_case keys, enums as words.
+fn to_scalar(value: &serde_json::Value) -> Scalar {
+    match value {
+        serde_json::Value::String(s) => Scalar::String(s.clone()),
+        serde_json::Value::Bool(b) => Scalar::Boolean(*b),
+        serde_json::Value::Number(n) => Scalar::Float(round4(n.as_f64().unwrap_or(0.0))),
+        other => Scalar::String(other.to_string()),
     }
-    for (name, value) in chassis_fields(&profile.chassis) {
-        keys.push((format!("chassis.{}", snake(name)), scalar(value)));
-    }
-    keys
 }
 
-/// The config file spells the JSON format's `camelCase` keys in
-/// `snake_case`, so the one field list in this module serves both formats:
-/// the JSON export, and the TOML config file.
+/// The two enums the JSON format stores as integers, in code order, spelled
+/// as the schema's serde (and so the config file) spells them. The pairing
+/// of code to word is the JSON format's own fact and this is its one home;
+/// the variants themselves live on the schema enums.
+const RASTERIZATION_CODES: &[&str] = &[
+    "no_rasterization",
+    "scanline_rasterization",
+    "pixel_rasterization",
+    "subpixel_rasterization",
+    "modern_rasterization",
+];
+const FONT_SOURCE_CODES: &[&str] = &["bundled_fonts", "system_fonts"];
+
+/// The profile in the JSON format's shape -- camelCase keys, the two coded
+/// enums as integers -- derived from the schema's own serialization, so the
+/// schema structs are the only field list.
+fn json_value(profile: &Profile) -> serde_json::Value {
+    let mut value = serde_json::to_value(profile).expect("schema types serialize");
+    to_json_format(&mut value);
+    value
+}
+
+/// snake_case keys to camelCase, words to codes where the format is
+/// numeric. Recursive over objects; the profile shape carries no arrays.
+fn to_json_format(value: &mut serde_json::Value) {
+    let serde_json::Value::Object(map) = value else {
+        return;
+    };
+    let entries: Vec<(String, serde_json::Value)> = std::mem::take(map).into_iter().collect();
+    for (key, mut value) in entries {
+        to_json_format(&mut value);
+        if let Some(codes) = coded_enum(&key) {
+            if let Some(code) = value.as_str().and_then(|w| codes.iter().position(|c| *c == w)) {
+                value = serde_json::Value::from(code as u64);
+            }
+        }
+        map.insert(camel(&key), value);
+    }
+}
+
+/// The inverse: camelCase keys to snake_case, codes back to words. A code
+/// outside the table is dropped rather than kept, so the field falls back
+/// to its default, the forgiveness imports have always shown out-of-range
+/// codes.
+fn from_json_format(value: &mut serde_json::Value) {
+    let serde_json::Value::Object(map) = value else {
+        return;
+    };
+    let entries: Vec<(String, serde_json::Value)> = std::mem::take(map).into_iter().collect();
+    for (key, mut value) in entries {
+        from_json_format(&mut value);
+        let key = snake(&key);
+        if let Some(codes) = coded_enum(&key) {
+            match value.as_u64().and_then(|c| codes.get(c as usize)) {
+                Some(word) => value = serde_json::Value::from(*word),
+                None => continue,
+            }
+        }
+        map.insert(key, value);
+    }
+}
+
+fn coded_enum(snake_key: &str) -> Option<&'static [&'static str]> {
+    match snake_key {
+        "rasterization" => Some(RASTERIZATION_CODES),
+        "font_source" => Some(FONT_SOURCE_CODES),
+        _ => None,
+    }
+}
+
+/// The JSON format spells keys in camelCase; the schema and the config
+/// file spell them in snake_case. These two functions are the whole
+/// translation.
 fn snake(camel: &str) -> String {
     let mut out = String::with_capacity(camel.len() + 4);
     for ch in camel.chars() {
@@ -382,321 +453,18 @@ fn snake(camel: &str) -> String {
     out
 }
 
-/// The TOML value for a field, keeping the *config file's* spelling of the
-/// two enums: `rasterization` and `font_source` are words there, though
-/// the JSON format stores them as integers. `Json::Enum` carries both.
-fn scalar(value: Json) -> Scalar {
-    match value {
-        Json::Str(s) => Scalar::String(s),
-        Json::Num(n) => Scalar::Float(round4(n)),
-        Json::Bool(b) => Scalar::Boolean(b),
-        Json::Enum { word, .. } => Scalar::String(word.to_string()),
+fn camel(snake: &str) -> String {
+    let mut out = String::with_capacity(snake.len());
+    let mut upper = false;
+    for ch in snake.chars() {
+        if ch == '_' {
+            upper = true;
+            continue;
+        }
+        out.push(if upper { ch.to_ascii_uppercase() } else { ch });
+        upper = false;
     }
-}
-
-/// One field's value, in the two spellings the two formats need.
-#[derive(Debug, Clone)]
-enum Json {
-    Str(String),
-    Num(f64),
-    Bool(bool),
-    /// An enum: `code` is the JSON format's integer, `word` is the config
-    /// file's serde spelling (the TOML's).
-    Enum {
-        code: i64,
-        word: &'static str,
-    },
-}
-
-/// The screen object's 29 keys, in JSON export order.
-fn screen_fields(screen: &ScreenSettings) -> Vec<(&'static str, Json)> {
-    vec![
-        ("name", Json::Str(screen.name.clone())),
-        (
-            "backgroundColor",
-            Json::Str(screen.background_color.clone()),
-        ),
-        ("fontColor", Json::Str(screen.font_color.clone())),
-        ("flickering", Json::Num(screen.flickering)),
-        ("horizontalSync", Json::Num(screen.horizontal_sync)),
-        ("staticNoise", Json::Num(screen.static_noise)),
-        ("chromaColor", Json::Num(screen.chroma_color)),
-        ("saturationColor", Json::Num(screen.saturation_color)),
-        ("screenCurvature", Json::Num(screen.screen_curvature)),
-        ("glowingLine", Json::Num(screen.glowing_line)),
-        ("burnIn", Json::Num(screen.burn_in)),
-        ("bloom", Json::Num(screen.bloom)),
-        ("rasterization", rasterization_json(screen.rasterization)),
-        ("jitter", Json::Num(screen.jitter)),
-        ("rgbShift", Json::Num(screen.rgb_shift)),
-        ("brightness", Json::Num(screen.brightness)),
-        ("contrast", Json::Num(screen.contrast)),
-        ("ambientLight", Json::Num(screen.ambient_light)),
-        ("windowOpacity", Json::Num(screen.window_opacity)),
-        ("fontName", Json::Str(screen.font_name.clone())),
-        ("fontSource", font_source_json(screen.font_source)),
-        ("fontWidth", Json::Num(screen.font_width)),
-        ("lineSpacing", Json::Num(screen.line_spacing)),
-        ("margin", Json::Num(screen.margin)),
-        ("blinkingCursor", Json::Bool(screen.blinking_cursor)),
-        ("frameSize", Json::Num(screen.frame_size)),
-        ("screenRadius", Json::Num(screen.screen_radius)),
-        ("frameColor", Json::Str(screen.frame_color.clone())),
-        ("frameShininess", Json::Num(screen.frame_shininess)),
-    ]
-}
-
-/// The chassis object's 8 keys, in JSON export order.
-fn chassis_fields(chassis: &ChassisSettings) -> Vec<(&'static str, Json)> {
-    vec![
-        ("name", Json::Str(chassis.name.clone())),
-        ("shell", Json::Str(shell_word(chassis.shell).to_string())),
-        (
-            "channelIndicator",
-            Json::Str(indicator_word(chassis.channel_indicator).to_string()),
-        ),
-        (
-            "channelDisplay",
-            Json::Str(display_word(chassis.channel_display).to_string()),
-        ),
-        ("frameSize", Json::Num(chassis.frame_size)),
-        ("screenRadius", Json::Num(chassis.screen_radius)),
-        ("frameColor", Json::Str(chassis.frame_color.clone())),
-        ("frameShininess", Json::Num(chassis.frame_shininess)),
-    ]
-}
-
-fn rasterization_json(value: Rasterization) -> Json {
-    let (code, word) = match value {
-        Rasterization::NoRasterization => (0, "no_rasterization"),
-        Rasterization::ScanlineRasterization => (1, "scanline_rasterization"),
-        Rasterization::PixelRasterization => (2, "pixel_rasterization"),
-        Rasterization::SubpixelRasterization => (3, "subpixel_rasterization"),
-        Rasterization::ModernRasterization => (4, "modern_rasterization"),
-    };
-    Json::Enum { code, word }
-}
-
-fn rasterization_from_code(code: i64) -> Option<Rasterization> {
-    Some(match code {
-        0 => Rasterization::NoRasterization,
-        1 => Rasterization::ScanlineRasterization,
-        2 => Rasterization::PixelRasterization,
-        3 => Rasterization::SubpixelRasterization,
-        4 => Rasterization::ModernRasterization,
-        _ => return None,
-    })
-}
-
-fn font_source_json(value: FontSource) -> Json {
-    let (code, word) = match value {
-        FontSource::BundledFonts => (0, "bundled_fonts"),
-        FontSource::SystemFonts => (1, "system_fonts"),
-    };
-    Json::Enum { code, word }
-}
-
-fn font_source_from_code(code: i64) -> Option<FontSource> {
-    Some(match code {
-        0 => FontSource::BundledFonts,
-        1 => FontSource::SystemFonts,
-        _ => return None,
-    })
-}
-
-fn shell_word(shell: Shell) -> &'static str {
-    match shell {
-        Shell::Annunciator => "annunciator",
-        Shell::SlideRule => "slide-rule",
-        Shell::Switchboard => "switchboard",
-    }
-}
-
-fn shell_from_word(word: &str) -> Option<Shell> {
-    Some(match word {
-        "annunciator" => Shell::Annunciator,
-        "slide-rule" => Shell::SlideRule,
-        "switchboard" => Shell::Switchboard,
-        _ => return None,
-    })
-}
-
-fn indicator_word(indicator: ChannelIndicator) -> &'static str {
-    match indicator {
-        ChannelIndicator::Glow => "glow",
-        ChannelIndicator::Pointer => "pointer",
-        ChannelIndicator::Switch => "switch",
-    }
-}
-
-fn indicator_from_word(word: &str) -> Option<ChannelIndicator> {
-    Some(match word {
-        "glow" => ChannelIndicator::Glow,
-        "pointer" => ChannelIndicator::Pointer,
-        "switch" => ChannelIndicator::Switch,
-        _ => return None,
-    })
-}
-
-fn display_word(display: ChannelDisplay) -> &'static str {
-    match display {
-        ChannelDisplay::Led => "led",
-        ChannelDisplay::Tape => "tape",
-    }
-}
-
-fn display_from_word(word: &str) -> Option<ChannelDisplay> {
-    Some(match word {
-        "led" => ChannelDisplay::Led,
-        "tape" => ChannelDisplay::Tape,
-        _ => return None,
-    })
-}
-
-/// Every key falls back to the default screen's, and the name falls back
-/// to the default screen's name rather than to whatever is standing.
-fn read_screen(value: Option<&serde_json::Value>) -> ScreenSettings {
-    let mut screen = ScreenSettings::default();
-    let Some(object) = value.and_then(|v| v.as_object()) else {
-        return screen;
-    };
-    let string = |key: &str| object.get(key).and_then(|v| v.as_str()).map(str::to_string);
-    let number = |key: &str| object.get(key).and_then(serde_json::Value::as_f64);
-    let boolean = |key: &str| object.get(key).and_then(serde_json::Value::as_bool);
-    let code = |key: &str| object.get(key).and_then(serde_json::Value::as_i64);
-
-    if let Some(v) = string("name") {
-        screen.name = v;
-    }
-    if let Some(v) = string("backgroundColor") {
-        screen.background_color = v;
-    }
-    if let Some(v) = string("fontColor") {
-        screen.font_color = v;
-    }
-    if let Some(v) = number("flickering") {
-        screen.flickering = v;
-    }
-    if let Some(v) = number("horizontalSync") {
-        screen.horizontal_sync = v;
-    }
-    if let Some(v) = number("staticNoise") {
-        screen.static_noise = v;
-    }
-    if let Some(v) = number("chromaColor") {
-        screen.chroma_color = v;
-    }
-    if let Some(v) = number("saturationColor") {
-        screen.saturation_color = v;
-    }
-    if let Some(v) = number("screenCurvature") {
-        screen.screen_curvature = v;
-    }
-    if let Some(v) = number("glowingLine") {
-        screen.glowing_line = v;
-    }
-    if let Some(v) = number("burnIn") {
-        screen.burn_in = v;
-    }
-    if let Some(v) = number("bloom") {
-        screen.bloom = v;
-    }
-    if let Some(v) = code("rasterization").and_then(rasterization_from_code) {
-        screen.rasterization = v;
-    }
-    if let Some(v) = number("jitter") {
-        screen.jitter = v;
-    }
-    if let Some(v) = number("rgbShift") {
-        screen.rgb_shift = v;
-    }
-    if let Some(v) = number("brightness") {
-        screen.brightness = v;
-    }
-    if let Some(v) = number("contrast") {
-        screen.contrast = v;
-    }
-    if let Some(v) = number("ambientLight") {
-        screen.ambient_light = v;
-    }
-    if let Some(v) = number("windowOpacity") {
-        screen.window_opacity = v;
-    }
-    if let Some(v) = string("fontName") {
-        screen.font_name = v;
-    }
-    if let Some(v) = code("fontSource").and_then(font_source_from_code) {
-        screen.font_source = v;
-    }
-    if let Some(v) = number("fontWidth") {
-        screen.font_width = v;
-    }
-    if let Some(v) = number("lineSpacing") {
-        screen.line_spacing = v;
-    }
-    if let Some(v) = number("margin") {
-        screen.margin = v;
-    }
-    if let Some(v) = boolean("blinkingCursor") {
-        screen.blinking_cursor = v;
-    }
-    if let Some(v) = number("frameSize") {
-        screen.frame_size = v;
-    }
-    if let Some(v) = number("screenRadius") {
-        screen.screen_radius = v;
-    }
-    if let Some(v) = string("frameColor") {
-        screen.frame_color = v;
-    }
-    if let Some(v) = number("frameShininess") {
-        screen.frame_shininess = v;
-    }
-    screen
-}
-
-/// Every key falls back to the default chassis's: one that is silent about
-/// a measure or its kit means the annunciator's, never whatever the last
-/// chassis left in place.
-fn read_chassis(value: Option<&serde_json::Value>) -> ChassisSettings {
-    let mut chassis = ChassisSettings::default();
-    let Some(object) = value.and_then(|v| v.as_object()) else {
-        return chassis;
-    };
-    let string = |key: &str| object.get(key).and_then(|v| v.as_str()).map(str::to_string);
-    let number = |key: &str| object.get(key).and_then(serde_json::Value::as_f64);
-
-    if let Some(v) = string("name") {
-        chassis.name = v;
-    }
-    if let Some(v) = string("shell").as_deref().and_then(shell_from_word) {
-        chassis.shell = v;
-    }
-    if let Some(v) = string("channelIndicator")
-        .as_deref()
-        .and_then(indicator_from_word)
-    {
-        chassis.channel_indicator = v;
-    }
-    if let Some(v) = string("channelDisplay")
-        .as_deref()
-        .and_then(display_from_word)
-    {
-        chassis.channel_display = v;
-    }
-    if let Some(v) = number("frameSize") {
-        chassis.frame_size = v;
-    }
-    if let Some(v) = number("screenRadius") {
-        chassis.screen_radius = v;
-    }
-    if let Some(v) = string("frameColor") {
-        chassis.frame_color = v;
-    }
-    if let Some(v) = number("frameShininess") {
-        chassis.frame_shininess = v;
-    }
-    chassis
+    out
 }
 
 /// `Number(val.toFixed(4))`. Rounding the decimal rendering rather than
@@ -739,33 +507,48 @@ fn write_string(out: &mut String, value: &str) {
     out.push('"');
 }
 
-/// One JSON object at `indent` spaces, two-space nested, `JSON.stringify`-shaped
-/// layout.
-fn write_object(out: &mut String, indent: usize, fields: &[(&'static str, Json)]) {
-    let inner = " ".repeat(indent + 2);
-    out.push_str("{\n");
-    for (index, (key, value)) in fields.iter().enumerate() {
-        out.push_str(&inner);
-        write_string(out, key);
-        out.push_str(": ");
-        match value {
-            Json::Str(s) => write_string(out, s),
-            Json::Num(n) => write_number(out, *n),
-            Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-            Json::Enum { code, .. } => out.push_str(&code.to_string()),
+/// A value rendered the way `JSON.stringify(v, null, 2)` renders one:
+/// two-space nesting, every real rounded to four decimals, no trailing
+/// `.0` on integral values.
+fn write_value(out: &mut String, indent: usize, value: &serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let inner = " ".repeat(indent + 2);
+            out.push_str("{\n");
+            for (index, (key, value)) in map.iter().enumerate() {
+                out.push_str(&inner);
+                write_string(out, key);
+                out.push_str(": ");
+                write_value(out, indent + 2, value);
+                if index + 1 < map.len() {
+                    out.push(',');
+                }
+                out.push('\n');
+            }
+            out.push_str(&" ".repeat(indent));
+            out.push('}');
         }
-        if index + 1 < fields.len() {
-            out.push(',');
+        serde_json::Value::String(s) => write_string(out, s),
+        serde_json::Value::Number(n) => write_number(out, n.as_f64().unwrap_or(f64::NAN)),
+        serde_json::Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        serde_json::Value::Null => out.push_str("null"),
+        serde_json::Value::Array(items) => {
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push_str(", ");
+                }
+                write_value(out, indent, item);
+            }
+            out.push(']');
         }
-        out.push('\n');
     }
-    out.push_str(&" ".repeat(indent));
-    out.push('}');
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::schema::{ChannelDisplay, ChannelIndicator, FontSource, Rasterization, Shell};
 
     fn deep_blue() -> ScreenSettings {
         presets::screen_presets()
@@ -839,95 +622,56 @@ mod tests {
         assert!(tuning.is_modified(&chassis_moved));
     }
 
-    /// Every field the snapshot documents is actually read by it: move one
-    /// at a time and check the flag fires for each. A field that fell out
-    /// of `screen_fields`/`chassis_fields` would be a measure the Modified
-    /// badge silently stopped noticing, which is exactly the failure this
-    /// test exists to prevent.
-    /// One documented key's nudge: the smallest edit to that field that a
-    /// rendered snapshot must notice.
-    type ScreenMover = fn(&mut ScreenSettings);
-    type ChassisMover = fn(&mut ChassisSettings);
-
+    /// Every serialized field of both axes is read by the snapshot:
+    /// perturb each leaf of the schema's own serialization and check the
+    /// flag fires. The schema structs are the only field list, so a field
+    /// they gain is covered here without this test changing; a field the
+    /// snapshot stopped reading would be a measure the Modified badge
+    /// silently stopped noticing, which is the failure this test exists to
+    /// prevent.
     #[test]
-    fn every_documented_field_moves_the_snapshot() {
+    fn every_field_moves_the_snapshot() {
         let base = Profile::default();
         let tuning = Tuning::handed_over(&base);
-
-        // The 29 screen keys, each nudged in its own type's way.
-        let screen_movers: Vec<(&str, ScreenMover)> = vec![
-            ("name", |s| s.name = "moved".into()),
-            ("backgroundColor", |s| s.background_color = "#010203".into()),
-            ("fontColor", |s| s.font_color = "#040506".into()),
-            ("flickering", |s| s.flickering += 0.5),
-            ("horizontalSync", |s| s.horizontal_sync += 0.5),
-            ("staticNoise", |s| s.static_noise += 0.5),
-            ("chromaColor", |s| s.chroma_color += 0.5),
-            ("saturationColor", |s| s.saturation_color += 0.5),
-            ("screenCurvature", |s| s.screen_curvature += 0.5),
-            ("glowingLine", |s| s.glowing_line += 0.5),
-            ("burnIn", |s| s.burn_in += 0.5),
-            ("bloom", |s| s.bloom += 0.25),
-            ("rasterization", |s| {
-                s.rasterization = Rasterization::PixelRasterization
-            }),
-            ("jitter", |s| s.jitter += 0.5),
-            ("rgbShift", |s| s.rgb_shift += 0.5),
-            ("brightness", |s| s.brightness += 0.25),
-            ("contrast", |s| s.contrast += 0.1),
-            ("ambientLight", |s| s.ambient_light += 0.5),
-            ("windowOpacity", |s| s.window_opacity -= 0.5),
-            ("fontName", |s| s.font_name = "MOVED".into()),
-            ("fontSource", |s| s.font_source = FontSource::SystemFonts),
-            ("fontWidth", |s| s.font_width += 0.5),
-            ("lineSpacing", |s| s.line_spacing += 0.5),
-            ("margin", |s| s.margin += 0.5),
-            ("blinkingCursor", |s| s.blinking_cursor = !s.blinking_cursor),
-            ("frameSize", |s| s.frame_size += 0.5),
-            ("screenRadius", |s| s.screen_radius += 0.5),
-            ("frameColor", |s| s.frame_color = "#070809".into()),
-            ("frameShininess", |s| s.frame_shininess += 0.5),
+        // For word-enum fields a generic string perturbation would not
+        // deserialize; each gets a valid variant differing from the default.
+        let alternates: &[(&str, &str)] = &[
+            ("shell", "switchboard"),
+            ("channel_indicator", "switch"),
+            ("channel_display", "tape"),
+            ("rasterization", "scanline_rasterization"),
+            ("font_source", "system_fonts"),
         ];
-        assert_eq!(
-            screen_movers.len(),
-            29,
-            "composeScreenObject() writes 29 keys"
-        );
-        for (key, move_it) in &screen_movers {
-            let mut moved = base.clone();
-            move_it(&mut moved.screen);
-            assert!(
-                tuning.is_modified(&moved),
-                "moving screen.{key} did not change the snapshot"
-            );
-        }
-
-        let chassis_movers: Vec<(&str, ChassisMover)> = vec![
-            ("name", |c| c.name = "moved".into()),
-            ("shell", |c| c.shell = Shell::Switchboard),
-            ("channelIndicator", |c| {
-                c.channel_indicator = ChannelIndicator::Switch
-            }),
-            ("channelDisplay", |c| {
-                c.channel_display = ChannelDisplay::Tape
-            }),
-            ("frameSize", |c| c.frame_size += 0.5),
-            ("screenRadius", |c| c.screen_radius += 0.5),
-            ("frameColor", |c| c.frame_color = "#0a0b0c".into()),
-            ("frameShininess", |c| c.frame_shininess += 0.5),
-        ];
-        assert_eq!(
-            chassis_movers.len(),
-            8,
-            "composeChassisObject() writes 8 keys"
-        );
-        for (key, move_it) in &chassis_movers {
-            let mut moved = base.clone();
-            move_it(&mut moved.chassis);
-            assert!(
-                tuning.is_modified(&moved),
-                "moving chassis.{key} did not change the snapshot"
-            );
+        let document = serde_json::to_value(&base).expect("profile serializes");
+        for (axis, object) in document.as_object().expect("profile is an object") {
+            for (key, leaf) in object.as_object().expect("axis is an object") {
+                let mut moved = object.as_object().unwrap().clone();
+                let perturbed = match leaf {
+                    serde_json::Value::Number(n) => {
+                        serde_json::Value::from(n.as_f64().unwrap() + 0.5)
+                    }
+                    serde_json::Value::Bool(b) => serde_json::Value::from(!b),
+                    serde_json::Value::String(s) => {
+                        match alternates.iter().find(|(k, _)| k == key) {
+                            Some((_, alternate)) => serde_json::Value::from(*alternate),
+                            None => serde_json::Value::from(format!("{s}x")),
+                        }
+                    }
+                    other => panic!("unexpected leaf shape at {axis}.{key}: {other:?}"),
+                };
+                moved.insert(key.clone(), perturbed);
+                let moved = serde_json::Value::Object(moved);
+                let mut profile = base.clone();
+                match axis.as_str() {
+                    "screen" => profile.screen = serde_json::from_value(moved).expect(key),
+                    "chassis" => profile.chassis = serde_json::from_value(moved).expect(key),
+                    other => panic!("unexpected axis {other}"),
+                }
+                assert!(
+                    tuning.is_modified(&profile),
+                    "moving {axis}.{key} did not change the snapshot"
+                );
+            }
         }
     }
 
@@ -1210,7 +954,7 @@ mod tests {
 
     // THE PROFILE SAVE ///////////////////////////////////////////////////
 
-    /// A saved profile is a complete statement of a look: all 37 measures,
+    /// A saved profile is a complete statement of a look: every measure,
     /// written in one atomic edit, and nothing outside the two axes.
     #[test]
     fn saving_writes_both_axes_whole_and_nothing_else() {
