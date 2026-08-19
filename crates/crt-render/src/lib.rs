@@ -97,7 +97,9 @@
 //! that owns a device.
 
 pub mod chain;
-pub mod color;
+/// The workspace's colour math lives in the chassis crate; the chain's
+/// uniforms are built from the same functions.
+pub use chassis::color;
 pub mod degauss;
 pub mod device;
 pub mod oracle;

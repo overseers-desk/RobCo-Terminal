@@ -1,16 +1,10 @@
-//! This crate's colour helpers: the chrome's half.
-//!
-//! Two callers, one home. [`displays::led`](crate::displays::led) and
-//! [`displays::tape`](crate::displays::tape) map state to appearance through
-//! [`scale_color`].
-//!
-//! `crates/crt-render/src/color.rs` (`crt::color`) holds the same two
-//! smallest functions again, for the glass chain's own uniforms. This is a
-//! deliberate duplicate rather than a dependency on that crate: this crate is
-//! kept off the glass chain so "the chain stops at the glass" stays true of the
-//! dependency graph too, not just of the pixels. Two functions is the
-//! price; a chassis that imports the chain to read a hex string is the
-//! alternative.
+//! The workspace's colour math, in its one home. The chrome
+//! ([`displays::led`](crate::displays::led),
+//! [`displays::tape`](crate::displays::tape)) maps state to appearance
+//! through [`scale_color`]; the glass chain builds its uniforms through the
+//! same functions, re-exported as `crt::color`. The dependency points the
+//! way it already did (the chain depends on this crate for its shells and
+//! shaders), so "the chain stops at the glass" stays true of the graph.
 //!
 //! # The divisor rule, stated once
 //!
@@ -83,6 +77,20 @@ pub fn mix(a: Rgba, b: Rgba, alpha: f32) -> Rgba {
         a.b * (1.0 - t) + b.b * t,
         a.a * (1.0 - t) + b.a * t,
     )
+}
+
+/// Linear interpolation. Named `lint`, not a typo for "lerp" worth silently
+/// renaming away from since other tests already refer to it by this name.
+pub fn lint(a: f32, b: f32, t: f32) -> f32 {
+    (1.0 - t) * a + t * b
+}
+
+/// The GLSL-style scalar smoothstep, not `clamp`'s twin despite the similar
+/// shape -- min/max order matters here the way it does in GLSL (reversed
+/// order does not simply mirror the curve).
+pub fn smoothstep(min: f32, max: f32, value: f32) -> f32 {
+    let x = ((value - min) / (max - min)).clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
 }
 
 /// `"#rrggbb"` to `Rgba`, alpha forced to 1.0. Divides by 256 (not 255),

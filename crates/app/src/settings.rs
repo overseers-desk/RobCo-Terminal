@@ -223,30 +223,11 @@ fn lint(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
 
-/// The raw (pre-interpolation) frame-size/screen-radius knob a click or a
-/// render actually sees: whichever of chassis or screen is showing governs.
-/// Once the chassis casts a frame around the tube, its own moulding
-/// governs; bare, the screen's own frame is what a click meets -- "let the
-/// tube stand without its cabinet."
-fn raw_frame_size(config: &Config) -> f64 {
-    if config.general.chassis_shown {
-        config.chassis.frame_size
-    } else {
-        config.screen.frame_size
-    }
-}
-
-fn raw_screen_radius(config: &Config) -> f64 {
-    if config.general.chassis_shown {
-        config.chassis.screen_radius
-    } else {
-        config.screen.screen_radius
-    }
-}
-
-/// The screen radius: `lint(4.0, 120.0, raw_screen_radius)`. Pixels.
+/// The screen radius in pixels: `raw_screen_radius` interpolated across
+/// [`config::SCREEN_RADIUS_PX`].
 pub fn screen_radius(config: &Config) -> f64 {
-    lint(4.0, 120.0, raw_screen_radius(config))
+    let (lo, hi) = config::SCREEN_RADIUS_PX;
+    lint(lo, hi, config.raw_screen_radius())
 }
 
 /// The pixel value [`term::distortion::DistortionParams::margin`] wants
@@ -269,7 +250,7 @@ pub fn distortion_margin(config: &Config) -> f64 {
 /// [`term::distortion::normalized_screen_scale`] to get the value
 /// [`term::distortion::DistortionParams::frame_size`] wants.
 pub fn distortion_frame_size(config: &Config) -> f64 {
-    raw_frame_size(config) * 0.05
+    config.raw_frame_size() * 0.05
 }
 
 /// The live handle the event loop polls, and a SIGUSR1 handler
@@ -583,7 +564,7 @@ mod tests {
     }
 
     /// With the chassis off, the screen's own frame/radius govern instead
-    /// (the chassis-or-screen split in [`raw_frame_size`]/[`raw_screen_radius`]).
+    /// (the chassis-or-screen split of [`Config::raw_frame_size`]).
     /// Default Amber's own frame_size/screen_radius are 0.1/0.1:
     /// `screenRadius = lint(4, 120, 0.1) = 15.6`,
     /// `frameSize = 0.1 * 0.05 = 0.005`. `margin` is unaffected by

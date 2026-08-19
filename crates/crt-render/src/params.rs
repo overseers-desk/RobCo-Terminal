@@ -15,7 +15,7 @@
 
 use config::{Config, Rasterization, ScreenSettings};
 
-use crate::color::{self, Rgba};
+use crate::color::{self, lint, smoothstep, Rgba};
 use crate::degauss::DegaussState;
 use crate::pacing::FrameTime;
 
@@ -123,7 +123,7 @@ impl Params {
         // held to one answer by a test in `crates/app`, because a pointer that
         // un-bends a different warp from the one the shader drew is a defect no
         // pixel test can see.
-        let frame_size = raw_frame_size(cfg) as f32 * 0.05 * normalized;
+        let frame_size = cfg.raw_frame_size() as f32 * 0.05 * normalized;
 
         // Shininess is halved before it reaches the frame's own uniform,
         // over the same chassis-or-screen split `frameSize` takes. The
@@ -132,7 +132,7 @@ impl Params {
         // raw 0.3 from darkening the moulding more than the shipped look
         // calls for. `chassis::frame` applies the same halving for the
         // bezel's own uniform set.
-        let frame_shininess = raw_frame_shininess(cfg) as f32 * 0.5;
+        let frame_shininess = cfg.raw_frame_shininess() as f32 * 0.5;
 
         // `bloom * 2.5`, and only when there is a bloom source at all. There
         // always is one here (the pass is in the chain unconditionally), so the
@@ -207,7 +207,7 @@ impl Params {
         let frame_color = color::frame_base_color(
             // The chassis-or-screen split, through the same /256 parse
             // every colour setting here goes through.
-            color::str_to_color(raw_frame_color(cfg)),
+            color::str_to_color(cfg.raw_frame_color()),
             // The frame takes the *mixed* colours -- the same pair the
             // terminal passes take -- not the profile's stored hex.
             font_color,
@@ -215,14 +215,17 @@ impl Params {
             s.ambient_light as f32,
         );
         // In pixels, chassis-or-screen governed exactly as the frame size is.
-        let screen_radius = lint(4.0, 120.0, raw_screen_radius(cfg) as f32);
+        let screen_radius = {
+            let (lo, hi) = config::SCREEN_RADIUS_PX;
+            lint(lo as f32, hi as f32, cfg.raw_screen_radius() as f32)
+        };
 
         // Whether the frame is drawn at all. The pass is always in the
         // chain; this is the uniform that zeroes its contribution when
         // there is nothing to draw, rather than rebuilding the chain to
         // drop the pass.
         let frame_enabled =
-            if s.ambient_light > 0.0 || raw_frame_size(cfg) > 0.0 || s.screen_curvature > 0.0 {
+            if s.ambient_light > 0.0 || cfg.raw_frame_size() > 0.0 || s.screen_curvature > 0.0 {
                 1.0
             } else {
                 0.0
@@ -387,55 +390,7 @@ impl Params {
     }
 }
 
-/// A plain linear interpolation, named to match the shorthand this module's
-/// comments already use for it.
-fn lint(a: f32, b: f32, t: f32) -> f32 {
-    (1.0 - t) * a + t * b
-}
 
-/// While a chassis stands, its bezel is the frame; bare, the screen wears
-/// the moulding it came in. `app::settings::raw_frame_size` is the same
-/// rule at the pointer's end of the same question.
-fn raw_frame_size(cfg: &Config) -> f64 {
-    if cfg.general.chassis_shown {
-        cfg.chassis.frame_size
-    } else {
-        cfg.screen.frame_size
-    }
-}
-
-/// The same chassis-or-screen split as `raw_frame_size`.
-fn raw_frame_color(cfg: &Config) -> &str {
-    if cfg.general.chassis_shown {
-        &cfg.chassis.frame_color
-    } else {
-        &cfg.screen.frame_color
-    }
-}
-
-/// The same split.
-fn raw_frame_shininess(cfg: &Config) -> f64 {
-    if cfg.general.chassis_shown {
-        cfg.chassis.frame_shininess
-    } else {
-        cfg.screen.frame_shininess
-    }
-}
-
-/// The same split.
-fn raw_screen_radius(cfg: &Config) -> f64 {
-    if cfg.general.chassis_shown {
-        cfg.chassis.screen_radius
-    } else {
-        cfg.screen.screen_radius
-    }
-}
-
-/// The standard smoothstep: GLSL's cubic Hermite interpolation.
-fn smoothstep(min: f32, max: f32, value: f32) -> f32 {
-    let x = ((value - min) / (max - min)).clamp(0.0, 1.0);
-    x * x * (3.0 - 2.0 * x)
-}
 
 /// The rasterization mode constants, in their declared order.
 fn raster_mode(r: Rasterization) -> f32 {

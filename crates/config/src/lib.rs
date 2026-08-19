@@ -91,6 +91,49 @@ impl Config {
 
 use serde::{Deserialize, Serialize};
 
+/// The screen radius knob maps through `lint(4.0, 120.0, raw)` to pixels;
+/// this pair is that range's one home.
+pub const SCREEN_RADIUS_PX: (f64, f64) = (4.0, 120.0);
+
+impl Config {
+    /// While a chassis stands, its bezel is the frame; bare, the screen
+    /// wears the moulding it came in. These four accessors are that
+    /// split's one home: whichever of chassis or screen is showing
+    /// governs, at the pointer's end and the picture's end alike.
+    pub fn raw_frame_size(&self) -> f64 {
+        if self.general.chassis_shown {
+            self.chassis.frame_size
+        } else {
+            self.screen.frame_size
+        }
+    }
+
+    pub fn raw_screen_radius(&self) -> f64 {
+        if self.general.chassis_shown {
+            self.chassis.screen_radius
+        } else {
+            self.screen.screen_radius
+        }
+    }
+
+    pub fn raw_frame_color(&self) -> &str {
+        if self.general.chassis_shown {
+            &self.chassis.frame_color
+        } else {
+            &self.screen.frame_color
+        }
+    }
+
+    pub fn raw_frame_shininess(&self) -> f64 {
+        if self.general.chassis_shown {
+            self.chassis.frame_shininess
+        } else {
+            self.screen.frame_shininess
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
