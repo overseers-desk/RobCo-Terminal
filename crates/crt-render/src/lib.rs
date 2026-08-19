@@ -102,7 +102,6 @@ pub mod chain;
 pub use chassis::color;
 pub mod degauss;
 pub mod device;
-pub mod oracle;
 pub mod pacing;
 pub mod params;
 pub mod preset;

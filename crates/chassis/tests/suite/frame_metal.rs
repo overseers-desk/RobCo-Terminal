@@ -1,7 +1,7 @@
 //! Standalone proof + done-test for `shaders/metal/frame_metal.slang`.
 //! Fully analytic, no `sin` in this shader either.
 
-use chassis::oracle;
+use oracle;
 use crt_burnin::headless;
 use std::path::PathBuf;
 

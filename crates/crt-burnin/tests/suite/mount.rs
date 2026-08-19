@@ -26,7 +26,7 @@ const BURN_IN: f64 = 0.25;
 const GHOST: Cell = Cell::new(8, 24, 24, 40);
 const STEADY: Cell = Cell::new(40, 24, 56, 40);
 
-const PASSTHROUGH: &str = include_str!("../shaders/passthrough.slang");
+const PASSTHROUGH: &str = include_str!("../../shaders/passthrough.slang");
 
 fn gpu() -> &'static Gpu {
     use std::sync::OnceLock;

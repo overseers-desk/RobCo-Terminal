@@ -1,19 +1,17 @@
-//! CPU-side reimplementations of the three procedural metal shaders' math,
-//! used as the independent-formula side of their done-tests: the GPU renders
-//! a pixel, this module computes what that pixel should be from the same
-//! closed-form expressions the shader uses, and the test compares the two.
+//! CPU reimplementations of the workspace's shader math, the
+//! independent-formula side of the render done-tests: the GPU renders a
+//! pixel, this crate computes what that pixel should be from the same
+//! closed-form expressions, and a test compares the two. Every function is
+//! a line-for-line translation of its `.slang` source (the metal-surface
+//! family in `crates/chassis/shaders/metal/metal_common.slang` and its
+//! consumers, the glass chain's `terminal_frame` and bloom passes), not an
+//! independent re-derivation.
 //!
-//! Every function here is a line-for-line translation of the corresponding
-//! `.slang` file under `shaders/metal/`, not an independent re-derivation.
-//!
-//! These bodies were written for `crt::oracle` and moved here whole
-//! when this crate came into being: the chain stops at the glass, and metal is
-//! chrome. Two of them, [`distort_coordinates`] and [`rounded_rect_sdf_pixels`],
-//! stayed behind as well as coming here, because the shaders duplicate them
-//! too -- `terminal_frame.frag` is an in-chain pass and `frame_metal.frag` is
-//! chrome, and each `.frag` carries its own copy of both. Reaching across for
-//! them would put a dependency on the glass chain into the chrome, which is
-//! the one edge the handoff exists to avoid.
+//! Dev-dependency only: nothing here ships in a binary. The uniform payload
+//! structs the functions take live with the production code in
+//! [`chassis::params`] and are re-exported here for the tests' convenience.
+
+pub use chassis::params::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
 
 pub fn hash12(p: [f32; 2]) -> f32 {
     let mut p3 = [
@@ -64,12 +62,6 @@ pub fn fbm(mut p: [f32; 2]) -> f32 {
         a *= 0.5;
     }
     s
-}
-
-pub struct MetalParams {
-    pub grain_amount: f32,
-    pub mottle_amount: f32,
-    pub scratch_amount: f32,
 }
 
 /// `metalField`, shared verbatim by the three `.slang` passes
@@ -173,15 +165,6 @@ fn dot2(a: [f32; 2], b: [f32; 2]) -> f32 {
     a[0] * b[0] + a[1] * b[1]
 }
 
-pub struct ChassisMetalParams {
-    pub field_scale: [f32; 2],
-    pub field_offset: [f32; 2],
-    pub light_dir: [f32; 2],
-    pub chassis_color: [f32; 3],
-    pub metal: MetalParams,
-    pub vignette_strength: f32,
-}
-
 /// `chassis_metal.frag::main`, exact (no `sin`-based noise here beyond
 /// `metal_field`'s own hash noise, which is deterministic and does not use
 /// `sin`, so this oracle is bit-comparable modulo float rounding).
@@ -239,21 +222,6 @@ fn rrect_px(p: [f32; 2], top_left: [f32; 2], bottom_right: [f32; 2], rad: f32) -
     ];
     let dp = [d[0].max(0.0), d[1].max(0.0)];
     (dp[0] * dp[0] + dp[1] * dp[1]).sqrt() + d[0].max(d[1]).min(0.0) - rad
-}
-
-pub struct PlateMetalParams {
-    pub size_px: [f32; 2],
-    pub light_dir: [f32; 2],
-    pub base_color: [f32; 3],
-    pub highlight_color: [f32; 3],
-    pub shadow_color: [f32; 3],
-    pub corner_radius: f32,
-    pub bevel_px: f32,
-    pub metal: MetalParams,
-    pub vignette_strength: f32,
-    pub wear_amount: f32,
-    pub seam_gain: f32,
-    pub seed: f32,
 }
 
 /// `plate_metal.frag::main`, exact (same noise-determinism caveat as
@@ -354,30 +322,6 @@ pub fn plate_metal(uv: [f32; 2], p: &PlateMetalParams) -> ([f32; 3], f32) {
     col = [col[0] * vig, col[1] * vig, col[2] * vig];
 
     (col, coverage)
-}
-
-pub struct FrameMetalParams {
-    pub screen_curvature: f32,
-    pub frame_size: f32,
-    pub screen_radius: f32,
-    pub ambient_light: f32,
-    pub frame_shininess: f32,
-    pub light_dir: [f32; 2],
-    pub bezel_color: [f32; 3],
-    pub chassis_color: [f32; 3],
-    pub ridge_color: [f32; 3],
-    pub bezel_margins: [f32; 4],
-    pub outer_radius: f32,
-    pub well_depth: f32,
-    pub well_floor: f32,
-    pub ridge_gain: f32,
-    pub metal: MetalParams,
-    pub vignette_strength: f32,
-    pub fill_gain: f32,
-    pub trough_gain: f32,
-    pub face_band_px: f32,
-    pub rim_dist_px: f32,
-    pub rim_gain: f32,
 }
 
 /// `frame_metal.frag::main`, exact (no `sin` anywhere in this shader either).
@@ -527,4 +471,105 @@ pub fn frame_metal(uv: [f32; 2], viewport: [f32; 2], p: &FrameMetalParams) -> ([
     ];
 
     (color, alpha)
+}
+
+fn rand2(v: [f32; 2]) -> f32 {
+    frac((v[0] * 12.9898 + v[1] * 78.233).sin() * 43758.5453)
+}
+
+
+pub struct TerminalFrameParams {
+    pub screen_curvature: f32,
+    pub frame_color: [f32; 4],
+    pub frame_size: f32,
+    pub screen_radius: f32,
+    pub ambient_light: f32,
+    pub frame_shininess: f32,
+}
+
+/// `terminal_frame.slang::main`, minus `noise` (a `sin`-based hash the CPU and
+/// GPU will not agree on bit-for-bit; the test that uses this oracle checks
+/// the noise-free channels and gives the noise-bearing ones a wider band).
+pub fn terminal_frame(
+    uv: [f32; 2],
+    viewport: [f32; 2],
+    p: &TerminalFrameParams,
+) -> ([f32; 3], f32) {
+    let coords = distort_coordinates(uv, p.frame_size, p.screen_curvature);
+    let screen_radius_px = p.screen_radius;
+    let edge_soft_px = 1.0f32;
+    let seam_width = screen_radius_px.max(0.5) / viewport[0].min(viewport[1]);
+
+    let e = smoothstep(-seam_width, seam_width, coords[0] - coords[1]).min(smoothstep(
+        -seam_width,
+        seam_width,
+        coords[0] - (1.0 - coords[1]),
+    ));
+    let s = smoothstep(-seam_width, seam_width, coords[1] - coords[0]).min(smoothstep(
+        -seam_width,
+        seam_width,
+        coords[0] - (1.0 - coords[1]),
+    ));
+    let w = smoothstep(-seam_width, seam_width, coords[1] - coords[0]).min(smoothstep(
+        -seam_width,
+        seam_width,
+        (1.0 - coords[0]) - coords[1],
+    ));
+    let n = smoothstep(-seam_width, seam_width, coords[0] - coords[1]).min(smoothstep(
+        -seam_width,
+        seam_width,
+        (1.0 - coords[0]) - coords[1],
+    ));
+
+    let dist_px =
+        rounded_rect_sdf_pixels(coords, [0.0, 0.0], [1.0, 1.0], screen_radius_px, viewport);
+    let mut frame_shadow = e * 0.66 + w * 0.66 + n * 0.33 + s;
+    frame_shadow *= smoothstep(0.0, edge_soft_px * 5.0, dist_px);
+
+    let frame_alpha = 1.0 - p.frame_shininess * 0.4;
+    let in_screen = smoothstep(0.0, edge_soft_px, -dist_px);
+    let alpha = mix1(frame_alpha, mix1(0.0, 0.3, p.ambient_light), in_screen);
+    let glass = (p.ambient_light
+        * (coords[0] * (1.0 - coords[1]) * coords[1] * (1.0 - coords[0]) * 25.0)
+            .max(0.0)
+            .powf(0.5)
+        * in_screen)
+        .clamp(0.0, 1.0);
+    let frame_tint = [
+        p.frame_color[0] * frame_shadow,
+        p.frame_color[1] * frame_shadow,
+        p.frame_color[2] * frame_shadow,
+    ];
+    let color = [
+        mix1(frame_tint[0], glass, in_screen),
+        mix1(frame_tint[1], glass, in_screen),
+        mix1(frame_tint[2], glass, in_screen),
+    ];
+    (color, alpha)
+}
+
+
+/// Same computation, but returns the pieces needed to add the tolerance band
+/// the `rand2`-based noise term needs: the un-noised tint plus the noise
+/// value itself (computed the same way the shader does, `sin`-precision
+/// caveats and all -- see the test for how the tolerance is set).
+pub fn terminal_frame_noise(uv: [f32; 2], viewport: [f32; 2]) -> f32 {
+    rand2([uv[0] * viewport[0], uv[1] * viewport[1]]) - 0.5
+}
+
+
+/// Analytic Gaussian used by `bloom_h.slang` / `bloom_v.slang`: 15 taps,
+/// `i` in `[-7, 7]`, `sigma = radius / 3`. Given a 1-D input profile sampled
+/// at `sample_fn`, returns the blurred value at texel offset `0`.
+pub fn gaussian_1d_15tap(radius: f32, texel: f32, sample_fn: impl Fn(f32) -> f32) -> f32 {
+    let sigma = (radius / 3.0).max(1e-4);
+    let mut sum = 0.0f32;
+    let mut wsum = 0.0f32;
+    for i in -7..=7 {
+        let x = i as f32 * (radius / 7.0);
+        let w = (-0.5 * (x * x) / (sigma * sigma)).exp();
+        sum += sample_fn(x * texel) * w;
+        wsum += w;
+    }
+    sum / wsum.max(1e-6)
 }

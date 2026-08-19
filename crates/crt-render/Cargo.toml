@@ -41,6 +41,7 @@ wgpu = "=30.0.0"
 log = "0.4"
 
 [dev-dependencies]
+robco-shader-oracle = { path = "../shader-oracle" }
 anyhow = "1"
 # `tests/device_features.rs` asks the machine for an adapter, which is an async
 # call and the only thing left in this crate that blocks on one.

@@ -5,7 +5,7 @@
 //! ordinary float rounding) between the GPU and this crate's `oracle`
 //! module -- unlike terminal_frame's dither, no term needs to be excluded.
 
-use chassis::oracle;
+use oracle;
 use crt_burnin::headless;
 use std::path::PathBuf;
 

@@ -363,6 +363,9 @@ pub fn materialize(dir: &Path, structure: &Structure) -> io::Result<PathBuf> {
         let (file, source, _) = structure.body_at(index);
         write_if_changed(&dir.join(file), source.as_bytes())?;
     }
+    for (file, source) in chassis::shaders::INCLUDES {
+        write_if_changed(&dir.join(file), source.as_bytes())?;
+    }
     write_if_changed(&dir.join(NOISE_TEXTURE), NOISE_PNG)?;
 
     let preset = dir.join("robco.slangp");

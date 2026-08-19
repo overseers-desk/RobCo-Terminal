@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use chassis::oracle;
+use oracle;
 use chassis::shells::annunciator;
 use chassis::shells::common::Rect;
 use crt_burnin::headless;

@@ -7,7 +7,7 @@
 //! below (0.035) absorbs its full amplitude (±0.02, `noise * 0.04` with
 //! `noise` in `[-0.5, 0.5]`) plus float rounding.
 
-use crt::oracle;
+use oracle;
 use crt_burnin::headless;
 use std::path::PathBuf;
 

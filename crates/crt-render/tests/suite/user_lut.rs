@@ -17,7 +17,7 @@
 //! pixel across the whole screen once the time-derived offset walked past
 //! 1.0, which is within the first two seconds of running.
 
-mod support;
+use crate::support;
 
 use std::path::Path;
 

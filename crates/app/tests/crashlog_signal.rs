@@ -1,3 +1,6 @@
+//! Standalone on purpose, not part of `tests/suite`: this test raises a
+//! fatal signal in its own process to prove the crash logger writes a
+//! backtrace on the way down, and a merged suite binary would die with it.
 //! The crash logger, proven the only way that means anything: arm it,
 //! take a real fatal signal, and read the file that came out.
 //!

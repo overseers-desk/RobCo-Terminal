@@ -27,7 +27,7 @@
 //! `term`'s `pixel_properties::property_1_premise_a_low_resolution_face_needs_no_threshold`,
 //! and the two are the whole path between them.
 
-mod support;
+use crate::support;
 
 use std::time::{Duration, Instant};
 

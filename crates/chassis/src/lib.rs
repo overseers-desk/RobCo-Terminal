@@ -82,7 +82,7 @@ pub mod furniture;
 pub mod js;
 pub mod layout;
 pub mod metrics;
-pub mod oracle;
+pub mod params;
 pub mod paint;
 pub mod seam;
 pub mod shaders;

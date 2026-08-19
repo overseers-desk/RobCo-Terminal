@@ -7,7 +7,7 @@
 //! is fully analytic and exactly specified, so the done-tests assert
 //! against closed-form properties of a Gaussian blur.
 
-use crt::oracle;
+use oracle;
 use crt_burnin::headless;
 use std::path::PathBuf;
 

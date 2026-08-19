@@ -151,9 +151,19 @@ fn write_body(path: &Path, wanted: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// The include files any of the chassis shader bodies may pull in, written
+/// beside them under their own names.
+fn write_includes(dir: &Path) -> std::io::Result<()> {
+    for (file, source) in chassis::shaders::INCLUDES {
+        write_body(&dir.join(file), source)?;
+    }
+    Ok(())
+}
+
 /// Write the column's preset and its shader body into `dir`.
 pub fn materialize(dir: &Path) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
+    write_includes(dir)?;
     write_body(&dir.join(SLANG), chassis::shaders::CHASSIS_METAL_SLANG)?;
     let preset = dir.join(SLANGP);
     std::fs::write(&preset, PRESET)?;
@@ -163,6 +173,7 @@ pub fn materialize(dir: &Path) -> std::io::Result<PathBuf> {
 /// The same for one furniture pass; returns its preset's path.
 pub fn materialize_furniture(dir: &Path, pass: Pass) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
+    write_includes(dir)?;
     let (_, body, slangp, source) = FURNITURE
         .iter()
         .find(|(p, ..)| *p == pass)

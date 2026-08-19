@@ -67,6 +67,7 @@ bytemuck = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
 
 [dev-dependencies]
+robco-shader-oracle = { path = "../shader-oracle" }
 serde_json = "1"
 tempfile = "3"
 # The one headless GPU harness (and the machine-wide device lock that comes
