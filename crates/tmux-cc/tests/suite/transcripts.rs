@@ -8,7 +8,7 @@
 //! No tmux runs here: these are bytes on disk. `tests/live_tmux.rs` is the one
 //! that needs a server.
 
-mod support;
+use crate::support;
 
 use std::path::PathBuf;
 

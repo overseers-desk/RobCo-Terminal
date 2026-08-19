@@ -20,7 +20,7 @@
 //! [`Pacing`](crt::Pacing) advanced by hand rather than by `Instant::now()`, so
 //! the same run gives the same bytes.
 
-mod support;
+use crate::support;
 
 use std::time::{Duration, Instant};
 

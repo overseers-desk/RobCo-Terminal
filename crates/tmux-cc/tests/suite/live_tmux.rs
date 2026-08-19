@@ -10,7 +10,7 @@
 //! rather than fail: a machine without tmux is a machine that cannot run
 //! this, not a codec that is wrong.
 
-mod support;
+use crate::support;
 
 use support::{Server, TMUX};
 use tmux_cc::{Command, Event, Notification, PaneId, WindowId};

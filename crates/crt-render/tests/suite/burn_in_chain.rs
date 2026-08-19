@@ -20,7 +20,7 @@
 //! a frame's decay here, so the ramp it produced could not be told from a
 //! different one.
 
-mod support;
+use crate::support;
 
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};

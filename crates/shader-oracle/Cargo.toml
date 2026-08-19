@@ -1,0 +1,14 @@
+[package]
+name = "robco-shader-oracle"
+version = "0.1.0"
+edition = "2021"
+description = "CPU reference implementations of the shader math, for tests."
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "oracle"
+path = "src/lib.rs"
+
+[dependencies]
+robco-chassis = { path = "../chassis" }

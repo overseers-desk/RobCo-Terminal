@@ -43,6 +43,15 @@ pub const LED_MATRIX_SLANG: &str = include_str!("../shaders/led_matrix/led_matri
 /// instead of lamps. Uniforms from [`crate::furniture::tape_params`].
 pub const TAPE_LABEL_SLANG: &str = include_str!("../shaders/tape_label/tape_label.slang");
 
+/// Include files the shader sources above pull in with `#include`. A host
+/// materializing shaders to disk writes these into the same directory as
+/// the including shaders, under exactly these file names; librashader
+/// resolves includes relative to the including file.
+pub const INCLUDES: &[(&str, &str)] = &[(
+    "metal_common.slang",
+    include_str!("../shaders/metal/metal_common.slang"),
+)];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,10 +77,12 @@ mod tests {
             // mis-pointed include_str! is caught rather than silently swapped.
             assert!(src.contains(entry), "{name} metal does not declare {entry}");
         }
-        // The metalField the three share is in all three, verbatim
-        // (`crate::oracle::metal_field`).
+        // The metalField the three share lives in the include they pull in.
+        let (name, common) = INCLUDES[0];
+        assert_eq!(name, "metal_common.slang");
+        assert!(common.contains("float metalField"));
         for src in [FRAME_METAL_SLANG, CHASSIS_METAL_SLANG, PLATE_METAL_SLANG] {
-            assert!(src.contains("metalField"));
+            assert!(src.contains("#include \"metal_common.slang\""));
         }
     }
 }

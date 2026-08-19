@@ -2739,6 +2739,7 @@ dependencies = [
  "robco-config",
  "robco-crt-burnin",
  "robco-crt-render",
+ "robco-shader-oracle",
  "robco-term",
  "robco-tmux-cc",
  "serde_json",
@@ -2754,6 +2755,7 @@ version = "0.1.0"
 dependencies = [
  "robco-config",
  "robco-crt-burnin",
+ "robco-shader-oracle",
  "robco-term",
  "wgpu",
 ]
@@ -2791,8 +2793,16 @@ dependencies = [
  "robco-chassis",
  "robco-config",
  "robco-crt-burnin",
+ "robco-shader-oracle",
  "robco-term",
  "wgpu",
+]
+
+[[package]]
+name = "robco-shader-oracle"
+version = "0.1.0"
+dependencies = [
+ "robco-chassis",
 ]
 
 [[package]]

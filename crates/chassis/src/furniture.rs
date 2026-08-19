@@ -56,7 +56,7 @@ use crate::displays::{led, raster, tape};
 use crate::frame::Param;
 use crate::layout::Rect;
 use crate::metrics::{LedMetrics, ShellMetrics, TapeMetrics};
-use crate::oracle::PlateMetalParams;
+use crate::params::PlateMetalParams;
 use crate::strip::{BankStrips, StripRow};
 
 use config::Config;

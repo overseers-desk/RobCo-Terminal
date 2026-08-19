@@ -5,7 +5,7 @@
 
 use crate::color::{darker, lighter, hex_literal_to_color, Rgba};
 use crate::layout::Rect as PaintRect;
-use crate::oracle::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
+use crate::params::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
 use crate::paint::{Align, Face, Painting, RectOp, Stop, TextOp};
 
 use super::common::{field_mapping, frame_viewport_size, jitter, rgb, Rect};
@@ -77,7 +77,7 @@ pub fn plate_rect(chassis_size: (f64, f64)) -> Rect {
 /// contract). `chassis_rect`/`frame_region` feed
 /// [`field_mapping`](super::common::field_mapping) for `field_scale`/
 /// `field_offset`; the caller passes the resulting [`FieldMapping::viewport`]
-/// to `crate::oracle::chassis_metal` separately, matching that function's own
+/// to `crate::params::chassis_metal` separately, matching that function's own
 /// `(uv, viewport, params)` signature.
 pub fn chassis_metal_params(chassis: Rect, frame_region: Option<Rect>) -> ChassisMetalParams {
     let fm = field_mapping(chassis, frame_region);

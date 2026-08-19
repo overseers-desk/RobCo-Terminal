@@ -2,7 +2,7 @@
 //! Fully analytic, same reasoning as `chassis_metal.rs` (no `sin` anywhere
 //! in the surface math).
 
-use chassis::oracle;
+use oracle;
 use crt_burnin::headless;
 use std::path::PathBuf;
 

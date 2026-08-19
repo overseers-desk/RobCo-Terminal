@@ -51,7 +51,7 @@ pub mod switchboard;
 use crate::color::Rgba;
 use crate::furniture::Piece;
 use crate::layout::Rect as PaintRect;
-use crate::oracle::PlateMetalParams;
+use crate::params::PlateMetalParams;
 use crate::paint::Painting;
 use common::Rect;
 

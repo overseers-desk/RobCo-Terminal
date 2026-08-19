@@ -7,7 +7,7 @@
 //! things follow, and both are checked here on real GPU pixels:
 //!
 //! - the column's own rectangle carries the shell's metal, matching
-//!   `chassis::oracle::chassis_metal` at sampled points, which is only true if
+//!   `oracle::chassis_metal` at sampled points, which is only true if
 //!   the two sizes went into the mount the right way round (the drawn rectangle
 //!   is the bank's, `viewportSize` is the screen well's; see `app::column`);
 //! - every pixel outside that rectangle is exactly what was on the frame
@@ -19,7 +19,7 @@
 //! column: nothing is drawn at all, and the frame comes back untouched.
 
 use app::column::Column;
-use chassis::{oracle, Cabinet};
+use chassis::Cabinet;
 use config::Config;
 use crt_burnin::headless;
 

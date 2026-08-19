@@ -17,7 +17,7 @@
 //! Everything each phase does is stated in `tests/transcripts/README.md`, which
 //! this program also writes, so the fixtures cannot outlive their description.
 
-#[path = "../tests/support/mod.rs"]
+#[path = "../tests/suite/support/mod.rs"]
 mod support;
 
 use std::path::{Path, PathBuf};

@@ -16,7 +16,7 @@
 //! the taps must tighten to keep reading every one of them; the chain's
 //! default radius there is 40, and `bloom_half_*` tests use that number.
 
-use crt::oracle;
+use oracle;
 use crt_burnin::headless;
 use std::path::PathBuf;
 

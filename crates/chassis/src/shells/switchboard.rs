@@ -6,7 +6,7 @@
 use crate::color::{darker, lighter, hex_literal_to_color, with_alpha, Rgba};
 use crate::furniture::Piece;
 use crate::layout::Rect as PaintRect;
-use crate::oracle::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
+use crate::params::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
 use crate::paint::{Align, ArcOp, Face, Painting, PolygonOp, RectOp, Stop, TextOp};
 
 use super::common::{field_mapping, frame_viewport_size, rgb, Rect};
