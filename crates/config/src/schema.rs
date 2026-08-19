@@ -196,15 +196,43 @@ impl Default for GeneralSettings {
 }
 
 impl Default for ScreenSettings {
-    /// The "Default Amber" preset, first entry of the built-in screen list
-    /// and the terminal's default screen name. Startup loads this screen on
-    /// every first start (and on `--default-settings`), so it is the screen
-    /// the terminal actually ships wearing, not just the first list entry.
+    /// The "Default Amber" look, the terminal's default screen: first entry
+    /// of the built-in screen list, loaded on every first start (and on
+    /// `--default-settings`), so it is the screen the terminal actually
+    /// ships wearing. The built-in presets state themselves as diffs
+    /// against this.
     fn default() -> Self {
-        crate::presets::screen_presets()
-            .into_iter()
-            .next()
-            .expect("screen_presets() always yields at least Default Amber")
+        ScreenSettings {
+            name: "Default Amber".to_string(),
+            background_color: "#000000".to_string(),
+            font_color: "#ff8100".to_string(),
+            flickering: 0.1,
+            horizontal_sync: 0.1,
+            static_noise: 0.1,
+            chroma_color: 0.2,
+            saturation_color: 0.2,
+            screen_curvature: 0.2,
+            glowing_line: 0.2,
+            burn_in: 0.3,
+            bloom: 0.6,
+            rasterization: Rasterization::NoRasterization,
+            jitter: 0.2,
+            rgb_shift: 0.0,
+            brightness: 0.5,
+            contrast: 0.8,
+            ambient_light: 0.3,
+            window_opacity: 1.0,
+            font_name: "TERMINESS_SCALED".to_string(),
+            font_source: FontSource::BundledFonts,
+            font_width: 1.0,
+            line_spacing: 0.1,
+            margin: 0.3,
+            blinking_cursor: false,
+            frame_size: 0.1,
+            screen_radius: 0.1,
+            frame_color: "#cfcfcf".to_string(),
+            frame_shininess: 0.3,
+        }
     }
 }
 
