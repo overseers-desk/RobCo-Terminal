@@ -9,6 +9,7 @@
 //! be pointed at any binary implementing that contract.
 
 mod compare;
+mod fanout;
 mod install;
 mod mask;
 mod proc;
@@ -89,6 +90,15 @@ enum Command {
     /// Print the CLI/window contract a binary must honor for `snap` to be
     /// able to drive it at all.
     Contract,
+    /// Count a setting's non-test homes across the crates (issue #4's
+    /// fan-out measure), or with --loc the workspace's non-test line count.
+    Fanout {
+        /// The setting or term to count, e.g. `bloom`. Omit with --loc.
+        term: Option<String>,
+        /// Print the whole workspace's Rust line count via cloc instead.
+        #[arg(long)]
+        loc: bool,
+    },
     /// Drive a binary through that contract item by item and report which
     /// ones it honors, including the single-instance rule (a second
     /// invocation opens a window in the first instance).
@@ -183,6 +193,16 @@ fn main() -> anyhow::Result<()> {
         Command::Contract => {
             print!("{}", snap::CONTRACT);
             Ok(())
+        }
+        Command::Fanout { term, loc } => {
+            if loc {
+                fanout::loc()
+            } else {
+                match term {
+                    Some(t) => fanout::fanout(&t),
+                    None => anyhow::bail!("fanout needs a term, or --loc"),
+                }
+            }
         }
         Command::Verify {
             binary,
