@@ -1,11 +1,14 @@
-//! Fan-out measurement for issue #4: how many non-test homes a setting has.
+//! Fan-out measurement for the setting-duplication report (GitHub issue #4
+//! on this repository): how many non-test homes a setting has.
 //!
 //! `fanout <term>` prints, per file under `crates/*/src` and `crates/*/shaders`,
 //! the lines mentioning the term after stripping inline `#[cfg(test)]` modules,
 //! then a total. `fanout --loc` prints the same non-test line count for the
-//! whole workspace via `cloc`. Counts here are trend evidence, read beside an
-//! untouched control term; the structural verdict comes from the add-one and
-//! delete-one drills, which count files a maintainer must edit.
+//! whole workspace via `cloc`. Counts here are trend evidence, read beside a
+//! count of some setting the change under measure never touched, so a rise
+//! from mere editing churn shows in both. The structural verdict is taken
+//! separately, by adding one throwaway setting end to end (or deleting a
+//! real one) and counting the files a maintainer had to edit.
 
 use anyhow::{Context, Result};
 use std::path::Path;
