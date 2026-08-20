@@ -7,7 +7,7 @@
 //!
 //! The rows are a fixed-size window onto the slot space, paged: the numerals
 //! read 1..N on every page, the way a car stereo reuses its preset keys across
-//! FM1/FM2/FM3. The pager walks one flattened space over every machine page
+//! FM1/FM2/FM3. The pager walks one flattened space over every page
 //! the store holds, home's slots first and then each attachment's, so the
 //! same two keys are the band switch and the preset scroll. Stepping the
 //! pager views a page without stealing the air: the channel on screen stays
@@ -145,13 +145,14 @@ impl BankPager {
     /// old labels: they are never committed against the new ones. A flip of
     /// the pager is the ordinary way that happens, but not the only one. A
     /// page collapsing under a detach shortens the flattened space, and the
-    /// same index then falls in another machine's stretch of it, crossing a
+    /// same index then falls in another page's stretch of it, crossing a
     /// band with no key pressed at all; what the chord watches is therefore
     /// the stretch on view rather than the index that picked it.
     ///
     /// The page and its base slot are two derived values, and this treats
-    /// them as one question asked once. The host calls it after anything that
-    /// could have moved either, and cancels its chord when it answers true.
+    /// them as one question asked once. The surface calls it after anything
+    /// that could have moved either, and cancels its chord when it answers
+    /// true.
     pub fn refresh<S>(&mut self, channels: &Channels<S>) -> bool {
         let view = self.view(channels);
         let now = (view.page, view.base);
@@ -377,14 +378,14 @@ mod tests {
         assert!(bank.refresh(&set), "the pager flipped");
 
         // A page collapsing shortens the flattened space, and the same index
-        // then falls in another machine's stretch of it, with no key pressed.
+        // then falls in an attachment's stretch of it, with no key pressed.
         set.select_channel(0, 1);
-        let page = set.attach_gateway(0, 1, "prime").unwrap();
-        set.open_remote_channel(page, "@1", "%1", "vim", || Some(1));
+        let page = set.attach(0, 1, "prime").unwrap();
+        set.open_tmux_pane(page, "@1", "%1", "vim", || Some(1));
         bank.ensure_visible(&set);
         bank.refresh(&set);
-        let abroad = bank.view(&set).page;
-        assert_eq!(abroad, page);
+        let attached = bank.view(&set).page;
+        assert_eq!(attached, page);
         set.collapse_page(page);
         assert!(bank.refresh(&set), "the band changed under the numerals");
     }

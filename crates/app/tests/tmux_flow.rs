@@ -11,8 +11,8 @@
 //! peeling the envelope, the codec, the gateway, and `app::channels`.
 //!
 //! Phases 8 to 11 are the interaction layer's, and they are the same shape one
-//! level up: what the user does with the attachment (typing at the anchor, a
-//! special key on its way to a far pane, a remote channel's close) asserted
+//! level up: what the user does with the attachment (typing at the gateway, a
+//! special key on its way to a pane, a pane channel's close) asserted
 //! against what tmux and the model then hold.
 //!
 //! Phase 7 is the killed-client re-attach reproduction: kill the whole appliance (not
@@ -173,7 +173,7 @@ fn rows_of(surface: &TerminalSurface) -> String {
         .map(|r| {
             format!(
                 "(page {} ch {} {:?} win {:?} pane {:?} title {:?})",
-                r.page, r.channel, r.kind, r.window_id, r.pane_id, r.title
+                r.page, r.channel, r.kind, r.tmux_window, r.tmux_pane, r.title
             )
         })
         .collect::<Vec<_>>()
@@ -208,7 +208,7 @@ fn attach(surface: &mut TerminalSurface, server: &Server) -> u32 {
             && s.channels()
                 .rows()
                 .iter()
-                .filter(|r| r.kind == ChannelKind::Remote)
+                .filter(|r| r.kind == ChannelKind::TmuxPane)
                 .count()
                 == windows
     });
@@ -241,8 +241,9 @@ fn typed(surface: &mut TerminalSurface, letter: &str) {
     );
 }
 
-/// The short host name tmux reports, which is what the anchor is named for.
-fn host() -> String {
+/// The short hostname tmux reports, which is what the gateway row is named
+/// for.
+fn tmux_host() -> String {
     String::from_utf8_lossy(
         &OsCommand::new("hostname")
             .arg("-s")
@@ -264,7 +265,7 @@ fn row_of<'a>(
         .channels()
         .rows()
         .iter()
-        .find(|r| r.page == page && r.window_id == window)
+        .find(|r| r.page == page && r.tmux_window == window)
 }
 
 #[test]
@@ -315,13 +316,13 @@ fn phase_1_a_fresh_attach_populates_a_channel_for_every_window_and_the_first_gre
             .unwrap_or(false)
     });
 
-    // Every pre-existing window has a channel, behind the anchor at slot 1.
+    // Every pre-existing window has a channel, behind the gateway at slot 1.
     let rows = surface.channels().rows();
-    let anchor = rows
+    let gateway = rows
         .iter()
-        .find(|r| r.kind == ChannelKind::Anchor)
-        .expect("an anchor");
-    assert_eq!((anchor.page, anchor.channel), (page, 1));
+        .find(|r| r.kind == ChannelKind::Gateway)
+        .expect("a gateway row");
+    assert_eq!((gateway.page, gateway.channel), (page, 1));
     for (slot, window) in server.windows().iter().enumerate() {
         let row = row_of(&surface, page, window).unwrap_or_else(|| {
             panic!(
@@ -342,12 +343,12 @@ fn phase_1_a_fresh_attach_populates_a_channel_for_every_window_and_the_first_gre
         (page, 2)
     );
 
-    // The anchor is titled for the machine the session is on.
-    let host = host();
-    pump_until(&mut surface, "the host to resolve", |s| {
+    // The gateway row is titled for the host the tmux server reported.
+    let tmux_host = tmux_host();
+    pump_until(&mut surface, "the tmux hostname to resolve", |s| {
         s.channels()
             .slot_title(page, 1)
-            .is_some_and(|t| t == format!("tmux -CC # @{host}"))
+            .is_some_and(|t| t == format!("tmux -CC # @{tmux_host}"))
     });
 
     // The client-size law, read off its real effect: tmux draws the
@@ -460,7 +461,7 @@ fn phase_4_output_flows_to_the_channel_of_its_pane_and_keystrokes_divert_back() 
     );
     assert!(!crossed(&surface, &windows[1], "word-zero"));
 
-    // The write side: keystrokes on the remote channel on the air become
+    // The write side: keystrokes on the pane channel on the air become
     // send-keys, land in the pane's cat, and echo back as %output.
     assert_eq!(surface.channels().current_channel(), 2);
     surface.write(b"typed-into-tmux\r");
@@ -502,13 +503,13 @@ fn phase_5_a_killed_window_loses_its_channel_and_the_page_stands() {
             .filter(|r| r.page == page)
             .count(),
         3,
-        "anchor and two survivors: {}",
+        "gateway and two survivors: {}",
         rows_of(&surface)
     );
 }
 
 #[test]
-fn phase_6_detach_brings_the_anchor_home_as_the_local_shell_it_never_stopped_being() {
+fn phase_6_detach_brings_the_gateway_home_as_the_pty_shell_it_never_stopped_being() {
     if !have_tmux() {
         return;
     }
@@ -516,7 +517,7 @@ fn phase_6_detach_brings_the_anchor_home_as_the_local_shell_it_never_stopped_bei
     let mut surface = surface();
     let page = attach(&mut surface, &server);
 
-    // Onto the anchor, then close it: an anchor's close is a detach, and the
+    // Onto the gateway, then close it: a gateway's close is a detach, and the
     // row comes home when %exit echoes back.
     surface.cycle_channel(-1);
     assert_eq!(
@@ -531,10 +532,7 @@ fn phase_6_detach_brings_the_anchor_home_as_the_local_shell_it_never_stopped_bei
         s.channels().pages().len() == 1 && s.channels().current_page() == 0
     });
     assert_eq!(surface.channels().current_channel(), 1, "the held slot");
-    assert_eq!(
-        surface.channels().current().unwrap().kind,
-        ChannelKind::Local
-    );
+    assert_eq!(surface.channels().current().unwrap().kind, ChannelKind::Pty);
     assert_eq!(server.clients(), 0, "tmux let the client go");
     assert!(
         !server.windows().is_empty(),
@@ -565,7 +563,7 @@ fn phase_7_issue_4_reattach_after_appliance_death_restores_every_window() {
         s.channels()
             .rows()
             .iter()
-            .filter(|r| r.page == page && r.kind == ChannelKind::Remote)
+            .filter(|r| r.page == page && r.kind == ChannelKind::TmuxPane)
             .count()
             == 3
     });
@@ -612,15 +610,15 @@ fn phase_7_issue_4_reattach_after_appliance_death_restores_every_window() {
 
 // ---- the interaction phases ----------------------------------------------
 
-/// The anchor's keyboard. Two claims, and the first is what makes the second
-/// safe to make: while a channel is an anchor its pty is the protocol's
+/// The gateway's keyboard. Two claims, and the first is what makes the second
+/// safe to make: while a channel is a gateway its pty is the protocol's
 /// wire, so everything typed at it is accepted and dropped, and the codec,
 /// which pairs every reply to a command it sent, is still in step
 /// afterwards. The one key with a meaning is the bare Enter: tmux itself
 /// reads an empty line as "detach", and this build sends the equivalent
 /// `detach-client` command in the codec's own voice.
 #[test]
-fn phase_8_the_anchor_swallows_what_is_typed_at_it_and_the_bare_enter_detaches() {
+fn phase_8_the_gateway_swallows_what_is_typed_at_it_and_the_bare_enter_detaches() {
     if !have_tmux() {
         return;
     }
@@ -629,7 +627,7 @@ fn phase_8_the_anchor_swallows_what_is_typed_at_it_and_the_bare_enter_detaches()
     let mut surface = surface();
     let page = attach(&mut surface, &server);
 
-    // Onto the anchor, and type a tmux command at it, whole: eleven letters
+    // Onto the gateway, and type a tmux command at it, whole: eleven letters
     // and a keytab key. The command is a real one with a visible effect, so
     // "nothing reached the wire" is a claim tmux can be asked to confirm rather
     // than one this test would have to take on trust.
@@ -663,13 +661,13 @@ fn phase_8_the_anchor_swallows_what_is_typed_at_it_and_the_bare_enter_detaches()
     assert_eq!(
         server.clients(),
         1,
-        "the anchor's keys never asked to leave"
+        "the gateway's keys never asked to leave"
     );
     assert_eq!(surface.channels().pages().len(), 2);
     assert_eq!(
         server.windows().len(),
         2,
-        "a command typed at the anchor was run: {:?}",
+        "a command typed at the gateway was run: {:?}",
         server.windows()
     );
 
@@ -684,7 +682,7 @@ fn phase_8_the_anchor_swallows_what_is_typed_at_it_and_the_bare_enter_detaches()
         s.channels()
             .rows()
             .iter()
-            .filter(|r| r.page == page && r.kind == ChannelKind::Remote)
+            .filter(|r| r.page == page && r.kind == ChannelKind::TmuxPane)
             .count()
             == 3
     });
@@ -693,13 +691,13 @@ fn phase_8_the_anchor_swallows_what_is_typed_at_it_and_the_bare_enter_detaches()
         row_of(s, page, &fresh).is_some_and(|r| !r.title.is_empty())
     });
 
-    // Now the one key that means something. Back onto the anchor, bare Enter.
+    // Now the one key that means something. Back onto the gateway, bare Enter.
     while surface.channels().current_channel() != 1 {
         surface.cycle_channel(-1);
     }
     assert_eq!(
         surface.channels().current().unwrap().kind,
-        ChannelKind::Anchor
+        ChannelKind::Gateway
     );
     press(
         &mut surface,
@@ -712,8 +710,8 @@ fn phase_8_the_anchor_swallows_what_is_typed_at_it_and_the_bare_enter_detaches()
     });
     assert_eq!(
         surface.channels().current().unwrap().kind,
-        ChannelKind::Local,
-        "the anchor came home as the shell it never stopped being"
+        ChannelKind::Pty,
+        "the gateway came home as the shell it never stopped being"
     );
     assert_eq!(server.clients(), 0, "tmux let the client go");
     assert!(!server.windows().is_empty(), "and kept the session");
@@ -730,7 +728,7 @@ fn phase_8_the_anchor_swallows_what_is_typed_at_it_and_the_bare_enter_detaches()
 /// and `^C` for the interrupt, and it prints it because the byte arrived, not
 /// because a terminal interpreted it.
 #[test]
-fn phase_10_a_keytab_key_and_a_control_key_reach_the_remote_pane_as_bytes() {
+fn phase_10_a_keytab_key_and_a_control_key_reach_the_tmux_pane_as_bytes() {
     if !have_tmux() {
         return;
     }
@@ -753,7 +751,7 @@ fn phase_10_a_keytab_key_and_a_control_key_reach_the_remote_pane_as_bytes() {
     surface.cycle_channel(1);
     assert_eq!(surface.channels().current_channel(), 3);
     assert_eq!(
-        surface.channels().current().unwrap().window_id,
+        surface.channels().current().unwrap().tmux_window,
         window,
         "the air is on the raw pane's channel"
     );
@@ -795,13 +793,13 @@ fn phase_10_a_keytab_key_and_a_control_key_reach_the_remote_pane_as_bytes() {
     assert!(!crossed.contains("^[[A") && !crossed.contains("^C"));
 }
 
-/// Closing a remote channel: the close asks tmux to kill the window and asks
+/// Closing a pane channel: the close asks tmux to kill the window and asks
 /// the user nothing (there is no confirmation anywhere in the appliance),
 /// and the row stays until `%window-close` comes back. The row is the
 /// picture of what tmux holds, so it goes when tmux says so and not when the
 /// user asks.
 #[test]
-fn phase_11_a_remote_close_asks_tmux_without_confirming_and_the_row_waits_for_the_answer() {
+fn phase_11_a_pane_close_asks_tmux_without_confirming_and_the_row_waits_for_the_answer() {
     if !have_tmux() {
         return;
     }
@@ -828,7 +826,7 @@ fn phase_11_a_remote_close_asks_tmux_without_confirming_and_the_row_waits_for_th
     assert_eq!(surface.channels().pages().len(), 2, "the page stands");
 }
 
-/// A paste at scale onto a remote channel, which is the flow that finds every
+/// A paste at scale onto a pane channel, which is the flow that finds every
 /// place the transport is assumed rather than checked.
 ///
 /// Tens of kilobytes leave as hex `send-keys` lines, three wire bytes per
@@ -844,7 +842,7 @@ fn phase_11_a_remote_close_asks_tmux_without_confirming_and_the_row_waits_for_th
 /// and the pairing is asked to prove itself afterwards, by a command whose
 /// reply has to come back on the right intent for a window to appear at all.
 #[test]
-fn phase_12_a_paste_at_scale_reaches_the_remote_pane_whole_and_the_pairing_holds() {
+fn phase_12_a_paste_at_scale_reaches_the_pane_whole_and_the_pairing_holds() {
     if !have_tmux() {
         return;
     }
@@ -869,7 +867,7 @@ fn phase_12_a_paste_at_scale_reaches_the_remote_pane_whole_and_the_pairing_holds
     // The air onto the sink's channel; a paste goes to the channel on the air.
     surface.cycle_channel(1);
     assert_eq!(
-        surface.channels().current().unwrap().window_id,
+        surface.channels().current().unwrap().tmux_window,
         window,
         "the air is on the sink pane's channel"
     );
@@ -909,7 +907,7 @@ fn phase_12_a_paste_at_scale_reaches_the_remote_pane_whole_and_the_pairing_holds
         s.channels()
             .rows()
             .iter()
-            .filter(|r| r.page == page && r.kind == ChannelKind::Remote)
+            .filter(|r| r.page == page && r.kind == ChannelKind::TmuxPane)
             .count()
             == 3
     });
@@ -921,15 +919,15 @@ fn phase_12_a_paste_at_scale_reaches_the_remote_pane_whole_and_the_pairing_holds
 
 /// A tmux window's output asks for the redraw that shows it.
 ///
-/// A remote row's own `pump` reads nothing and cannot: its bytes arrive off
-/// the anchor's wire, which the surface drains after the loop that counts what
+/// A pane row's own `pump` reads nothing and cannot: its bytes arrive off
+/// the gateway's wire, which the surface drains after the loop that counts what
 /// the channel on the air produced. Counted only there, `pump` answered zero
 /// for a tmux window however much it printed, so `Tick.redraw` was left
 /// entirely to the effects clock -- the picture arriving on the next effects
 /// frame instead of the next frame, and not at all on a window whose effects
 /// are not running.
 #[test]
-fn phase_13_a_remote_panes_output_is_counted_as_the_redraw_it_asks_for() {
+fn phase_13_a_tmux_panes_output_is_counted_as_the_redraw_it_asks_for() {
     if !have_tmux() {
         return;
     }

@@ -380,7 +380,7 @@ fn control_mode_opening_takes_the_queued_input_with_it() {
 
     // And it stays let go. The tty under this child is full and it is still
     // not reading, so a second paste this size could only end up queued --
-    // unless the write was refused outright, which is what an anchor
+    // unless the write was refused outright, which is what a gateway
     // swallowing every byte typed, pasted or reported at it means.
     session.write(&paste).expect("swallowed, not an error");
     assert_eq!(

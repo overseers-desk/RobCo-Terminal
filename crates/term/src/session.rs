@@ -228,7 +228,7 @@ impl<T: DcsTap> Session<T> {
     /// exists for -- would otherwise flush underneath the gateway and splice
     /// the user's half-line into the middle of a command line.
     ///
-    /// Dropped rather than held: an anchor swallows every byte typed, pasted
+    /// Dropped rather than held: a gateway swallows every byte typed, pasted
     /// or reported at it (`app::window::TerminalSurface::write`), and these
     /// are bytes aimed at a shell that is not there any more. Holding them
     /// would only deliver them at a detach, to a shell that never asked.
@@ -238,7 +238,7 @@ impl<T: DcsTap> Session<T> {
         }
         log::warn!(
             "tmux control mode opened with {} byte(s) still queued for the shell; \
-             the anchor swallows them rather than splicing them into the gateway's wire",
+             the gateway swallows them rather than splicing them into its wire",
             self.input.len()
         );
         self.input.clear();
@@ -316,10 +316,10 @@ impl<T: DcsTap> Session<T> {
     /// and the queue is dropped with it, because the child that would have
     /// read it is what just died.
     pub fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        // While control mode is active this fd is the gateway's, and an anchor
-        // swallows every byte typed, pasted *or reported* at it. The host
+        // While control mode is active this fd is the gateway's, and a gateway
+        // swallows every byte typed, pasted *or reported* at it. The surface
         // swallows what it knows about (`app::window::TerminalSurface::write`,
-        // gated on the row already being an anchor); this is the same rule at
+        // gated on the row already being a gateway); this is the same rule at
         // the one place that can see the envelope rather than the row, which
         // is what also catches a report the grid generates from inside the
         // pump. See [`Self::drop_input_in_control_mode`].
@@ -398,11 +398,11 @@ impl<T: DcsTap> Session<T> {
     /// tty, so there is no `PIPE_BUF` atomicity to lean on: a write here can
     /// take a prefix and refuse the rest, which is why the gateway queues
     /// (`app::tmux::Gateway::flush`) rather than assuming a whole line left.
-    /// What keeps the wire clean is that the host is single-threaded (one
+    /// What keeps the wire clean is that the surface is single-threaded (one
     /// pump, one writer running at a time, never two mid-line) and that
     /// while control mode is active nothing writes this fd but the gateway:
-    /// the channel holding this session is an anchor, and an anchor swallows
-    /// every byte typed, pasted or reported at it
+    /// the channel holding this session is the gateway, and a gateway
+    /// swallows every byte typed, pasted or reported at it
     /// (`app::window::TerminalSurface::write`).
     pub fn control_mode_writer(&mut self) -> std::io::Result<std::fs::File> {
         self.pty.writer().try_clone()

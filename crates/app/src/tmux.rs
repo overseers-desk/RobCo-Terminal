@@ -24,9 +24,9 @@
 //!   base for `%window-add` re-listings), last-announced names (the rename
 //!   sweep's diff base), and each attached pane's bootstrap gate.
 //!
-//! What it does *not* own: the channel model. Everything the host must act on
-//! comes back as a [`GatewayEvent`], and `window::TerminalSurface` wires those
-//! into `channels`' transitions.
+//! What it does *not* own: the channel model. Everything the surface must
+//! act on comes back as a [`GatewayEvent`], and `window::TerminalSurface`
+//! wires those into `channels`' transitions.
 //!
 //! # Design notes
 //!
@@ -54,7 +54,7 @@
 //!   codec unescapes them; reading them verbatim would show `a\\b` for a
 //!   window named `a\b` (the escaping defect recorded at D1a).
 //! * **The client-size debounce keeps no timer object.** The 150 ms policy is
-//!   held as a deadline the host's pump polls, since this process has an
+//!   held as a deadline the surface's pump polls, since this process has an
 //!   event loop tick to poll it on.
 
 use std::collections::HashMap;
@@ -138,13 +138,14 @@ struct PaneGate {
     backlog: Vec<u8>,
 }
 
-/// What the host must act on. Each variant names the `channels` transition
+/// What the surface must act on. Each variant names the `channels` transition
 /// (or row write) it feeds; the wiring lives in `window::TerminalSurface`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GatewayEvent {
-    /// The host name resolved: `channels::Channels::host_changed`.
+    /// The tmux server's hostname resolved:
+    /// `channels::Channels::tmux_host_changed`.
     HostChanged(String),
-    /// A window needs a channel: `channels::Channels::open_remote_channel`,
+    /// A window needs a channel: `channels::Channels::open_tmux_pane`,
     /// then [`Gateway::attach_window`] if the slot was granted.
     WindowAdded {
         window: WindowId,
@@ -155,7 +156,7 @@ pub enum GatewayEvent {
     WindowRenamed { window: WindowId, name: String },
     /// `channels::Channels::window_closed`.
     WindowClosed { window: WindowId },
-    /// The window shows a different pane now; the row's `pane_id` follows.
+    /// The window shows a different pane now; the row's `tmux_pane` follows.
     /// The screen redraw is this gateway's own (a fresh capture is already on
     /// its way), so the channel keeps its emulation and its scrollback.
     WindowPaneChanged { window: WindowId, pane: PaneId },
@@ -164,7 +165,7 @@ pub enum GatewayEvent {
     Output { pane: PaneId, bytes: Vec<u8> },
     /// The attachment is over: `channels::Channels::collapse_page`. With
     /// `lost_protocol` the envelope never closed and no `ST` is coming, so
-    /// the host must also force the anchor's parsers out of it
+    /// the surface must also force the gateway channel's parsers out of it
     /// (`term::Session::leave_control_mode`).
     Detached { lost_protocol: bool },
 }
@@ -213,7 +214,7 @@ pub struct Gateway<W: Write> {
 }
 
 impl<W: Write> Gateway<W> {
-    /// Raise the client and send the bootstrap pair at once: the host's name,
+    /// Raise the client and send the bootstrap pair at once: the server's name,
     /// then the session listing whose reply becomes the initial channels.
     /// No timer and no wait for `%session-changed`. See the module doc's
     /// first divergence.
@@ -264,9 +265,9 @@ impl<W: Write> Gateway<W> {
     ///
     /// Most of what is refused is the user's own typing on its way to a pane
     /// (`send-keys`), so a shed here is the same loss `term::Session::sheds`
-    /// counts on a local channel, one wire further out. Monotonic for the same
-    /// reason: the host compares readings and puts a badge on the glass, and
-    /// this type stays out of that decision.
+    /// counts on a PTY channel, one wire further out. Monotonic for the same
+    /// reason: the surface compares readings and puts a badge on the glass,
+    /// and this type stays out of that decision.
     pub fn sheds(&self) -> u64 {
         self.sheds
     }
@@ -305,15 +306,15 @@ impl<W: Write> Gateway<W> {
 
     /// Push the queue at the transport, keeping whatever it refuses.
     ///
-    /// The host calls this once per pump (through [`Self::poll`]), which is
-    /// what drains a queue that grew while the PTY was full: nothing else
+    /// The surface calls this once per pump (through [`Self::poll`]), which
+    /// is what drains a queue that grew while the PTY was full: nothing else
     /// wakes this type up.
     ///
     /// `WouldBlock` is backpressure and not death: the reader on the other
     /// side of this fd is tmux, and it is reading. Every other error is the
-    /// transport gone, which the anchor's own EOF path is already collapsing
-    /// the page for; there is nothing to do here but say which commands went
-    /// down with it.
+    /// transport gone, which the gateway channel's own EOF path is already
+    /// collapsing the page for; there is nothing to do here but say which
+    /// commands went down with it.
     pub fn flush(&mut self) {
         while !self.pending.is_empty() {
             match self.writer.write(&self.pending) {
@@ -339,7 +340,7 @@ impl<W: Write> Gateway<W> {
         }
     }
 
-    // ---- the host's asks ---------------------------------------------
+    // ---- the surface's asks ------------------------------------------
 
     /// Ask tmux for another window; it arrives later as `%window-add`.
     pub fn new_window(&mut self) {
@@ -387,9 +388,9 @@ impl<W: Write> Gateway<W> {
         }
     }
 
-    /// Flush time-deferred work. The host calls this once per pump, and `now`
-    /// is the pump's own clock reading: this crate keeps deadlines, never
-    /// timer objects.
+    /// Flush time-deferred work. The surface calls this once per pump, and
+    /// `now` is the pump's own clock reading: this crate keeps deadlines,
+    /// never timer objects.
     ///
     /// Three things are deferred here. The queued wire goes out (whatever the
     /// last flush left); a settled resize goes out behind it; and the
@@ -397,11 +398,12 @@ impl<W: Write> Gateway<W> {
     ///
     /// The watchdog's shape is the flags gate failing: blocks keep arriving,
     /// every one of them marked unsolicited, so no reply ever resolves an
-    /// intent: the host name never lands, no listing ever becomes a channel,
-    /// and the page stands with an anchor and nothing behind it. That is worth
-    /// a word at warn and an honest teardown, not a debug line and a dead
-    /// page. `lost_protocol`, because the peer's device string is still open
-    /// and only the anchor's parsers can be told otherwise.
+    /// intent: the server's name never lands, no listing ever becomes a
+    /// channel, and the page stands with its gateway and nothing behind it.
+    /// That is worth a word at warn and an honest teardown, not a debug line
+    /// and a dead page. `lost_protocol`, because the peer's device string is
+    /// still open and only the gateway channel's parsers can be told
+    /// otherwise.
     pub fn poll(&mut self, now: Instant) -> Vec<GatewayEvent> {
         self.flush();
         if self.resize_due.is_some_and(|due| due <= now) {
@@ -439,8 +441,8 @@ impl<W: Write> Gateway<W> {
     }
 
     /// Route a window's active pane into a channel: register its gate and ask
-    /// for its screen and cursor. The host calls this after
-    /// `open_remote_channel` granted the slot; a window refused a channel is
+    /// for its screen and cursor. The surface calls this after
+    /// `open_tmux_pane` granted the slot; a window refused a channel is
     /// never attached.
     pub fn attach_window(&mut self, window: &WindowId, pane: &PaneId) {
         // A re-attach replaces the wiring, never doubles it.
@@ -470,7 +472,7 @@ impl<W: Write> Gateway<W> {
     }
 
     /// Feed peeled DCS body bytes; act on what they complete; answer what the
-    /// host must do.
+    /// surface must do.
     pub fn advance(&mut self, bytes: &[u8]) -> Vec<GatewayEvent> {
         let mut out = Vec::new();
         for event in self.codec.feed(bytes) {
@@ -836,8 +838,8 @@ impl<W: Write> Gateway<W> {
     }
 
     /// Give up the session. `lost_protocol` marks that the peer died without
-    /// closing its device string, and the host must tell the anchor's
-    /// parsers no `ST` is coming.
+    /// closing its device string, and the surface must tell the gateway
+    /// channel's parsers no `ST` is coming.
     fn teardown(&mut self, lost_protocol: bool, out: &mut Vec<GatewayEvent>) {
         if !self.attached {
             return;
@@ -974,7 +976,7 @@ mod tests {
         s
     }
 
-    /// Walk a fresh gateway through the attach: host, one-window listing,
+    /// Walk a fresh gateway through the attach: hostname, one-window listing,
     /// rename sweep. Command numbers 0,1 are the constructor's; 2 is the
     /// sweep.
     fn attach<W: Write>(gateway: &mut Gateway<W>) -> Vec<GatewayEvent> {
@@ -1259,8 +1261,8 @@ mod tests {
         // A `.tmux.conf` error arrives during the attach burst, before any
         // listing has come back. It must reach the log rather than the
         // bootstrap gate that swallows window news at this point, and it must
-        // not consume a pending reply, or the host name lands on the listing's
-        // intent and every later reply is one behind.
+        // not consume a pending reply, or the server's name lands on the
+        // listing's intent and every later reply is one behind.
         assert_eq!(
             gateway.advance(b"%config-error /home/u/.tmux.conf:3: unknown command\r\n"),
             vec![]
@@ -1276,10 +1278,11 @@ mod tests {
         assert!(gateway.attached(), "neither line is a teardown");
     }
 
-    /// Backpressure is not data loss. A `write` on the anchor's master takes
-    /// what fits and refuses the rest; a command whose tail is dropped there
-    /// arrives at tmux joined to the next one, which is one command instead
-    /// of two and a reply short for the rest of the attachment.
+    /// Backpressure is not data loss. A `write` on the gateway channel's
+    /// master takes what fits and refuses the rest; a command whose tail is
+    /// dropped there arrives at tmux joined to the next one, which is one
+    /// command instead of two and a reply short for the rest of the
+    /// attachment.
     #[test]
     fn a_transport_that_takes_a_prefix_loses_no_command_and_keeps_the_pairing() {
         let wire = TightWire::default();
@@ -1375,8 +1378,8 @@ mod tests {
             "the shed must say so out loud; it said: {said:?}"
         );
         // Out loud in a log is not out loud on the glass. The counter is what
-        // the host reads to put a badge up (`app::window::SHED_TMUX`), so a shed
-        // that logged and did not count would be a silent one again.
+        // the surface reads to put a badge up (`app::window::SHED_TMUX`), so
+        // a shed that logged and did not count would be a silent one again.
         assert!(
             gateway.sheds() > 0,
             "the shed was logged but not counted, so nothing could show it"
@@ -1469,7 +1472,7 @@ mod tests {
     /// The bootstrap watchdog. A peer that flags every block unsolicited
     /// (the answers to this client's own commands included) leaves the
     /// gateway waiting on replies that will never be marked as such: an
-    /// anchor with no windows behind it, forever. The deadline says so out
+    /// gateway with no windows behind it, forever. The deadline says so out
     /// loud and gives the attachment up.
     #[test]
     fn a_bootstrap_no_flagged_reply_ever_answers_is_given_up_at_warn() {
@@ -1489,8 +1492,8 @@ mod tests {
         assert!(gateway.attached());
 
         // Past it, the attachment is over: `lost_protocol`, because the peer
-        // never closed its device string and only the anchor's parsers can be
-        // told that no `ST` is coming.
+        // never closed its device string and only the gateway channel's
+        // parsers can be told that no `ST` is coming.
         let events = gateway.poll(Instant::now() + BOOTSTRAP_DEADLINE);
         assert_eq!(
             events,
@@ -1532,7 +1535,7 @@ mod tests {
 
     /// A wire that says nothing at all is not this watchdog's business
     /// either: the shape it names is blocks arriving with the flags wrong,
-    /// and a silent peer is the anchor's own EOF path to notice.
+    /// and a silent peer is the gateway channel's own EOF path to notice.
     #[test]
     fn a_silent_wire_is_not_the_watchdogs_business() {
         let (mut gateway, _wire) = gateway();

@@ -32,7 +32,7 @@ const TMUX_ACTION: char = 'p';
 ///
 /// * **Detection** ([`ControlModeTap::take_detected`]): the envelope
 ///   opened. The host turns the channel this session sits on into
-///   an attachment (`app::channels::attach_gateway`) and raises a
+///   an attachment (`app::channels::Channels::attach`) and raises a
 ///   gateway over this tap's body stream.
 /// * **The body** ([`ControlModeTap::take_body`]): the bytes between
 ///   `ESC P 1000 p` and `ST`, exactly what the gateway's codec eats.

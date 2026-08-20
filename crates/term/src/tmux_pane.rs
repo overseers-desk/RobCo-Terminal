@@ -16,7 +16,7 @@
 //! * **A transport.** Keystrokes buffer in the session and the host drains
 //!   them to the gateway ([`TmuxPane::take_input`]); the session cannot
 //!   name the pane it is, because the pane id is the channel row's
-//!   (`app::channels::Row::pane_id`) and panes move under a window
+//!   (`app::channels::Row::tmux_pane`) and panes move under a window
 //!   (`%window-pane-changed`) without the session noticing.
 //! * **An EOF.** A pane ends when tmux says `%window-close`, a model
 //!   transition, not a session state.
@@ -112,8 +112,8 @@ impl TmuxPane {
 /// was a [`Session`]; each match arm says what the operation means on the
 /// side that has no native one.
 pub enum ChannelSession<T: DcsTap> {
-    /// A PTY-backed session: a shell this program spawned, or the anchor
-    /// whose PTY carries the control stream.
+    /// A PTY-backed session: a shell this program spawned, or the gateway
+    /// channel whose PTY carries the control stream.
     Pty(Session<T>),
     /// A tmux pane's screen, fed by the gateway.
     TmuxPane(TmuxPane),
