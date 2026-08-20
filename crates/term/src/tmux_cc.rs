@@ -1,11 +1,12 @@
 //! tmux control mode on the wire: the `DCS 1000 p` envelope and the tap
-//! that peels it.
+//! that peels it. Named for the protocol, as the `tmux-cc` crate is: that
+//! crate parses the lines this module peels out of the envelope.
 //!
 //! This is the whole of what `term` knows about tmux. Everything below it
 //! ([`dcs`](crate::dcs)) sees a DCS block and a tap; everything above it
 //! (`app::tmux`, `app::channels`) decides what an attachment means. In
 //! between sits [`ControlModeTap`]: it recognises the envelope, buffers the
-//! peeled body, and reports the two edges the host acts on -- the envelope
+//! peeled body, and reports the two edges the surface acts on -- the envelope
 //! opening (detection) and its closing (`ST`). It decides nothing.
 //!
 //! The envelope's body is not a VT DCS string, which is why

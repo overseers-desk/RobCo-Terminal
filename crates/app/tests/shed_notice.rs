@@ -15,7 +15,7 @@
 use std::time::{Duration, Instant};
 
 use app::overlay::{NOTICE_FADE, NOTICE_HOLD};
-use app::window::{TerminalSurface, SHED_LOCAL};
+use app::window::{TerminalSurface, SHED_PTY};
 use term::{CellSize, SessionConfig, Viewport, INPUT_CAP};
 
 const CELL_W: f64 = 9.0;
@@ -95,7 +95,7 @@ fn typing_thrown_away_by_a_full_queue_says_so_on_the_glass() {
     let now = Instant::now();
     assert_eq!(
         surface.notice().text(),
-        SHED_LOCAL,
+        SHED_PTY,
         "the shed happened and the glass said {:?}",
         surface.notice().text()
     );

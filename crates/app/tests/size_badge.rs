@@ -314,7 +314,7 @@ fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
                 opacity: 0.5,
             },
             app::badge::Entry {
-                text: app::window::SHED_LOCAL,
+                text: app::window::SHED_PTY,
                 opacity: 0.8,
             },
         ],
