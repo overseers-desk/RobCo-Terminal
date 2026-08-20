@@ -27,7 +27,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use config::io::ConfigError;
+use config::toml::ConfigError;
 use config::watch::ConfigWatcher;
 use config::Config;
 
@@ -69,7 +69,7 @@ pub fn config_dir() -> Option<PathBuf> {
 pub fn config_path() -> PathBuf {
     config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("config.toml")
+        .join(config::toml::FILE_NAME)
 }
 
 /// The path for a named profile, `--profile <name>` (the CLI
@@ -81,12 +81,14 @@ pub fn config_path_for_profile(name: &str) -> PathBuf {
     profile_path_in(&config_dir().unwrap_or_else(|| PathBuf::from(".")), name)
 }
 
-/// The one spelling of a saved look's file name, so the reader
-/// ([`config_path_for_profile`], which `--profile` goes through) and the writer
-/// ([`SettingsHandle::save_profile_as`], which saves beside the file it watches)
-/// cannot drift apart.
+/// Where a saved look sits, so the reader ([`config_path_for_profile`],
+/// which `--profile` goes through) and the writer
+/// ([`SettingsHandle::save_profile_as`], which saves beside the file it
+/// watches) cannot drift apart. The name itself is
+/// `config::toml::profile_file_name`'s to spell, alongside the config
+/// file's own; this function only says which directory it lands in.
 pub fn profile_path_in(dir: &std::path::Path, name: &str) -> PathBuf {
-    dir.join(format!("config.{name}.toml"))
+    dir.join(config::toml::profile_file_name(name))
 }
 
 /// What `--profile <name>` resolved to.
@@ -150,7 +152,7 @@ pub fn select_profile(name: &str, user_files: bool) -> Result<ProfileSelection, 
         let path = config_path_for_profile(name);
         if path.is_file() {
             // Read as a config so each axis's `name` key still selects the
-            // preset it was struck from (`config::profile::resolve_presets`),
+            // preset it was struck from (`config::toml::resolve_presets`),
             // then keep only the two axes: the general settings a saved
             // profile does not carry must come from the user's own config,
             // not from this file's absent `[general]`.
@@ -312,9 +314,9 @@ impl SettingsHandle {
             let _ = std::fs::create_dir_all(dir);
         }
 
-        // `Config::load`, not `io::load`: each axis's `name` key selects
+        // `Config::load`, not `toml::load`: each axis's `name` key selects
         // the built-in preset it was struck from, and the file's other keys
-        // override it (`config::profile::resolve_presets`). That resolution
+        // override it (`config::toml::resolve_presets`). That resolution
         // is what makes a profile "a preset pair plus overrides" rather
         // than a full blob, and it has to run on every reload, not only
         // here, or the first live edit would drop it.
@@ -383,7 +385,7 @@ impl SettingsHandle {
     /// second way to set a setting is a second answer to what the setting is.
     ///
     /// One key at a time, scalars only, and no way to reach the document
-    /// itself. That is the whole surface on purpose: `config::io::write_key`
+    /// itself. That is the whole surface on purpose: `config::toml::write_key`
     /// carries `docs/config-format.md`'s obligations (atomic temp-then-rename,
     /// comments and unknown keys preserved, only the touched key's bytes
     /// changed), and an API that can only name one key cannot break them.
@@ -393,8 +395,8 @@ impl SettingsHandle {
     /// acted on the new value (the cabinet does, so the seam does not lag the
     /// hand by a round trip) sees that reload arrive carrying what it wrote,
     /// which is a no-op rather than a jump.
-    pub fn write_key(&self, key: &str, value: config::io::Scalar) -> Result<(), ConfigError> {
-        config::io::write_key(&self.path, key, value)
+    pub fn write_key(&self, key: &str, value: config::toml::Scalar) -> Result<(), ConfigError> {
+        config::toml::write_key(&self.path, key, value)
     }
 
     /// Keep the look currently on air as a saved profile under `name`.

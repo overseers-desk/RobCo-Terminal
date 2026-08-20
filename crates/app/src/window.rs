@@ -76,7 +76,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chassis::{Cabinet, SeamCursor, SeamUpdate};
-use config::io::Scalar;
+use config::toml::Scalar;
 use config::Config;
 use crt::{Chain, Degauss, Geometry, Pacing, Params};
 use term::distortion::{self, correct_distortion, DistortionParams};
@@ -130,7 +130,7 @@ const EFFECTS_BASE_FRAME: Duration = Duration::from_micros(16_667);
 /// program spawned has stopped reading its tty and the keystrokes aimed at it
 /// are being thrown away. See [`TerminalSurface::watch_the_write_queues`] for
 /// why the wording is this short.
-pub const SHED_LOCAL: &str = "input dropped";
+pub const SHED_PTY: &str = "input dropped";
 
 /// The same, for the queue on the way to a tmux server: the tmux server is
 /// not reading its control wire, so what is being dropped is `send-keys`.
@@ -798,7 +798,7 @@ impl TerminalSurface {
         let seen = self.sheds_seen;
         self.sheds_seen = (pty, tmux);
         if pty > seen.0 {
-            self.notice.raise(SHED_LOCAL, Instant::now());
+            self.notice.raise(SHED_PTY, Instant::now());
         } else if tmux > seen.1 {
             self.notice.raise(SHED_TMUX, Instant::now());
         }
@@ -1002,8 +1002,8 @@ impl TerminalSurface {
 
     /// Detach or gateway death: the model collapses the page
     /// (`channels::Channels::collapse_page`), and a protocol lost without an
-    /// `ST` additionally forces the gateway channel's parsers out of the
-    /// envelope no one will ever close (`term::Session::leave_control_mode`).
+    /// `ST` also forces the gateway channel's parsers out of the envelope no
+    /// one will ever close (`term::Session::leave_control_mode`).
     fn collapse_page(&mut self, page: PageId, lost_protocol: bool) {
         let gateway_home_slot = self
             .channels
@@ -1380,8 +1380,8 @@ impl TerminalSurface {
     /// one `NamedKey::Enter` told apart only by `KeyEvent::location`, so
     /// matching the named key covers both.
     ///
-    /// Answers whether the key was the gateway's, which on a gateway channel is
-    /// always.
+    /// Answers whether the key was the gateway channel's, which on a gateway
+    /// channel is always.
     fn gateway_key(&mut self, logical: &winit::keyboard::Key) -> bool {
         use winit::keyboard::{Key, NamedKey};
 

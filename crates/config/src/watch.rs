@@ -2,7 +2,7 @@
 //!
 //! [`ConfigWatcher`] watches the *directory* containing the config file,
 //! not the file itself. Every writer in this design (this crate's own
-//! [`crate::io::write_document`], the Tk settings editor, `$EDITOR`, or any
+//! [`crate::toml::write_document`], the Tk settings editor, `$EDITOR`, or any
 //! third-party tool honoring the machine-write contract) writes atomically
 //! via write-temp-then-rename. On several platforms a watch held on a
 //! file's inode does not follow a rename that replaces it, so a watch on
@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::de::DeserializeOwned;
 
-use crate::io;
+use crate::toml;
 
 /// A live handle onto a typed config value that is kept up to date from the
 /// file on disk.
@@ -34,8 +34,8 @@ pub struct ConfigWatcher<T> {
 
 /// How a watcher turns the file at a path into its typed value. See
 /// [`ConfigWatcher::spawn_with_loader`] for why this is a parameter rather
-/// than always [`io::load`].
-type Loader<T> = Arc<dyn Fn(&Path) -> Result<T, io::ConfigError> + Send + Sync>;
+/// than always [`toml::load`].
+type Loader<T> = Arc<dyn Fn(&Path) -> Result<T, toml::ConfigError> + Send + Sync>;
 
 impl<T> ConfigWatcher<T>
 where
@@ -44,7 +44,7 @@ where
     /// Start watching `path`. `initial` seeds the in-memory value; it is
     /// used as-is until the first reload fires; if you want the file's
     /// *current* contents rather than a hardcoded default, call
-    /// [`crate::io::load`] yourself and pass the result in as `initial`.
+    /// [`crate::toml::load`] yourself and pass the result in as `initial`.
     pub fn spawn(path: impl AsRef<Path>, initial: T) -> notify::Result<Self> {
         Self::spawn_with(path, initial, |_| {})
     }
@@ -58,11 +58,11 @@ where
         initial: T,
         on_reload: impl FnMut(&T) + Send + 'static,
     ) -> notify::Result<Self> {
-        Self::spawn_with_loader(path, initial, io::load::<T>, on_reload)
+        Self::spawn_with_loader(path, initial, toml::load::<T>, on_reload)
     }
 
     /// Like [`spawn_with`](Self::spawn_with), but every reload goes through
-    /// `loader` instead of a plain [`crate::io::load`].
+    /// `loader` instead of a plain [`crate::toml::load`].
     ///
     /// This exists because reading the config file is not always just
     /// deserializing it: [`crate::Config::load`] resolves each axis's named
@@ -74,7 +74,7 @@ where
     pub fn spawn_with_loader(
         path: impl AsRef<Path>,
         initial: T,
-        loader: impl Fn(&Path) -> Result<T, io::ConfigError> + Send + Sync + 'static,
+        loader: impl Fn(&Path) -> Result<T, toml::ConfigError> + Send + Sync + 'static,
         on_reload: impl FnMut(&T) + Send + 'static,
     ) -> notify::Result<Self> {
         let path = path.as_ref().to_path_buf();
@@ -173,7 +173,7 @@ fn event_touches(event: &Event, path: &Path) -> bool {
 fn reload_into<T: Clone>(
     path: &Path,
     state: &Mutex<T>,
-    loader: &(dyn Fn(&Path) -> Result<T, io::ConfigError> + Send + Sync),
+    loader: &(dyn Fn(&Path) -> Result<T, toml::ConfigError> + Send + Sync),
     on_reload: &mut dyn FnMut(&T),
 ) {
     match loader(path) {
@@ -258,7 +258,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         fs::write(&path, "bloom = 0.25\n").unwrap();
 
-        let initial = io::load::<Counted>(&path).unwrap();
+        let initial = toml::load::<Counted>(&path).unwrap();
         let tally = initial.clones.clone();
         let watcher = ConfigWatcher::spawn_with(&path, initial, |_: &Counted| {})
             .expect("watcher should start");
@@ -291,14 +291,14 @@ mod tests {
         fs::write(&path, "bloom = 0.1\n").unwrap();
 
         let (tx, rx) = mpsc::channel();
-        let initial = io::load::<Settings>(&path).unwrap();
+        let initial = toml::load::<Settings>(&path).unwrap();
         let watcher = ConfigWatcher::spawn_with(&path, initial, move |value: &Settings| {
             let _ = tx.send(value.clone());
         })
         .expect("watcher should start");
 
         // Simulate the atomic write-temp-then-rename pattern every writer
-        // in this design uses (this crate's own `io::write_document`, a Tk
+        // in this design uses (this crate's own `toml::write_document`, a Tk
         // editor, or any third-party tool following the machine-write
         // contract), rather than an in-place write.
         let tmp_path = dir.path().join(".config.toml.tmp");
@@ -319,7 +319,7 @@ mod tests {
         fs::write(&path, "bloom = 0.4\n").unwrap();
 
         let (tx, rx) = mpsc::channel();
-        let initial = io::load::<Settings>(&path).unwrap();
+        let initial = toml::load::<Settings>(&path).unwrap();
         assert_eq!(initial.bloom, 0.4);
         let watcher = ConfigWatcher::spawn_with(&path, initial, move |value: &Settings| {
             let _ = tx.send(value.clone());
@@ -365,7 +365,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         fs::write(&path, "bloom = 0.2\n").unwrap();
 
-        let initial = io::load::<Settings>(&path).unwrap();
+        let initial = toml::load::<Settings>(&path).unwrap();
         let watcher = ConfigWatcher::spawn(&path, initial).expect("watcher should start");
 
         // Overwrite in place (not via the watch's event path under test);

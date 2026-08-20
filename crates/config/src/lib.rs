@@ -14,7 +14,7 @@
 //! boundary rule and the types, and `src/presets.rs` for the built-in
 //! screen and chassis presets.
 //!
-//! The plumbing half (`src/io.rs`, `src/watch.rs`) is deliberately
+//! The plumbing half (`src/toml.rs`, `src/watch.rs`) is deliberately
 //! schema-agnostic: it operates on `toml_edit::DocumentMut` and on
 //! `T: serde::de::DeserializeOwned`, never on a concrete settings type.
 //!
@@ -26,7 +26,7 @@
 //! file, because the file is the source of truth here and a roster inside a
 //! value would be a second store with its own rules.
 
-pub mod io;
+pub mod toml;
 pub mod presets;
 pub mod profile;
 pub mod schema;
@@ -56,7 +56,7 @@ pub use schema::{
 /// `[general]\nfont_scaling = 2.0` would fail to deserialize entirely (an
 /// `[general]` table missing ten other required keys), rather than filling
 /// them in from `GeneralSettings::default()`. `read_document`/`deserialize`
-/// in `io.rs` already handle a wholly-missing *file* correctly (empty
+/// in `toml.rs` already handle a wholly-missing *file* correctly (empty
 /// `DocumentMut` -> this container default fills in every field); this
 /// annotation is what extends the same guarantee to a present-but-partial
 /// table, key by key, which is the shape every real edit takes.
@@ -71,7 +71,7 @@ pub struct Config {
 impl Config {
     /// Read a config file and resolve it: the two axes' `name` keys select
     /// their built-in preset as the base, and every other key present
-    /// overrides it ([`profile::resolve_presets`]).
+    /// overrides it ([`toml::resolve_presets`]).
     ///
     /// This is the load path for *every* config file, the user's own and a
     /// `--profile` file alike, and it is one function on purpose. The same
@@ -82,10 +82,10 @@ impl Config {
     ///
     /// A missing file is the all-defaults config, per the
     /// diff-against-defaults contract; nothing here writes anything.
-    pub fn load(path: &std::path::Path) -> Result<Config, io::ConfigError> {
-        let mut doc = io::read_document(path)?;
-        profile::resolve_presets(&mut doc);
-        io::deserialize(doc)
+    pub fn load(path: &std::path::Path) -> Result<Config, toml::ConfigError> {
+        let mut doc = toml::read_document(path)?;
+        toml::resolve_presets(&mut doc);
+        toml::deserialize(doc)
     }
 }
 
@@ -136,6 +136,12 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // These tests round-trip through the `toml` crate rather than the
+    // `toml_edit` the crate itself uses, as an independent reader. Name it
+    // explicitly: the glob above brings in this crate's own `toml` module,
+    // which would otherwise win over the dependency of the same name.
+    use ::toml;
 
     #[test]
     fn general_settings_default_round_trips_through_toml() {

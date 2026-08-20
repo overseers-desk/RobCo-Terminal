@@ -4,7 +4,7 @@
 //! than a jump.
 //!
 //! Every piece is proven one crate down: `chassis::seam` holds the drag law,
-//! `chassis::Cabinet` holds the re-measurement, `config::io::write_key` holds
+//! `chassis::Cabinet` holds the re-measurement, `config::toml::write_key` holds
 //! the file mechanics. What is
 //! not proven down there is that they are wired to each other and to a real
 //! settings handle, which is what this drives.

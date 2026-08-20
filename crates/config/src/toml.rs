@@ -1,8 +1,19 @@
-//! Reading, deserializing, and atomically writing the config file.
+//! The config file's format: its name, and reading, resolving,
+//! deserializing and atomically writing it.
 //!
-//! Everything here operates on [`toml_edit::DocumentMut`] and on
-//! `T: serde::de::DeserializeOwned`; nothing in this module knows the shape
-//! of the settings themselves. That shape lives in a sibling module.
+//! The module is named for the format, so that a later change of format is
+//! a change to one module rather than a search for everything that knew
+//! TOML. [`FILE_NAME`] and [`profile_file_name`] are the file name's one
+//! home for the same reason: `.toml` is spelled here and composed
+//! everywhere else. Inside this module the format crate is always
+//! `toml_edit::`; a bare `toml::` here would name the module itself.
+//!
+//! Most of what follows operates on [`toml_edit::DocumentMut`] and on
+//! `T: serde::de::DeserializeOwned`, knowing nothing of the shape of the
+//! settings themselves; that shape lives in a sibling module. The one
+//! exception is [`resolve_presets`], which is here because it takes a
+//! document, and so would otherwise put a `toml_edit` type on the surface
+//! of a module that has no other business with the format.
 
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -11,6 +22,25 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::de::DeserializeOwned;
 use toml_edit::DocumentMut;
+
+use crate::presets;
+
+/// The config file's name, extension included. Callers that build a path
+/// to it compose from this rather than spelling `"config.toml"`
+/// themselves, so the format's own name reaches the filesystem from one
+/// place.
+pub const FILE_NAME: &str = "config.toml";
+
+/// The file name a saved profile takes, `config.<name>.toml`: a sibling of
+/// [`FILE_NAME`] carrying the same stem and extension, so a directory
+/// watch on the config file's parent also covers every profile file, and
+/// the two names cannot drift apart under a change of format.
+pub fn profile_file_name(name: &str) -> String {
+    let (stem, extension) = FILE_NAME
+        .rsplit_once('.')
+        .expect("the config file name carries an extension");
+    format!("{stem}.{name}.{extension}")
+}
 
 /// Everything that can go wrong reading, parsing, or writing the config file.
 #[derive(Debug)]
@@ -284,9 +314,57 @@ fn temp_path_for(path: &Path) -> PathBuf {
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("config.toml");
+        .unwrap_or(FILE_NAME);
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     dir.join(format!(".{file_name}.{pid}.{nanos}.{n}.tmp"))
+}
+
+/// Resolve each axis's `name` key to the built-in preset it selects, then
+/// let every key the document already carries stand as an override.
+///
+/// See `profile.rs`'s module comment for why the config file spells "which
+/// preset was this struck from" as a key rather than as a row. Applied to
+/// the parsed document before deserialization, so the file on disk stays
+/// the diff it is: nothing here writes anything.
+///
+/// A name that matches no preset leaves the axis exactly as the document
+/// has it, which resolves to the schema default plus the file's own keys --
+/// the meaning the file had before this rule existed, so a user's own
+/// profile name is not a way to lose settings.
+pub fn resolve_presets(doc: &mut DocumentMut) {
+    resolve_axis(doc, "screen", |name| {
+        presets::screen_presets()
+            .into_iter()
+            .find(|p| p.name == name)
+            .and_then(|p| toml_edit::ser::to_document(&p).ok())
+    });
+    resolve_axis(doc, "chassis", |name| {
+        presets::chassis_presets()
+            .into_iter()
+            .find(|p| p.name == name)
+            .and_then(|p| toml_edit::ser::to_document(&p).ok())
+    });
+}
+
+fn resolve_axis(doc: &mut DocumentMut, axis: &str, lookup: impl Fn(&str) -> Option<DocumentMut>) {
+    let name = match doc
+        .get(axis)
+        .and_then(|item| item.as_table_like())
+        .and_then(|table| table.get("name"))
+        .and_then(|item| item.as_str())
+    {
+        Some(name) => name.to_string(),
+        None => return,
+    };
+    let Some(base) = lookup(&name) else { return };
+    let Some(table) = doc.get_mut(axis).and_then(|item| item.as_table_like_mut()) else {
+        return;
+    };
+    for (key, value) in base.as_table().iter() {
+        if table.get(key).is_none() {
+            table.insert(key, value.clone());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -552,5 +630,111 @@ name = \"Default Amber\"\n\
         let updated = fs::read_to_string(&path).unwrap();
         assert!(updated.contains("some_future_key = \"kept\""));
         assert!(updated.contains("bloom = 0.9"));
+    }
+
+    // PRESET BASE PLUS OVERRIDES /////////////////////////////////////////
+
+    use crate::schema::{ChassisSettings, ScreenSettings};
+    use crate::Config;
+
+    fn deep_blue() -> ScreenSettings {
+        presets::screen_presets()
+            .into_iter()
+            .find(|p| p.name == "Deep Blue")
+            .expect("Deep Blue is a built-in screen preset")
+    }
+
+    fn slide_rule() -> ChassisSettings {
+        presets::chassis_presets()
+            .into_iter()
+            .find(|p| p.name == "Slide Rule")
+            .expect("Slide Rule is a built-in chassis preset")
+    }
+
+    fn resolved(text: &str) -> Config {
+        let mut doc: toml_edit::DocumentMut = text.parse().expect("test TOML should parse");
+        resolve_presets(&mut doc);
+        deserialize(doc).expect("resolved document should deserialize")
+    }
+
+    /// The heart of "a profile names a preset pair plus overrides": naming
+    /// a preset takes that preset's measures, not the default's under a
+    /// borrowed name.
+    #[test]
+    fn naming_a_preset_takes_that_presets_measures() {
+        let config = resolved("[screen]\nname = \"Deep Blue\"\n");
+        assert_eq!(config.screen, deep_blue());
+        assert_ne!(config.screen, ScreenSettings::default());
+    }
+
+    #[test]
+    fn keys_beside_the_name_override_the_preset() {
+        let config = resolved("[screen]\nname = \"Deep Blue\"\nbloom = 0.9\n");
+        let mut expected = deep_blue();
+        expected.bloom = 0.9;
+        assert_eq!(config.screen, expected);
+    }
+
+    #[test]
+    fn the_two_axes_resolve_independently() {
+        let config = resolved(
+            "[screen]\nname = \"Deep Blue\"\n\n[chassis]\nname = \"Slide Rule\"\nframe_shininess = 0.2\n",
+        );
+        assert_eq!(config.screen, deep_blue());
+        let mut expected = slide_rule();
+        expected.frame_shininess = 0.2;
+        assert_eq!(config.chassis, expected);
+    }
+
+    /// A name that is nobody's preset -- a look the user saved under their
+    /// own name -- resolves the way the file already meant, so this rule
+    /// cannot lose a setting.
+    #[test]
+    fn an_unknown_name_leaves_the_file_meaning_what_it_meant() {
+        let config = resolved("[screen]\nname = \"My Own Look\"\nbloom = 0.9\n");
+        let expected = ScreenSettings {
+            name: "My Own Look".to_string(),
+            bloom: 0.9,
+            ..ScreenSettings::default()
+        };
+        assert_eq!(config.screen, expected);
+    }
+
+    /// The zero-config launch: no name, nothing to resolve, the frozen v1
+    /// default. This rule must be invisible to a file that does not use it.
+    #[test]
+    fn an_empty_document_resolves_to_the_frozen_default() {
+        assert_eq!(resolved(""), Config::default());
+        assert_eq!(
+            resolved("[general]\nfont_scaling = 2.0\n").screen,
+            ScreenSettings::default()
+        );
+    }
+
+    /// A full blob (every measure named) resolves to itself: the base is
+    /// entirely overridden, so importing a full 28-key screen object and
+    /// writing it out as TOML is a fixed point.
+    #[test]
+    fn a_full_blob_resolves_to_itself() {
+        let mut screen = deep_blue();
+        screen.name = "Default Amber".to_string(); // names one preset, is another
+        screen.bloom = 0.123;
+        let text = toml_edit::ser::to_document(&screen).unwrap().to_string();
+        let config = resolved(&format!("[screen]\n{text}"));
+        assert_eq!(config.screen, screen);
+    }
+
+    /// Resolution is a read-time transform, so it must not rewrite the
+    /// file: the document the user keeps stays the diff they wrote.
+    #[test]
+    fn resolution_does_not_touch_the_document_the_user_keeps() {
+        let original = "[screen]\nname = \"Deep Blue\"  # my favourite\nbloom = 0.9\n";
+        let doc: toml_edit::DocumentMut = original.parse().unwrap();
+        // The saved file is whatever was parsed; only the *copy* handed to
+        // deserialization is resolved.
+        let mut copy = doc.clone();
+        resolve_presets(&mut copy);
+        assert_eq!(doc.to_string(), original);
+        assert!(copy.to_string().len() > original.len());
     }
 }
