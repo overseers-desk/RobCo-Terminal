@@ -53,7 +53,7 @@ pub enum Button {
 pub struct PointerContext {
     /// The program below turned on mouse reporting (`terminalUsesMouse`).
     pub terminal_uses_mouse: bool,
-    /// The channel is an attachment's gateway, so the glass below is the
+    /// The channel is a tmux attachment's gateway, so the glass below is the
     /// picture its shell left when it entered control mode and the pty under
     /// it is the protocol's wire.
     pub frozen_glass: bool,
