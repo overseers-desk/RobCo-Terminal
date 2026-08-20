@@ -85,8 +85,8 @@ use term::pointer::{self, on_press, PointerAction, PointerContext};
 use term::rio_vt::crosswords::Mode;
 use term::selection::{self, SelectionController};
 use term::{
-    CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, RemoteSession,
-    ResolvedFont, RioGrid, Scheme, ScrollPosition, Session, SessionConfig, Target, Viewport,
+    CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, ResolvedFont,
+    RioGrid, Scheme, ScrollPosition, Session, SessionConfig, Target, TmuxPane, Viewport,
 };
 use tmux_cc::{PaneId, WindowId};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -190,7 +190,7 @@ fn font_entry(cfg: &Config) -> &'static FontEntry {
 }
 
 /// What a channel slot holds in this binary: a PTY session carrying the
-/// tmux-detecting tap, or a remote screen the gateway feeds.
+/// tmux-detecting tap, or a tmux pane's screen the gateway feeds.
 pub type AppSession = ChannelSession<ControlModeTap>;
 
 /// Start a channel's session, or log why not. A window that cannot start a
@@ -199,7 +199,7 @@ pub type AppSession = ChannelSession<ControlModeTap>;
 /// answer `None` rather than a session.
 fn spawn(config: &SessionConfig, size: term::TermSize) -> Option<AppSession> {
     match Session::spawn(config, size, ControlModeTap::default()) {
-        Ok(s) => Some(ChannelSession::Local(s)),
+        Ok(s) => Some(ChannelSession::Pty(s)),
         Err(e) => {
             log::error!("could not start a session: {e}");
             None
@@ -326,7 +326,7 @@ pub struct TerminalSurface {
     channels: Channels<AppSession>,
     /// Each tmux attachment's client half, keyed by the page it raised. The
     /// write side is a second handle onto the anchor's PTY
-    /// (`term::Session::writer_handle`); the read side arrives through the
+    /// (`term::Session::control_mode_writer`); the read side arrives through the
     /// anchor's DCS tap on every [`TerminalSurface::pump`].
     gateways: HashMap<PageId, Gateway<std::fs::File>>,
     /// How a channel this window opens later is started: every channel gets
@@ -820,7 +820,7 @@ impl TerminalSurface {
         // attachment's wire.
         let mut detected: Vec<(PageId, u32)> = Vec::new();
         for row in self.channels.rows_mut() {
-            if let Some(session) = row.session.local_mut() {
+            if let Some(session) = row.session.pty_mut() {
                 if session.tap_mut().take_detected() {
                     detected.push((row.page, row.channel));
                 }
@@ -851,8 +851,8 @@ impl TerminalSurface {
             .channels
             .rows_mut()
             .find(|r| r.page == page_id && r.channel == 1)
-            .and_then(|r| r.session.local_mut())
-            .map(|s| s.writer_handle());
+            .and_then(|r| r.session.pty_mut())
+            .map(|s| s.control_mode_writer());
         match writer {
             Some(Ok(writer)) => {
                 self.gateways.insert(page_id, Gateway::new(writer));
@@ -889,7 +889,7 @@ impl TerminalSurface {
             .channels
             .rows_mut()
             .find(|r| r.page == page && r.kind == ChannelKind::Anchor)
-            .and_then(|r| r.session.local_mut())
+            .and_then(|r| r.session.pty_mut())
             .map(|s| {
                 let tap = s.tap_mut();
                 (tap.take_body(), tap.take_ended())
@@ -910,13 +910,13 @@ impl TerminalSurface {
         // which can end it, so what it says joins the events above.
         events.extend(gateway.poll(Instant::now()));
 
-        // The write side of the keystroke diversion: what remote sessions
+        // The write side of the keystroke diversion: what the pane sessions
         // queued becomes `send-keys`. Which keys get queued is settled before
         // they reach here, by `key_input` and `write`: an anchor's are
-        // swallowed, a remote channel's land in its `RemoteSession`.
+        // swallowed, a pane channel's land in its `TmuxPane`.
         let mut inputs: Vec<(PaneId, Vec<u8>)> = Vec::new();
         for row in self.channels.rows_mut().filter(|r| r.page == page) {
-            if let Some(remote) = row.session.remote_mut() {
+            if let Some(remote) = row.session.tmux_pane_mut() {
                 let input = remote.take_input();
                 if !input.is_empty() {
                     if let Some(pane) = PaneId::parse(&row.pane_id) {
@@ -941,7 +941,7 @@ impl TerminalSurface {
                         window.as_str(),
                         pane.as_str(),
                         &name,
-                        || Some(ChannelSession::Remote(RemoteSession::new(size, scrollback))),
+                        || Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback))),
                     );
                     if opened {
                         gateway.attach_window(&window, &pane);
@@ -978,7 +978,7 @@ impl TerminalSurface {
                         .find(|r| r.page == page && r.pane_id == pane.as_str());
                     if let Some(row) = row {
                         let on_air = (row.page, row.channel) == current;
-                        if let Some(remote) = row.session.remote_mut() {
+                        if let Some(remote) = row.session.tmux_pane_mut() {
                             remote.feed(&bytes);
                             if on_air {
                                 visible += bytes.len();
@@ -1001,7 +1001,7 @@ impl TerminalSurface {
     /// Detach or gateway death: the model collapses the page
     /// (`channels::Channels::collapse_page`), and a protocol lost without an
     /// `ST` additionally forces the anchor's parsers out of the envelope no
-    /// one will ever close (`term::Session::exit_dcs`).
+    /// one will ever close (`term::Session::leave_control_mode`).
     fn collapse_tmux_page(&mut self, page: PageId, lost_protocol: bool) {
         let home_slot = self
             .channels
@@ -1016,8 +1016,8 @@ impl TerminalSurface {
                     .channels
                     .rows_mut()
                     .find(|r| r.page == 0 && r.channel == slot);
-                if let Some(session) = row.and_then(|r| r.session.local_mut()) {
-                    session.exit_dcs();
+                if let Some(session) = row.and_then(|r| r.session.pty_mut()) {
+                    session.leave_control_mode();
                 }
             }
         }

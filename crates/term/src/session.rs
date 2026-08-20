@@ -156,7 +156,7 @@ impl<T: DcsTap> Session<T> {
         // The other direction first: whatever a paste left queued when the
         // tty's buffer filled ([`Session::write`]). A pump is the only thing
         // that comes back to it.
-        self.drop_input_the_gateway_owns();
+        self.drop_input_in_control_mode();
         if let Err(e) = self.flush_input() {
             log::warn!("could not write to the pty: {e}");
         }
@@ -211,7 +211,7 @@ impl<T: DcsTap> Session<T> {
         // the loop just above: this is the one call that stands between the
         // control mode starting and the gateway's first write, which the host
         // makes later in this same pump.
-        self.drop_input_the_gateway_owns();
+        self.drop_input_in_control_mode();
 
         self.expire_sync();
         out
@@ -221,7 +221,7 @@ impl<T: DcsTap> Session<T> {
     /// control-mode wire.
     ///
     /// The gateway writes that fd through its own `dup` while this queue
-    /// writes it here, and the module doc above [`Session::writer_handle`]
+    /// writes it here, and the module doc above [`Session::control_mode_writer`]
     /// rests on nothing but the gateway writing it while control mode is
     /// active. A tail left over from before the envelope opened -- the rest of
     /// a paste the tty's buffer refused, which is exactly the case this queue
@@ -232,8 +232,8 @@ impl<T: DcsTap> Session<T> {
     /// or reported at it (`app::window::TerminalSurface::write`), and these
     /// are bytes aimed at a shell that is not there any more. Holding them
     /// would only deliver them at a detach, to a shell that never asked.
-    fn drop_input_the_gateway_owns(&mut self) {
-        if self.input.is_empty() || !self.dcs.tap().owns_the_wire() {
+    fn drop_input_in_control_mode(&mut self) {
+        if self.input.is_empty() || !self.dcs.tap().in_control_mode() {
             return;
         }
         log::warn!(
@@ -322,8 +322,8 @@ impl<T: DcsTap> Session<T> {
         // gated on the row already being an anchor); this is the same rule at
         // the one place that can see the envelope rather than the row, which
         // is what also catches a report the grid generates from inside the
-        // pump. See [`Self::drop_input_the_gateway_owns`].
-        if self.dcs.tap().owns_the_wire() {
+        // pump. See [`Self::drop_input_in_control_mode`].
+        if self.dcs.tap().in_control_mode() {
             return Ok(());
         }
         if self.input.len() >= INPUT_CAP {
@@ -404,7 +404,7 @@ impl<T: DcsTap> Session<T> {
     /// the channel holding this session is an anchor, and an anchor swallows
     /// every byte typed, pasted or reported at it
     /// (`app::window::TerminalSurface::write`).
-    pub fn writer_handle(&mut self) -> std::io::Result<std::fs::File> {
+    pub fn control_mode_writer(&mut self) -> std::io::Result<std::fs::File> {
         self.pty.writer().try_clone()
     }
 
@@ -416,7 +416,7 @@ impl<T: DcsTap> Session<T> {
     /// shell prints as DCS body. Feeding a synthetic `ST` to both
     /// consumers returns them to ground; at ground it is a no-op, so
     /// calling it on a healthy session costs nothing.
-    pub fn exit_dcs(&mut self) {
+    pub fn leave_control_mode(&mut self) {
         const ST: &[u8] = b"\x1b\\";
         self.dcs.feed(ST);
         self.processor.advance(&mut self.term, ST);
@@ -480,7 +480,7 @@ impl<T: DcsTap> Session<T> {
         self.dcs.tap()
     }
 
-    /// The tap, mutably. The shipped tap ([`crate::dcs::ControlModeTap`])
+    /// The tap, mutably. The shipped tap ([`crate::tmux_cc::ControlModeTap`])
     /// hands its edges and its peeled body over through draining `take_`
     /// methods, so reaching it through `&self` is not enough.
     pub fn tap_mut(&mut self) -> &mut T {

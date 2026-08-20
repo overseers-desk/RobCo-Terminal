@@ -2,7 +2,7 @@
 //!
 //! This sits on the seams the earlier waves shaped: the codec (`tmux_cc`)
 //! turns lines into typed events and commands into wire text,
-//! `term::dcs::ControlModeTap` peels the DCS envelope, and `crate::channels`
+//! `term::tmux_cc::ControlModeTap` peels the DCS envelope, and `crate::channels`
 //! holds the slot model. What is left, and what this type is, is the policy
 //! the codec refuses to carry: which commands to send, what each reply
 //! means, the per-pane bootstrap gate, and the window bookkeeping behind the
@@ -15,7 +15,7 @@
 //! * the codec, and the intent map naming what each in-flight command's reply
 //!   is for, since the codec already pairs replies to [`CommandId`]s;
 //! * the transport's write side: a handle onto the PTY that carries the
-//!   control session (`term::Session::writer_handle`), plus the queue of what
+//!   control session (`term::Session::control_mode_writer`), plus the queue of what
 //!   that handle would not take yet ([`Gateway::flush`]). Commands go out the
 //!   moment policy decides, as far as the transport allows; the read side
 //!   stays the session's, arriving here as peeled body bytes through
@@ -43,7 +43,7 @@
 //!   up.
 //! * **The transport is queued, not assumed.** The PTY master this writes to
 //!   is `O_NONBLOCK` (`teletypewriter` sets it, and the `dup` behind
-//!   `writer_handle` shares the file-status flags), so a write under
+//!   `control_mode_writer` shares the file-status flags), so a write under
 //!   backpressure takes a prefix and refuses the rest. A `write_all` there
 //!   drops the tail of a command line and the next command is read joined to
 //!   its stump: one command out of two, a reply short, and the pairing off
@@ -160,12 +160,12 @@ pub enum GatewayEvent {
     /// its way), so the channel keeps its emulation and its scrollback.
     WindowPaneChanged { window: WindowId, pane: PaneId },
     /// Bytes for the channel row carrying this pane:
-    /// `term::RemoteSession::feed`.
+    /// `term::TmuxPane::feed`.
     Output { pane: PaneId, bytes: Vec<u8> },
     /// The attachment is over: `channels::Channels::collapse_page`. With
     /// `lost_protocol` the envelope never closed and no `ST` is coming, so
     /// the host must also force the anchor's parsers out of it
-    /// (`term::Session::exit_dcs`).
+    /// (`term::Session::leave_control_mode`).
     Detached { lost_protocol: bool },
 }
 

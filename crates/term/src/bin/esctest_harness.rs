@@ -13,7 +13,7 @@
 //! The loop is the one the application owns the bytes for: they are read
 //! from the PTY and handed to `Processor::advance` *and* to a second parser of
 //! our own. That second parser is where the app taps tmux control mode
-//! (`term::dcs::ControlModeTap`); here it earns its keep because window operations
+//! (`term::tmux_cc::ControlModeTap`); here it earns its keep because window operations
 //! (`CSI 8 ; rows ; cols t`, the resize esctest performs before every single
 //! test) are the terminal *application's* business and rio-vt passes them
 //! through unhandled.

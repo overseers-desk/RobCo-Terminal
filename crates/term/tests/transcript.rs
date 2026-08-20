@@ -13,7 +13,9 @@
 
 use std::time::{Duration, Instant};
 
-use term::{live_text, CellSize, ControlModeTap, NoopTap, Session, SessionConfig, Viewport};
+use term::{
+    live_text, CellSize, ControlModeTap, DcsTap, NoopTap, Session, SessionConfig, Viewport,
+};
 
 /// `sh` with no rc file and a fixed prompt: the screen is then a
 /// function of what we sent and nothing else.

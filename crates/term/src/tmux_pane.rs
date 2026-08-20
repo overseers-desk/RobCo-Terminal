@@ -1,24 +1,24 @@
-//! The session variant a tmux window feeds: `%output` in, `send-keys` out.
+//! The session variant a tmux pane feeds: `%output` in, `send-keys` out.
 //!
 //! [`super::session::Session`] is PTY-only: its read loop, its EOF law and
-//! its resize all assume a child on a master fd. A remote channel has none of
+//! its resize all assume a child on a master fd. A tmux pane has none of
 //! that: its bytes arrive as `%output` payloads peeled off the gateway's
 //! control stream, and its keystrokes leave as `send-keys` commands on that
 //! same stream. Bending `app::channels` around that difference was a design
 //! that was ruled out; the variant lives here instead, beside the
 //! PTY session, and [`ChannelSession`] is the one type a channel slot holds.
 //!
-//! What a [`RemoteSession`] deliberately does not have:
+//! What a [`TmuxPane`] deliberately does not have:
 //!
 //! * **A DCS tap.** The envelope lives on the gateway's own PTY; a pane's
-//!   payload is already inside it. A `tmux -CC` run *inside* a remote window
+//!   payload is already inside it. A `tmux -CC` run *inside a tmux pane*
 //!   is tmux's own nesting problem, refused by tmux itself.
 //! * **A transport.** Keystrokes buffer in the session and the host drains
-//!   them to the gateway ([`RemoteSession::take_input`]); the session cannot
+//!   them to the gateway ([`TmuxPane::take_input`]); the session cannot
 //!   name the pane it is, because the pane id is the channel row's
 //!   (`app::channels::Row::pane_id`) and panes move under a window
 //!   (`%window-pane-changed`) without the session noticing.
-//! * **An EOF.** A remote window ends when tmux says `%window-close`, a model
+//! * **An EOF.** A pane ends when tmux says `%window-close`, a model
 //!   transition, not a session state.
 
 use std::time::Instant;
@@ -33,7 +33,7 @@ use crate::session::{Pumped, Session, Term};
 use crate::size::TermSize;
 
 /// A channel fed by a tmux pane rather than a PTY.
-pub struct RemoteSession {
+pub struct TmuxPane {
     term: Term,
     processor: Processor,
     size: TermSize,
@@ -41,7 +41,7 @@ pub struct RemoteSession {
     input: Vec<u8>,
 }
 
-impl RemoteSession {
+impl TmuxPane {
     /// An empty screen of the glass's geometry.
     ///
     /// The geometry is the glass's and not the pane's, deliberately: every
@@ -106,35 +106,35 @@ impl RemoteSession {
     }
 }
 
-/// What a channel slot holds: a shell of this machine's, or a tmux window.
+/// What a channel slot holds: a PTY, or a tmux pane.
 ///
 /// The methods are the surface `app::window` already drove when every slot
 /// was a [`Session`]; each match arm says what the operation means on the
 /// side that has no native one.
 pub enum ChannelSession<T: DcsTap> {
-    /// A PTY-backed session: a local shell, or the anchor whose PTY carries
-    /// the control stream.
-    Local(Session<T>),
-    /// A tmux window's screen, fed by the gateway.
-    Remote(RemoteSession),
+    /// A PTY-backed session: a shell this program spawned, or the anchor
+    /// whose PTY carries the control stream.
+    Pty(Session<T>),
+    /// A tmux pane's screen, fed by the gateway.
+    TmuxPane(TmuxPane),
 }
 
 impl<T: DcsTap> ChannelSession<T> {
-    /// Drain the PTY. A remote session has none; its bytes arrive through
-    /// [`RemoteSession::feed`] on the gateway's pump, so this is idle.
+    /// Drain the PTY. A tmux pane has none; its bytes arrive through
+    /// [`TmuxPane::feed`] on the gateway's pump, so this is idle.
     pub fn pump(&mut self) -> Pumped {
         match self {
-            ChannelSession::Local(s) => s.pump(),
-            ChannelSession::Remote(_) => Pumped::default(),
+            ChannelSession::Pty(s) => s.pump(),
+            ChannelSession::TmuxPane(_) => Pumped::default(),
         }
     }
 
-    /// Bytes from the keyboard (or a paste, or a mouse report). Local goes
-    /// to the child; remote queues for `send-keys`.
+    /// Bytes from the keyboard (or a paste, or a mouse report). A PTY's go
+    /// to the child; a pane's queue for `send-keys`.
     pub fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
         match self {
-            ChannelSession::Local(s) => s.write(bytes),
-            ChannelSession::Remote(s) => {
+            ChannelSession::Pty(s) => s.write(bytes),
+            ChannelSession::TmuxPane(s) => {
                 s.write(bytes);
                 Ok(())
             }
@@ -143,8 +143,8 @@ impl<T: DcsTap> ChannelSession<T> {
 
     pub fn resize(&mut self, size: TermSize) -> std::io::Result<()> {
         match self {
-            ChannelSession::Local(s) => s.resize(size),
-            ChannelSession::Remote(s) => {
+            ChannelSession::Pty(s) => s.resize(size),
+            ChannelSession::TmuxPane(s) => {
                 s.resize(size);
                 Ok(())
             }
@@ -153,54 +153,54 @@ impl<T: DcsTap> ChannelSession<T> {
 
     pub fn term(&self) -> &Term {
         match self {
-            ChannelSession::Local(s) => s.term(),
-            ChannelSession::Remote(s) => s.term(),
+            ChannelSession::Pty(s) => s.term(),
+            ChannelSession::TmuxPane(s) => s.term(),
         }
     }
 
     pub fn term_mut(&mut self) -> &mut Term {
         match self {
-            ChannelSession::Local(s) => s.term_mut(),
-            ChannelSession::Remote(s) => s.term_mut(),
+            ChannelSession::Pty(s) => s.term_mut(),
+            ChannelSession::TmuxPane(s) => s.term_mut(),
         }
     }
 
     /// When the pending synchronized update expires. Only a PTY session
-    /// holds one: a remote screen's BSU/ESU pass through tmux, which runs
-    /// its own timeout server-side.
+    /// holds one: a pane's BSU/ESU pass through tmux, which runs its own
+    /// timeout server-side.
     pub fn sync_deadline(&self) -> Option<Instant> {
         match self {
-            ChannelSession::Local(s) => s.sync_deadline(),
-            ChannelSession::Remote(_) => None,
+            ChannelSession::Pty(s) => s.sync_deadline(),
+            ChannelSession::TmuxPane(_) => None,
         }
     }
 
     /// How many writes this slot has thrown away for want of queue
     /// ([`Session::sheds`]).
     ///
-    /// Zero on a remote window, and not because nobody counted: a remote
-    /// session's input queue is drained whole by the host on every pump
-    /// ([`RemoteSession::take_input`]), so it holds one pump's typing and has no
+    /// Zero on a tmux pane, and not because nobody counted: a pane's
+    /// input queue is drained whole by the host on every pump
+    /// ([`TmuxPane::take_input`]), so it holds one pump's typing and has no
     /// cap to shed against. What can shed on that path is the gateway's own
     /// command queue, one level up, and the gateway counts that itself.
     pub fn sheds(&self) -> u64 {
         match self {
-            ChannelSession::Local(s) => s.sheds(),
-            ChannelSession::Remote(_) => 0,
+            ChannelSession::Pty(s) => s.sheds(),
+            ChannelSession::TmuxPane(_) => 0,
         }
     }
 
-    pub fn local_mut(&mut self) -> Option<&mut Session<T>> {
+    pub fn pty_mut(&mut self) -> Option<&mut Session<T>> {
         match self {
-            ChannelSession::Local(s) => Some(s),
-            ChannelSession::Remote(_) => None,
+            ChannelSession::Pty(s) => Some(s),
+            ChannelSession::TmuxPane(_) => None,
         }
     }
 
-    pub fn remote_mut(&mut self) -> Option<&mut RemoteSession> {
+    pub fn tmux_pane_mut(&mut self) -> Option<&mut TmuxPane> {
         match self {
-            ChannelSession::Local(_) => None,
-            ChannelSession::Remote(s) => Some(s),
+            ChannelSession::Pty(_) => None,
+            ChannelSession::TmuxPane(s) => Some(s),
         }
     }
 }
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn fed_bytes_land_on_the_grid_and_input_queues_until_drained() {
-        let mut s = RemoteSession::new(size(), 100);
+        let mut s = TmuxPane::new(size(), 100);
         s.feed(b"hello \x1b[1mworld\x1b[0m");
         assert!(viewport_text(s.term())[0].starts_with("hello world"));
 
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn a_resize_reflows_the_grid_alone() {
-        let mut s = RemoteSession::new(size(), 100);
+        let mut s = TmuxPane::new(size(), 100);
         s.feed(b"abc");
         s.resize(TermSize::new(40, 10, 9, 18));
         assert_eq!(s.term().grid.columns(), 40);

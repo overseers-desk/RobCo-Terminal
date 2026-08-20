@@ -2,7 +2,7 @@
 //!
 //! Everything that is a terminal and nothing that is a window: the rio-vt
 //! session, the PTY read loop driving it, the grid read-back seam, the DCS
-//! tap the tmux gateway hangs on, the remote session a tmux window feeds,
+//! tap the tmux gateway hangs on, the session a tmux pane feeds,
 //! and the glyph path that draws a screen of cells. `crates/app` owns the
 //! window, the surface and the event loop, and calls in here.
 //!
@@ -22,6 +22,8 @@
 //! Layering:
 //!
 //! * [`session`] / [`dcs`] / [`size`]: the emulation core and its PTY loop.
+//! * [`tmux_cc`] / [`tmux_pane`]: the tmux control-mode envelope on the
+//!   wire, and the session variant a tmux pane feeds.
 //! * [`grid`]: the grid seam. `GridView` is the one definition of what a
 //!   line says; [`rio_grid`] adapts rio-vt's `Crosswords` onto it and carries
 //!   the read-back-as-text path with it.
@@ -50,19 +52,20 @@ pub mod gpu;
 pub mod grid;
 pub mod hotspots;
 pub mod pointer;
-pub mod remote;
 pub mod render;
 pub mod rio_grid;
 pub mod search;
 pub mod selection;
 pub mod session;
 pub mod size;
+pub mod tmux_cc;
+pub mod tmux_pane;
 pub mod viewport;
 
 pub use atlas::{CellMetrics, FontContext, GlyphAtlas, Rasterization};
 pub use cells::{Cell, CellGrid, CursorShape, CursorState};
 pub use color::{Rgba, Scheme};
-pub use dcs::{ControlModeTap, DcsParser, DcsTap, NoopTap};
+pub use dcs::{DcsParser, DcsTap, NoopTap};
 pub use distortion::{correct_distortion, DistortionParams};
 pub use fonts::sizing::{resolve, ResolvedFont, ScalePolicy, SizingRequest};
 pub use fonts::{font_by_name, fonts, FontEntry};
@@ -81,10 +84,11 @@ pub use search::{search, SearchHit};
 // Both are common words that mean something else one crate up (a winit
 // `Window`, a pixel point), and neither is asked for often enough to be
 // worth the collision at the root.
-pub use remote::{ChannelSession, RemoteSession};
 pub use selection::{Selection, SelectionController, TripleClickMode};
 pub use session::{Pumped, Session, SessionConfig, Term, INPUT_CAP};
 pub use size::{CellSize, TermSize, Viewport};
+pub use tmux_cc::ControlModeTap;
+pub use tmux_pane::{ChannelSession, TmuxPane};
 pub use viewport::{ScrollPosition, ViewportChange};
 
 /// Re-exported so downstream crates pin the same rio-vt this crate does
