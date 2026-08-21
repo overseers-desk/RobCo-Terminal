@@ -212,35 +212,10 @@ rules it has to obey.
 
 ## Keys
 
-| | |
-|---|---|
-| `Alt`+digit | Bring that channel to the screen |
-| `Alt`+`Shift`+digit | Move the channel on screen to that slot |
-| `Ctrl`+`Shift`+`T` | New channel |
-| `Ctrl`+`Shift`+`W` | Close this channel |
-| `Ctrl`+`Shift`+`C` | Copy the selection |
-| `Ctrl`+`Shift`+`V` | Paste |
-| `Ctrl`+`PageUp` / `PageDown` | Previous / next channel |
-| `Ctrl`+`Shift`+`Left` / `Right` | Move the channel on screen one slot |
-| `Alt`+`PageUp` / `PageDown` | Page the bank without switching channel |
-| `Ctrl`+`Shift`+`N` | New window |
-| `Ctrl`+`Shift`+`Q` | Close this window |
-| `F11` | Fullscreen, with or without modifiers |
-| `Shift`+`Up` / `PageUp` | Scroll back through history |
-
-Selecting text copies it, and `Ctrl`+`Shift`+`C` copies it again after
-something else has taken the clipboard. Middle-click pastes, as
-`Ctrl`+`Shift`+`V` does; holding `Ctrl` while you middle-click forces
-bracketed paste.
-
-The digit `0` on its own means channel 10. Digits are typed one at a time,
-and the chord fires the moment no longer slot number could still match what
-you have typed. Let go of `Alt` to fire it early. So on a bank of nine, `Alt`
-then `3` switches immediately, while on a bank of thirty it waits to see
-whether a second digit is coming.
-
-A second `robco-term` does not start a second application. It hands its
-request to the one already running, which opens another window and exits.
+`Alt`+digit brings a channel to the screen, `Ctrl`+`Shift`+`T` opens one,
+and copy and paste are `Ctrl`+`Shift`+`C` and `Ctrl`+`Shift`+`V` where any
+other terminal puts them. [docs/keys.md](docs/keys.md) is the full list, and
+it also says which keys this terminal leaves alone.
 
 ## Command line
 
@@ -250,6 +225,9 @@ argument after itself, so put it last; `--program` does the same for a plain
 program with no arguments; `--workdir` sets the starting directory;
 `--fullscreen` and `--profile` do what they say; and `--default-settings`
 starts from the built-in defaults without reading your config file.
+
+A second `robco-term` does not start a second application. It hands its
+request to the one already running, which opens another window and exits.
 
 ## Status
 
