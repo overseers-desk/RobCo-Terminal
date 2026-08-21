@@ -128,6 +128,25 @@ pub trait Surface {
     fn cell_size(&self) -> PhysicalSize<u32> {
         PhysicalSize::new(8, 16)
     }
+    /// The least screen well this surface will work in, in physical pixels:
+    /// the room a `term::FLOOR_COLS` x `term::FLOOR_ROWS` grid takes at the
+    /// font it is drawing with, which is what the window's minimum-size hint
+    /// reserves beside the channel bank.
+    ///
+    /// The default answers it for the default cell, through the same
+    /// arithmetic the real surface uses, so a shell whose windows are empty
+    /// still carries a floor that means something.
+    fn well_floor(&self) -> PhysicalSize<u32> {
+        let cell = self.cell_size();
+        let (width, height) = term::Viewport::new(
+            0,
+            0,
+            1.0,
+            term::CellSize::new(cell.width as f32, cell.height as f32),
+        )
+        .well_floor();
+        PhysicalSize::new(width, height)
+    }
     /// The size badge to put on the next frame: its text, and the opacity
     /// [`crate::overlay::SizeOverlay`] has faded it to.
     ///
@@ -212,6 +231,20 @@ pub struct ShellConfig {
     /// It moves at runtime, because the seam drag re-fits the strips: a surface
     /// sends [`ShellEvent::SetBankWidth`] and every window's hint follows.
     pub bank_width: u32,
+    /// The screen well's floor in *logical* pixels, for the size the first
+    /// window opens at: the room this profile's font needs for a
+    /// `term::FLOOR_COLS` x `term::FLOOR_ROWS` grid
+    /// (`crate::window::well_floor_for`). Zero leaves the default window size
+    /// alone, which is what a shell whose windows are empty
+    /// ([`ShellConfig::empty`]) wants.
+    ///
+    /// It is asked for here, before any window exists, because that is the
+    /// only moment it can be acted on: a window is mapped at the size it was
+    /// created with, and a resize asked for between creation and the first
+    /// frame is a resize the user watches happen. The rule itself is each
+    /// window's own minimum-size hint, which every surface measures against
+    /// the font it is drawing with and re-applies as that font moves.
+    pub well_floor: (u32, u32),
     /// Builds whatever goes inside a window. Called once per window, so
     /// each window gets its own surface and session.
     pub surface_factory: SurfaceFactory,
@@ -225,6 +258,7 @@ impl ShellConfig {
             fullscreen: false,
             show_terminal_size: true,
             bank_width: 0,
+            well_floor: (0, 0),
             surface_factory: Box::new(|_| Box::new(EmptySurface)),
         }
     }
@@ -243,6 +277,46 @@ struct WindowState {
     /// does not carry one and the surface needs to know where the click
     /// landed.
     cursor: PhysicalPosition<f64>,
+    /// The minimum-size hint as this window last carried it. Winit does not
+    /// read one back, and both halves of it move at runtime, so the last one
+    /// set is kept to tell a hint that moved from a hint asked for again.
+    hint: (u32, u32),
+}
+
+impl WindowState {
+    /// Re-apply the window's minimum-size hint if either half of it has
+    /// moved: the bank's width, which the seam drag moves, or the well's
+    /// floor, which the font and the screen's margin move.
+    ///
+    /// A window already under the new hint is resized up to it. A window
+    /// manager enforces a minimum size on the next drag, not on the hint
+    /// arriving, so a font that grew mid-session would otherwise leave the
+    /// window standing at a size the hint says is not allowed.
+    fn settle_min_inner_size(&mut self, bank_width: u32) {
+        let floor = self.surface.well_floor();
+        let (min_width, min_height) = chassis::layout::min_inner_size_physical(
+            bank_width,
+            self.window.scale_factor(),
+            (floor.width, floor.height),
+        );
+        if self.hint == (min_width, min_height) {
+            return;
+        }
+        self.hint = (min_width, min_height);
+        self.window
+            .set_min_inner_size(Some(Size::Physical(PhysicalSize::new(
+                min_width, min_height,
+            ))));
+        let now = self.window.inner_size();
+        if now.width < min_width || now.height < min_height {
+            let _ = self
+                .window
+                .request_inner_size(Size::Physical(PhysicalSize::new(
+                    now.width.max(min_width),
+                    now.height.max(min_height),
+                )));
+        }
+    }
 }
 
 /// The application shell.
@@ -295,6 +369,14 @@ impl Shell {
 
     fn open_window(&mut self, event_loop: &ActiveEventLoop, fullscreen: bool) {
         let (width, height) = geometry::DEFAULT_SIZE;
+        // The appliance's default size, raised to what a terminal grid costs
+        // this profile. The default is physical and the floor logical, which
+        // is the same number on the display the default was chosen for; on
+        // any other scale factor the hint applied below corrects it.
+        let (width, height) = (
+            width.max(self.config.bank_width + self.config.well_floor.0),
+            height.max(self.config.well_floor.1),
+        );
 
         let mut attributes = WindowAttributes::default()
             .with_title(self.config.identity.clone())
@@ -318,12 +400,6 @@ impl Shell {
             }
         };
 
-        // The hint is applied after creation, not through the attributes: it
-        // is measured in physical pixels and the well's floor is logical, so
-        // it needs this window's scale factor, which only exists once the
-        // window is on a monitor.
-        apply_min_inner_size(&window, self.config.bank_width);
-
         // Off by default in winit, and a terminal that cannot be typed into in
         // Japanese, Chinese or Korean is not a terminal for the people who type
         // in them. Without this call `WindowEvent::Ime` never arrives at
@@ -337,18 +413,22 @@ impl Shell {
 
         let id = window.id();
         let title = self.config.identity.clone();
-        self.windows.insert(
-            id,
-            WindowState {
-                window,
-                surface,
-                overlay,
-                badge_shown: false,
-                fullscreen,
-                title,
-                cursor: PhysicalPosition::new(0.0, 0.0),
-            },
-        );
+        let mut state = WindowState {
+            window,
+            surface,
+            overlay,
+            badge_shown: false,
+            fullscreen,
+            title,
+            cursor: PhysicalPosition::new(0.0, 0.0),
+            hint: (0, 0),
+        };
+        // The hint is applied after creation rather than through the window's
+        // attributes: half of it is the surface's font, which is resolved
+        // against this window's scale factor, and that exists only once the
+        // window is on a monitor.
+        state.settle_min_inner_size(self.config.bank_width);
+        self.windows.insert(id, state);
     }
 
     /// Re-applies the minimum-size hint to every window. The bank's width
@@ -359,27 +439,10 @@ impl Shell {
             return;
         }
         self.config.bank_width = bank_width;
-        for state in self.windows.values() {
-            apply_min_inner_size(&state.window, bank_width);
+        for state in self.windows.values_mut() {
+            state.settle_min_inner_size(bank_width);
         }
     }
-}
-
-/// The one hint site's arithmetic, in the one place both callers reach it.
-///
-/// `bank_width` is **logical**, the unit [`ShellConfig::bank_width`] and
-/// `chassis::Cabinet::bank_width` are both in; the screen well's floor is
-/// `chassis::layout`'s logical constant, and this is where the pair is scaled
-/// by the window's own factor into the physical pixels winit's `Size::Physical`
-/// and X11's `WM_NORMAL_HINTS` measure. `Cabinet::bank_width_physical` is the
-/// other direction of the same question (the bank's footprint for whoever
-/// draws it) and is not what goes here.
-fn apply_min_inner_size(window: &Window, bank_width: u32) {
-    let (min_width, min_height) =
-        chassis::layout::min_inner_size_physical(bank_width, window.scale_factor());
-    window.set_min_inner_size(Some(Size::Physical(PhysicalSize::new(
-        min_width, min_height,
-    ))));
 }
 
 /// Sets the window's WM_CLASS (X11) / app id (Wayland) to the binary's
@@ -460,6 +523,10 @@ impl ApplicationHandler<ShellEvent> for Shell {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 if let Some(state) = self.windows.get_mut(&window_id) {
                     state.surface.scale_factor_changed(scale_factor);
+                    // Both halves of the hint are in device pixels and the
+                    // factor converting them has just changed, so neither
+                    // half is the number it was.
+                    state.settle_min_inner_size(self.config.bank_width);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -603,6 +670,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
         // back to waiting exactly as it did before.
         let mut wake_at: Option<Instant> = None;
         let mut finished: Vec<WindowId> = Vec::new();
+        let bank_width = self.config.bank_width;
         for (id, state) in self.windows.iter_mut() {
             state.overlay.tick(delta);
             let opacity = state.overlay.opacity();
@@ -619,6 +687,12 @@ impl ApplicationHandler<ShellEvent> for Shell {
                 state.surface.set_size_badge("", 0.0);
                 state.badge_shown = false;
             }
+            // The well's floor moves with the font and with the screen's
+            // margin, both of which the user edits mid-session and neither of
+            // which reaches the shell as an event. The check is arithmetic
+            // over numbers the surface already holds, and the hint is only
+            // written when it moved.
+            state.settle_min_inner_size(bank_width);
             let tick = state.surface.tick();
             if tick.redraw {
                 state.window.request_redraw();

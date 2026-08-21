@@ -152,18 +152,33 @@ fn read_window(display: &str, scratch: &Path, profile: &str) -> Option<[f64; 3]>
         }
     }
     let wid = wid?;
-    // The window exists before the first frame reaches it; give the chain a
-    // moment to paint rather than photographing an unpainted surface.
-    std::thread::sleep(Duration::from_millis(2500));
 
+    // The window exists before the first frame reaches it, and how long
+    // before depends on the size of the picture and on how fast the software
+    // rasteriser under Xvfb draws it -- neither of which a fixed sleep can be
+    // right about. So the wait has an instrument: an unpainted window is one
+    // flat colour and reads a standard deviation of exactly zero, and the
+    // appliance paints a bezel around its glass, so the first spread above
+    // zero is the first frame.
     let shot = scratch.join(format!("{}.png", profile.replace(' ', "-")));
     let path = shot.display().to_string();
-    Command::new("import")
-        .args(["-window", &wid, &path])
-        .env("DISPLAY", display)
-        .status()
-        .ok()
-        .filter(|s| s.success())?;
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        Command::new("import")
+            .args(["-window", &wid, &path])
+            .env("DISPLAY", display)
+            .status()
+            .ok()
+            .filter(|s| s.success())?;
+        if spread(&path).is_some_and(|s| s > 0.001) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            eprintln!("{profile:?} never painted a frame");
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
 
     let out = Command::new("magick")
         .args([
@@ -186,6 +201,17 @@ fn read_window(display: &str, scratch: &Path, profile: &str) -> Option<[f64; 3]>
         .filter_map(|v| v.parse().ok())
         .collect();
     (values.len() == 3).then(|| [values[0], values[1], values[2]])
+}
+
+/// The standard deviation of a whole screenshot, 0 for a window that is one
+/// flat colour.
+fn spread(path: &str) -> Option<f64> {
+    let out = Command::new("magick")
+        .args([path, "-format", "%[fx:standard_deviation]", "info:"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
 }
 
 #[test]

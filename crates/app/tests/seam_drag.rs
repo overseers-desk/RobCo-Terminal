@@ -28,10 +28,17 @@ use winit::keyboard::ModifiersState;
 
 const CELL_W: f64 = 9.0;
 const CELL_H: f64 = 18.0;
-/// The window, in physical pixels at scale factor 1: the default window
-/// size.
-const WINDOW_W: u32 = 1024;
+/// The window, in physical pixels at scale factor 1. Wide enough that the
+/// drags below are legal ones: the seam stops where the well would fall
+/// under the eighty columns of this rig's 9 px cell, which is 778 px of the
+/// window before the bank has taken anything at all.
+const WINDOW_W: u32 = 1440;
 const WINDOW_H: u32 = 768;
+
+/// This rig's well floor: `term::FLOOR_COLS` x `term::FLOOR_ROWS` cells of
+/// 9 x 18, plus the 29 px the default profile's distortion margin takes off
+/// each edge before any of them are counted.
+const WELL_FLOOR: (i32, i32) = (720 + 58, 432 + 58);
 
 /// The shipped profile's bank: the annunciator's furniture around twelve
 /// characters of the measured UNSCII 8 cell.
@@ -187,7 +194,8 @@ fn a_hidden_chassis_has_no_seam_and_no_column() {
     // The well is the whole window, which is the geometry a surface with no
     // cabinet at all has.
     assert_eq!(bank.layout().crt.width, f64::from(WINDOW_W));
-    assert_eq!(bank.min_inner_size(), (320, 240));
+    // No bank, so the window's floor is the well's floor and nothing else.
+    assert_eq!(bank.min_inner_size(), WELL_FLOOR);
 
     // The bank's own measures still exist and nothing reads them: a drag where
     // the boundary would have been moves nothing.

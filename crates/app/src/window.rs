@@ -269,6 +269,44 @@ fn sizing_request(cfg: &Config, scale_factor: f64) -> SizingRequest {
     }
 }
 
+/// The well's floor for a profile, in physical pixels: what a window drawn
+/// under `cfg` at `scale_factor` will answer from
+/// [`crate::shell::Surface::well_floor`], measured before there is a window
+/// to ask.
+///
+/// The shell opens its first window at least this big, because a window is
+/// mapped at the size it was created with: a floor found afterwards can only
+/// be applied as a resize the user watches happen.
+pub fn well_floor_for(cfg: &Config, scale_factor: f64) -> (u32, u32) {
+    let entry = font_entry(cfg);
+    let request = sizing_request(cfg, scale_factor);
+    let resolved = term::resolve(entry, &request, ScalePolicy::Floor);
+    let cell = logical_cell(
+        FontContext::new(entry).cell_metrics(&resolved),
+        &resolved,
+        scale_factor,
+    );
+    let mut viewport = Viewport::new(0, 0, scale_factor, cell);
+    viewport.margin = settings::distortion_margin(cfg) * scale_factor;
+    viewport.well_floor()
+}
+
+/// The well's floor in the logical pixels the chassis is laid out in.
+///
+/// The floor itself is a physical count of cells (`Viewport::well_floor`),
+/// so the conversion rounds up: a well half a physical pixel short of the
+/// grid is a well short of the grid. This is the seam's copy of the rule;
+/// the window's own minimum-size hint takes the physical number as it
+/// stands, through [`crate::shell::Surface::well_floor`].
+fn logical_well_floor(viewport: &Viewport) -> (i32, i32) {
+    let (width, height) = viewport.well_floor();
+    let scale = viewport.scale_factor.max(f64::EPSILON);
+    (
+        (f64::from(width) / scale).ceil() as i32,
+        (f64::from(height) / scale).ceil() as i32,
+    )
+}
+
 /// The cell box in logical pixels, which is what [`Viewport`] takes.
 ///
 /// The renderer's cell is `atlas.cell * integer_scale` *physical* pixels, and
@@ -648,7 +686,7 @@ impl TerminalSurface {
         // font is: the settings handle is attached after this returns, and
         // `set_settings` re-measures.
         let window_size = (physical.width.max(1), physical.height.max(1));
-        let cabinet = Cabinet::from_config(
+        let mut cabinet = Cabinet::from_config(
             &cfg,
             f64::from(window_size.0) / scale_factor.max(f64::EPSILON),
             f64::from(window_size.1) / scale_factor.max(f64::EPSILON),
@@ -661,6 +699,8 @@ impl TerminalSurface {
             cell,
         );
         viewport.margin = settings::distortion_margin(&cfg) * scale_factor;
+        let (floor_w, floor_h) = logical_well_floor(&viewport);
+        cabinet.set_well_floor(floor_w, floor_h);
 
         let gpu = match Gpu::new(Arc::clone(&window), frame_stats_enabled) {
             Ok(g) => {
@@ -1946,8 +1986,18 @@ impl TerminalSurface {
         // reason `relayout` is what `scale_factor_changed` calls.
         let cfg = self.live_config();
         self.ensure_margin(&cfg);
+        self.settle_well_floor();
         self.sync_geometry();
         self.settle_rows();
+    }
+
+    /// Hand the cabinet the well's floor as this window's font now measures
+    /// it, so the seam drag stops where the window's own hint stops.
+    fn settle_well_floor(&mut self) {
+        let (width, height) = logical_well_floor(&self.viewport);
+        if let Some(cabinet) = self.cabinet.as_mut() {
+            cabinet.set_well_floor(width, height);
+        }
     }
 
     /// How many rows the bank shows, measured off the window it now stands
@@ -2029,6 +2079,10 @@ impl TerminalSurface {
         let refonted = self.ensure_font(&cfg);
         let remargined = self.ensure_margin(&cfg);
         if refonted || remargined {
+            // Both of them move the floor: the cell is what the eighty
+            // columns are counted in, and the margin is what is taken off
+            // the well before they are counted.
+            self.settle_well_floor();
             self.sync_geometry();
         }
 
@@ -2858,6 +2912,11 @@ impl Surface for TerminalSurface {
         // count and the session's cannot disagree.
         let (width, height) = self.viewport.physical_cell();
         winit::dpi::PhysicalSize::new(u32::from(width).max(1), u32::from(height).max(1))
+    }
+
+    fn well_floor(&self) -> winit::dpi::PhysicalSize<u32> {
+        let (width, height) = self.viewport.well_floor();
+        winit::dpi::PhysicalSize::new(width, height)
     }
 
     fn key_pressed(&mut self, event: &winit::event::KeyEvent, modifiers: ModifiersState) {

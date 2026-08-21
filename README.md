@@ -68,9 +68,10 @@ and reports which one it chose in the first lines of its log. `WGPU_BACKEND`
 overrides the choice if the automatic one misbehaves, which on Mesa is worth
 trying with `vulkan` before anything else.
 
-The window has a floor of 240 pixels tall, and wide enough for the channel
-bank plus 320 logical pixels of screen well. On a default bank that comes to
-567 by 240.
+The window never goes under an 80 by 24 terminal. The floor is the room that
+grid takes at the font and screen margin you have configured, plus the
+channel bank beside it, so a larger face raises it: on the shipped profile it
+comes to 1265 by 730, and the first window opens no smaller.
 
 To build from source you need:
 
