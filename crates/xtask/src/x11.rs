@@ -60,6 +60,21 @@ pub fn geometry_width(out: &str) -> Option<u32> {
 }
 
 /// Parses `xdotool getwindowgeometry --shell` output (`KEY=VALUE` lines)
+/// for WIDTH and HEIGHT, the size to measure a minimum-size hint against.
+pub fn shell_wh(out: &str) -> Option<(i64, i64)> {
+    let mut width = None;
+    let mut height = None;
+    for line in out.lines() {
+        if let Some(v) = line.strip_prefix("WIDTH=") {
+            width = v.trim().parse().ok();
+        } else if let Some(v) = line.strip_prefix("HEIGHT=") {
+            height = v.trim().parse().ok();
+        }
+    }
+    Some((width?, height?))
+}
+
+/// Parses `xdotool getwindowgeometry --shell` output (`KEY=VALUE` lines)
 /// for X and Y.
 pub fn shell_xy(out: &str) -> Option<(i64, i64)> {
     let mut x = None;
@@ -135,5 +150,6 @@ mod tests {
     fn shell_xy_reads_the_key_value_form() {
         let out = "WINDOW=1234\nX=17\nY=42\nWIDTH=800\nHEIGHT=600\n";
         assert_eq!(shell_xy(out), Some((17, 42)));
+        assert_eq!(shell_wh(out), Some((800, 600)));
     }
 }

@@ -27,7 +27,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use crate::proc::{reexec_under_xvfb, run_ignore_status};
+use crate::proc::{capture, reexec_under_xvfb, run_ignore_status};
 use crate::x11;
 
 const INNER_ENV: &str = "XTASK_VERIFY_INNER";
@@ -244,19 +244,28 @@ fn run_inner(binary: &Path, profile: &str, screen_width: u32) -> Result<()> {
         bail!("no window: the rest of the contract cannot be checked");
     };
 
-    // Item 4: the minimum-size hint, the instrument the `--units` seam
-    // drag reads the channel bank's width through.
+    // Item 4: the minimum-size hint, the instrument the `--units` seam drag
+    // reads the bank's movement through -- and the window standing at or
+    // above it, since a window under its own minimum is a window showing
+    // less than the terminal grid the minimum exists to hold.
     match x11::min_size_hint(&wid) {
-        Ok((min_width, min_height)) => checks.item(
-            "WM_NORMAL_HINTS carries a program-specified minimum size",
-            min_width > 0 && min_height > 0,
-            format!(
-                "{min_width} by {min_height} (bank width = {min_width} - 320 = {})",
-                min_width - 320
-            ),
-        ),
+        Ok((min_width, min_height)) => {
+            let geometry = capture("xdotool", &["getwindowgeometry", "--shell", wid.as_str()])
+                .ok()
+                .and_then(|out| x11::shell_wh(&out));
+            checks.item(
+                "WM_NORMAL_HINTS carries a program-specified minimum size the window stands at",
+                min_width > 0
+                    && min_height > 0
+                    && geometry.is_some_and(|(w, h)| w >= min_width && h >= min_height),
+                match geometry {
+                    Some((w, h)) => format!("{w} by {h}, minimum {min_width} by {min_height}"),
+                    None => format!("minimum {min_width} by {min_height}, geometry unreadable"),
+                },
+            )
+        }
         Err(e) => checks.item(
-            "WM_NORMAL_HINTS carries a program-specified minimum size",
+            "WM_NORMAL_HINTS carries a program-specified minimum size the window stands at",
             false,
             e.to_string(),
         ),

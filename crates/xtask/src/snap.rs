@@ -36,9 +36,11 @@ pub const CONTRACT: &str = r#"
    to the launched PID and has geometry width > 100.
 3. `Ctrl+Shift+T` opens one more channel/tab.
 4. The window's program-specified minimum width (as read by
-   `xprop -id <wid> WM_NORMAL_HINTS`) equals the channel bank's live pixel
-   width plus the fixed screen-well floor ([`CRT_MINIMUM_WIDTH`]) --
-   required only for --units.
+   `xprop -id <wid> WM_NORMAL_HINTS`) is the channel bank's live pixel width
+   plus the least screen well the binary will work in, and the window never
+   stands under it. The well's share is fixed for as long as the font is, so
+   a change in that minimum is the bank's own movement -- which is what
+   --units reads the seam drag through, and all it needs from this item.
 5. HOME, XDG_DATA_HOME, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_RUNTIME_DIR
    and TMPDIR are honored for settings/socket isolation, so concurrent
    scratch runs never collide with a real user session or each other.
@@ -282,25 +284,29 @@ fn find_window(class: &str, app_pid: u32) -> Result<Option<String>> {
     )
 }
 
-/// The screen well's floor: the fixed width the window's minimum-size
-/// hint reserves for the glass, on top of which the channel bank's live
-/// width rides (contract item 4).
-const CRT_MINIMUM_WIDTH: i64 = 320;
+/// The shipped default profile's channel bank, in logical pixels: where the
+/// seam stands before anything is dragged, which is where the grab has to
+/// start. The number is the annunciator's own measures -- 3 (bank padding) +
+/// 46 (numeral lane) + 16 (column gap) + 168 (twelve characters of the
+/// shipped LED font's measured cell) + 14 (right padding) -- pinned by
+/// `chassis::a_cabinet_built_from_the_shipped_profile_alone_stands_247_px_wide`,
+/// the same figure `compare`'s `--region bank` crops at. A binary snapped at
+/// a profile with a different bank needs its own number here.
+const SHIPPED_BANK_WIDTH: i64 = 247;
 
-/// The bank's live width: the window's program-specified minimum size
-/// less the screen well's floor.
-fn bank_width(wid: &str, crt_min: i64) -> Result<i64> {
+/// The window's program-specified minimum width. It moves exactly as the bank
+/// does, the screen well's share of it being fixed for as long as the font
+/// is, so the difference between two readings is what the drag moved the bank
+/// by (contract item 4).
+fn hint_width(wid: &str) -> Result<i64> {
     let (min_width, _min_height) = x11::min_size_hint(wid)?;
-    Ok(min_width - crt_min)
+    Ok(min_width)
 }
 
 fn fit_units(wid: &str, height: u32, units: i64) -> Result<()> {
-    let start_bank = bank_width(wid, CRT_MINIMUM_WIDTH)?;
-    if start_bank <= 0 {
-        bail!("profile has no channel bank; UNITS is meaningless");
-    }
+    let start_hint = hint_width(wid)?;
 
-    let start = start_bank + 2;
+    let start = SHIPPED_BANK_WIDTH + 2;
     let target = start + 12 * (units - 12);
 
     let geom = capture("xdotool", &["getwindowgeometry", "--shell", wid])?;
@@ -350,13 +356,14 @@ fn fit_units(wid: &str, height: u32, units: i64) -> Result<()> {
     run_ok("xdotool", &["mouseup", "1"])?;
 
     // Verify the fit against the same instrument: a drag that missed by a
-    // character or more is a loud warning, never a quietly wrong picture.
+    // character or more is a loud warning, never a quietly wrong picture. A
+    // drag that moved the hint by nothing at all is the profile answering
+    // that it has no bank to fit, and reads as the same warning.
     sleep(Duration::from_millis(500));
-    let end_bank = bank_width(wid, CRT_MINIMUM_WIDTH)?;
-    let want = start_bank + 12 * (units - 12);
-    let diff = (end_bank - want).abs();
-    if diff >= 12 {
-        eprintln!("warning: seam drag landed at bank width {end_bank}, wanted {want}");
+    let moved = hint_width(wid)? - start_hint;
+    let want = 12 * (units - 12);
+    if (moved - want).abs() >= 12 {
+        eprintln!("warning: seam drag moved the bank by {moved} px, wanted {want}");
     }
     Ok(())
 }
