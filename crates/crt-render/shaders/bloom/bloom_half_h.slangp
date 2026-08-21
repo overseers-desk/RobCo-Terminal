@@ -1,0 +1,9 @@
+# bloom_h alone, rendered by the test into a viewport half the source's
+# size: the chain's default bloomQuality, where an output pixel spans two
+# source texels. A lone pass draws to the viewport, so the half is the
+# test's choice of output size, not a scale written here.
+shaders = 1
+
+shader0 = bloom_h.slang
+filter_linear0 = true
+wrap_mode0 = clamp_to_edge

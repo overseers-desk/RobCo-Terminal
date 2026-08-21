@@ -1,0 +1,14 @@
+# Both bloom passes at the chain's default bloomQuality: bloom_h into a
+# framebuffer half the source's size, bloom_v from that into a viewport the
+# test sizes to match.
+shaders = 2
+
+shader0 = bloom_h.slang
+scale_type0 = source
+scale0 = 0.5
+filter_linear0 = true
+wrap_mode0 = clamp_to_edge
+
+shader1 = bloom_v.slang
+filter_linear1 = true
+wrap_mode1 = clamp_to_edge
