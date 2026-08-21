@@ -5,7 +5,16 @@
 //! terminal_static.slang, built as a standard two-pass separable Gaussian
 //! rather than a box-blur pyramid. Being this crate's own construction, it
 //! is fully analytic and exactly specified, so the done-tests assert
-//! against closed-form properties of a Gaussian blur.
+//! against closed-form properties of a Gaussian blur, and against
+//! `oracle::gaussian_blur_1d`, the kernel as a continuous integral rather
+//! than as the shader's taps.
+//!
+//! Two presets stand in for the chain's two regimes. `bloom_h.slangp` and
+//! `bloom.slangp` render at the input's own size, where an output pixel is a
+//! source texel. `bloom_half.slangp` renders at half of it, the chain's
+//! default `bloomQuality`, where an output pixel spans two source texels and
+//! the taps must tighten to keep reading every one of them; the chain's
+//! default radius there is 40, and `bloom_half_*` tests use that number.
 
 use crt::oracle;
 use crt_burnin::headless;
@@ -22,6 +31,37 @@ fn uv_of(c: u32, r: u32, w: u32, h: u32) -> [f32; 2] {
 
 fn shader_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/bloom")
+}
+
+/// An RGBA8 image of `w*h` pixels, opaque, with `lit(x, y)` deciding which
+/// pixels are white and which black.
+fn mask_image(w: u32, h: u32, lit: impl Fn(u32, u32) -> bool) -> Vec<u8> {
+    let mut input = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let v = if lit(x, y) { 255 } else { 0 };
+            let i = ((y * w + x) * 4) as usize;
+            input[i] = v;
+            input[i + 1] = v;
+            input[i + 2] = v;
+            input[i + 3] = 255;
+        }
+    }
+    input
+}
+
+/// The oracle's view of a lit column band `x0..=x1` of a `src_w`-wide source,
+/// read as the box-reconstructed texture it is: 1 inside the band's texels,
+/// 0 outside.
+fn column_band(src_w: u32, x0: u32, x1: u32, uv_x: f32) -> impl Fn(f32) -> f32 {
+    move |offset| {
+        let texel_idx = ((uv_x + offset) * src_w as f32).floor() as i64;
+        if texel_idx >= x0 as i64 && texel_idx <= x1 as i64 {
+            1.0
+        } else {
+            0.0
+        }
+    }
 }
 
 /// A blur's weights sum to 1: a constant field must come back unchanged.
@@ -87,30 +127,13 @@ fn bloom_linear_ramp_is_unchanged_away_from_edges() {
     }
 }
 
-/// Exact analytic match: `bloom_h` alone, radius chosen (14) so all 15 taps'
-/// offsets (`i * radius/7` texels = `2*i` texels) land exactly on texel
-/// centers, which removes bilinear interpolation from the comparison
-/// entirely -- the oracle's `gaussian_1d_15tap` samples the same discrete
-/// array `nearest`, and that is provably identical to what the GPU's bilinear
-/// sampler does when every tap already lands on a texel center.
+/// `bloom_h` alone at the input's own size: a one-texel bright column comes
+/// out as the oracle's Gaussian of it, at the column and either side of it.
 #[test]
-fn bloom_h_matches_oracle_exactly_on_texel_aligned_taps() {
+fn bloom_h_matches_oracle() {
     let gpu = headless::Gpu::new().expect("headless wgpu device");
     let preset = shader_dir().join("bloom_h.slangp");
-
-    // A bright column at x=32, constant down every row, so any row is a
-    // valid 1-D cross-section.
-    let mut input = vec![0u8; (W * H * 4) as usize];
-    for y in 0..H {
-        for x in 0..W {
-            let v = if x == 32 { 255 } else { 0 };
-            let i = ((y * W + x) * 4) as usize;
-            input[i] = v;
-            input[i + 1] = v;
-            input[i + 2] = v;
-            input[i + 3] = 255;
-        }
-    }
+    let input = mask_image(W, H, |x, _| x == 32);
 
     let radius = 14.0f32;
     let out = headless::render_single_pass(&gpu, &preset, &[("radius", radius)], W, H, &input);
@@ -119,23 +142,109 @@ fn bloom_h_matches_oracle_exactly_on_texel_aligned_taps() {
     for &c in &[28u32, 32, 36] {
         let r = 10u32;
         let uv = uv_of(c, r, W, H);
-        let expected = oracle::gaussian_1d_15tap(radius, texel, |offset| {
-            // offset is in uv units; convert back to a texel index and read
-            // the discrete (nearest, since taps are texel-aligned) source.
-            let sample_uv_x = uv[0] + offset;
-            let texel_idx = (sample_uv_x * W as f32 - 0.5).round() as i32;
-            let clamped = texel_idx.clamp(0, W as i32 - 1) as u32;
-            if clamped == 32 {
-                1.0
-            } else {
-                0.0
-            }
-        });
+        let expected = oracle::gaussian_blur_1d(radius, texel, column_band(W, 32, 32, uv[0]));
         let px = out[headless::px_index(W, c, r)];
         assert!(
             (px[0] - expected).abs() < 0.01,
             "column {c}: gpu={} oracle={expected}",
             px[0]
         );
+    }
+}
+
+/// The chain's regime: `bloom_h` into a framebuffer half the source's size,
+/// radius 40. A three-texel bright column comes out as the oracle's Gaussian
+/// at every output pixel across the halo, including the ones between where
+/// taps spaced `radius / 7` would have landed, and falls off monotonically
+/// from the column: no echo of the column at any pitch.
+#[test]
+fn bloom_half_h_halo_is_the_oracle_gaussian_and_monotone() {
+    const SRC_W: u32 = 192;
+    const SRC_H: u32 = 16;
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let preset = shader_dir().join("bloom_half_h.slangp");
+    let input = mask_image(SRC_W, SRC_H, |x, _| (95..=97).contains(&x));
+
+    let radius = 40.0f32;
+    let (out_w, out_h) = (SRC_W / 2, SRC_H / 2);
+    let out = headless::render_single_pass_io(
+        &gpu,
+        &preset,
+        &[("radius", radius)],
+        SRC_W,
+        SRC_H,
+        out_w,
+        out_h,
+        &input,
+    );
+
+    let texel = 1.0 / out_w as f32;
+    let r = out_h / 2;
+    let centre = out_w / 2; // output pixel 48 spans source texels 96..=97
+    let mut previous = f32::INFINITY;
+    for c in centre..=centre + 44 {
+        let uv = uv_of(c, r, out_w, out_h);
+        let expected = oracle::gaussian_blur_1d(radius, texel, column_band(SRC_W, 95, 97, uv[0]));
+        let px = out[headless::px_index(out_w, c, r)];
+        assert!(
+            (px[0] - expected).abs() < 0.01,
+            "column {c}: gpu={} oracle={expected}",
+            px[0]
+        );
+        // One 8-bit level of slack for the framebuffer's quantisation.
+        assert!(
+            px[0] <= previous + 1.0 / 255.0 + 1e-4,
+            "column {c}: gpu={} rose above column {}'s {previous}",
+            px[0],
+            c - 1
+        );
+        previous = px[0];
+    }
+}
+
+/// Both passes into a half-size framebuffer on a lit block: the halo is the
+/// product of the two 1-D oracles (a separable kernel on a separable input),
+/// checked along the row and the column through the block, which is where a
+/// comb in either pass would put its echoes. A 9x9 block and radius 16 keep
+/// the two-pass product well clear of the framebuffer's 8-bit quantisation;
+/// the chain's own radius is covered one pass at a time above.
+#[test]
+fn bloom_half_block_halo_is_separable_oracle_product() {
+    const SRC: u32 = 160;
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let preset = shader_dir().join("bloom_half.slangp");
+    let input = mask_image(SRC, SRC, |x, y| {
+        (76..=84).contains(&x) && (76..=84).contains(&y)
+    });
+
+    let radius = 16.0f32;
+    let out_size = SRC / 2;
+    let out = headless::render_single_pass_io(
+        &gpu,
+        &preset,
+        &[("radius", radius)],
+        SRC,
+        SRC,
+        out_size,
+        out_size,
+        &input,
+    );
+
+    let texel = 1.0 / out_size as f32;
+    let centre = out_size / 2;
+    let profile =
+        |uv_axis: f32| oracle::gaussian_blur_1d(radius, texel, column_band(SRC, 76, 84, uv_axis));
+    let at_centre = profile(uv_of(centre, centre, out_size, out_size)[0]);
+    for d in 0..=20u32 {
+        for (c, r) in [(centre + d, centre), (centre, centre + d)] {
+            let uv = uv_of(c, r, out_size, out_size);
+            let expected = profile(uv[0]) * profile(uv[1]);
+            let px = out[headless::px_index(out_size, c, r)];
+            assert!(
+                (px[0] - expected).abs() < 0.01,
+                "({c},{r}): gpu={} oracle={expected} (peak {at_centre})",
+                px[0]
+            );
+        }
     }
 }

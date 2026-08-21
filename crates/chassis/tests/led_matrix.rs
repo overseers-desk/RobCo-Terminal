@@ -1,15 +1,18 @@
 //! Standalone proof + done-test for `shaders/led_matrix/led_matrix.slang`.
 //!
 //! Snapshot/threshold tier, not full analytic replication: this pass gathers
-//! a 5x5 neighborhood of bilinear texture samples for its spill term
+//! a Gaussian neighborhood of texture samples for its spill term
 //! (`edgeBrightness`) and uses screen-space derivatives (`fwidth`) for the
 //! dot's antialiasing, neither of which this crate reproduces bit-for-bit on
-//! the CPU. Sample points are instead chosen deep inside a lit/dark cell
-//! (far past the antialiasing band, outside the spill margin), where the
-//! disk/halo shape has already saturated to 1 or 0 and the output is fully
-//! determined by which color it mixes toward -- so this checks "the grid
-//! reads lit cells as lit and dark cells as dark, not swapped or garbage",
-//! not exact pixel values.
+//! the CPU. For the grid, sample points are chosen deep inside a lit/dark
+//! cell (far past the antialiasing band, outside the spill margin), where
+//! the disk/halo shape has already saturated to 1 or 0 and the output is
+//! fully determined by which color it mixes toward -- so this checks "the
+//! grid reads lit cells as lit and dark cells as dark, not swapped or
+//! garbage", not exact pixel values. For the spill band, the check is a
+//! property: over a checkerboard raster the band's brightness is the same
+//! at every point along an edge, which holds only while the spill kernel's
+//! taps are no farther apart than the lamps they read.
 
 use crt_burnin::headless;
 use std::path::PathBuf;
@@ -99,4 +102,82 @@ fn led_matrix_lit_and_dark_cells_read_correctly() {
             );
         }
     }
+}
+
+/// The spill band over a checkerboard raster reads the same at every point
+/// along an edge. Every tap of the spill kernel lands on a lamp; with the
+/// taps at most one lamp apart, each point of the band averages lit and
+/// dark lamps alike, and the band is flat. Taps spaced wider than a lamp
+/// would land on lamps of one parity and the band would switch between
+/// bright and dark along the edge with the lamp pattern.
+#[test]
+fn led_matrix_spill_band_is_flat_along_an_edge_over_a_checkerboard() {
+    const GRID: u32 = 8;
+    const OUT: u32 = 128;
+    let preset =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
+    let gpu = headless::Gpu::new().expect("headless wgpu device");
+
+    let mut input = vec![0u8; (GRID * GRID * 4) as usize];
+    for gy in 0..GRID {
+        for gx in 0..GRID {
+            let v = if (gx + gy) % 2 == 0 { 255 } else { 0 };
+            let i = ((gy * GRID + gx) * 4) as usize;
+            input[i] = v;
+            input[i + 1] = v;
+            input[i + 2] = v;
+            input[i + 3] = 255;
+        }
+    }
+
+    // A quarter of the output on every side is spill band; the grid sits in
+    // the middle half.
+    let margin = 0.25f32;
+    let params: &[(&str, f32)] = &[
+        ("gridSizeX", GRID as f32),
+        ("gridSizeY", GRID as f32),
+        ("litColorR", 1.0),
+        ("litColorG", 0.55),
+        ("litColorB", 0.10),
+        ("litColorA", 1.0),
+        ("dimColorR", 0.2),
+        ("dimColorG", 0.1),
+        ("dimColorB", 0.05),
+        ("dimColorA", 1.0),
+        ("panelColorR", 0.05),
+        ("panelColorG", 0.05),
+        ("panelColorB", 0.05),
+        ("panelColorA", 1.0),
+        ("dotRadius", 0.35),
+        ("threshold", 0.5),
+        ("glow", 0.5),
+        ("spillMarginX", margin),
+        ("spillMarginY", margin),
+        ("spillStrength", 0.6),
+        ("spillDeadX", 0.2),
+        ("spillDeadY", 0.2),
+    ];
+
+    let out = headless::render_single_pass_io(&gpu, &preset, params, GRID, GRID, OUT, OUT, &input);
+
+    // Halfway out into the bottom band (v = 0.875), across the columns the
+    // grid spans, a lamp's width in from either end of the band.
+    let r = (0.875 * OUT as f32) as u32;
+    let px_per_lamp = (OUT as f32 * (1.0 - 2.0 * margin) / GRID as f32) as u32;
+    let c0 = (margin * OUT as f32) as u32 + px_per_lamp;
+    let c1 = ((1.0 - margin) * OUT as f32) as u32 - px_per_lamp;
+    let band: Vec<f32> = (c0..c1)
+        .map(|c| out[headless::px_index(OUT, c, r)][0])
+        .collect();
+    let mean = band.iter().sum::<f32>() / band.len() as f32;
+    let (lo, hi) = band
+        .iter()
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), &v| {
+            (lo.min(v), hi.max(v))
+        });
+    assert!(mean > 0.05, "the band is lit at all: mean {mean}");
+    assert!(
+        hi - lo < 0.1 * mean,
+        "band brightness along the edge ranges {lo}..{hi} around a mean of {mean}"
+    );
 }

@@ -156,15 +156,22 @@ pub fn terminal_frame_noise(uv: [f32; 2], viewport: [f32; 2]) -> f32 {
     rand2([uv[0] * viewport[0], uv[1] * viewport[1]]) - 0.5
 }
 
-/// Analytic Gaussian used by `bloom_h.slang` / `bloom_v.slang`: 15 taps,
-/// `i` in `[-7, 7]`, `sigma = radius / 3`. Given a 1-D input profile sampled
-/// at `sample_fn`, returns the blurred value at texel offset `0`.
-pub fn gaussian_1d_15tap(radius: f32, texel: f32, sample_fn: impl Fn(f32) -> f32) -> f32 {
+/// The bloom passes' kernel (`bloom_h.slang` / `bloom_v.slang`) as a
+/// definition rather than as their tap loop: a Gaussian of `sigma = radius /
+/// 3`, truncated at `+/-radius`, integrated against the 1-D input profile
+/// `sample_fn` (offset in uv units, `texel` the uv size of one output pixel)
+/// by quadrature sixteen steps to the texel. Returns the blurred value at
+/// offset 0. A shader whose taps sit no more than one texel apart converges
+/// on this whatever its stride; one whose taps sit wider does not, which is
+/// what makes it a check on the shader rather than a mirror of it.
+pub fn gaussian_blur_1d(radius: f32, texel: f32, sample_fn: impl Fn(f32) -> f32) -> f32 {
+    const STEPS_PER_TEXEL: i32 = 16;
     let sigma = (radius / 3.0).max(1e-4);
+    let n = (radius * STEPS_PER_TEXEL as f32).ceil() as i32;
     let mut sum = 0.0f32;
     let mut wsum = 0.0f32;
-    for i in -7..=7 {
-        let x = i as f32 * (radius / 7.0);
+    for i in -n..=n {
+        let x = i as f32 / STEPS_PER_TEXEL as f32;
         let w = (-0.5 * (x * x) / (sigma * sigma)).exp();
         sum += sample_fn(x * texel) * w;
         wsum += w;

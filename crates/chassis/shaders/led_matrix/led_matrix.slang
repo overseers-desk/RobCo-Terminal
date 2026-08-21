@@ -74,14 +74,24 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
+// The spill glow's read of the lamps behind an edge: a Gaussian over the
+// glyph raster, one texel per lamp, reaching `reach` lamps each way and
+// widening with the distance out into the spill band. The taps sit at most
+// one lamp apart -- the count grows with the reach, not the spacing --
+// because taps spaced wider than the texels they read skip lamps, and the
+// glow then follows which lamps the taps land on rather than how many are
+// lit; along an edge that reads as the band flickering against the lamp
+// pattern.
 float edgeBrightness(vec2 edge, vec2 inward, float d, vec2 gridSize) {
     float reach = 1.5 + 5.0 * d;
     vec2 center = edge + inward * reach * 0.6 / gridSize;
+    int n = int(ceil(reach));
+    float step = reach / float(n);
     float sum = 0.0;
     float weight = 0.0;
-    for (int y = -2; y <= 2; y++) {
-        for (int x = -2; x <= 2; x++) {
-            vec2 off = vec2(float(x), float(y)) * reach * 0.5;
+    for (int y = -n; y <= n; y++) {
+        for (int x = -n; x <= n; x++) {
+            vec2 off = vec2(float(x), float(y)) * step;
             float w = exp(-dot(off, off) / (reach * reach));
             vec3 glyph = texture(Source, clamp(center + off / gridSize,
                                                vec2(0.0), vec2(1.0))).rgb;
