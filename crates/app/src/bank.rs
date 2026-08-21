@@ -7,21 +7,21 @@
 //!
 //! The rows are a fixed-size window onto the slot space, paged: the numerals
 //! read 1..N on every page, the way a car stereo reuses its preset keys across
-//! FM1/FM2/FM3. The pager walks one flattened space over every page
-//! the store holds, home's slots first and then each attachment's, so the
-//! same two keys are the band switch and the preset scroll. Stepping the
-//! pager views a page without stealing the air: the channel on screen stays
-//! put until a switch is pressed.
+//! FM1/FM2/FM3. The pager walks one flattened space over every bank the model
+//! holds, home's slots first and then each attachment's, so the same two keys
+//! are the band switch and the preset scroll. Stepping the pager views a page
+//! without stealing the air: the channel on screen stays put until a switch is
+//! pressed.
 
 use chassis::{BankGeometry, BankStrips, ChannelIndicator, StripRow};
 
-use crate::channels::{Channels, PageId, CHANNEL_CAP};
+use crate::channels::{BankId, Channels, CHANNEL_CAP};
 
 /// Where the pager stands, resolved against the model as it is now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BankView {
-    /// The store page this bank page falls in.
-    pub page: PageId,
+    /// The bank this page falls in.
+    pub bank: BankId,
     /// Where its stretch of slots begins there.
     pub base: u32,
     pub page_count: i32,
@@ -39,7 +39,7 @@ pub struct BankPager {
     page_index: i32,
     /// The view as it stood when [`BankPager::refresh`] last looked, so a view
     /// that moved for any reason can be noticed once, in one place.
-    last_view: Option<(PageId, u32)>,
+    last_view: Option<(BankId, u32)>,
 }
 
 impl Default for BankPager {
@@ -102,14 +102,14 @@ impl BankPager {
         let mut resolved = (0, 0u32);
         for view in &table {
             if index < view.count {
-                resolved = (view.page, (index * self.rows_visible).max(0) as u32);
+                resolved = (view.bank, (index * self.rows_visible).max(0) as u32);
                 break;
             }
             index -= view.count;
         }
-        let (page, base) = resolved;
+        let (bank, base) = resolved;
         BankView {
-            page,
+            bank,
             base,
             page_count,
             rows_on_page: (self.rows_visible.max(0) as u32).min(CHANNEL_CAP.saturating_sub(base)),
@@ -122,13 +122,13 @@ impl BankPager {
         self.page_index = (self.page_index + direction).clamp(0, count - 1);
     }
 
-    /// The bank turns to the channel on the air: its store page's stretch of
-    /// the flattened space, then the bank page of its slot.
+    /// The bank turns to the channel on the air: its bank's stretch of the
+    /// flattened space, then the page of its slot.
     pub fn ensure_visible<S>(&mut self, channels: &Channels<S>) {
         let table = channels.view_pages(self.rows_visible);
         let mut flat = 0;
         for view in &table {
-            if view.page == channels.current_page() {
+            if view.bank == channels.current_bank() {
                 let local = (channels.current_channel().saturating_sub(1) as i32)
                     .div_euclid(self.rows_visible.max(1));
                 self.page_index = flat + local.clamp(0, view.count - 1);
@@ -144,18 +144,18 @@ impl BankPager {
     /// Whatever re-labels the numerals abandons the digits typed against the
     /// old labels: they are never committed against the new ones. A flip of
     /// the pager is the ordinary way that happens, but not the only one. A
-    /// page collapsing under a detach shortens the flattened space, and the
-    /// same index then falls in another page's stretch of it, crossing a
+    /// bank collapsing under a detach shortens the flattened space, and the
+    /// same index then falls in another bank's stretch of it, crossing a
     /// band with no key pressed at all; what the chord watches is therefore
     /// the stretch on view rather than the index that picked it.
     ///
-    /// The page and its base slot are two derived values, and this treats
+    /// The bank and its base slot are two derived values, and this treats
     /// them as one question asked once. The surface calls it after anything
     /// that could have moved either, and cancels its chord when it answers
     /// true.
     pub fn refresh<S>(&mut self, channels: &Channels<S>) -> bool {
         let view = self.view(channels);
-        let now = (view.page, view.base);
+        let now = (view.bank, view.base);
         let moved = self.last_view.is_some_and(|was| was != now);
         self.last_view = Some(now);
         moved
@@ -164,11 +164,11 @@ impl BankPager {
     /// The rows the furniture draws, and where the selector rides.
     pub fn strips<S>(&self, channels: &Channels<S>, indicator: ChannelIndicator) -> BankStrips {
         let view = self.view(channels);
-        let on_view = view.page == channels.current_page();
+        let on_view = view.bank == channels.current_bank();
         let rows = (1..=view.rows_on_page)
             .map(|label| {
                 let channel = view.base + label;
-                let title = channels.slot_title(view.page, channel);
+                let title = channels.slot_title(view.bank, channel);
                 let current = on_view && channels.current_channel() == channel;
                 StripRow {
                     channel,
@@ -198,8 +198,8 @@ impl BankPager {
         }
     }
 
-    /// A store targets any page slot, dark included; a select waits only on
-    /// open ones.
+    /// A store targets any slot on the page, dark included; a select waits
+    /// only on open ones.
     pub fn slot_prefix_exists<S>(&self, channels: &Channels<S>, buf: &str, store: bool) -> bool {
         let view = self.view(channels);
         if store {
@@ -208,7 +208,7 @@ impl BankPager {
                 s.len() > buf.len() && s.starts_with(buf)
             });
         }
-        channels.page_slot_prefix_exists(view.page, buf, view.base, view.rows_on_page)
+        channels.page_slot_prefix_exists(view.bank, buf, view.base, view.rows_on_page)
     }
 
     /// A page slot as the chord and the numerals read it, to its absolute
@@ -223,19 +223,19 @@ impl BankPager {
     }
 
     /// The press of a preset: a dark slot starts a session on it, an open one
-    /// comes to the screen. The press lands on the page on view, so this is
-    /// where a viewed page takes the air.
+    /// comes to the screen. The press lands on the bank on view, so this is
+    /// where a viewed bank takes the air.
     pub fn press<S>(
         &self,
         channels: &mut Channels<S>,
         channel: u32,
         session: impl FnOnce() -> Option<S>,
     ) {
-        let page = self.view(channels).page;
-        if channels.slot_title(page, channel).is_none() {
-            channels.open_channel(page, channel, session);
+        let bank = self.view(channels).bank;
+        if channels.slot_title(bank, channel).is_none() {
+            channels.open_channel(bank, channel, session);
         } else {
-            channels.select_channel(page, channel);
+            channels.select_channel(bank, channel);
         }
     }
 }
@@ -300,9 +300,9 @@ mod tests {
         let mut set = model();
         set.open_channel(0, 7, || Some(7));
         let mut bank = pager(3, &set);
-        let before = (set.current_page(), set.current_channel());
+        let before = (set.current_bank(), set.current_channel());
         bank.step(-1, &set);
-        assert_eq!((set.current_page(), set.current_channel()), before);
+        assert_eq!((set.current_bank(), set.current_channel()), before);
         // ...and the marked row leaves with it.
         let strips = bank.strips(&set, ChannelIndicator::Glow);
         assert!(strips.rows.iter().all(|r| !r.current));
@@ -377,16 +377,17 @@ mod tests {
         bank.step(-1, &set);
         assert!(bank.refresh(&set), "the pager flipped");
 
-        // A page collapsing shortens the flattened space, and the same index
+        // A bank collapsing shortens the flattened space, and the same index
         // then falls in an attachment's stretch of it, with no key pressed.
         set.select_channel(0, 1);
-        let page = set.attach(0, 1, "prime").unwrap();
-        set.open_tmux_pane(page, "@1", "%1", "vim", || Some(1));
+        let attachment = set.attach(0, 1, "prime").unwrap();
+        let window = tmux_cc::WindowId::parse("@1").unwrap();
+        let pane = tmux_cc::PaneId::parse("%1").unwrap();
+        set.open_tmux_window(attachment, &window, &pane, "vim", || Some(1));
         bank.ensure_visible(&set);
         bank.refresh(&set);
-        let attached = bank.view(&set).page;
-        assert_eq!(attached, page);
-        set.collapse_page(page);
+        assert_eq!(bank.view(&set).bank, attachment);
+        set.collapse_bank(attachment);
         assert!(bank.refresh(&set), "the band changed under the numerals");
     }
 

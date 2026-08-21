@@ -143,9 +143,9 @@ struct PaneGate {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GatewayEvent {
     /// The tmux server's hostname resolved:
-    /// `channels::Channels::tmux_host_changed`.
+    /// `channels::Channels::host_changed`.
     HostChanged(String),
-    /// A window needs a channel: `channels::Channels::open_tmux_pane`,
+    /// A window needs a channel: `channels::Channels::open_tmux_window`,
     /// then [`Gateway::attach_window`] if the slot was granted.
     WindowAdded {
         window: WindowId,
@@ -156,16 +156,16 @@ pub enum GatewayEvent {
     WindowRenamed { window: WindowId, name: String },
     /// `channels::Channels::window_closed`.
     WindowClosed { window: WindowId },
-    /// The window shows a different pane now; the row's `tmux_pane` follows.
+    /// The window shows a different pane now; the row's tmux address follows.
     /// The screen redraw is this gateway's own (a fresh capture is already on
     /// its way), so the channel keeps its emulation and its scrollback.
     WindowPaneChanged { window: WindowId, pane: PaneId },
     /// Bytes for the channel row carrying this pane:
     /// `term::TmuxPane::feed`.
     Output { pane: PaneId, bytes: Vec<u8> },
-    /// The attachment is over: `channels::Channels::collapse_page`. With
+    /// The attachment is over: `channels::Channels::collapse_bank`. With
     /// `lost_protocol` the envelope never closed and no `ST` is coming, so
-    /// the surface must also force the gateway channel's parsers out of it
+    /// the surface must also force the gateway's parsers out of it
     /// (`term::Session::leave_control_mode`).
     Detached { lost_protocol: bool },
 }
@@ -312,8 +312,8 @@ impl<W: Write> Gateway<W> {
     ///
     /// `WouldBlock` is backpressure and not death: the reader on the other
     /// side of this fd is tmux, and it is reading. Every other error is the
-    /// transport gone, which the gateway channel's own EOF path is already
-    /// collapsing the page for; there is nothing to do here but say which
+    /// transport gone, which the gateway's own EOF path is already
+    /// collapsing the bank for; there is nothing to do here but say which
     /// commands went down with it.
     pub fn flush(&mut self) {
         while !self.pending.is_empty() {
@@ -399,10 +399,10 @@ impl<W: Write> Gateway<W> {
     /// The watchdog's shape is the flags gate failing: blocks keep arriving,
     /// every one of them marked unsolicited, so no reply ever resolves an
     /// intent: the server's name never lands, no listing ever becomes a
-    /// channel, and the page stands with its gateway and nothing behind it.
+    /// channel, and the bank stands with its gateway and nothing behind it.
     /// That is worth a word at warn and an honest teardown, not a debug line
-    /// and a dead page. `lost_protocol`, because the peer's device string is
-    /// still open and only the gateway channel's parsers can be told
+    /// and a dead bank. `lost_protocol`, because the peer's device string is
+    /// still open and only the gateway's parsers can be told
     /// otherwise.
     pub fn poll(&mut self, now: Instant) -> Vec<GatewayEvent> {
         self.flush();
@@ -442,7 +442,7 @@ impl<W: Write> Gateway<W> {
 
     /// Route a window's active pane into a channel: register its gate and ask
     /// for its screen and cursor. The surface calls this after
-    /// `open_tmux_pane` granted the slot; a window refused a channel is
+    /// `open_tmux_window` granted the slot; a window refused a channel is
     /// never attached.
     pub fn attach_window(&mut self, window: &WindowId, pane: &PaneId) {
         // A re-attach replaces the wiring, never doubles it.
@@ -1278,7 +1278,7 @@ mod tests {
         assert!(gateway.attached(), "neither line is a teardown");
     }
 
-    /// Backpressure is not data loss. A `write` on the gateway channel's
+    /// Backpressure is not data loss. A `write` on the gateway's
     /// master takes what fits and refuses the rest; a command whose tail is
     /// dropped there arrives at tmux joined to the next one, which is one
     /// command instead of two and a reply short for the rest of the
@@ -1492,7 +1492,7 @@ mod tests {
         assert!(gateway.attached());
 
         // Past it, the attachment is over: `lost_protocol`, because the peer
-        // never closed its device string and only the gateway channel's
+        // never closed its device string and only the gateway's
         // parsers can be told that no `ST` is coming.
         let events = gateway.poll(Instant::now() + BOOTSTRAP_DEADLINE);
         assert_eq!(
@@ -1535,7 +1535,7 @@ mod tests {
 
     /// A wire that says nothing at all is not this watchdog's business
     /// either: the shape it names is blocks arriving with the flags wrong,
-    /// and a silent peer is the gateway channel's own EOF path to notice.
+    /// and a silent peer is the gateway's own EOF path to notice.
     #[test]
     fn a_silent_wire_is_not_the_watchdogs_business() {
         let (mut gateway, _wire) = gateway();

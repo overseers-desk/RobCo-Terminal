@@ -42,11 +42,11 @@ way changing input on real hardware did.
 
 **tmux as channels.** Type `tmux -CC` in any channel, on this machine or
 over ssh. The terminal notices tmux's control mode, and that server's windows
-arrive as their own page of channels on the bank. tmux windows are then bank
-slots like any other, switched with the same chords. There is no status bar
+arrive as their own bank of channels. tmux windows are then bank slots like
+any other, switched with the same chords. There is no status bar
 to read, because the bank is doing that job. The channel you typed the
 command in becomes the attachment's gateway and stops taking keystrokes;
-press `Enter` on it to detach, and its page collapses back to the single
+press `Enter` on it to detach, and its bank collapses back to the single
 channel you started from. Nothing is lost if the terminal dies mid-session,
 which is why a local tmux under this young program is a sane habit:
 re-attach cold and the windows come back with their titles.

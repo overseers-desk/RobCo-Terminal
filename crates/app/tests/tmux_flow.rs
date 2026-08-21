@@ -1,10 +1,10 @@
-//! The tmux -CC page flow against a live tmux, end to end through the surface
+//! The tmux -CC bank flow against a live tmux, end to end through the surface
 //! the binary runs: `scripts/eval/tmux-flow.sh`'s phases, minus the pixels.
 //!
 //! The shell script drives the appliance's own UI with xdotool and judges
 //! the glass; what
 //! it is *really* asserting (attach transport, per-window channels, output
-//! routing, the page's lifetime, detach and gateway death) lives below the
+//! routing, the bank's lifetime, detach and gateway death) lives below the
 //! pixels, in the model these tests reach directly. `TerminalSurface::headless`
 //! is the same surface the window runs, pump and all, so the whole chain is
 //! under test: a real `tmux -CC` client on the channel's own PTY, the DCS tap
@@ -26,7 +26,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command as OsCommand;
 use std::time::{Duration, Instant};
 
-use app::channels::ChannelKind;
 use app::window::TerminalSurface;
 use term::{viewport_text, CellSize, SessionConfig, Viewport};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
@@ -172,8 +171,8 @@ fn rows_of(surface: &TerminalSurface) -> String {
         .iter()
         .map(|r| {
             format!(
-                "(page {} ch {} {:?} win {:?} pane {:?} title {:?})",
-                r.page, r.channel, r.kind, r.tmux_window, r.tmux_pane, r.title
+                "(bank {} ch {} tmux {:?} title {:?})",
+                r.bank, r.channel, r.tmux, r.title
             )
         })
         .collect::<Vec<_>>()
@@ -198,26 +197,26 @@ fn pump_until(surface: &mut TerminalSurface, what: &str, pred: impl Fn(&Terminal
     );
 }
 
-/// Attach and wait until the page stands with a channel per existing window.
-/// Answers the tmux page's id.
+/// Attach and wait until the bank stands with a channel per existing window.
+/// Answers the tmux bank's id.
 fn attach(surface: &mut TerminalSurface, server: &Server) -> u32 {
     let windows = server.windows().len();
     type_attach(surface, server);
-    pump_until(surface, "the attach to raise its page and channels", |s| {
-        s.channels().pages().len() == 2
+    pump_until(surface, "the attach to raise its bank and channels", |s| {
+        s.channels().banks().len() == 2
             && s.channels()
                 .rows()
                 .iter()
-                .filter(|r| r.kind == ChannelKind::TmuxPane)
+                .filter(|r| r.tmux.is_some())
                 .count()
                 == windows
     });
     surface
         .channels()
-        .pages()
+        .banks()
         .iter()
-        .find(|p| p.kind == app::channels::PageKind::Tmux)
-        .expect("a tmux page")
+        .find(|b| b.manager.is_tmux())
+        .expect("a tmux bank")
         .id
 }
 
@@ -243,7 +242,7 @@ fn typed(surface: &mut TerminalSurface, letter: &str) {
 
 /// The short hostname tmux reports, which is what the gateway row is named
 /// for.
-fn tmux_host() -> String {
+fn host() -> String {
     String::from_utf8_lossy(
         &OsCommand::new("hostname")
             .arg("-s")
@@ -255,17 +254,24 @@ fn tmux_host() -> String {
     .to_string()
 }
 
+/// The tmux window the channel on the air stands on.
+fn window_on_air(surface: &TerminalSurface) -> &str {
+    let row = surface.channels().current().expect("a channel on the air");
+    let (window, _) = row.tmux.as_ref().expect("a tmux row");
+    window.as_str()
+}
+
 /// The row a window id landed on.
 fn row_of<'a>(
     surface: &'a TerminalSurface,
-    page: u32,
+    bank: u32,
     window: &str,
 ) -> Option<&'a app::channels::Row<app::window::AppSession>> {
     surface
         .channels()
         .rows()
         .iter()
-        .find(|r| r.page == page && r.tmux_window == window)
+        .find(|r| r.bank == bank && r.tmux.as_ref().is_some_and(|(w, _)| w.as_str() == window))
 }
 
 #[test]
@@ -277,7 +283,7 @@ fn phase_1_a_fresh_attach_populates_a_channel_for_every_window_and_the_first_gre
     server.run(&["new-window", "-t", "one", "-n", "logs"]);
     assert_eq!(server.windows().len(), 2, "the session starts with two");
 
-    // Colour the page before anybody attaches to it.
+    // Colour the window before anybody attaches to it.
     //
     // `capture-pane -peqJ` reports a pane's attributes as the escape
     // sequences that produce them, so the reply that draws this window's
@@ -302,12 +308,12 @@ fn phase_1_a_fresh_attach_populates_a_channel_for_every_window_and_the_first_gre
     );
 
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
 
-    // The coloured page came across the envelope and onto the channel's own
+    // The coloured screen came across the envelope and onto the channel's own
     // glass: every byte of that capture survived the DCS tap.
     pump_until(&mut surface, "the coloured capture to land", |s| {
-        row_of(s, page, &windows[0])
+        row_of(s, bank, &windows[0])
             .map(|r| {
                 viewport_text(r.session.term())
                     .join("\n")
@@ -320,11 +326,11 @@ fn phase_1_a_fresh_attach_populates_a_channel_for_every_window_and_the_first_gre
     let rows = surface.channels().rows();
     let gateway = rows
         .iter()
-        .find(|r| r.kind == ChannelKind::Gateway)
+        .find(|r| surface.channels().is_gateway(r))
         .expect("a gateway row");
-    assert_eq!((gateway.page, gateway.channel), (page, 1));
+    assert_eq!((gateway.bank, gateway.channel), (bank, 1));
     for (slot, window) in server.windows().iter().enumerate() {
-        let row = row_of(&surface, page, window).unwrap_or_else(|| {
+        let row = row_of(&surface, bank, window).unwrap_or_else(|| {
             panic!(
                 "window {window} got no channel; rows: {}",
                 rows_of(&surface)
@@ -337,18 +343,18 @@ fn phase_1_a_fresh_attach_populates_a_channel_for_every_window_and_the_first_gre
     // volunteers after it do not.
     assert_eq!(
         (
-            surface.channels().current_page(),
+            surface.channels().current_bank(),
             surface.channels().current_channel()
         ),
-        (page, 2)
+        (bank, 2)
     );
 
     // The gateway row is titled for the host the tmux server reported.
-    let tmux_host = tmux_host();
+    let host = host();
     pump_until(&mut surface, "the tmux hostname to resolve", |s| {
         s.channels()
-            .slot_title(page, 1)
-            .is_some_and(|t| t == format!("tmux -CC # @{tmux_host}"))
+            .slot_title(bank, 1)
+            .is_some_and(|t| t == format!("tmux -CC # @{host}"))
     });
 
     // The client-size law, read off its real effect: tmux draws the
@@ -382,19 +388,19 @@ fn phase_2_new_windows_arrive_volunteered_stand_back_and_asked_for_take_the_air(
     }
     let server = Server::start();
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     assert_eq!(
         (
-            surface.channels().current_page(),
+            surface.channels().current_bank(),
             surface.channels().current_channel()
         ),
-        (page, 2)
+        (bank, 2)
     );
 
     // A window somebody else opens lines up without taking the air.
     server.run(&["new-window", "-t", "one", "-n", "fresh"]);
     pump_until(&mut surface, "the volunteered window's channel", |s| {
-        s.channels().slot_title(page, 3) == Some("fresh")
+        s.channels().slot_title(bank, 3) == Some("fresh")
     });
     assert_eq!(surface.channels().current_channel(), 2, "the air held");
 
@@ -413,7 +419,7 @@ fn phase_3_a_rename_lands_unescaped_in_the_bank() {
     }
     let server = Server::start();
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     let window = server.windows()[0].clone();
 
     // A name carrying a backslash arrives vis(3)-escaped on the wire; the
@@ -421,7 +427,7 @@ fn phase_3_a_rename_lands_unescaped_in_the_bank() {
     // `a\\b` a verbatim read would show.
     server.run_bytes(&[b"rename-window", b"-t", window.as_bytes(), b"a\\b"]);
     pump_until(&mut surface, "the unescaped rename", |s| {
-        s.channels().slot_title(page, 2) == Some(r"a\b")
+        s.channels().slot_title(bank, 2) == Some(r"a\b")
     });
 }
 
@@ -433,7 +439,7 @@ fn phase_4_output_flows_to_the_channel_of_its_pane_and_keystrokes_divert_back() 
     let server = Server::start();
     server.run(&["new-window", "-t", "one", "-n", "logs"]);
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     let windows = server.windows();
 
     // Words typed into each pane from the server side must surface on that
@@ -442,14 +448,14 @@ fn phase_4_output_flows_to_the_channel_of_its_pane_and_keystrokes_divert_back() 
     server.run(&["send-keys", "-t", &windows[1], "word-one", "Enter"]);
     pump_until(&mut surface, "both panes' output to route", |s| {
         let sees = |window: &str, word: &str| {
-            row_of(s, page, window)
+            row_of(s, bank, window)
                 .map(|r| viewport_text(r.session.term()).join("\n").contains(word))
                 .unwrap_or(false)
         };
         sees(&windows[0], "word-zero") && sees(&windows[1], "word-one")
     });
     let crossed = |s: &TerminalSurface, window: &str, word: &str| {
-        row_of(s, page, window)
+        row_of(s, bank, window)
             .map(|r| viewport_text(r.session.term()).join("\n").contains(word))
             .unwrap_or(false)
     };
@@ -477,7 +483,7 @@ fn phase_4_output_flows_to_the_channel_of_its_pane_and_keystrokes_divert_back() 
 }
 
 #[test]
-fn phase_5_a_killed_window_loses_its_channel_and_the_page_stands() {
+fn phase_5_a_killed_window_loses_its_channel_and_the_bank_stands() {
     if !have_tmux() {
         return;
     }
@@ -485,22 +491,22 @@ fn phase_5_a_killed_window_loses_its_channel_and_the_page_stands() {
     server.run(&["new-window", "-t", "one", "-n", "logs"]);
     server.run(&["new-window", "-t", "one", "-n", "spare"]);
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     let doomed = server.windows()[1].clone();
 
     server.run(&["kill-window", "-t", &doomed]);
     pump_until(&mut surface, "the killed window's channel to go", |s| {
-        row_of(s, page, &doomed).is_none()
+        row_of(s, bank, &doomed).is_none()
     });
-    // The page and its other channels stand; the air never left slot 2.
-    assert_eq!(surface.channels().pages().len(), 2);
+    // The bank and its other channels stand; the air never left slot 2.
+    assert_eq!(surface.channels().banks().len(), 2);
     assert_eq!(surface.channels().current_channel(), 2);
     assert_eq!(
         surface
             .channels()
             .rows()
             .iter()
-            .filter(|r| r.page == page)
+            .filter(|r| r.bank == bank)
             .count(),
         3,
         "gateway and two survivors: {}",
@@ -515,24 +521,25 @@ fn phase_6_detach_brings_the_gateway_home_as_the_pty_shell_it_never_stopped_bein
     }
     let server = Server::start();
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
 
     // Onto the gateway, then close it: a gateway's close is a detach, and the
     // row comes home when %exit echoes back.
     surface.cycle_channel(-1);
     assert_eq!(
         (
-            surface.channels().current_page(),
+            surface.channels().current_bank(),
             surface.channels().current_channel()
         ),
-        (page, 1)
+        (bank, 1)
     );
     surface.close_channel();
-    pump_until(&mut surface, "the page to collapse home", |s| {
-        s.channels().pages().len() == 1 && s.channels().current_page() == 0
+    pump_until(&mut surface, "the bank to collapse home", |s| {
+        s.channels().banks().len() == 1 && s.channels().current_bank() == 0
     });
     assert_eq!(surface.channels().current_channel(), 1, "the held slot");
-    assert_eq!(surface.channels().current().unwrap().kind, ChannelKind::Pty);
+    let channels = surface.channels();
+    assert!(!channels.is_gateway(channels.current().unwrap()));
     assert_eq!(server.clients(), 0, "tmux let the client go");
     assert!(
         !server.windows().is_empty(),
@@ -556,14 +563,14 @@ fn phase_7_issue_4_reattach_after_appliance_death_restores_every_window() {
     }
     let server = Server::start();
     let mut first = surface();
-    let page = attach(&mut first, &server);
+    let bank = attach(&mut first, &server);
     server.run(&["new-window", "-t", "one", "-n", "second"]);
     server.run(&["new-window", "-t", "one", "-n", "third"]);
     pump_until(&mut first, "three windows on the first appliance", |s| {
         s.channels()
             .rows()
             .iter()
-            .filter(|r| r.page == page && r.kind == ChannelKind::TmuxPane)
+            .filter(|r| r.bank == bank && r.channel != 1)
             .count()
             == 3
     });
@@ -585,25 +592,25 @@ fn phase_7_issue_4_reattach_after_appliance_death_restores_every_window() {
 
     // The re-attach, from a cold appliance.
     let mut second = surface();
-    let page = attach(&mut second, &server);
+    let bank = attach(&mut second, &server);
     for window in &windows {
         assert!(
-            row_of(&second, page, window).is_some(),
+            row_of(&second, bank, window).is_some(),
             "window {window} got no channel on re-attach; rows: {}",
             rows_of(&second)
         );
     }
     // And they are the right channels: names as the server holds them.
     pump_until(&mut second, "the restored titles", |s| {
-        s.channels().slot_title(page, 3) == Some("second")
-            && s.channels().slot_title(page, 4) == Some("third")
+        s.channels().slot_title(bank, 3) == Some("second")
+            && s.channels().slot_title(bank, 4) == Some("third")
     });
     assert_eq!(
         (
-            second.channels().current_page(),
+            second.channels().current_bank(),
             second.channels().current_channel()
         ),
-        (page, 2),
+        (bank, 2),
         "the first restored window greets, as a fresh attach's would"
     );
 }
@@ -625,7 +632,7 @@ fn phase_8_the_gateway_swallows_what_is_typed_at_it_and_the_bare_enter_detaches(
     let server = Server::start();
     server.run(&["new-window", "-t", "one", "-n", "logs"]);
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
 
     // Onto the gateway, and type a tmux command at it, whole: eleven letters
     // and a keytab key. The command is a real one with a visible effect, so
@@ -634,10 +641,10 @@ fn phase_8_the_gateway_swallows_what_is_typed_at_it_and_the_bare_enter_detaches(
     surface.cycle_channel(-1);
     assert_eq!(
         (
-            surface.channels().current_page(),
+            surface.channels().current_bank(),
             surface.channels().current_channel()
         ),
-        (page, 1)
+        (bank, 1)
     );
     for letter in ["n", "e", "w", "-", "w", "i", "n", "d", "o", "w"] {
         typed(&mut surface, letter);
@@ -657,13 +664,13 @@ fn phase_8_the_gateway_swallows_what_is_typed_at_it_and_the_bare_enter_detaches(
     }
 
     // Nothing typed reached tmux: the session stands, the client stands, and
-    // the page stands.
+    // the bank stands.
     assert_eq!(
         server.clients(),
         1,
         "the gateway's keys never asked to leave"
     );
-    assert_eq!(surface.channels().pages().len(), 2);
+    assert_eq!(surface.channels().banks().len(), 2);
     assert_eq!(
         server.windows().len(),
         2,
@@ -682,35 +689,33 @@ fn phase_8_the_gateway_swallows_what_is_typed_at_it_and_the_bare_enter_detaches(
         s.channels()
             .rows()
             .iter()
-            .filter(|r| r.page == page && r.kind == ChannelKind::TmuxPane)
+            .filter(|r| r.bank == bank && r.channel != 1)
             .count()
             == 3
     });
     let fresh = server.windows()[2].clone();
     pump_until(&mut surface, "the fresh window's title", |s| {
-        row_of(s, page, &fresh).is_some_and(|r| !r.title.is_empty())
+        row_of(s, bank, &fresh).is_some_and(|r| !r.title.is_empty())
     });
 
     // Now the one key that means something. Back onto the gateway, bare Enter.
     while surface.channels().current_channel() != 1 {
         surface.cycle_channel(-1);
     }
-    assert_eq!(
-        surface.channels().current().unwrap().kind,
-        ChannelKind::Gateway
-    );
+    let channels = surface.channels();
+    assert!(channels.is_gateway(channels.current().unwrap()));
     press(
         &mut surface,
         Key::Named(NamedKey::Enter),
         Some("\r"),
         ModifiersState::empty(),
     );
-    pump_until(&mut surface, "the bare Enter to detach the page", |s| {
-        s.channels().pages().len() == 1 && s.channels().current_page() == 0
+    pump_until(&mut surface, "the bare Enter to detach the bank", |s| {
+        s.channels().banks().len() == 1 && s.channels().current_bank() == 0
     });
-    assert_eq!(
-        surface.channels().current().unwrap().kind,
-        ChannelKind::Pty,
+    let channels = surface.channels();
+    assert!(
+        !channels.is_gateway(channels.current().unwrap()),
         "the gateway came home as the shell it never stopped being"
     );
     assert_eq!(server.clients(), 0, "tmux let the client go");
@@ -744,20 +749,20 @@ fn phase_10_a_keytab_key_and_a_control_key_reach_the_tmux_pane_as_bytes() {
         "stty raw -echo; exec cat -v",
     ]);
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     let window = server.windows()[1].clone();
 
     // The air onto that window's channel (windows fill from slot 2).
     surface.cycle_channel(1);
     assert_eq!(surface.channels().current_channel(), 3);
     assert_eq!(
-        surface.channels().current().unwrap().tmux_window,
+        window_on_air(&surface),
         window,
         "the air is on the raw pane's channel"
     );
 
     let shows = |s: &TerminalSurface, what: &str| {
-        row_of(s, page, &window)
+        row_of(s, bank, &window)
             .map(|r| viewport_text(r.session.term()).join("\n").contains(what))
             .unwrap_or(false)
     };
@@ -787,7 +792,7 @@ fn phase_10_a_keytab_key_and_a_control_key_reach_the_tmux_pane_as_bytes() {
 
     // And neither key crossed into the other window's channel.
     let other = server.windows()[0].clone();
-    let crossed = row_of(&surface, page, &other)
+    let crossed = row_of(&surface, bank, &other)
         .map(|r| viewport_text(r.session.term()).join("\n"))
         .unwrap_or_default();
     assert!(!crossed.contains("^[[A") && !crossed.contains("^C"));
@@ -806,7 +811,7 @@ fn phase_11_a_pane_close_asks_tmux_without_confirming_and_the_row_waits_for_the_
     let server = Server::start();
     server.run(&["new-window", "-t", "one", "-n", "logs"]);
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     let doomed = server.windows()[0].clone();
 
     assert_eq!(surface.channels().current_channel(), 2);
@@ -814,16 +819,16 @@ fn phase_11_a_pane_close_asks_tmux_without_confirming_and_the_row_waits_for_the_
     // Nothing was asked and nothing was removed: the close is a request on the
     // wire, and the row is still standing the instant after it.
     assert!(
-        row_of(&surface, page, &doomed).is_some(),
+        row_of(&surface, bank, &doomed).is_some(),
         "the row went before tmux answered; rows: {}",
         rows_of(&surface)
     );
 
     pump_until(&mut surface, "tmux's own close to take the row", |s| {
-        row_of(s, page, &doomed).is_none()
+        row_of(s, bank, &doomed).is_none()
     });
     assert_eq!(server.windows().len(), 1, "tmux killed the window");
-    assert_eq!(surface.channels().pages().len(), 2, "the page stands");
+    assert_eq!(surface.channels().banks().len(), 2, "the bank stands");
 }
 
 /// A paste at scale onto a pane channel, which is the flow that finds every
@@ -861,13 +866,13 @@ fn phase_12_a_paste_at_scale_reaches_the_pane_whole_and_the_pairing_holds() {
         &format!("stty raw -echo; exec cat > {}", sink.display()),
     ]);
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     let window = server.windows()[1].clone();
 
     // The air onto the sink's channel; a paste goes to the channel on the air.
     surface.cycle_channel(1);
     assert_eq!(
-        surface.channels().current().unwrap().tmux_window,
+        window_on_air(&surface),
         window,
         "the air is on the sink pane's channel"
     );
@@ -907,13 +912,13 @@ fn phase_12_a_paste_at_scale_reaches_the_pane_whole_and_the_pairing_holds() {
         s.channels()
             .rows()
             .iter()
-            .filter(|r| r.page == page && r.kind == ChannelKind::TmuxPane)
+            .filter(|r| r.bank == bank && r.channel != 1)
             .count()
             == 3
     });
     let fresh = server.windows()[2].clone();
     pump_until(&mut surface, "the fresh window's title", |s| {
-        row_of(s, page, &fresh).is_some_and(|r| !r.title.is_empty())
+        row_of(s, bank, &fresh).is_some_and(|r| !r.title.is_empty())
     });
 }
 
@@ -933,13 +938,13 @@ fn phase_13_a_tmux_panes_output_is_counted_as_the_redraw_it_asks_for() {
     }
     let server = Server::start();
     let mut surface = surface();
-    let page = attach(&mut surface, &server);
+    let bank = attach(&mut surface, &server);
     let windows = server.windows();
 
     // The air is on the attachment's first window, which is the pane about to
     // print.
     assert_eq!(surface.channels().current_channel(), 2);
-    assert!(row_of(&surface, page, &windows[0]).is_some());
+    assert!(row_of(&surface, bank, &windows[0]).is_some());
 
     // Drain what the attach itself is still delivering, so what is counted
     // below can only be the output asked for here.

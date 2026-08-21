@@ -88,7 +88,7 @@ use term::{
     CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, ResolvedFont,
     RioGrid, Scheme, ScrollPosition, Session, SessionConfig, Target, TmuxPane, Viewport,
 };
-use tmux_cc::{PaneId, WindowId};
+use tmux_cc::PaneId;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{Ime, MouseButton, MouseScrollDelta};
 use winit::event_loop::EventLoopProxy;
@@ -97,7 +97,7 @@ use winit::window::{CursorIcon, Window};
 
 use crate::badge::Badge;
 use crate::bank::BankPager;
-use crate::channels::{ChannelKind, Channels, Close, PageId};
+use crate::channels::{BankId, Channels, Close};
 use crate::chord::{Chord, ChordInput};
 use crate::column::Column;
 use crate::frame_stats::Mark;
@@ -324,11 +324,11 @@ pub struct TerminalSurface {
     /// could not be spawned, which is the state the single `Option<Session>`
     /// this replaced used to carry.
     channels: Channels<AppSession>,
-    /// Each tmux attachment's client half, keyed by the page it raised. The
-    /// write side is a second handle onto the gateway channel's PTY
+    /// Each tmux attachment's client half, keyed by the bank it raised. The
+    /// write side is a second handle onto the gateway's PTY
     /// (`term::Session::control_mode_writer`); the read side arrives through the
-    /// gateway channel's DCS tap on every [`TerminalSurface::pump`].
-    gateways: HashMap<PageId, Gateway<std::fs::File>>,
+    /// gateway's DCS tap on every [`TerminalSurface::pump`].
+    gateways: HashMap<BankId, Gateway<std::fs::File>>,
     /// How a channel this window opens later is started: every channel gets
     /// the same configuration, so the shell a `Ctrl+Shift+T` starts is the
     /// shell the window was launched with.
@@ -346,7 +346,7 @@ pub struct TerminalSurface {
     degauss: Degauss,
     /// The pair the glass was last showing, so the work that follows a switch
     /// runs on a switch and not on every pump.
-    on_air: (crate::channels::PageId, u32),
+    on_air: (BankId, u32),
     /// The **screen well**, not the window: its size is what the grid, the
     /// offscreen target and the chain are all measured in. See the module doc.
     viewport: Viewport,
@@ -668,7 +668,7 @@ impl TerminalSurface {
         let mut channels = Channels::new();
         let size = viewport.term_size();
         channels.start(|| spawn(session, size));
-        let on_air = (channels.current_page(), channels.current_channel());
+        let on_air = (channels.current_bank(), channels.current_channel());
         Self {
             window,
             gpu,
@@ -721,22 +721,23 @@ impl TerminalSurface {
     /// the one a redraw would show.
     pub fn pump(&mut self) -> usize {
         let current = (
-            self.channels.current_page(),
+            self.channels.current_bank(),
             self.channels.current_channel(),
         );
         let mut visible_bytes = 0;
-        let mut died: Vec<(u32, u32, ChannelKind)> = Vec::new();
+        let mut died: Vec<(BankId, u32)> = Vec::new();
         for row in self.channels.rows_mut() {
             let pumped = row.session.pump();
-            if (row.page, row.channel) == current {
+            if (row.bank, row.channel) == current {
                 visible_bytes = pumped.bytes;
             }
             if pumped.eof {
-                died.push((row.page, row.channel, row.kind));
+                died.push((row.bank, row.channel));
             }
-            // A PTY shell's title is its own, and rio-vt keeps whatever the
-            // OSC set on the terminal itself.
-            if row.kind == ChannelKind::Pty {
+            // On bank 0, the one this program manages, a shell's title is its
+            // own and rio-vt keeps whatever the OSC set; on an attachment the
+            // title is tmux's to give.
+            if row.bank == 0 {
                 let title = row.session.term().title.clone();
                 if title != row.title {
                     row.title = title.trim().to_string();
@@ -745,15 +746,16 @@ impl TerminalSurface {
         }
         // A channel whose session finished tells the model, and the model
         // decides whether that ends the appliance.
-        for (page, channel, kind) in died {
-            log::info!("channel {channel} on page {page} exited");
-            if kind == ChannelKind::Gateway {
-                // The gateway's transport died under it; `session_died` is
-                // about to collapse the page (`gateway_died`), and a gateway
-                // client with no channel under it has no wire.
-                self.gateways.remove(&page);
+        for (bank, channel) in died {
+            log::info!("channel {channel} on bank {bank} exited");
+            if channel == 1 {
+                // A gateway's transport died under it; `session_died` is about
+                // to collapse the bank (`gateway_died`), and a gateway client
+                // with no channel under it has no wire. Only a bank a gateway
+                // manages is ever a key here.
+                self.gateways.remove(&bank);
             }
-            if self.channels.session_died(page, channel) == Close::CloseWindow {
+            if self.channels.session_died(bank, channel) == Close::CloseWindow {
                 self.eof = true;
             }
         }
@@ -813,91 +815,90 @@ impl TerminalSurface {
 
     /// Detection, the gateways' turn, and the model transitions their events
     /// ask for.
-    /// Answers what [`Self::pump_gateway`] counted, summed over the pages.
+    /// Answers what [`Self::pump_gateway`] counted, summed over the banks.
     fn pump_gateways(&mut self) -> usize {
         // Detection: a PTY channel's program entered control mode. The
-        // channel transports to a new page and its PTY becomes the
+        // channel transports to a new bank and its PTY becomes the
         // attachment's wire.
-        let mut detected: Vec<(PageId, u32)> = Vec::new();
+        let mut detected: Vec<(BankId, u32)> = Vec::new();
         for row in self.channels.rows_mut() {
             if let Some(session) = row.session.pty_mut() {
                 if session.tap_mut().take_detected() {
-                    detected.push((row.page, row.channel));
+                    detected.push((row.bank, row.channel));
                 }
             }
         }
-        for (page, channel) in detected {
-            self.attach(page, channel);
+        for (bank, channel) in detected {
+            self.attach(bank, channel);
         }
 
-        let pages: Vec<PageId> = self.gateways.keys().copied().collect();
+        let banks: Vec<BankId> = self.gateways.keys().copied().collect();
         let mut visible = 0;
-        for page in pages {
-            visible += self.pump_gateway(page);
+        for bank in banks {
+            visible += self.pump_gateway(bank);
         }
         visible
     }
 
-    /// One detection: raise the page, dup the wire, start the gateway, and
+    /// One detection: raise the bank, dup the wire, start the gateway, and
     /// tell every attachment the glass's grid.
-    fn attach(&mut self, page: PageId, channel: u32) {
+    fn attach(&mut self, bank: BankId, channel: u32) {
         // The tmux server's hostname is the bootstrap's to resolve
-        // (`tmux_host_changed`); the page opens under the empty name briefly,
-        // until it does.
-        let Some(page_id) = self.channels.attach(page, channel, "") else {
-            log::warn!("control mode detected on a slot that cannot attach ({page},{channel})");
+        // (`host_changed`); the bank opens under the empty name briefly, until
+        // it does.
+        let Some(raised) = self.channels.attach(bank, channel, "") else {
+            log::warn!("control mode detected on a slot that cannot attach ({bank},{channel})");
             return;
         };
         let writer = self
             .channels
             .rows_mut()
-            .find(|r| r.page == page_id && r.channel == 1)
+            .find(|r| r.bank == raised && r.channel == 1)
             .and_then(|r| r.session.pty_mut())
             .map(|s| s.control_mode_writer());
         match writer {
             Some(Ok(writer)) => {
-                self.gateways.insert(page_id, Gateway::new(writer));
-                log::info!("tmux: attached; page {page_id} raised over channel {channel}");
+                self.gateways.insert(raised, Gateway::new(writer));
+                log::info!("tmux: attached; bank {raised} raised over channel {channel}");
                 // The client-size law: the glass's grid goes to *every*
-                // gateway on attach, not to the new page alone (see the
+                // gateway on attach, not to the new bank alone (see the
                 // module doc of `crate::channels`).
                 self.set_client_size();
             }
             other => {
                 log::error!("tmux: no wire for the attachment: {other:?}");
-                self.channels.collapse_page(page_id);
+                self.channels.collapse_bank(raised);
             }
         }
     }
 
-    /// One gateway's turn: drain the gateway channel's tap, advance, apply.
+    /// One gateway's turn: drain the gateway's tap, advance, apply.
     /// Answers how many bytes reached the channel on the air, for the same
     /// reason [`Self::pump`] counts them: a pane row's own `pump` reads
     /// nothing (its bytes arrive here, off the gateway's wire), so counted only
     /// there a tmux window's output never asked for a redraw at all.
-    fn pump_gateway(&mut self, page: PageId) -> usize {
+    fn pump_gateway(&mut self, bank: BankId) -> usize {
         let current = (
-            self.channels.current_page(),
+            self.channels.current_bank(),
             self.channels.current_channel(),
         );
         let mut visible = 0;
-        let Some(mut gateway) = self.gateways.remove(&page) else {
+        let Some(mut gateway) = self.gateways.remove(&bank) else {
             return visible;
         };
         // The peeled envelope body, and whether an `ST` closed it, off the
-        // gateway channel's own tap.
+        // gateway's own tap.
         let drained = self
             .channels
             .rows_mut()
-            .find(|r| r.page == page && r.kind == ChannelKind::Gateway)
+            .find(|r| r.bank == bank && r.channel == 1)
             .and_then(|r| r.session.pty_mut())
             .map(|s| {
                 let tap = s.tap_mut();
                 (tap.take_body(), tap.take_ended())
             });
         let Some((bytes, ended)) = drained else {
-            // No gateway channel, no wire: the page collapsed under this
-            // gateway.
+            // No gateway, no wire: the bank collapsed under this client.
             return visible;
         };
 
@@ -912,18 +913,19 @@ impl TerminalSurface {
         // which can end it, so what it says joins the events above.
         events.extend(gateway.poll(Instant::now()));
 
-        // The write side of the keystroke diversion: what the pane sessions
+        // The write side of the keystroke diversion: what the window sessions
         // queued becomes `send-keys`. Which keys get queued is settled before
-        // they reach here, by `key_input` and `write`: a gateway channel's are
-        // swallowed, a pane channel's land in its `TmuxPane`.
+        // they reach here, by `key_input` and `write`: a gateway's are
+        // swallowed, a window's land in its `TmuxPane`.
         let mut inputs: Vec<(PaneId, Vec<u8>)> = Vec::new();
-        for row in self.channels.rows_mut().filter(|r| r.page == page) {
+        for row in self.channels.rows_mut().filter(|r| r.bank == bank) {
+            let Some((_, pane)) = row.tmux.clone() else {
+                continue;
+            };
             if let Some(pane_session) = row.session.tmux_pane_mut() {
                 let input = pane_session.take_input();
                 if !input.is_empty() {
-                    if let Some(pane) = PaneId::parse(&row.tmux_pane) {
-                        inputs.push((pane, input));
-                    }
+                    inputs.push((pane, input));
                 }
             }
         }
@@ -934,52 +936,51 @@ impl TerminalSurface {
         let mut collapse = None;
         for event in events {
             match event {
-                GatewayEvent::HostChanged(host) => self.channels.tmux_host_changed(page, &host),
+                GatewayEvent::HostChanged(host) => self.channels.host_changed(bank, &host),
                 GatewayEvent::WindowAdded { window, pane, name } => {
                     let size = self.viewport.term_size();
                     let scrollback = self.session_config.scrollback;
-                    let opened = self.channels.open_tmux_pane(
-                        page,
-                        window.as_str(),
-                        pane.as_str(),
-                        &name,
-                        || Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback))),
-                    );
+                    let opened =
+                        self.channels
+                            .open_tmux_window(bank, &window, &pane, &name, || {
+                                Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback)))
+                            });
                     if opened {
                         gateway.attach_window(&window, &pane);
                     } else {
                         // A window added with no free slot to take it stays
                         // channelless: tmux keeps it, but nothing here draws
                         // it.
-                        log::warn!("tmux: no slot for window {window} on page {page}");
+                        log::warn!("tmux: no slot for window {window} on bank {bank}");
                     }
                 }
                 GatewayEvent::WindowRenamed { window, name } => {
-                    let channel = self.channels.channel_of_window(page, window.as_str());
+                    let channel = self.channels.channel_of_window(bank, &window);
                     if channel > 0 {
-                        self.channels.set_title(page, channel, &name);
+                        self.channels.set_title(bank, channel, &name);
                     }
                 }
                 GatewayEvent::WindowClosed { window } => {
-                    self.channels.window_closed(page, window.as_str());
+                    self.channels.window_closed(bank, &window);
                 }
                 GatewayEvent::WindowPaneChanged { window, pane } => {
                     // The channel keeps its emulation and scrollback; only
                     // its routing moves. The gateway's fresh capture redraws
                     // the screen through the ordinary output path.
-                    for row in self.channels.rows_mut() {
-                        if row.page == page && row.tmux_window == window.as_str() {
-                            row.tmux_pane = pane.as_str().to_string();
+                    for row in self.channels.rows_mut().filter(|r| r.bank == bank) {
+                        if let Some((known, showing)) = row.tmux.as_mut() {
+                            if *known == window {
+                                *showing = pane.clone();
+                            }
                         }
                     }
                 }
                 GatewayEvent::Output { pane, bytes } => {
-                    let row = self
-                        .channels
-                        .rows_mut()
-                        .find(|r| r.page == page && r.tmux_pane == pane.as_str());
+                    let row = self.channels.rows_mut().find(|r| {
+                        r.bank == bank && r.tmux.as_ref().is_some_and(|(_, p)| *p == pane)
+                    });
                     if let Some(row) = row {
-                        let on_air = (row.page, row.channel) == current;
+                        let on_air = (row.bank, row.channel) == current;
                         if let Some(pane_session) = row.session.tmux_pane_mut() {
                             pane_session.feed(&bytes);
                             if on_air {
@@ -993,41 +994,33 @@ impl TerminalSurface {
         }
 
         if let Some(lost_protocol) = collapse {
-            self.collapse_page(page, lost_protocol);
+            self.collapse_bank(bank, lost_protocol);
         } else {
-            self.gateways.insert(page, gateway);
+            self.gateways.insert(bank, gateway);
         }
         visible
     }
 
-    /// Detach or gateway death: the model collapses the page
-    /// (`channels::Channels::collapse_page`), and a protocol lost without an
-    /// `ST` also forces the gateway channel's parsers out of the envelope no
-    /// one will ever close (`term::Session::leave_control_mode`).
-    fn collapse_page(&mut self, page: PageId, lost_protocol: bool) {
-        let gateway_home_slot = self
-            .channels
-            .pages()
-            .iter()
-            .find(|p| p.id == page)
-            .map(|p| p.gateway_home_slot);
-        self.channels.collapse_page(page);
+    /// Detach or gateway death: the model collapses the bank
+    /// (`channels::Channels::collapse_bank`), and a protocol lost without an
+    /// `ST` also forces the gateway's parsers out of the envelope no one will
+    /// ever close (`term::Session::leave_control_mode`).
+    fn collapse_bank(&mut self, bank: BankId, lost_protocol: bool) {
+        let home_slot = self.channels.collapse_bank(bank);
         if lost_protocol {
-            if let Some(slot) = gateway_home_slot {
-                let row = self
-                    .channels
-                    .rows_mut()
-                    .find(|r| r.page == 0 && r.channel == slot);
-                if let Some(session) = row.and_then(|r| r.session.pty_mut()) {
-                    session.leave_control_mode();
-                }
+            let row = self
+                .channels
+                .rows_mut()
+                .find(|r| r.bank == 0 && r.channel == home_slot);
+            if let Some(session) = row.and_then(|r| r.session.pty_mut()) {
+                session.leave_control_mode();
             }
         }
-        log::info!("tmux: page {page} collapsed (protocol lost: {lost_protocol})");
+        log::info!("tmux: bank {bank} collapsed (protocol lost: {lost_protocol})");
     }
 
     /// The client-size law: one client, one geometry, told to every
-    /// attachment. A gateway told only while its page held the air would
+    /// attachment. A gateway told only while its bank held the air would
     /// keep a stale size that tmux would draw *other* sessions at.
     fn set_client_size(&mut self) {
         let size = self.viewport.term_size();
@@ -1124,7 +1117,7 @@ impl TerminalSurface {
     /// step rather than a glide: what was typed lands at the bottom, and
     /// the user has to see it land. A modifier alone, a shortcut the window
     /// keeps, a key the gateway keyboard holds never reach here, so they
-    /// move nothing; neither does a gateway channel, where nothing is
+    /// move nothing; neither does a gateway, where nothing is
     /// written at all (see [`Self::write`]).
     fn type_bytes(&mut self, bytes: &[u8]) {
         if self.is_gateway_on_air() {
@@ -1140,7 +1133,7 @@ impl TerminalSurface {
     fn is_gateway_on_air(&self) -> bool {
         self.channels
             .current()
-            .is_some_and(|row| row.kind == ChannelKind::Gateway)
+            .is_some_and(|row| self.channels.is_gateway(row))
     }
 
     /// One thing the input method said, applied.
@@ -1417,7 +1410,7 @@ impl TerminalSurface {
         }
     }
 
-    /// The gateway channel's keyboard, which is the whole of what an attached
+    /// The gateway's keyboard, which is the whole of what an attached
     /// channel does with typed input.
     ///
     /// Every key is accepted and dropped, and the bare Enter is turned into
@@ -1432,49 +1425,46 @@ impl TerminalSurface {
     /// block it cannot attribute. The detach therefore goes out as
     /// [`Gateway::detach`]'s `detach-client`, which is the same ask, paired,
     /// and answered by the same `%exit` coming back up the same wire to
-    /// collapse the page. Nothing reaches the gateway channel's pty except
+    /// collapse the bank. Nothing reaches the gateway's pty except
     /// through the codec (`crate::tmux`).
     ///
     /// winit folds the two Enter keys (the main one and the keypad's) into
     /// one `NamedKey::Enter` told apart only by `KeyEvent::location`, so
     /// matching the named key covers both.
     ///
-    /// Answers whether the key was the gateway channel's, which on a gateway
-    /// channel is always.
+    /// Answers whether the key was the gateway's, which on a gateway is
+    /// always.
     fn gateway_key(&mut self, logical: &winit::keyboard::Key) -> bool {
         use winit::keyboard::{Key, NamedKey};
 
-        let Some(row) = self.channels.current() else {
-            return false;
-        };
-        if row.kind != ChannelKind::Gateway {
+        if !self.is_gateway_on_air() {
             return false;
         }
-        let page = row.page;
+        let bank = self.channels.current_bank();
         if matches!(logical, Key::Named(NamedKey::Enter)) {
-            match self.gateways.get_mut(&page) {
+            match self.gateways.get_mut(&bank) {
                 Some(gateway) => gateway.detach(),
-                // The row is a gateway channel with no client standing only
-                // between a teardown and the collapse that follows it; the page
-                // is going home already.
-                None => log::debug!("the gateway's Enter found no client on page {page}"),
+                // The row is a gateway with no client standing only between a
+                // teardown and the collapse that follows it; the bank is going
+                // home already.
+                None => log::debug!("the gateway's Enter found no client on bank {bank}"),
             }
         }
         true
     }
 
-    /// `Ctrl+Shift+T`. A new channel goes to the page on view: on home the
+    /// `Ctrl+Shift+T`. A new channel goes to the bank on view: on home the
     /// lowest free slot with a shell in it, on an attachment another window of
-    /// that session, which is its page's gateway's to give.
+    /// that session, which is its gateway's to give.
     pub fn new_channel(&mut self) {
         let (config, size) = (self.session_config.clone(), self.viewport.term_size());
-        if let Some(page) = self.channels.new_channel(|| spawn(&config, size)) {
-            // The model set the page's `new_window_pending` flag; the window
+        if let Some(bank) = self.channels.new_channel(|| spawn(&config, size)) {
+            // The model set the bank's `new_window_pending` flag; the window
             // tmux answers with will take the air when it lands
-            // (`open_tmux_pane`).
-            match self.gateways.get_mut(&page) {
+            // (`open_tmux_window`).
+            match self.gateways.get_mut(&bank) {
                 Some(gateway) => gateway.new_window(),
-                None => log::warn!("page {page} asked for a window with no gateway standing"),
+                None => log::warn!("bank {bank} asked for a window with no gateway standing"),
             }
         }
         self.channel_changed();
@@ -1482,27 +1472,25 @@ impl TerminalSurface {
 
     /// `Ctrl+Shift+W`.
     pub fn close_channel(&mut self) {
-        let (page, channel) = (
-            self.channels.current_page(),
+        let (bank, channel) = (
+            self.channels.current_bank(),
             self.channels.current_channel(),
         );
-        match self.channels.close_channel(page, channel) {
+        match self.channels.close_channel(bank, channel) {
             // The last channel anywhere switches the appliance off, which
             // for this surface is the same end its child's exit has.
             Close::CloseWindow => self.eof = true,
-            // A gateway channel detaches its page: tmux keeps the session, the
-            // channel comes home when `%exit` echoes back through the pump.
-            Close::Detach(page) => {
-                if let Some(gateway) = self.gateways.get_mut(&page) {
+            // A gateway detaches its bank: tmux keeps the session, the channel
+            // comes home when `%exit` echoes back through the pump.
+            Close::Detach(bank) => {
+                if let Some(gateway) = self.gateways.get_mut(&bank) {
                     gateway.detach();
                 }
             }
             // A tmux window is tmux's to kill; its row goes when the close
             // notification lands, not here.
-            Close::KillWindow { page, window_id } => {
-                if let (Some(gateway), Some(window)) =
-                    (self.gateways.get_mut(&page), WindowId::parse(&window_id))
-                {
+            Close::KillWindow { bank, window } => {
+                if let Some(gateway) = self.gateways.get_mut(&bank) {
                     gateway.kill_window(&window);
                 }
             }
@@ -1527,8 +1515,8 @@ impl TerminalSurface {
     /// Unlike the chord, this names no numeral, so it stands whether or not
     /// the bank is on show.
     pub fn move_channel(&mut self, direction: i32) {
-        let (page, channel) = (
-            self.channels.current_page(),
+        let (bank, channel) = (
+            self.channels.current_bank(),
             self.channels.current_channel(),
         );
         // Slot 0 does not exist, and the cap is the model's to enforce:
@@ -1536,7 +1524,7 @@ impl TerminalSurface {
         let Some(target) = channel.checked_add_signed(direction) else {
             return;
         };
-        self.channels.move_current_to(page, target);
+        self.channels.move_current_to(bank, target);
         self.channel_changed();
     }
 
@@ -1586,18 +1574,18 @@ impl TerminalSurface {
     }
 
     /// The chord names a key on the page the bank is showing, as the
-    /// numerals engraved beside those keys read; the bank turns it into a
+    /// numerals engraved beside those keys read; the pager turns it into a
     /// slot.
     fn apply_chord(&mut self, committed: Option<Chord>) {
         let Some(chord) = committed else { return };
-        let page = self.pager.view(&self.channels).page;
+        let view = self.pager.view(&self.channels);
         let slot = self.pager.absolute_slot(&self.channels, chord.slot());
         match chord {
             Chord::Select(_) => {
-                self.channels.select_channel(page, slot);
+                self.channels.select_channel(view.bank, slot);
             }
             Chord::Store(_) => {
-                self.channels.move_current_to(page, slot);
+                self.channels.move_current_to(view.bank, slot);
             }
         }
         self.channel_changed();
@@ -1611,7 +1599,7 @@ impl TerminalSurface {
             self.degauss.trigger(Instant::now());
         }
         let on_air = (
-            self.channels.current_page(),
+            self.channels.current_bank(),
             self.channels.current_channel(),
         );
         if self.on_air != on_air {
@@ -1638,19 +1626,17 @@ impl TerminalSurface {
             self.pager.ensure_visible(&self.channels);
         }
         // Outside the guard, deliberately: this is not a switch's work. The
-        // page the bank *shows* is the page `Ctrl+Shift+T` acts on however it
-        // came to be showing it, and `BankPager::refresh` already answers true
-        // only when the view really moved, so a pump that changed nothing
-        // cancels no chord.
+        // bank on view is the one `Ctrl+Shift+T` acts on however it came to be
+        // showing, and `BankPager::refresh` already answers true only when the
+        // view really moved, so a pump that changed nothing cancels no chord.
         self.settle_bank();
     }
 
-    /// The half of the above that a pager step also needs: the page the bank
-    /// is showing is the page `Ctrl+Shift+T` acts on, and a moved stretch
-    /// cancels the chord.
+    /// The half of the above that a pager step also needs: the bank on view is
+    /// the one `Ctrl+Shift+T` acts on, and a moved stretch cancels the chord.
     fn settle_bank(&mut self) {
-        let page = self.pager.view(&self.channels).page;
-        self.channels.set_page_on_view(page);
+        let bank = self.pager.view(&self.channels).bank;
+        self.channels.set_bank_on_view(bank);
         if self.pager.refresh(&self.channels) {
             self.chord.cancel();
         }
@@ -1999,7 +1985,7 @@ impl TerminalSurface {
         let bank = self.bank_physical();
         let shown = self.cabinet.as_ref().filter(|cabinet| cabinet.is_shown());
         let column_params = shown.map(|cabinet| cabinet.chassis_params());
-        // What stands on the casting: the real page of the real channel model,
+        // What stands on the casting: the real rows of the real channel model,
         // exactly what `bank_strips` hands the keyboard and the hit test.
         let strips = self.bank_strips();
         let column_pieces = shown
@@ -2245,15 +2231,11 @@ impl TerminalSurface {
         // paste like the middle button's and swallowed on the same terms.
         //
         // So this is the same swallow, for the same reason. Its teeth are
-        // protocol hygiene: the gateway channel's pty is the control wire,
+        // protocol hygiene: the gateway's pty is the control wire,
         // where tmux reads every line as a command and answers it with a block
         // the codec never asked for: one stray byte desyncs the pairing queue
         // for good.
-        if self
-            .channels
-            .current()
-            .is_some_and(|row| row.kind == ChannelKind::Gateway)
-        {
+        if self.is_gateway_on_air() {
             return;
         }
         if let Some(session) = self.channels.session_mut() {
@@ -2406,10 +2388,7 @@ impl TerminalSurface {
             // the middle button's paste goes nowhere -- the glass is still a
             // picture to read and copy from; it is no longer a surface to
             // type at.
-            frozen_glass: self
-                .channels
-                .current()
-                .is_some_and(|row| row.kind == ChannelKind::Gateway),
+            frozen_glass: self.is_gateway_on_air(),
         }
     }
 
