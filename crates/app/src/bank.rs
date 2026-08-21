@@ -20,7 +20,6 @@ use crate::channels::{BankId, Channels, CHANNEL_CAP};
 /// Where the pager stands, resolved against the model as it is now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BankView {
-    /// The bank this page falls in.
     pub bank: BankId,
     /// Where its stretch of slots begins there.
     pub base: u32,

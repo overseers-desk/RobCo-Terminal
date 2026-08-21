@@ -193,10 +193,10 @@ fn font_entry(cfg: &Config) -> &'static FontEntry {
 /// tmux-detecting tap, or a tmux pane's screen the gateway feeds.
 pub type AppSession = ChannelSession<ControlModeTap>;
 
-/// How many banks this surface raises for sessions it finds on a server.
+/// How many banks this surface raises for sessions it finds on a server; a starting value, not a measurement.
 const FOUND_BANK_CAP: usize = 8;
 
-/// How long a session whose client died before the protocol opened waits for another.
+/// How long a session whose client died before the protocol opened waits for another; a starting value.
 const RESPAWN_BACKOFF: Duration = Duration::from_secs(30);
 
 /// One session on one server: a client in flight, a bank, or a client that died
@@ -939,7 +939,8 @@ impl TerminalSurface {
 
     /// A gateway's session listing: every session on a local server with no bank
     /// gets one, raised here and only here; the lowest bank on a server answers
-    /// for it, and a typed `tmux -CC` into a banked session is honoured.
+    /// for it, so two gateways on one server do not both raise the same sessions,
+    /// and a typed `tmux -CC` into a banked session is honoured.
     fn bank_sessions(
         &mut self,
         bank: BankId,
