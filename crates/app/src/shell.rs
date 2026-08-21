@@ -16,7 +16,8 @@
 //!
 //! - initial size 1024x768; minimum size `bankWidth + crtMinimumWidth` by
 //!   240 (see [`crate::geometry`]);
-//! - `--fullscreen` and F11 toggle fullscreen;
+//! - `--fullscreen` and F11 toggle fullscreen, with or without modifiers,
+//!   so Konsole's Ctrl+Shift+F11 is the same key;
 //! - Ctrl+Shift+N opens a window, Ctrl+Shift+Q closes one;
 //! - the last window closing ends the process;
 //! - the title is the current channel's title, falling back to the
@@ -490,6 +491,14 @@ impl ApplicationHandler<ShellEvent> for Shell {
                     // platform's standard full-screen shortcut to Ctrl+F11,
                     // leaving plain F11 unbound, so it has to be handled
                     // directly here.
+                    //
+                    // No modifier guard, deliberately: F11 is the full-screen
+                    // key whatever is held down with it, which is how
+                    // Konsole's `Ctrl+Shift+F11` and GNOME Terminal's bare
+                    // `F11` are the same key here. Nothing else in this
+                    // build binds a modified F11, and the keytab's own
+                    // `\E[23;*~` for it is a sequence no full-screen hand
+                    // means to send.
                     PhysicalKey::Code(KeyCode::F11) => {
                         if let Some(state) = self.windows.get_mut(&window_id) {
                             state.fullscreen = !state.fullscreen;
