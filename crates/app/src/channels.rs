@@ -34,7 +34,7 @@
 
 use std::mem;
 
-use tmux_cc::{PaneId, WindowId};
+use tmux_cc::{PaneId, SessionId, WindowId};
 
 /// Slots are two engraved digits, so 99 is the last one a panel can name.
 pub const CHANNEL_CAP: u32 = 99;
@@ -58,8 +58,13 @@ pub enum Manager {
         /// least as often as over ssh.
         host: String,
         /// The home slot the gateway holds dark behind it while attached, for
-        /// a gateway that was transported there from one.
+        /// a gateway that was transported there from one. `None` on a bank the
+        /// terminal raised for a session it found: nothing came home from
+        /// there, so nothing is held.
         home_slot: Option<u32>,
+        /// The session this bank's gateway is attached to, `None` until the
+        /// `Server` reply names it.
+        session: Option<SessionId>,
         /// A window this bank asked tmux for, still on its way: asking for a
         /// channel puts you in it, so the next window to arrive takes the air
         /// while the ones tmux volunteers do not.
@@ -571,7 +576,7 @@ impl<S> Channels<S> {
         if let Some((window, _)) = self.rows[index].tmux.clone() {
             return Close::KillWindow { bank, window };
         }
-        if self.rows.len() <= 1 {
+        if self.anchored_rows() <= 1 {
             return Close::CloseWindow;
         }
         self.remove_row(bank, channel);
@@ -588,7 +593,7 @@ impl<S> Channels<S> {
         if self.is_gateway(&self.rows[index]) {
             return self.gateway_died(bank);
         }
-        if self.rows.len() <= 1 {
+        if self.anchored_rows() <= 1 {
             return Close::CloseWindow;
         }
         self.remove_row(bank, channel);
@@ -602,11 +607,29 @@ impl<S> Channels<S> {
         let home_slot = self.collapse_bank(bank);
         self.remove_row(0, home_slot);
         // Nothing survived it: the appliance has no channel left to show.
-        if self.rows.is_empty() {
+        if self.anchored_rows() == 0 {
             Close::CloseWindow
         } else {
             Close::Removed
         }
+    }
+
+    /// The rows the appliance is really standing on: home's own, and the
+    /// gateways that came from a home slot. A bank the terminal raised for a
+    /// session it found arrived unasked and leaves the same way, so the last of
+    /// its rows going is not the last channel going out -- and the last home
+    /// row going is, however many such banks are up.
+    fn anchored_rows(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|r| {
+                r.bank == 0
+                    || (r.channel == 1
+                        && self
+                            .manager_of(r.bank)
+                            .is_some_and(|m| m.home_slot().is_some()))
+            })
+            .count()
     }
 
     /// `:384-399`. Where a single row goes. The nearest surviving row of the
@@ -762,6 +785,7 @@ impl<S> Channels<S> {
             manager: Manager::Tmux {
                 host: host.to_string(),
                 home_slot: Some(channel),
+                session: None,
                 new_window_pending: false,
                 attach_done: false,
             },
@@ -780,10 +804,52 @@ impl<S> Channels<S> {
         Some(id)
     }
 
+    /// A bank the terminal raised for a session it found: its gateway is a
+    /// `tmux -CC` this program started, at slot 1 of a bank standing on no home
+    /// slot. Nothing here was asked for, so nothing takes the air and the tube
+    /// holds steady. Answers the new bank's id.
+    pub fn attach_spawned(
+        &mut self,
+        host: &str,
+        session: SessionId,
+        make: impl FnOnce() -> Option<S>,
+    ) -> Option<BankId> {
+        let gateway = make()?;
+        let id = self.next_bank_id;
+        self.next_bank_id += 1;
+        self.banks.push(Bank {
+            id,
+            manager: Manager::Tmux {
+                host: host.to_string(),
+                home_slot: None,
+                session: Some(session),
+                new_window_pending: false,
+                attach_done: false,
+            },
+        });
+        self.insert_row(Row {
+            bank: id,
+            channel: 1,
+            title: gateway_title(host),
+            tmux: None,
+            session: gateway,
+        });
+        Some(id)
+    }
+
+    /// The session a bank's gateway turned out to be attached to, off its
+    /// `Server` reply. Read back through [`Self::manager_of`], which names it.
+    pub fn set_bank_session(&mut self, bank: BankId, id: SessionId) {
+        if let Some(Manager::Tmux { session, .. }) = self.manager_mut(bank) {
+            *session = Some(id);
+        }
+    }
+
     /// `:577-608`. Detach or gateway death: the bank's window rows vanish, the
     /// gateway transports home to the slot it never gave up and relights, and
-    /// the user lands on it. Answers the home slot it landed on; a gateway
-    /// that never held one takes the lowest free.
+    /// the user lands on it. Answers the home slot it landed on, or 0 for a
+    /// bank that never held one: those simply go, rows and all, and the air
+    /// falls to the nearest surviving row if it was standing there.
     pub fn collapse_bank(&mut self, bank: BankId) -> u32 {
         let Some(i) = self.bank_of(bank) else {
             return 0;
@@ -791,9 +857,26 @@ impl<S> Channels<S> {
         let Manager::Tmux { home_slot, .. } = &self.banks[i].manager else {
             return 0;
         };
-        let home_slot = home_slot.unwrap_or_else(|| self.first_free(0));
+        let home_slot = *home_slot;
         let armed = self.degauss_armed;
         self.degauss_armed = false;
+        let Some(home_slot) = home_slot else {
+            let at = self.rows.iter().position(|r| r.bank == bank).unwrap_or(0);
+            let was_here = self.current_bank == bank;
+            self.rows.retain(|r| r.bank != bank);
+            self.banks.remove(i);
+            if self.bank_on_view == Some(bank) {
+                self.bank_on_view = None;
+            }
+            if was_here {
+                if let Some(next) = self.nearest_row(at, 0) {
+                    let (b, c) = (self.rows[next].bank, self.rows[next].channel);
+                    self.set_current(b, c);
+                }
+            }
+            self.degauss_armed = armed;
+            return 0;
+        };
         self.rows.retain(|r| r.bank != bank || r.channel == 1);
         if let Some(gateway) = self.rows.iter().position(|r| r.bank == bank) {
             self.rows[gateway].bank = 0;
@@ -1202,6 +1285,81 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// A bank the terminal raised for a session it found.
+    fn spawned(set: &mut Channels<u32>, host: &str, id: &str, mark: u32) -> BankId {
+        set.attach_spawned(host, SessionId::parse(id).unwrap(), || Some(mark))
+            .expect("a bank")
+    }
+
+    #[test]
+    fn a_bank_raised_for_a_found_session_takes_no_home_slot_and_no_air() {
+        let mut set = channels();
+        let free = set.first_free(0);
+        let _ = set.take_degauss();
+        let bank = spawned(&mut set, "prime", "$4", 44);
+        assert_eq!(set.first_free(0), free, "nothing is held at home for it");
+        assert_eq!(
+            (set.current_bank(), set.current_channel()),
+            (0, 1),
+            "the user asked for none of it, so the air stays where it was"
+        );
+        assert!(!set.take_degauss(), "and the tube holds steady");
+        let row = set.rows().iter().find(|r| r.bank == bank).unwrap();
+        assert_eq!((row.channel, row.session), (1, 44));
+        assert!(set.is_gateway(row));
+        assert_eq!(set.slot_title(bank, 1), Some("tmux -CC # @prime"));
+        // Its windows fill from 2, behind the gateway, like any bank's.
+        assert!(window(&mut set, bank, 1, "vim", 1));
+        assert_eq!(set.slot_title(bank, 2), Some("vim"));
+    }
+
+    #[test]
+    fn collapsing_a_bank_raised_for_a_found_session_takes_nothing_home() {
+        let mut set = channels();
+        open(&mut set, 0, 2, 22);
+        let bank = spawned(&mut set, "prime", "$4", 44);
+        window(&mut set, bank, 1, "vim", 1);
+        set.select_channel(bank, 2);
+        let _ = set.take_degauss();
+        assert_eq!(set.collapse_bank(bank), 0, "no home slot came back");
+        assert_eq!(set.banks().len(), 1);
+        assert_eq!(set.len(), 2, "home kept its own rows and gained none");
+        assert_eq!(
+            (set.current_bank(), set.current_channel()),
+            (0, 2),
+            "the air fell to the nearest surviving row"
+        );
+        assert_eq!(set.first_free(0), 3);
+    }
+
+    #[test]
+    fn a_bank_raised_for_a_found_session_never_switches_the_set_off() {
+        let mut set = channels();
+        let bank = spawned(&mut set, "prime", "$4", 44);
+        window(&mut set, bank, 1, "vim", 1);
+        // Home's one channel is the last channel, whatever stands beside it.
+        assert_eq!(set.close_channel(0, 1), Close::CloseWindow);
+        // And that bank's gateway dying takes only that bank.
+        assert_eq!(set.session_died(bank, 1), Close::Removed);
+        assert_eq!(set.banks().len(), 1);
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn the_greeting_is_owed_once_by_each_bank_and_not_once_by_the_set() {
+        let mut set = channels();
+        let typed = set.attach(0, 1, "prime").unwrap();
+        let found = spawned(&mut set, "prime", "$4", 44);
+        // The found bank's first window arrives while the air is on another
+        // bank's gateway, so it greets nobody.
+        assert!(window(&mut set, found, 1, "vim", 1));
+        assert_eq!((set.current_bank(), set.current_channel()), (typed, 1));
+        // The typed attachment's own first window still greets: the flag is
+        // the bank's, not the set's.
+        assert!(window(&mut set, typed, 2, "logs", 2));
+        assert_eq!((set.current_bank(), set.current_channel()), (typed, 2));
     }
 
     #[test]
