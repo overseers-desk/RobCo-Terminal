@@ -193,18 +193,14 @@ fn font_entry(cfg: &Config) -> &'static FontEntry {
 /// tmux-detecting tap, or a tmux pane's screen the gateway feeds.
 pub type AppSession = ChannelSession<ControlModeTap>;
 
-/// How many banks this surface will raise for sessions it finds on a server.
-/// A server somebody left forty sessions on is not forty banks.
+/// How many banks this surface raises for sessions it finds on a server.
 const FOUND_BANK_CAP: usize = 8;
 
-/// How long a session whose client died before the protocol opened waits
-/// before another one is started for it.
+/// How long a session whose client died before the protocol opened waits for another.
 const RESPAWN_BACKOFF: Duration = Duration::from_secs(30);
 
-/// What this surface knows about one session on one server. A plain [`BankId`]
-/// cannot say it: a spawn in flight has a bank and no gateway yet, and a client
-/// that died before its envelope opened must leave something behind, or the
-/// next listing starts another at once, and another after that.
+/// One session on one server: a client in flight, a bank, or a client that died
+/// before its envelope opened (which the next listing waits out, not restarts).
 enum SessionSlot {
     Spawning(BankId),
     Banked(BankId),
@@ -228,9 +224,8 @@ impl SessionSlot {
     }
 }
 
-/// Is this tmux server this machine's and ours? `/proc/<pid>` reads as a
-/// process of our own uid and the socket path stats to a socket. Anything that
-/// will not answer is a no.
+/// Ours and local: `/proc/<pid>` is a process of our uid and the socket path
+/// stats to a socket; anything that will not answer is a no.
 fn server_is_local(socket: &str, pid: u32) -> bool {
     use std::os::unix::fs::{FileTypeExt, MetadataExt};
     let uid = |path: String| std::fs::metadata(path).ok().map(|m| m.uid());
@@ -240,8 +235,7 @@ fn server_is_local(socket: &str, pid: u32) -> bool {
         && std::fs::metadata(socket).is_ok_and(|m| m.file_type().is_socket())
 }
 
-/// The tmux to run as a client: the binary the server itself is running, so the
-/// two ends speak one dialect. `tmux` on `PATH` for a `/proc` that would not say.
+/// The server's own binary, so both ends speak one dialect; `tmux` on PATH if `/proc` will not say.
 fn tmux_binary(pid: u32) -> String {
     std::fs::read_link(format!("/proc/{pid}/exe"))
         .ok()
@@ -384,9 +378,8 @@ pub struct TerminalSurface {
     /// (`term::Session::control_mode_writer`); the read side arrives through the
     /// gateway's DCS tap on every [`TerminalSurface::pump`].
     gateways: HashMap<BankId, Gateway<std::fs::File>>,
-    /// Every session this surface has seen, by socket, server pid and session
-    /// id: which of them have a bank and which are owed one. The model holds
-    /// banks, not sessions, so this is what a listing is read against.
+    /// Every session seen, by socket, server pid and id: banked, in flight, or
+    /// owed; the model holds banks, so a listing is read against this.
     sessions: HashMap<(String, u32, SessionId), SessionSlot>,
     /// How a channel this window opens later is started: every channel gets
     /// the same configuration, so the shell a `Ctrl+Shift+T` starts is the
@@ -884,9 +877,7 @@ impl TerminalSurface {
             }
         }
         for (bank, channel) in detected {
-            // A gateway row on a bank that already stands is a client this
-            // surface started for a session it found: all it wants is a client
-            // half.
+            // A gateway row on a standing bank is a client this surface started.
             if channel == 1 && !self.gateways.contains_key(&bank) && self.is_tmux(bank) {
                 if !self.start_gateway(bank) {
                     self.collapse_bank(bank, false);
@@ -904,8 +895,7 @@ impl TerminalSurface {
         visible
     }
 
-    /// One detection on a home channel: raise the bank over it, then the
-    /// gateway.
+    /// One detection on a home channel: raise the bank over it, then the gateway.
     fn attach(&mut self, bank: BankId, channel: u32) {
         // The tmux server's hostname is the bootstrap's to resolve
         // (`host_changed`); the bank opens under the empty name briefly, until
@@ -921,9 +911,8 @@ impl TerminalSurface {
         }
     }
 
-    /// Dup a bank's gateway wire and raise the client half over it, then tell
-    /// every attachment the glass's grid -- the client-size law, not the new
-    /// bank alone (the module doc of `crate::channels`).
+    /// Dup a bank's gateway wire, raise the client half, and tell every
+    /// attachment the glass's grid (the client-size law, `crate::channels`).
     fn start_gateway(&mut self, bank: BankId) -> bool {
         let writer = self
             .channels
@@ -948,13 +937,9 @@ impl TerminalSurface {
         self.channels.manager_of(bank).is_some_and(Manager::is_tmux)
     }
 
-    /// A gateway's session listing: every session on a local server gets a bank
-    /// of its own, and this surface is the only thing that raises them. One
-    /// gateway per server answers -- the lowest bank standing on it -- so two
-    /// attachments to one server do not both act on the listing they both
-    /// asked for. A session that already has a bank is left alone; a `tmux -CC`
-    /// typed into one that has is honoured, and the two banks stand side by
-    /// side, because the user asked for it.
+    /// A gateway's session listing: every session on a local server with no bank
+    /// gets one, raised here and only here; the lowest bank on a server answers
+    /// for it, and a typed `tmux -CC` into a banked session is honoured.
     fn bank_sessions(
         &mut self,
         bank: BankId,
@@ -1004,11 +989,9 @@ impl TerminalSurface {
             config.program = Some(tmux_binary(pid));
             let args = ["-S", &socket, "-CC", "attach-session", "-t", id.as_str()];
             config.args = args.iter().map(|a| a.to_string()).collect();
-            // Explicit and empty: a tmux client refuses to attach from inside
-            // another tmux, and this process may well be running in one.
+            // Empty on purpose: a client refuses to attach from inside another tmux.
             config.env.push(("TMUX".to_string(), String::new()));
-            // Under the empty host name, like any attach: this client's own
-            // bootstrap resolves it (`GatewayEvent::HostChanged`).
+            // Host name empty until the client's own bootstrap names it.
             let Some(raised) = self
                 .channels
                 .attach_spawned("", id.clone(), || spawn(&config, size))
@@ -1022,9 +1005,8 @@ impl TerminalSurface {
         }
     }
 
-    /// The register follows the banks. `failed` is a client that died before
-    /// its envelope ever opened: its session keeps an entry, so the next
-    /// listing waits [`RESPAWN_BACKOFF`] rather than starting another at once.
+    /// The register follows the banks; a client dead before its envelope opened
+    /// leaves a failed entry that holds off a restart for [`RESPAWN_BACKOFF`].
     fn forget_bank(&mut self, bank: BankId, failed: bool) {
         if failed {
             for slot in self.sessions.values_mut() {
@@ -1037,9 +1019,8 @@ impl TerminalSurface {
         }
     }
 
-    /// One gateway's turn: drain the gateway's tap, advance, apply. Answers how
-    /// many bytes reached the channel on the air, for the reason [`Self::pump`]
-    /// gives.
+    /// One gateway's turn: drain its tap, advance, apply; answers the bytes that
+    /// reached the channel on the air (see [`Self::pump`]).
     fn pump_gateway(&mut self, bank: BankId) -> usize {
         let current = (
             self.channels.current_bank(),

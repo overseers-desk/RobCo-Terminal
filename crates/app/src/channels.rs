@@ -56,9 +56,8 @@ pub enum Manager {
         /// least as often as over ssh.
         host: String,
         /// The home slot the gateway holds dark behind it while attached, for
-        /// a gateway that was transported there from one. `None` on a bank the
-        /// terminal raised for a session it found: nothing came home from
-        /// there, so nothing is held.
+        /// a gateway that was transported there from one; `None` on a bank the
+        /// terminal raised itself, which holds nothing at home.
         home_slot: Option<u32>,
         /// The session this bank's gateway is attached to, `None` until the
         /// `Server` reply names it.
@@ -608,11 +607,8 @@ impl<S> Channels<S> {
         }
     }
 
-    /// The rows the appliance is really standing on: home's own, and the
-    /// gateways that came from a home slot. A bank the terminal raised for a
-    /// session it found arrived unasked and leaves the same way, so the last of
-    /// its rows going is not the last channel going out -- and the last home
-    /// row going is, however many such banks are up.
+    /// Home's rows and the gateways that came from a home slot: the last of
+    /// these going is the last channel going out, whatever else stands.
     fn anchored_rows(&self) -> usize {
         self.rows
             .iter()
@@ -787,10 +783,8 @@ impl<S> Channels<S> {
         Some(id)
     }
 
-    /// A bank the terminal raised for a session it found: its gateway is a
-    /// `tmux -CC` this program started, at slot 1 of a bank standing on no home
-    /// slot. Nothing here was asked for, so nothing takes the air and the tube
-    /// holds steady. Answers the new bank's id.
+    /// A bank the terminal raised for a session it found: a gateway at slot 1 of
+    /// a bank with no home slot; nothing takes the air, nothing degausses.
     pub fn attach_spawned(
         &mut self,
         host: &str,
@@ -809,8 +803,7 @@ impl<S> Channels<S> {
         Some(id)
     }
 
-    /// A new bank under a tmux attachment, at the next id. Its gateway's row
-    /// is the caller's to place.
+    /// A new bank under a tmux attachment; its gateway row is the caller's to place.
     fn push_bank(
         &mut self,
         host: &str,
@@ -832,8 +825,7 @@ impl<S> Channels<S> {
         id
     }
 
-    /// The session a bank's gateway turned out to be attached to, off its
-    /// `Server` reply. Read back through [`Self::manager_of`], which names it.
+    /// The session the bank's gateway is attached to, off its `Server` reply.
     pub fn set_bank_session(&mut self, bank: BankId, id: SessionId) {
         if let Some(Manager::Tmux { session, .. }) = self.manager_mut(bank) {
             *session = Some(id);

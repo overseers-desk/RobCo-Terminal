@@ -137,9 +137,8 @@ pub enum GatewayEvent {
     /// The tmux server's hostname resolved:
     /// `channels::Channels::host_changed`.
     HostChanged(String),
-    /// Every session the server holds, as this gateway last listed them, with
-    /// the server it listed them on and the one this gateway is attached to.
-    /// The whole listing: which of them are worth a bank is the surface's.
+    /// The server's sessions as last listed, the server, and the one this
+    /// gateway is attached to; which are worth a bank is the surface's call.
     SessionsSeen {
         attached: SessionId,
         socket: String,
@@ -192,13 +191,11 @@ pub struct Gateway<W: Write> {
     panes: HashMap<PaneId, PaneGate>,
 
     host: String,
-    /// Which server this is and which of its sessions this client is on, off
-    /// the `Server` reply: the key a session listing is read against.
+    /// The server and the attached session, off the `Server` reply.
     socket: String,
     server_pid: u32,
     session: Option<SessionId>,
-    /// A re-listing this advance owes, so the two `%sessions-changed` one
-    /// `new-session` sends cost one round trip.
+    /// A re-listing this advance owes; repeats of `%sessions-changed` cost one.
     relist_due: bool,
     attached: bool,
     /// The first `list-panes` reply has been consumed; window notifications
@@ -223,10 +220,8 @@ pub struct Gateway<W: Write> {
 }
 
 impl<W: Write> Gateway<W> {
-    /// Raise the client and send the bootstrap at once: the server this client
-    /// is on, the panes of the session it is attached to, and the sessions the
-    /// server holds beside it. No timer and no wait for `%session-changed`.
-    /// See the module doc's first divergence.
+    /// Raise the client and send the bootstrap at once: the server, the attached
+    /// session's panes, the server's sessions. No timer; see the module doc.
     pub fn new(writer: W) -> Self {
         let mut gateway = Self {
             codec: Codec::new(),
