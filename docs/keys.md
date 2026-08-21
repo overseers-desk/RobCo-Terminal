@@ -23,8 +23,9 @@ and the chord fires the moment no longer slot number could still match what
 you have typed. Let go of the chord modifier to fire it early. So on a bank
 of nine, `Alt` then `3` switches immediately, while on a bank of thirty it
 waits to see whether a second digit is coming. The digit chords name the
-numerals engraved on the bank, so they need the bank to be on show; the rest
-of the table stands whether the chassis is drawn or not.
+numerals engraved on the bank, and the pager keys step what the bank shows,
+so both need the bank on show. The rest of the table stands whether the
+chassis is drawn or not.
 
 `Ctrl`+`Shift`+`Left` / `Right` swap the channel on screen with its
 neighbour, and take an empty slot outright. The first slot and the last are
