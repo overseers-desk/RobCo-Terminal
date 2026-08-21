@@ -238,7 +238,7 @@ impl<W: Write> Gateway<W> {
             unsolicited: 0,
             sheds: 0,
         };
-        gateway.command(&Command::HostName, Intent::Host);
+        gateway.command(&Command::Server, Intent::Host);
         gateway.command(&Command::ListPanes, Intent::ListPanes);
         gateway
     }
@@ -544,8 +544,8 @@ impl<W: Write> Gateway<W> {
         match intent {
             Intent::Ignore => {}
             Intent::Host => {
-                if let Some(first) = block.text().first() {
-                    self.host = first.trim().to_string();
+                if let Some((_, _, _, host)) = block.text().first().and_then(|l| tmux_cc::parse_server(l)) {
+                    self.host = host;
                     out.push(GatewayEvent::HostChanged(self.host.clone()));
                 }
             }
@@ -980,7 +980,7 @@ mod tests {
     /// rename sweep. Command numbers 0,1 are the constructor's; 2 is the
     /// sweep.
     fn attach<W: Write>(gateway: &mut Gateway<W>) -> Vec<GatewayEvent> {
-        let mut events = gateway.advance(reply(0, "prime").as_bytes());
+        let mut events = gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
         events.extend(gateway.advance(reply(1, "@0 %0 1 bash").as_bytes()));
         events.extend(gateway.advance(reply(2, "@0 bash").as_bytes()));
         events
@@ -992,7 +992,7 @@ mod tests {
         assert_eq!(
             wire.lines(),
             vec![
-                r##"display-message -p "#{host_short}""##,
+                r##"display-message -p "#{socket_path} #{pid} #{session_id} #{host_short}""##,
                 r##"list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}""##,
             ]
         );
@@ -1013,7 +1013,7 @@ mod tests {
     #[test]
     fn the_listing_becomes_windows_and_the_sweep_corrects_a_late_rename() {
         let (mut gateway, wire) = gateway();
-        let mut events = gateway.advance(reply(0, "prime").as_bytes());
+        let mut events = gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
         events.extend(gateway.advance(reply(1, "@0 %0 1 bash\n@1 %1 1 logs").as_bytes()));
         // Only active panes make windows; the sweep went out after the
         // first listing.
@@ -1308,7 +1308,7 @@ mod tests {
         let text = wire.text();
         assert!(text.ends_with('\n'), "the wire ends on a line boundary");
         let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines[0], r##"display-message -p "#{host_short}""##);
+        assert_eq!(lines[0], r##"display-message -p "#{socket_path} #{pid} #{session_id} #{host_short}""##);
         assert_eq!(
             lines[1],
             r##"list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}""##
@@ -1483,7 +1483,7 @@ mod tests {
         wire.clear();
         // Blocks that carry exactly what the bootstrap asked for, every one
         // of them flagged 0.
-        let burst = "%begin 1 50 0\r\nprime\r\n%end 1 50 0\r\n\
+        let burst = "%begin 1 50 0\r\n/tmp/tmux-1000/default 4242 $0 prime\r\n%end 1 50 0\r\n\
                      %begin 1 51 0\r\n@0 %0 1 bash\r\n%end 1 51 0\r\n";
         assert_eq!(gateway.advance(burst.as_bytes()), vec![]);
 
