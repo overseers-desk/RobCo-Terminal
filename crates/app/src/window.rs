@@ -88,7 +88,7 @@ use term::{
     CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, ResolvedFont,
     RioGrid, Scheme, ScrollPosition, Session, SessionConfig, Target, TmuxPane, Viewport,
 };
-use tmux_cc::PaneId;
+use tmux_cc::{PaneId, SessionId};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{Ime, MouseButton, MouseScrollDelta};
 use winit::event_loop::EventLoopProxy;
@@ -97,7 +97,7 @@ use winit::window::{CursorIcon, Window};
 
 use crate::badge::Badge;
 use crate::bank::BankPager;
-use crate::channels::{BankId, Channels, Close};
+use crate::channels::{BankId, Channels, Close, Manager};
 use crate::chord::{Chord, ChordInput};
 use crate::column::Column;
 use crate::frame_stats::Mark;
@@ -192,6 +192,62 @@ fn font_entry(cfg: &Config) -> &'static FontEntry {
 /// What a channel slot holds in this binary: a PTY session carrying the
 /// tmux-detecting tap, or a tmux pane's screen the gateway feeds.
 pub type AppSession = ChannelSession<ControlModeTap>;
+
+/// How many banks this surface will raise for sessions it finds on a server.
+/// A server somebody left forty sessions on is not forty banks.
+const FOUND_BANK_CAP: usize = 8;
+
+/// How long a session whose client died before the protocol opened waits
+/// before another one is started for it.
+const RESPAWN_BACKOFF: Duration = Duration::from_secs(30);
+
+/// What this surface knows about one session on one server. A plain [`BankId`]
+/// cannot say it: a spawn in flight has a bank and no gateway yet, and a client
+/// that died before its envelope opened must leave something behind, or the
+/// next listing starts another at once, and another after that.
+enum SessionSlot {
+    Spawning(BankId),
+    Banked(BankId),
+    Failed(Instant),
+}
+
+impl SessionSlot {
+    fn bank(&self) -> Option<BankId> {
+        match self {
+            SessionSlot::Spawning(b) | SessionSlot::Banked(b) => Some(*b),
+            SessionSlot::Failed(_) => None,
+        }
+    }
+
+    /// Owed a client: only a failure, and only past its backoff.
+    fn owed(&self, now: Instant) -> bool {
+        match self {
+            SessionSlot::Failed(at) => now.duration_since(*at) >= RESPAWN_BACKOFF,
+            _ => false,
+        }
+    }
+}
+
+/// Is this tmux server this machine's and ours? `/proc/<pid>` reads as a
+/// process of our own uid and the socket path stats to a socket. Anything that
+/// will not answer is a no.
+fn server_is_local(socket: &str, pid: u32) -> bool {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    let uid = |path: String| std::fs::metadata(path).ok().map(|m| m.uid());
+    let server = uid(format!("/proc/{pid}"));
+    server.is_some()
+        && server == uid("/proc/self".to_string())
+        && std::fs::metadata(socket).is_ok_and(|m| m.file_type().is_socket())
+}
+
+/// The tmux to run as a client: the binary the server itself is running, so the
+/// two ends speak one dialect. `tmux` on `PATH` for a `/proc` that would not say.
+fn tmux_binary(pid: u32) -> String {
+    std::fs::read_link(format!("/proc/{pid}/exe"))
+        .ok()
+        .and_then(|path| path.to_str().map(str::to_string))
+        .unwrap_or_else(|| "tmux".to_string())
+}
 
 /// Start a channel's session, or log why not. A window that cannot start a
 /// second shell keeps the first one and its picture; refusing the slot is the
@@ -320,15 +376,18 @@ pub struct TerminalSurface {
     window: Option<Arc<Window>>,
     gpu: Option<Gpu>,
     /// This window's channels, one session each, and which of them is on the
-    /// air (`crate::channels`). Empty only where the first session
-    /// could not be spawned, which is the state the single `Option<Session>`
-    /// this replaced used to carry.
+    /// air (`crate::channels`). Empty only where the first session could not be
+    /// spawned.
     channels: Channels<AppSession>,
     /// Each tmux attachment's client half, keyed by the bank it raised. The
     /// write side is a second handle onto the gateway's PTY
     /// (`term::Session::control_mode_writer`); the read side arrives through the
     /// gateway's DCS tap on every [`TerminalSurface::pump`].
     gateways: HashMap<BankId, Gateway<std::fs::File>>,
+    /// Every session this surface has seen, by socket, server pid and session
+    /// id: which of them have a bank and which are owed one. The model holds
+    /// banks, not sessions, so this is what a listing is read against.
+    sessions: HashMap<(String, u32, SessionId), SessionSlot>,
     /// How a channel this window opens later is started: every channel gets
     /// the same configuration, so the shell a `Ctrl+Shift+T` starts is the
     /// shell the window was launched with.
@@ -674,6 +733,7 @@ impl TerminalSurface {
             gpu,
             channels,
             gateways: HashMap::new(),
+            sessions: HashMap::new(),
             on_air,
             session_config: session.clone(),
             pager: BankPager::new(),
@@ -748,23 +808,26 @@ impl TerminalSurface {
         // decides whether that ends the appliance.
         for (bank, channel) in died {
             log::info!("channel {channel} on bank {bank} exited");
-            if channel == 1 {
+            if channel == 1 && self.is_tmux(bank) {
                 // A gateway's transport died under it; `session_died` is about
-                // to collapse the bank (`gateway_died`), and a gateway client
-                // with no channel under it has no wire. Only a bank a gateway
-                // manages is ever a key here.
-                self.gateways.remove(&bank);
+                // to collapse the bank (`gateway_died`), and a client with no
+                // channel under it has no wire. No client half at all means a
+                // tmux this surface started that never opened its envelope.
+                let had = self.gateways.remove(&bank).is_some();
+                if !had {
+                    log::warn!("tmux: bank {bank}'s client died before the protocol opened");
+                }
+                self.forget_bank(bank, !had);
             }
             if self.channels.session_died(bank, channel) == Close::CloseWindow {
                 self.eof = true;
             }
         }
         // A pane row's own `pump` above read nothing and could not: its bytes
-        // arrive off the gateway's wire, which is drained here, after the loop
-        // that counted. Counted only there, a tmux window on the air never
-        // asked for a redraw at all -- what put its output on the glass was
-        // the effects clock coming round, and a window whose effects are not
-        // running would have shown nothing.
+        // arrive off the gateway's wire, drained here, after the loop that
+        // counted. Counted only there, a tmux window on the air never asked for
+        // a redraw at all, and a window whose effects are not running would
+        // have shown nothing.
         visible_bytes += self.pump_gateways();
         self.channel_changed();
         self.watch_the_write_queues();
@@ -774,22 +837,15 @@ impl TerminalSurface {
     /// Put a shed write queue on the glass.
     ///
     /// Both write queues are capped (`term::session::INPUT_CAP`,
-    /// `crate::tmux::PENDING_CAP`) so a peer that has stopped reading cannot
-    /// grow this process until the OOM killer arrives. What a cap does when it
-    /// bites is throw away what the user just typed, and until this the only
-    /// trace of that was a `log::warn!` nobody is watching: the typing simply
-    /// vanished. So the counters are read once per pump and a rise raises the
-    /// badge.
-    ///
-    /// The badge is two words wide because the plate is twice the text and
-    /// the glass is only so many columns across, and the log line beside it
-    /// carries the byte counts for anyone who wants them.
-    ///
-    /// The two wires get two words, because the remedy differs: an unread tty
-    /// is a shell this program spawned, and a full gateway queue is the tmux
-    /// server. Both dropping at once is one badge -- the pty one, the wire
-    /// nearer the user's hand -- and not a stack of two: they are one event,
-    /// "your typing is being thrown away", and the log has the detail.
+    /// `crate::tmux::PENDING_CAP`), and what a cap does when it bites is throw
+    /// away what the user just typed, until now traced only by a `log::warn!`
+    /// nobody is watching. So the counters are read once per pump and a rise
+    /// raises the badge, two words wide because the plate is twice the text.
+    /// The two wires get two words because the remedy differs: an unread tty is
+    /// a shell this program spawned, a full gateway queue is the tmux server.
+    /// Both at once is one badge -- the pty one, the wire nearer the user's
+    /// hand -- because they are one event, "your typing is being thrown away",
+    /// and the log line beside it carries the byte counts.
     fn watch_the_write_queues(&mut self) {
         let pty: u64 = self
             .channels
@@ -808,10 +864,9 @@ impl TerminalSurface {
 
     // ---- the tmux control-mode plumbing -----------------------------
     //
-    // Everything here runs synchronously, on every pump. There is no
-    // listener to attach late: by the time `attach` returns, the
-    // model is already wired to the gateway whose bootstrap is in flight, so
-    // there is no window in which a late attachment could race it.
+    // Everything here runs synchronously, on every pump: by the time `attach`
+    // returns the model is already wired to the gateway whose bootstrap is in
+    // flight, so no late attachment can race it.
 
     /// Detection, the gateways' turn, and the model transitions their events
     /// ask for.
@@ -829,7 +884,16 @@ impl TerminalSurface {
             }
         }
         for (bank, channel) in detected {
-            self.attach(bank, channel);
+            // A gateway row on a bank that already stands is a client this
+            // surface started for a session it found: all it wants is a client
+            // half.
+            if channel == 1 && !self.gateways.contains_key(&bank) && self.is_tmux(bank) {
+                if !self.start_gateway(bank) {
+                    self.collapse_bank(bank, false);
+                }
+            } else {
+                self.attach(bank, channel);
+            }
         }
 
         let banks: Vec<BankId> = self.gateways.keys().copied().collect();
@@ -840,8 +904,8 @@ impl TerminalSurface {
         visible
     }
 
-    /// One detection: raise the bank, dup the wire, start the gateway, and
-    /// tell every attachment the glass's grid.
+    /// One detection on a home channel: raise the bank over it, then the
+    /// gateway.
     fn attach(&mut self, bank: BankId, channel: u32) {
         // The tmux server's hostname is the bootstrap's to resolve
         // (`host_changed`); the bank opens under the empty name briefly, until
@@ -850,33 +914,132 @@ impl TerminalSurface {
             log::warn!("control mode detected on a slot that cannot attach ({bank},{channel})");
             return;
         };
+        if self.start_gateway(raised) {
+            log::info!("tmux: attached; bank {raised} raised over channel {channel}");
+        } else {
+            self.channels.collapse_bank(raised);
+        }
+    }
+
+    /// Dup a bank's gateway wire and raise the client half over it, then tell
+    /// every attachment the glass's grid -- the client-size law, not the new
+    /// bank alone (the module doc of `crate::channels`).
+    fn start_gateway(&mut self, bank: BankId) -> bool {
         let writer = self
             .channels
             .rows_mut()
-            .find(|r| r.bank == raised && r.channel == 1)
+            .find(|r| r.bank == bank && r.channel == 1)
             .and_then(|r| r.session.pty_mut())
             .map(|s| s.control_mode_writer());
         match writer {
             Some(Ok(writer)) => {
-                self.gateways.insert(raised, Gateway::new(writer));
-                log::info!("tmux: attached; bank {raised} raised over channel {channel}");
-                // The client-size law: the glass's grid goes to *every*
-                // gateway on attach, not to the new bank alone (see the
-                // module doc of `crate::channels`).
+                self.gateways.insert(bank, Gateway::new(writer));
                 self.set_client_size();
+                true
             }
             other => {
                 log::error!("tmux: no wire for the attachment: {other:?}");
-                self.channels.collapse_bank(raised);
+                false
             }
         }
     }
 
-    /// One gateway's turn: drain the gateway's tap, advance, apply.
-    /// Answers how many bytes reached the channel on the air, for the same
-    /// reason [`Self::pump`] counts them: a pane row's own `pump` reads
-    /// nothing (its bytes arrive here, off the gateway's wire), so counted only
-    /// there a tmux window's output never asked for a redraw at all.
+    fn is_tmux(&self, bank: BankId) -> bool {
+        self.channels.manager_of(bank).is_some_and(Manager::is_tmux)
+    }
+
+    /// A gateway's session listing: every session on a local server gets a bank
+    /// of its own, and this surface is the only thing that raises them. One
+    /// gateway per server answers -- the lowest bank standing on it -- so two
+    /// attachments to one server do not both act on the listing they both
+    /// asked for. A session that already has a bank is left alone; a `tmux -CC`
+    /// typed into one that has is honoured, and the two banks stand side by
+    /// side, because the user asked for it.
+    fn bank_sessions(
+        &mut self,
+        bank: BankId,
+        attached: SessionId,
+        socket: String,
+        pid: u32,
+        sessions: Vec<(SessionId, String)>,
+    ) {
+        self.channels.set_bank_session(bank, attached.clone());
+        self.sessions
+            .insert((socket.clone(), pid, attached), SessionSlot::Banked(bank));
+        if !server_is_local(&socket, pid) {
+            log::info!("tmux: the server on {socket} is not this machine's; its other sessions keep to themselves");
+            return;
+        }
+        let enumerator = self
+            .sessions
+            .iter()
+            .filter(|((s, p, _), _)| *s == socket && *p == pid)
+            .filter_map(|(_, slot)| slot.bank())
+            .min();
+        if enumerator != Some(bank) {
+            return;
+        }
+        let mut up = 0;
+        for b in self.channels.banks() {
+            up += usize::from(matches!(
+                b.manager,
+                Manager::Tmux {
+                    home_slot: None,
+                    ..
+                }
+            ));
+        }
+        let size = self.viewport.term_size();
+        let now = Instant::now();
+        for (id, name) in sessions {
+            let key = (socket.clone(), pid, id.clone());
+            if self.sessions.get(&key).is_some_and(|slot| !slot.owed(now)) {
+                continue;
+            }
+            if up >= FOUND_BANK_CAP {
+                log::warn!("tmux: {FOUND_BANK_CAP} banks already stand for sessions found on their servers; {name} gets none");
+                return;
+            }
+            let mut config = self.session_config.clone();
+            config.program = Some(tmux_binary(pid));
+            let args = ["-S", &socket, "-CC", "attach-session", "-t", id.as_str()];
+            config.args = args.iter().map(|a| a.to_string()).collect();
+            // Explicit and empty: a tmux client refuses to attach from inside
+            // another tmux, and this process may well be running in one.
+            config.env.push(("TMUX".to_string(), String::new()));
+            // Under the empty host name, like any attach: this client's own
+            // bootstrap resolves it (`GatewayEvent::HostChanged`).
+            let Some(raised) = self
+                .channels
+                .attach_spawned("", id.clone(), || spawn(&config, size))
+            else {
+                log::warn!("tmux: no client for session {name} on {socket}");
+                continue;
+            };
+            log::info!("tmux: bank {raised} raised for session {name} on {socket}");
+            self.sessions.insert(key, SessionSlot::Spawning(raised));
+            up += 1;
+        }
+    }
+
+    /// The register follows the banks. `failed` is a client that died before
+    /// its envelope ever opened: its session keeps an entry, so the next
+    /// listing waits [`RESPAWN_BACKOFF`] rather than starting another at once.
+    fn forget_bank(&mut self, bank: BankId, failed: bool) {
+        if failed {
+            for slot in self.sessions.values_mut() {
+                if slot.bank() == Some(bank) {
+                    *slot = SessionSlot::Failed(Instant::now());
+                }
+            }
+        } else {
+            self.sessions.retain(|_, slot| slot.bank() != Some(bank));
+        }
+    }
+
+    /// One gateway's turn: drain the gateway's tap, advance, apply. Answers how
+    /// many bytes reached the channel on the air, for the reason [`Self::pump`]
+    /// gives.
     fn pump_gateway(&mut self, bank: BankId) -> usize {
         let current = (
             self.channels.current_bank(),
@@ -989,9 +1152,12 @@ impl TerminalSurface {
                         }
                     }
                 }
-                GatewayEvent::SessionsSeen { sessions, .. } => {
-                    log::debug!("tmux: bank {bank} sees {} session(s)", sessions.len());
-                }
+                GatewayEvent::SessionsSeen {
+                    attached,
+                    socket,
+                    server_pid,
+                    sessions,
+                } => self.bank_sessions(bank, attached, socket, server_pid, sessions),
                 GatewayEvent::Detached { lost_protocol } => collapse = Some(lost_protocol),
             }
         }
@@ -1010,7 +1176,9 @@ impl TerminalSurface {
     /// ever close (`term::Session::leave_control_mode`).
     fn collapse_bank(&mut self, bank: BankId, lost_protocol: bool) {
         let home_slot = self.channels.collapse_bank(bank);
-        if lost_protocol {
+        self.forget_bank(bank, false);
+        // A bank that never held a home slot left no row to tell.
+        if lost_protocol && home_slot > 0 {
             let row = self
                 .channels
                 .rows_mut()

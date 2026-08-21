@@ -76,35 +76,28 @@ const BOOTSTRAP_DEADLINE: Duration = Duration::from_secs(10);
 ///
 /// The queue exists because the transport is `O_NONBLOCK` and a refused write
 /// must not lose the tail (see [`Gateway::flush`]); it is not a place to store
-/// an unbounded amount of the user's typing. `send_keys` encodes every byte a
-/// pane is sent as hex, so the queue grows at better than twice the rate the
-/// user produces, and a tmux that has stopped reading its end (a stopped
-/// server, a machine under load) never takes any of it back. Unbounded, that
-/// is the process growing until the OOM killer arrives; the read side has had
-/// [`BOOTSTRAP_DEADLINE`] all along and the write side had nothing.
-///
-/// A megabyte is far past any real backlog -- a healthy peer drains this every
-/// pump, and even a wedged one only reaches it after the user has typed or
-/// pasted a megabyte's worth into a pane nobody is reading.
+/// an unbounded amount of the user's typing. `send_keys` encodes every byte as
+/// hex, so the queue grows at better than twice the rate the user produces, and
+/// a tmux that has stopped reading its end never takes any of it back:
+/// unbounded, that is the process growing until the OOM killer arrives, the
+/// read side having had [`BOOTSTRAP_DEADLINE`] all along. A megabyte is far
+/// past any real backlog -- a healthy peer drains this every pump.
 const PENDING_CAP: usize = 1 << 20;
 
 /// How many `%output` bytes one pane may bank between its capture and its
 /// cursor before the mount gives up on placing the cursor exactly.
 ///
-/// The backlog is a round trip long, so a pane doing nothing fills none of it
-/// and a pane running `yes` fills it fast. Two things go wrong unbounded: the
-/// burst is held in memory whole, and a cursor reply that never arrives (a
-/// pane that vanished the instant after its capture, a peer that answers the
-/// capture and not the cursor) leaves the pane un-bootstrapped forever --
-/// showing nothing, banking everything. The watchdog cannot see it, because
-/// the bootstrap replies have already set `solicited`.
+/// The backlog is a round trip long, so a pane running `yes` fills it fast.
+/// Two things go wrong unbounded: the burst is held in memory whole, and a
+/// cursor reply that never arrives leaves the pane un-bootstrapped forever,
+/// showing nothing and banking everything, where the watchdog cannot see it
+/// (the bootstrap replies have already set `solicited`).
 ///
 /// Reaching the cap ends the wait rather than dropping the bytes: what is
-/// banked goes to the screen and the pane runs live from there. The cost is
-/// that the cursor lands where the output left it rather than where tmux
-/// reported it, which is the same thing that happens to any pane whose cursor
-/// reply errors, and it is much the better half of the trade against a pane
-/// that shows nothing at all.
+/// banked goes to the screen and the pane runs live from there. The cursor
+/// lands where the output left it rather than where tmux reported it, as it
+/// does for any pane whose cursor reply errors, which is much the better half
+/// of the trade against a pane that shows nothing at all.
 const BACKLOG_CAP: usize = 1 << 20;
 
 /// What the body of a command's reply block is for, carried per command id.
@@ -285,10 +278,9 @@ impl<W: Write> Gateway<W> {
     /// at [`PENDING_CAP`].
     ///
     /// Most of what is refused is the user's own typing on its way to a pane
-    /// (`send-keys`), so a shed here is the same loss `term::Session::sheds`
-    /// counts on a PTY channel, one wire further out. Monotonic for the same
-    /// reason: the surface compares readings and puts a badge on the glass,
-    /// and this type stays out of that decision.
+    /// (`send-keys`), so a shed here is the loss `term::Session::sheds` counts
+    /// one wire further out. Monotonic, because the surface compares readings
+    /// and puts a badge on the glass.
     pub fn sheds(&self) -> u64 {
         self.sheds
     }
@@ -301,15 +293,12 @@ impl<W: Write> Gateway<W> {
         if !self.attached {
             return;
         }
-        // The shed, and it has to happen here rather than at the queue: by the
-        // time a line has been encoded the codec has it on its pairing queue
-        // and tmux is owed an answer for it, so dropping the bytes alone would
-        // put every later reply against the wrong question. Refusing the whole
-        // command keeps the codec, the intents and the wire saying one thing.
-        //
-        // What is shed is the newest and never the queue's head: the head is a
-        // line already half-written to a transport that took a prefix of it,
-        // and the protocol is line-oriented.
+        // The shed, and it has to happen here rather than at the queue: once a
+        // line is encoded the codec has it on its pairing queue and tmux is
+        // owed an answer, so dropping the bytes alone would put every later
+        // reply against the wrong question. What is shed is the newest and
+        // never the queue's head, which is a line already half-written to a
+        // transport that took a prefix of it.
         if self.pending.len() >= PENDING_CAP {
             self.sheds += 1;
             log::warn!(
@@ -327,15 +316,12 @@ impl<W: Write> Gateway<W> {
 
     /// Push the queue at the transport, keeping whatever it refuses.
     ///
-    /// The surface calls this once per pump (through [`Self::poll`]), which
-    /// is what drains a queue that grew while the PTY was full: nothing else
-    /// wakes this type up.
-    ///
-    /// `WouldBlock` is backpressure and not death: the reader on the other
-    /// side of this fd is tmux, and it is reading. Every other error is the
-    /// transport gone, which the gateway's own EOF path is already
-    /// collapsing the bank for; there is nothing to do here but say which
-    /// commands went down with it.
+    /// The surface calls this once per pump (through [`Self::poll`]), which is
+    /// what drains a queue that grew while the PTY was full: nothing else wakes
+    /// this type up. `WouldBlock` is backpressure and not death, the reader on
+    /// the other side of this fd being tmux; every other error is the transport
+    /// gone, which the gateway's own EOF path is already collapsing the bank
+    /// for, so there is nothing to do but say what went down with it.
     pub fn flush(&mut self) {
         while !self.pending.is_empty() {
             match self.writer.write(&self.pending) {
@@ -1039,7 +1025,8 @@ mod tests {
     /// one-session listing, rename sweep. Command numbers 0,1,2 are the
     /// constructor's; 3 is the sweep.
     fn attach<W: Write>(gateway: &mut Gateway<W>) -> Vec<GatewayEvent> {
-        let mut events = gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
+        let mut events =
+            gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
         events.extend(gateway.advance(reply(1, "@0 %0 1 bash").as_bytes()));
         events.extend(gateway.advance(reply(2, "$0 one").as_bytes()));
         events.extend(gateway.advance(reply(3, "@0 bash").as_bytes()));
@@ -1123,7 +1110,8 @@ mod tests {
     #[test]
     fn the_listing_becomes_windows_and_the_sweep_corrects_a_late_rename() {
         let (mut gateway, wire) = gateway();
-        let mut events = gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
+        let mut events =
+            gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
         events.extend(gateway.advance(reply(1, "@0 %0 1 bash\n@1 %1 1 logs").as_bytes()));
         // Only active panes make windows; the sweep went out after the
         // first listing.
@@ -1421,7 +1409,10 @@ mod tests {
         let text = wire.text();
         assert!(text.ends_with('\n'), "the wire ends on a line boundary");
         let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines[0], r##"display-message -p "#{socket_path} #{pid} #{session_id} #{host_short}""##);
+        assert_eq!(
+            lines[0],
+            r##"display-message -p "#{socket_path} #{pid} #{session_id} #{host_short}""##
+        );
         assert_eq!(
             lines[1],
             r##"list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}""##

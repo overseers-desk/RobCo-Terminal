@@ -26,11 +26,9 @@
 //! # One deliberate choice
 //!
 //! Every query walks [`Channels::rows`], at most 99 entries per bank, rather
-//! than a derived cache kept in sync by a single writer. A cache invalidated
-//! by hand is only as sound as its own discipline: a rule that has to be
-//! remembered at every call site that ever touches the state. Walking the
-//! small, bounded row set on every query removes the rule instead of keeping
-//! it.
+//! than a derived cache kept in sync by hand: a cache is only as sound as a
+//! rule remembered at every call site that touches the state, and walking the
+//! small, bounded row set removes the rule instead of keeping it.
 
 use std::mem;
 
@@ -202,9 +200,8 @@ impl<S> Channels<S> {
     /// pumping its session and taking the title that session's escapes set.
     ///
     /// `bank` and `channel` are the sort key and are not the surface's to
-    /// write: where those move, the transition that moves them
-    /// ([`Self::move_current_to`], [`Self::attach`], [`Self::collapse_bank`])
-    /// re-sorts, and a write here would not.
+    /// write: the transition that moves them re-sorts, and a write here would
+    /// not.
     pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Row<S>> {
         self.rows.iter_mut()
     }
@@ -394,17 +391,14 @@ impl<S> Channels<S> {
     /// ago would land on the wrong panel anyway.
     ///
     /// **No caller yet, deliberately left unconsumed.** The eventual consumer
-    /// is a per-row blink: an animation that restarts on the row a store just
-    /// landed on -- a *display* state, held by the window and animated over
-    /// time. Neither display kit has one: `chassis::displays::{led,tape}` map
-    /// a slot's `open`/`bright` to an appearance and hold nothing that varies
-    /// with a clock, and the strip pieces the furniture emits are rebuilt
-    /// whole per frame from [`chassis::BankStrips`]. So there is nowhere to
-    /// drain this to that would show anything, and a drain that dropped the
-    /// acknowledgements on the floor would be worse than none: the model
-    /// would look wired. The list is bounded at two by
-    /// [`Channels::move_current_to`]'s own clear, so leaving it undrained
-    /// costs nothing. Whoever gives a strip a clock takes this on too.
+    /// is a per-row blink, a display state animated over time, and neither
+    /// display kit has a clock: `chassis::displays::{led,tape}` map a slot's
+    /// `open`/`bright` to an appearance, and the strips are rebuilt whole per
+    /// frame from [`chassis::BankStrips`]. A drain that dropped the
+    /// acknowledgements on the floor would be worse than none -- the model
+    /// would look wired -- and the list is bounded at two by
+    /// [`Channels::move_current_to`]'s own clear, so leaving it undrained costs
+    /// nothing. Whoever gives a strip a clock takes this on too.
     pub fn take_stored(&mut self) -> Vec<u32> {
         mem::take(&mut self.stored)
     }
@@ -778,18 +772,7 @@ impl<S> Channels<S> {
         if self.manager_of(bank).is_some_and(Manager::is_tmux) {
             return None;
         }
-        let id = self.next_bank_id;
-        self.next_bank_id += 1;
-        self.banks.push(Bank {
-            id,
-            manager: Manager::Tmux {
-                host: host.to_string(),
-                home_slot: Some(channel),
-                session: None,
-                new_window_pending: false,
-                attach_done: false,
-            },
-        });
+        let id = self.push_bank(host, Some(channel), None);
         let was_current = bank == self.current_bank && channel == self.current_channel;
         let armed = self.degauss_armed;
         self.degauss_armed = false;
@@ -815,18 +798,7 @@ impl<S> Channels<S> {
         make: impl FnOnce() -> Option<S>,
     ) -> Option<BankId> {
         let gateway = make()?;
-        let id = self.next_bank_id;
-        self.next_bank_id += 1;
-        self.banks.push(Bank {
-            id,
-            manager: Manager::Tmux {
-                host: host.to_string(),
-                home_slot: None,
-                session: Some(session),
-                new_window_pending: false,
-                attach_done: false,
-            },
-        });
+        let id = self.push_bank(host, None, Some(session));
         self.insert_row(Row {
             bank: id,
             channel: 1,
@@ -835,6 +807,29 @@ impl<S> Channels<S> {
             session: gateway,
         });
         Some(id)
+    }
+
+    /// A new bank under a tmux attachment, at the next id. Its gateway's row
+    /// is the caller's to place.
+    fn push_bank(
+        &mut self,
+        host: &str,
+        home_slot: Option<u32>,
+        session: Option<SessionId>,
+    ) -> BankId {
+        let id = self.next_bank_id;
+        self.next_bank_id += 1;
+        self.banks.push(Bank {
+            id,
+            manager: Manager::Tmux {
+                host: host.to_string(),
+                home_slot,
+                session,
+                new_window_pending: false,
+                attach_done: false,
+            },
+        });
+        id
     }
 
     /// The session a bank's gateway turned out to be attached to, off its
