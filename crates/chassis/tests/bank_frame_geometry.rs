@@ -211,7 +211,9 @@ fn the_pointer_law_at_every_shell() {
 #[test]
 fn the_minimum_window_holds_the_bank_and_the_least_screen() {
     // The hint every shell must carry, for each bundled shell at the
-    // default character count.
+    // default character count, measured against the bare tube's floor: a
+    // host that has resolved a font hands in its own, and the composition is
+    // the same addition either way.
     let led = LedMetrics::default();
     for (shell, indicator, expected) in [
         (shells::annunciator(), ChannelIndicator::Glow, 184),
@@ -221,10 +223,10 @@ fn the_minimum_window_holds_the_bank_and_the_least_screen() {
         let g = BankGeometry::new(&shell, &led, 12, indicator);
         assert_eq!(g.implicit_width, expected);
         assert_eq!(
-            chassis::layout::min_inner_size(g.implicit_width),
+            chassis::layout::min_inner_size(g.implicit_width, (320, 240)),
             (expected + 320, 240)
         );
     }
-    // And with no chassis at all, the bare 320x240.
-    assert_eq!(chassis::layout::min_inner_size(0), (320, 240));
+    // And with no chassis at all, the well's floor is the whole hint.
+    assert_eq!(chassis::layout::min_inner_size(0, (320, 240)), (320, 240));
 }

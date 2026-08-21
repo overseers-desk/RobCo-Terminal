@@ -162,6 +162,7 @@ pub struct Cabinet {
     chassis_style: ChassisStyle,
     geometry: BankGeometry,
     layout: WindowLayout,
+    well_floor: (i32, i32),
     seam: SeamDrag,
 }
 
@@ -181,6 +182,13 @@ impl Cabinet {
             chassis_style: crate::chassis_style(cfg),
             geometry,
             layout,
+            // A starting value: the bare tube's own floor, which stands until
+            // the host has resolved a font and can say what a terminal grid
+            // costs it (`set_well_floor`).
+            well_floor: (
+                crate::layout::CRT_MINIMUM_WIDTH,
+                crate::layout::MINIMUM_HEIGHT,
+            ),
             seam: SeamDrag::new(),
         }
     }
@@ -264,10 +272,26 @@ impl Cabinet {
         (self.layout.bank.width.max(0.0) * scale_factor.max(0.0)).round() as u32
     }
 
+    /// The least screen the well is ever given, in logical pixels.
+    ///
+    /// The host sets it, because the measure is the host's: the well holds a
+    /// terminal grid and only the host knows what its font charges for one.
+    /// The seam's travel and the window's minimum-size hint are then the same
+    /// number seen from two sides, which is why it is held here rather than
+    /// asked for at each of the two.
+    pub fn set_well_floor(&mut self, width: i32, height: i32) {
+        self.well_floor = (width, height);
+    }
+
+    /// The floor as it now stands.
+    pub fn well_floor(&self) -> (i32, i32) {
+        self.well_floor
+    }
+
     /// The window's least inner size for the bank as it now stands, in
     /// logical pixels.
     pub fn min_inner_size(&self) -> (i32, i32) {
-        crate::layout::min_inner_size(self.bank_width() as i32)
+        crate::layout::min_inner_size(self.bank_width() as i32, self.well_floor)
     }
 
     pub fn geometry(&self) -> &BankGeometry {
@@ -380,6 +404,7 @@ impl Cabinet {
             led_characters: self.cfg.general.led_characters,
             unit_width: self.display.unit_width(),
             window_width: self.layout.crt.right(),
+            well_floor_width: f64::from(self.well_floor.0),
             bank_width: self.layout.bank.width,
         };
         let shown = self.cfg.general.chassis_shown;
@@ -433,6 +458,24 @@ mod tests {
         assert!(!c.pointer_pressed(184.0));
         assert_eq!(c.cursor_moved(300.0), None);
         assert_eq!(c.cursor(), SeamCursor::Unclaimed);
+    }
+
+    #[test]
+    fn the_hosts_floor_moves_the_hint_and_the_seam_together() {
+        // One number, two sides. A host whose font needs 1018 px of well for
+        // its eighty columns raises the window's floor by the difference, and
+        // in the same act stops the seam drag where the well would fall under
+        // it: on a 1024 px window there is no room left over for a bank
+        // wider than 6 px, so a drag out to the far edge lands on the
+        // display's own least strip count rather than following the hand.
+        let mut c = stock();
+        c.set_well_floor(1018, 730);
+        assert_eq!(c.min_inner_size(), (184 + 1018, 730));
+        assert!(c.pointer_pressed(184.0));
+        assert_eq!(
+            c.cursor_moved(900.0).map(|u| u.led_characters),
+            Some(c.geometry().min_units)
+        );
     }
 
     #[test]

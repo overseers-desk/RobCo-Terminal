@@ -34,7 +34,6 @@
 //! the window's minimum-size hint follows the seam.
 
 use crate::bank::BankGeometry;
-use crate::layout::CRT_MINIMUM_WIDTH;
 
 /// The grab strip leans into the moulding, taking 3 px of the LED windows'
 /// clickable right edge.
@@ -73,6 +72,10 @@ pub struct SeamContext<'a> {
     /// (`Cabinet::cursor_moved` passes `layout.crt.right()`, and
     /// `crate::layout` is logical throughout).
     pub window_width: f64,
+    /// The width the screen well is never dragged under, in the same logical
+    /// pixel as `window_width`: what the host's font needs for its floor grid
+    /// (`Cabinet::well_floor`).
+    pub well_floor_width: f64,
     /// The bank column's width, which is where the grab strip stands.
     ///
     /// In every standing layout this is `geometry.implicit_width`: the
@@ -89,8 +92,8 @@ impl SeamContext<'_> {
     /// the drag's rules.
     ///
     /// The upper clamp is the interesting one. It is not a fixed maximum: it is
-    /// the count whose bank width would leave the screen well exactly
-    /// [`CRT_MINIMUM_WIDTH`], measured through the same
+    /// the count whose bank width would leave the screen well exactly its
+    /// floor ([`SeamContext::well_floor_width`]), measured through the same
     /// `characters_for_width` the pointer goes through, so the two bounds are
     /// commensurable and `min` between them is meaningful. It therefore
     /// tightens as the window narrows, and a drag that has hit it will start
@@ -103,7 +106,7 @@ impl SeamContext<'_> {
                 .characters_for_width(pointer_x, self.led_characters, self.unit_width);
         // What the window has room for.
         let at_limit = self.geometry.characters_for_width(
-            self.window_width - CRT_MINIMUM_WIDTH as f64,
+            self.window_width - self.well_floor_width,
             self.led_characters,
             self.unit_width,
         );
@@ -216,6 +219,7 @@ mod tests {
             led_characters: 12,
             unit_width: led.unit_width(),
             window_width,
+            well_floor_width: crate::layout::CRT_MINIMUM_WIDTH as f64,
             bank_width: g.implicit_width as f64,
         }
     }
@@ -262,6 +266,7 @@ mod tests {
             led_characters: 12,
             unit_width: led.unit_width(),
             window_width: 1024.0,
+            well_floor_width: crate::layout::CRT_MINIMUM_WIDTH as f64,
             bank_width: 0.0,
         };
         assert_eq!(seam.pointer_moved(184.0, &c, true), None);
@@ -416,6 +421,7 @@ mod tests {
                 led_characters: characters,
                 unit_width: led.unit_width(),
                 window_width: 1400.0,
+                well_floor_width: crate::layout::CRT_MINIMUM_WIDTH as f64,
                 bank_width: geometry.implicit_width as f64,
             };
             if let Some(next) = seam.pointer_moved(x, &c, true) {

@@ -316,6 +316,9 @@ mod tests {
         let layout = WindowLayout::new(1024.0, 768.0, g.implicit_width as f64);
         assert_eq!(g.implicit_width, 184);
         assert_eq!(layout.crt.width, 840.0);
-        assert_eq!(layout::min_inner_size(g.implicit_width), (504, 240));
+        assert_eq!(
+            layout::min_inner_size(g.implicit_width, (320, 240)),
+            (504, 240)
+        );
     }
 }
