@@ -79,6 +79,22 @@ fn none() -> ModifiersState {
     ModifiersState::empty()
 }
 
+/// Let a wheel glide arrive: tick the surface, as the shell's loop would,
+/// until the view stops moving. A notch sets the view gliding over
+/// `term::viewport::WHEEL_GLIDE`; the offset it settles on is the one the
+/// notch asked for.
+fn settle(surface: &mut TerminalSurface) {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        surface.tick();
+        if !surface.is_gliding() {
+            return;
+        }
+        assert!(Instant::now() < deadline, "the wheel glide never arrived");
+        std::thread::sleep(Duration::from_millis(4));
+    }
+}
+
 /// The whole gesture: press on the first cell of a line, drag across it,
 /// let go. What comes back is what Konsole would have copied.
 #[test]
@@ -122,8 +138,9 @@ fn a_double_click_takes_the_word_under_the_pointer() {
     assert_eq!(surface.last_selection(), Some("world"));
 }
 
-/// One wheel notch moves the view three lines back into history, and the
-/// rows on screen move down by exactly that much.
+/// One wheel notch sends the view three lines back into history, gliding
+/// there over a few frames; once it arrives the rows on screen have moved
+/// down by exactly that much.
 #[test]
 fn a_wheel_notch_scrolls_the_view_three_lines_back() {
     let mut surface = surface(
@@ -136,6 +153,8 @@ fn a_wheel_notch_scrolls_the_view_three_lines_back() {
     assert_eq!(surface.scroll_offset(), 0, "the view starts at the bottom");
 
     surface.mouse_wheel(MouseScrollDelta::LineDelta(0.0, 1.0), none());
+    assert!(surface.is_gliding(), "a notch sets the view gliding");
+    settle(&mut surface);
 
     let after = surface.viewport_text();
     assert_eq!(surface.scroll_offset(), 3, "one notch is three lines");
@@ -157,9 +176,56 @@ fn scrolling_back_down_re_follows_the_output() {
     let bottom = surface.viewport_text();
 
     surface.mouse_wheel(MouseScrollDelta::LineDelta(0.0, 2.0), none());
+    settle(&mut surface);
     assert_eq!(surface.scroll_offset(), 6);
 
     surface.mouse_wheel(MouseScrollDelta::LineDelta(0.0, -2.0), none());
+    settle(&mut surface);
+    assert_eq!(surface.scroll_offset(), 0);
+    assert_eq!(surface.viewport_text(), bottom);
+}
+
+/// A trackpad's pixels move the view as they come, by fractions of a row:
+/// half a cell up is half a row back, held as one line with the picture
+/// shifted half a row; a point on the glass maps to the cell drawn under it.
+#[test]
+fn trackpad_pixels_scroll_the_view_by_fractions_of_a_row() {
+    let mut surface = surface(
+        "i=1; while [ $i -le 60 ]; do echo line$i; i=$((i+1)); done",
+        10,
+    );
+    wait_for_screen(&mut surface, "line60");
+    let bottom = surface.viewport_text();
+
+    surface.mouse_wheel(
+        MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, CELL_H / 2.0)),
+        none(),
+    );
+    assert!(
+        !surface.is_gliding(),
+        "pixels move the view, they do not glide"
+    );
+    assert_eq!(surface.scroll_offset(), 1, "half a row back holds one line");
+    let half = surface.viewport_text();
+    assert_eq!(half[1], bottom[0], "one line held: the rows moved down one");
+
+    // With the picture shifted up half a row, a press in the top half of a
+    // cell lands on the line drawn there, which is the row below the
+    // unshifted one: the selection says which text the pointer was over.
+    surface.mouse_pressed(MouseButton::Left, at(0, 0), none());
+    surface.cursor_moved(at(5, 0), none());
+    surface.mouse_released(MouseButton::Left, at(5, 0), none());
+    let picked = surface.last_selection().unwrap_or_default().to_string();
+    assert_eq!(
+        picked,
+        half[1][..picked.len()],
+        "selected on the row under the pointer"
+    );
+
+    surface.mouse_wheel(
+        MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -CELL_H / 2.0)),
+        none(),
+    );
     assert_eq!(surface.scroll_offset(), 0);
     assert_eq!(surface.viewport_text(), bottom);
 }

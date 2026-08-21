@@ -115,11 +115,11 @@ fn shift_up_and_down_move_the_viewport_one_line() {
     assert_eq!(surface.scroll_offset(), 1);
 }
 
-/// The other half of the same wiring: a key the keytab binds to *bytes* leaves
-/// the view exactly where it was. Shift+PageUp moves the viewport because the
+/// The other half of the same wiring: a key the keytab binds to *bytes* does
+/// not scroll the view back. Shift+PageUp moves the viewport because the
 /// keytab says so, not because the surface swallows shifted keys.
 #[test]
-fn a_key_the_keytab_binds_to_bytes_moves_nothing() {
+fn a_key_the_keytab_binds_to_bytes_does_not_scroll_back() {
     let mut surface = surface(SIXTY_LINES);
     wait_for_screen(&mut surface, "line60");
 
@@ -128,5 +128,43 @@ fn a_key_the_keytab_binds_to_bytes_moves_nothing() {
         surface.scroll_offset(),
         0,
         "unshifted PageUp is the program's key, not the viewport's"
+    );
+}
+
+/// A key that writes to the child brings a scrolled view back to the live
+/// screen in one step: what was typed lands at the bottom, and that is where
+/// the user has to be looking. A modifier alone writes nothing and moves
+/// nothing; neither does the scroll key that moved the view there.
+#[test]
+fn typing_snaps_a_scrolled_view_to_the_bottom() {
+    let mut surface = surface(SIXTY_LINES);
+    wait_for_screen(&mut surface, "line60");
+
+    press(&mut surface, NamedKey::PageUp, ModifiersState::SHIFT);
+    let scrolled = surface.scroll_offset();
+    assert!(scrolled > 0, "Shift+PageUp moved the view back");
+
+    // A modifier on its own: winit reports the key with no text.
+    press(&mut surface, NamedKey::Control, ModifiersState::CONTROL);
+    assert_eq!(
+        surface.scroll_offset(),
+        scrolled,
+        "a bare modifier moves nothing"
+    );
+
+    // The scroll key again, the other way by a line: still the viewport's.
+    press(&mut surface, NamedKey::ArrowDown, ModifiersState::SHIFT);
+    assert_eq!(surface.scroll_offset(), scrolled - 1);
+
+    // A letter: the child's, and the view snaps home for it.
+    surface.key_input(
+        &Key::Character("a".into()),
+        Some("a"),
+        ModifiersState::empty(),
+    );
+    assert_eq!(
+        surface.scroll_offset(),
+        0,
+        "a typed key snaps to the bottom"
     );
 }

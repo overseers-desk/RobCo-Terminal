@@ -159,11 +159,13 @@ fn measure(name: &str, (w, h): (u32, u32)) -> Survival {
         &CellGrid::from_lines(&lines, cols, rows, &scheme),
         None,
     );
-    // Centred at a whole-pixel origin, which is what `app::window` does.
+    // Centred at a whole-pixel origin, which is what `app::window` does,
+    // with the view at the bottom of its scrollback (no shift).
     let (grid_w, grid_h) = renderer.pixel_size();
     renderer.set_origin(
         (w as i32 - grid_w as i32) / 2,
         (h as i32 - grid_h as i32) / 2,
+        0,
     );
 
     // The grid, into the texture the chain takes as its input.

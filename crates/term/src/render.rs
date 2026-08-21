@@ -64,15 +64,27 @@ const CURSOR_INSTANCES: usize = 2;
 /// it and the character struck into that plate. See [`GridRenderer::set_preedit`].
 const PREEDIT_BLOCKS: usize = 2;
 
-/// The whole instance array: the four grid blocks, the cursor's tail, and room
-/// for a composition as wide as the screen.
+/// The rows the renderer lays out for a screen of `rows`: the screen and one
+/// spare row under it. The spare row is what a scrollback position between
+/// two lines shows at the bottom edge: the picture is drawn shifted up by a
+/// fraction of a row (`set_origin`), the top row loses that fraction off the
+/// top, and the spare row fills the same fraction at the bottom. It is
+/// filled only while the view is scrolled back at all (`vt::sync`), and
+/// blank otherwise.
+fn render_rows(rows: usize) -> usize {
+    rows + 1
+}
+
+/// The whole instance array: the four grid blocks over the rows laid out
+/// (the screen plus the spare row), the cursor's tail, and room for a
+/// composition as wide as the screen.
 ///
 /// The pre-edit's room is fixed rather than grown per composition for the same
 /// reason every other block is: a fixed stride is what makes a partial upload
 /// arithmetic. A composition longer than the row is clipped at the row's end,
 /// matching how pre-edit text is bounded to the row it starts on.
 fn instance_count(cols: usize, rows: usize) -> usize {
-    BLOCKS * cols * rows + CURSOR_INSTANCES + PREEDIT_BLOCKS * cols
+    BLOCKS * cols * render_rows(rows) + CURSOR_INSTANCES + PREEDIT_BLOCKS * cols
 }
 
 #[repr(C)]
@@ -109,9 +121,12 @@ pub struct GridRenderer {
     scheme: Scheme,
 
     cols: usize,
+    /// The terminal's rows. The grid, the instances and the strides run one
+    /// row taller: see [`render_rows`].
     rows: usize,
-    /// The cells as last uploaded. Kept so a partial update can be built
-    /// without asking the terminal for rows it did not damage.
+    /// The cells as last uploaded, the spare row included. Kept so a partial
+    /// update can be built without asking the terminal for rows it did not
+    /// damage.
     grid: CellGrid,
     instances: Vec<Instance>,
     cursor: Option<CursorState>,
@@ -120,6 +135,10 @@ pub struct GridRenderer {
     preedit: String,
     scale: u32,
     origin: [i32; 2],
+    /// How far up the picture is drawn from `origin`, in unscaled raster
+    /// pixels: the fraction of a row a scrollback position sits between two
+    /// lines. See [`Self::set_origin`].
+    shift: i32,
 }
 
 impl GridRenderer {
@@ -241,7 +260,7 @@ impl GridRenderer {
         });
         let bind_group = Self::make_bind_group(device, &bind_group_layout, &uniform_buffer, &atlas);
 
-        let grid = CellGrid::new(cols, rows, &scheme);
+        let grid = CellGrid::new(cols, render_rows(rows), &scheme);
         let mut this = Self {
             pipeline,
             bind_group_layout,
@@ -258,6 +277,7 @@ impl GridRenderer {
             preedit: String::new(),
             scale: 1,
             origin: [0, 0],
+            shift: 0,
         };
         this.upload_all(queue);
         this
@@ -316,10 +336,20 @@ impl GridRenderer {
         self.scale = scale;
     }
 
-    /// Where the grid's top-left corner sits in the target, in physical
-    /// pixels. Whole pixels only, so centring cannot half-texel the glyphs.
-    pub fn set_origin(&mut self, x: i32, y: i32) {
+    /// Where the grid's rectangle sits in the target, in physical pixels, and
+    /// how far up from there the picture is drawn: `shift` is the fraction of
+    /// a row a scrollback position lies between two lines, in unscaled raster
+    /// pixels (the caller rounds it; `round(shift * cell_height)`). The
+    /// rectangle is what `draw` clips to, so the shifted top row and the
+    /// spare row at the bottom stay inside it.
+    ///
+    /// Whole pixels only, both of them, and the shift a whole raster pixel
+    /// so it is `scale` whole physical pixels: the glyph shader recovers its
+    /// texel from the pixel's integer position, and a picture placed between
+    /// two pixels would have no texel to recover.
+    pub fn set_origin(&mut self, x: i32, y: i32, shift: i32) {
         self.origin = [x, y];
+        self.shift = shift.max(0);
     }
 
     /// Swap in a rebuilt atlas: a font change, or a scalable face that really
@@ -346,7 +376,7 @@ impl GridRenderer {
         }
         self.cols = cols;
         self.rows = rows;
-        self.grid.resize(cols, rows, &self.scheme);
+        self.grid.resize(cols, render_rows(rows), &self.scheme);
         self.instances = vec![EMPTY; instance_count(cols, rows)];
         self.instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("robco grid instances"),
@@ -382,9 +412,24 @@ impl GridRenderer {
     pub fn set_grid(&mut self, queue: &wgpu::Queue, grid: &CellGrid, cursor: Option<CursorState>) {
         assert_eq!(grid.cols, self.cols);
         assert_eq!(grid.rows, self.rows);
-        self.grid.cells.copy_from_slice(&grid.cells);
+        let screen = grid.cells.len();
+        self.grid.cells[..screen].copy_from_slice(&grid.cells);
+        self.blank_spare_row();
         self.cursor = cursor;
         self.upload_all(queue);
+    }
+
+    /// The rows laid out: the screen and the spare row.
+    fn render_rows(&self) -> usize {
+        render_rows(self.rows)
+    }
+
+    /// The spare row is a row of the grid with no cell of the screen behind
+    /// it; nothing shows there unless `vt::sync` fills it.
+    fn blank_spare_row(&mut self) {
+        let spare = self.rows;
+        let blank = Cell::blank(&self.scheme);
+        self.grid.row_mut(spare).fill(blank);
     }
 
     /// Replace one row. The path a damaged line takes.
@@ -451,7 +496,7 @@ impl GridRenderer {
     }
 
     fn upload_all(&mut self, queue: &wgpu::Queue) {
-        for row in 0..self.rows {
+        for row in 0..self.render_rows() {
             self.build_row(row);
         }
         self.build_cursor();
@@ -466,7 +511,7 @@ impl GridRenderer {
     fn upload_row(&self, queue: &wgpu::Queue, row: usize) {
         let stride = std::mem::size_of::<Instance>() as u64;
         for block in 0..BLOCKS {
-            let start = block * self.cols * self.rows + row * self.cols;
+            let start = block * self.cols * self.render_rows() + row * self.cols;
             queue.write_buffer(
                 &self.instance_buffer,
                 start as u64 * stride,
@@ -477,7 +522,7 @@ impl GridRenderer {
 
     fn upload_cursor(&self, queue: &wgpu::Queue) {
         let stride = std::mem::size_of::<Instance>() as u64;
-        let start = BLOCKS * self.cols * self.rows;
+        let start = BLOCKS * self.cols * self.render_rows();
         queue.write_buffer(
             &self.instance_buffer,
             start as u64 * stride,
@@ -486,7 +531,7 @@ impl GridRenderer {
     }
 
     fn preedit_base(&self) -> usize {
-        BLOCKS * self.cols * self.rows + CURSOR_INSTANCES
+        BLOCKS * self.cols * self.render_rows() + CURSOR_INSTANCES
     }
 
     fn upload_preedit(&self, queue: &wgpu::Queue) {
@@ -501,7 +546,7 @@ impl GridRenderer {
     }
 
     fn slot(&self, block: usize, row: usize, col: usize) -> usize {
-        block * self.cols * self.rows + row * self.cols + col
+        block * self.cols * self.render_rows() + row * self.cols + col
     }
 
     fn build_row(&mut self, row: usize) {
@@ -560,7 +605,7 @@ impl GridRenderer {
     }
 
     fn build_cursor(&mut self) {
-        let base = BLOCKS * self.cols * self.rows;
+        let base = BLOCKS * self.cols * self.render_rows();
         self.instances[base] = EMPTY;
         self.instances[base + 1] = EMPTY;
 
@@ -655,6 +700,12 @@ impl GridRenderer {
         height: u32,
         load: wgpu::LoadOp<wgpu::Color>,
     ) {
+        // The picture is drawn `shift` raster pixels above the rectangle it
+        // is clipped to. The shader's texel recovery does not mind where the
+        // origin lands, below zero included: it reads `floor(pixel) -
+        // origin` and the vertex placed the quad at `origin + dst * scale`,
+        // so the two cancel and the division by `scale` stays a floor.
+        let origin_y = self.origin[1] - self.shift * self.scale as i32;
         queue.write_buffer(
             &self.uniform_buffer,
             0,
@@ -662,7 +713,7 @@ impl GridRenderer {
                 viewport: [width as f32, height as f32],
                 scale: self.scale as i32,
                 origin_x: self.origin[0],
-                origin_y: self.origin[1],
+                origin_y,
                 _pad: [0; 3],
             }),
         );
@@ -683,6 +734,22 @@ impl GridRenderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        // Clip to the grid's own rectangle, so the row shifted off its top
+        // and the spare row under the last one end where the screen ends
+        // rather than in the padding around it. The load op has already run
+        // by now, so the padding is cleared whatever the rectangle. The
+        // rectangle is pinned to the target: the centring padding is often
+        // a pixel or none, and a rectangle starting above the target is not
+        // one wgpu will take.
+        let (grid_w, grid_h) = self.pixel_size();
+        let x0 = self.origin[0].clamp(0, width as i32);
+        let y0 = self.origin[1].clamp(0, height as i32);
+        let x1 = (self.origin[0] + grid_w as i32).clamp(x0, width as i32);
+        let y1 = (self.origin[1] + grid_h as i32).clamp(y0, height as i32);
+        if x1 == x0 || y1 == y0 {
+            return;
+        }
+        pass.set_scissor_rect(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
@@ -694,6 +761,18 @@ impl GridRenderer {
     /// bytes this returned.
     pub fn render_to_image(&self, gpu: &Gpu, clear: wgpu::Color) -> Image {
         let (width, height) = self.pixel_size();
+        self.render_to_image_sized(gpu, clear, width, height)
+    }
+
+    /// The same, into a target of the caller's size: what the grid looks
+    /// like centred in, or shifted within, a surface larger than itself.
+    pub fn render_to_image_sized(
+        &self,
+        gpu: &Gpu,
+        clear: wgpu::Color,
+        width: u32,
+        height: u32,
+    ) -> Image {
         let target = Target::new(&gpu.device, width.max(1), height.max(1));
         let mut encoder = gpu
             .device
@@ -778,12 +857,22 @@ pub mod vt {
             let cursor = cursor_state(term, &self.scheme);
             let previous = self.cursor;
 
+            // The spare row under the screen shows the line after the last
+            // one on screen, which exists only while the view is scrolled
+            // back: `fill_row(rows)` is `Line(rows - display_offset)`, a
+            // line of the screen for any offset of one or more, and past
+            // its end at zero, where the row is blank instead. A position
+            // between two lines always has an offset of one or more (the
+            // ceiling rule in `crate::viewport`), so the row is filled
+            // whenever it can show.
+            let spare_shown = term.grid.display_offset() > 0;
             let mut scratch = vec![Cell::blank(&self.scheme); self.cols];
             if stats.full {
                 for row in 0..self.rows {
                     fill_row(term, row, &self.scheme, &mut scratch);
                     self.grid.row_mut(row).copy_from_slice(&scratch);
                 }
+                self.fill_spare_row(term, spare_shown, &mut scratch);
                 self.cursor = cursor;
                 self.upload_all(queue);
                 stats.rows_updated = self.rows;
@@ -813,6 +902,13 @@ pub mod vt {
                 self.upload_row(queue, row);
                 stats.rows_updated += 1;
             }
+            // The spare row shows a line of the live screen; a screen that
+            // changed under a scrolled view may have changed that line.
+            if spare_shown && !rows_to_update.is_empty() {
+                self.fill_spare_row(term, true, &mut scratch);
+                self.build_row(self.rows);
+                self.upload_row(queue, self.rows);
+            }
 
             if cursor != previous {
                 self.cursor = cursor;
@@ -827,6 +923,23 @@ pub mod vt {
             }
 
             stats
+        }
+    }
+
+    impl GridRenderer {
+        /// Fill the spare row from the terminal, or blank it, per `shown`.
+        fn fill_spare_row<L: EventListener>(
+            &mut self,
+            term: &Crosswords<L>,
+            shown: bool,
+            scratch: &mut [Cell],
+        ) {
+            if shown {
+                fill_row(term, self.rows, &self.scheme, scratch);
+                self.grid.row_mut(self.rows).copy_from_slice(scratch);
+            } else {
+                self.blank_spare_row();
+            }
         }
     }
 
@@ -845,7 +958,11 @@ pub mod vt {
             VtCursorShape::Beam => CursorShape::Beam,
             VtCursorShape::Hidden => CursorShape::Hidden,
         };
-        let row = state.pos.row.0;
+        // The cursor's row on the *viewport*: its row on the live screen,
+        // moved down by however far the view is scrolled back, the same
+        // arithmetic `fill_row` runs the other way. Scrolled back past it,
+        // the row is at or beyond the screen's last and nothing draws it.
+        let row = state.pos.row.0 + term.grid.display_offset() as i32;
         if row < 0 {
             return None;
         }

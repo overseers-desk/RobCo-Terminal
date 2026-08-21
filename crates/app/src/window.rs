@@ -1060,6 +1060,12 @@ impl TerminalSurface {
         self.scroll.offset()
     }
 
+    /// A wheel notch's glide is under way: the view is on its way to the
+    /// offset the notch asked for and moves on every frame until it arrives.
+    pub fn is_gliding(&self) -> bool {
+        self.scroll.is_gliding()
+    }
+
     /// One key press, reduced to the three things anything downstream reads:
     /// the logical key, the text winit decoded for it, and the modifiers.
     ///
@@ -1097,7 +1103,7 @@ impl TerminalSurface {
         // The keytab next: it is the authority on every key it binds.
         if let Some(action) = encode_winit_key(logical, mods, self.modes) {
             match action {
-                KeyAction::Bytes(bytes) => self.write(&bytes),
+                KeyAction::Bytes(bytes) => self.type_bytes(&bytes),
                 other => self.scroll_key(other),
             }
             return;
@@ -1107,9 +1113,34 @@ impl TerminalSurface {
         if let Some(text) = text {
             if !text.is_empty() {
                 let bytes = text.as_bytes().to_vec();
-                self.write(&bytes);
+                self.type_bytes(&bytes);
             }
         }
+    }
+
+    /// Bytes the user produced on purpose -- a key, a paste, a composition
+    /// committed -- as opposed to a report the pointer path sends on a
+    /// program's behalf. The view snaps to the live screen first, in one
+    /// step rather than a glide: what was typed lands at the bottom, and
+    /// the user has to see it land. A modifier alone, a shortcut the window
+    /// keeps, a key the gateway keyboard holds never reach here, so they
+    /// move nothing; neither does a gateway channel, where nothing is
+    /// written at all (see [`Self::write`]).
+    fn type_bytes(&mut self, bytes: &[u8]) {
+        if self.is_gateway_on_air() {
+            return;
+        }
+        self.wheel_pixels = 0.0;
+        if let Some(session) = self.channels.session_mut() {
+            self.scroll.to_bottom(session.term_mut());
+        }
+        self.write(bytes);
+    }
+
+    fn is_gateway_on_air(&self) -> bool {
+        self.channels
+            .current()
+            .is_some_and(|row| row.kind == ChannelKind::Gateway)
     }
 
     /// One thing the input method said, applied.
@@ -1163,7 +1194,7 @@ impl TerminalSurface {
                 self.ime.cursor = None;
                 if !text.is_empty() {
                     let bytes = text.as_bytes().to_vec();
-                    self.write(&bytes);
+                    self.type_bytes(&bytes);
                 }
             }
             Ime::Disabled => self.ime = ImeState::default(),
@@ -1194,7 +1225,10 @@ impl TerminalSurface {
     pub fn ime_cursor_area(&self) -> Option<(PhysicalPosition<f64>, PhysicalSize<f64>)> {
         let session = self.channels.session()?;
         let cursor = session.term().cursor();
-        let row = cursor.pos.row.0;
+        // The caret's row on the viewport: its live row, moved down by the
+        // lines the view is scrolled back, the same sum the renderer draws
+        // it at.
+        let row = cursor.pos.row.0 + session.term().grid.display_offset() as i32;
         if row < 0 {
             return None;
         }
@@ -1205,10 +1239,12 @@ impl TerminalSurface {
         }
         let (cell_w, cell_h) = (f64::from(size.cell_width), f64::from(size.cell_height));
         // The cell's rectangle in grid-texture pixels -- `cell_at`'s output
-        // space -- forward through the warp into well pixels.
+        // space -- forward through the warp into well pixels. The picture
+        // is drawn shifted up by the position's fraction of a row, and so
+        // is the caret.
         let params = self.distortion_params();
         let x = col as f64 * cell_w;
-        let y = row as f64 * cell_h;
+        let y = row as f64 * cell_h - f64::from(self.shift_physical());
         let top_left = distortion::forward_distort(x, y, &params);
         let bottom_right = distortion::forward_distort(x + cell_w, y + cell_h, &params);
         let bank = f64::from(self.bank_physical());
@@ -1588,6 +1624,7 @@ impl TerminalSurface {
             // mirror of it, so the channel coming to the screen brings its own
             // place in its own scrollback and this re-reads it at once rather
             // than a tick later.
+            self.scroll.cancel_glide();
             if let Some(session) = self.channels.session() {
                 self.scroll.sync(session.term());
             }
@@ -2024,9 +2061,13 @@ impl TerminalSurface {
                 glass.renderer.rows(),
             );
         }
+        // A position between two lines draws the picture that fraction of a
+        // row up from there (`term::viewport`), in whole raster pixels.
+        let shift = (self.scroll.shift() * glass.renderer.atlas().cell.height as f32).round();
         glass.renderer.set_origin(
             (target_width as i32 - grid_width as i32).max(0) / 2,
             (target_height as i32 - grid_height as i32).max(0) / 2,
+            shift as i32,
         );
 
         let mut params =
@@ -2285,10 +2326,34 @@ impl TerminalSurface {
         let point = correct_distortion(x, position.y, &self.distortion_params());
         let size = self.viewport.term_size();
         let column = (point.x / f64::from(size.cell_width)).floor();
-        let row = (point.y / f64::from(size.cell_height)).floor();
+        // The picture is drawn shifted up by the position's fraction of a
+        // row, so a point on the glass is that much further down the grid.
+        let y = point.y + f64::from(self.shift_physical());
+        let row = (y / f64::from(size.cell_height)).floor();
         let column = column.clamp(0.0, size.cols().saturating_sub(1) as f64) as usize;
-        let row = row.clamp(0.0, size.rows().saturating_sub(1) as f64) as usize;
+        // The spare row under the last one is on the glass while the picture
+        // is shifted, and a point on it is on that line.
+        let last = if self.shift_physical() > 0 {
+            size.rows()
+        } else {
+            size.rows().saturating_sub(1)
+        };
+        let row = row.clamp(0.0, last as f64) as usize;
         (column, self.top_line() + row)
+    }
+
+    /// How far up the picture is drawn from the grid's rectangle, in
+    /// physical pixels: the scrollback position's fraction of a row, rounded
+    /// to whole raster pixels exactly as the renderer rounds it, so a point
+    /// on the glass maps to the cell drawn under it.
+    fn shift_physical(&self) -> i32 {
+        let scale = self
+            .glass
+            .as_ref()
+            .map_or(1, |glass| glass.resolved.integer_scale)
+            .max(1) as f32;
+        let cell_h = f32::from(self.viewport.term_size().cell_height) / scale;
+        (self.scroll.shift() * cell_h).round() as i32 * scale as i32
     }
 
     /// The absolute index of the line at the top of the view.
@@ -2565,12 +2630,11 @@ impl TerminalSurface {
                 // routing table asks for it too when Ctrl was held.
                 let bracketed = force_bracketed || self.mode_contains(Mode::BRACKETED_PASTE);
                 let bytes = clipboard::bracket_paste(&text, bracketed);
-                self.write(&bytes);
+                self.type_bytes(&bytes);
             }
             Err(e) => log::debug!("could not paste: {e}"),
         }
     }
-
 }
 
 /// The text a key press produced, with **every** modifier applied.
@@ -2783,27 +2847,27 @@ impl Surface for TerminalSurface {
     }
 
     fn mouse_wheel(&mut self, delta: MouseScrollDelta, modifiers: ModifiersState) {
-        let notches = match delta {
-            MouseScrollDelta::LineDelta(_, lines) => f64::from(lines),
-            MouseScrollDelta::PixelDelta(pixels) => {
-                // A trackpad reports pixels. Bank them until they add up
-                // to a line, or a slow scroll would be no scroll at all.
-                let cell_height = f64::from(self.viewport.term_size().cell_height).max(1.0);
-                self.wheel_pixels += pixels.y;
-                let lines = (self.wheel_pixels / cell_height).trunc();
-                self.wheel_pixels -= lines * cell_height;
-                lines
-            }
-        };
-        let notches = notches.trunc() as i32;
-        if notches == 0 {
-            return;
-        }
         let mods = modifiers_from(modifiers);
+        let cell_height = f64::from(self.viewport.term_size().cell_height).max(1.0);
 
         // Shift is the user's override: it scrolls the view even while a
-        // program is tracking the mouse.
+        // program is tracking the mouse. A program hears whole notches, so
+        // a trackpad's pixels are banked until they add up to a line; the
+        // view itself takes them as they come.
         if self.terminal_uses_mouse() && !mods.shift {
+            let notches = match delta {
+                MouseScrollDelta::LineDelta(_, lines) => f64::from(lines),
+                MouseScrollDelta::PixelDelta(pixels) => {
+                    self.wheel_pixels += pixels.y;
+                    let lines = (self.wheel_pixels / cell_height).trunc();
+                    self.wheel_pixels -= lines * cell_height;
+                    lines
+                }
+            };
+            let notches = notches.trunc() as i32;
+            if notches == 0 {
+                return;
+            }
             let button = if notches > 0 {
                 mouse::MouseButton::WheelUp
             } else {
@@ -2816,10 +2880,24 @@ impl Surface for TerminalSurface {
             return;
         }
 
-        // Positive is up and into history, which is the sign
-        // `ScrollPosition::scroll` takes.
-        if let Some(session) = self.channels.session_mut() {
-            self.scroll.scroll_wheel(session.term_mut(), notches);
+        // Positive is up and into history, the sign `ScrollPosition` takes.
+        // A notch sets the view gliding; a trackpad's pixels move it under
+        // the fingers (`term::viewport`).
+        let Some(session) = self.channels.session_mut() else {
+            return;
+        };
+        match delta {
+            MouseScrollDelta::LineDelta(_, lines) => {
+                let notches = lines.trunc() as i32;
+                if notches != 0 {
+                    self.scroll
+                        .scroll_wheel(session.term_mut(), notches, Instant::now());
+                }
+            }
+            MouseScrollDelta::PixelDelta(pixels) => {
+                self.scroll
+                    .scroll_pixels(session.term_mut(), pixels.y as f32, cell_height as f32);
+            }
         }
     }
 
@@ -2858,6 +2936,17 @@ impl Surface for TerminalSurface {
         // authority and this is where the scroll position hears about it.
         if let Some(session) = self.channels.session() {
             self.scroll.sync(session.term());
+        }
+        // A wheel glide moves the picture on every frame until it arrives.
+        // Its frames are the output governor's: a picture that moved is
+        // output as far as the screen is concerned, and the governor already
+        // paces that to the frame rate and wakes the loop for it.
+        let gliding = self.scroll.is_gliding();
+        if gliding {
+            if let Some(session) = self.channels.session_mut() {
+                self.scroll.advance(session.term_mut(), Instant::now());
+            }
+            self.output_pending = true;
         }
         // Where the caret is, for the input method's candidate window.
         self.publish_ime_cursor();
