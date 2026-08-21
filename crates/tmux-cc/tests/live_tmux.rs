@@ -80,7 +80,7 @@ fn the_whole_command_set_is_a_dialect_tmux_speaks() {
     // is the assertion that the quoting and the flags are right.
     let pane = PaneId::parse("%0").unwrap();
     let mut commands = vec![
-        Command::HostName,
+        Command::Server,
         Command::ListPanes,
         Command::ListWindows,
         Command::ListWindowPanes(WindowId::parse("@0").unwrap()),
@@ -138,7 +138,7 @@ fn the_bootstrap_replies_are_the_shapes_the_reference_reads() {
     let mut gateway = server.attach("one");
     gateway.settle(600);
 
-    gateway.send(&Command::HostName);
+    gateway.send(&Command::Server);
     gateway.send(&Command::ListPanes);
     gateway.send(&Command::ListWindows);
     gateway.settle(1000);
@@ -153,10 +153,16 @@ fn the_bootstrap_replies_are_the_shapes_the_reference_reads() {
         .collect();
     assert_eq!(blocks.len(), 3);
 
-    // "#{host_short}": one line, no spaces.
-    let host = blocks[0].text();
-    assert_eq!(host.len(), 1);
-    assert!(!host[0].is_empty() && !host[0].contains(' '), "{host:?}");
+    // The identity line: one line, four fields, and the socket is this
+    // server's own.
+    let identity = blocks[0].text();
+    assert_eq!(identity.len(), 1);
+    let (socket, pid, session, host) =
+        tmux_cc::parse_server(&identity[0]).expect("the server line");
+    assert_eq!(socket, server.socket().display().to_string());
+    assert!(pid > 0);
+    assert_eq!(session.as_str(), "$0");
+    assert!(!host.is_empty());
 
     // list-panes: "<window> <pane> <active> <name>", one line per pane.
     let panes = blocks[1].text();

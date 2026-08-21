@@ -70,4 +70,4 @@ pub mod ids;
 pub use codec::{Codec, CommandId, Sent};
 pub use command::Command;
 pub use event::{Block, Event, Notification};
-pub use ids::{PaneId, SessionId, WindowId};
+pub use ids::{parse_server, PaneId, SessionId, WindowId};

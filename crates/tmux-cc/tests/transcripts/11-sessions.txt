@@ -1,0 +1,24 @@
+P1000p%begin 1787302002 286 0
+%end 1787302002 286 0
+%session-changed $0 one
+%begin 1787302003 291 1
+/tmp/robco-tmux-cc-sessions-2168091/socket 2168488 $0 GPU-Workstation
+%end 1787302003 291 1
+%begin 1787302003 292 1
+@0 %0 1 bash
+%end 1787302003 292 1
+%begin 1787302003 293 1
+$0 one
+$1 two
+%end 1787302003 293 1
+%unlinked-window-add @2
+%sessions-changed
+%begin 1787302004 298 1
+$0 one
+$2 three
+$1 two
+%end 1787302004 298 1
+%begin 1787302005 299 1
+%end 1787302005 299 1
+%exit
+\

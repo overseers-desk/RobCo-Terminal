@@ -29,6 +29,7 @@ const TRANSCRIPTS: &[&str] = &[
     "08-error-and-extended-output",
     "09-quoting",
     "10-notification-zoo",
+    "11-sessions",
 ];
 
 fn dir() -> PathBuf {
@@ -503,4 +504,65 @@ fn the_zoo_holds_one_of_each() {
     assert!(!notes
         .iter()
         .any(|n| matches!(n, Notification::Message { .. })));
+}
+
+#[test]
+fn a_client_learns_its_server_and_its_sessions() {
+    let blocks = replies("11-sessions");
+    // identity, list-panes, list-sessions, list-sessions, detach-client.
+    assert_eq!(blocks.len(), 5);
+
+    let identity = blocks[0].text();
+    assert_eq!(
+        identity.len(),
+        1,
+        "the identity line came back {identity:?}"
+    );
+    let (socket, pid, session, host) = tmux_cc::parse_server(&identity[0]).expect("four fields");
+    assert!(socket.starts_with('/'), "{socket:?} is not a socket path");
+    assert!(pid > 0);
+    assert_eq!(session.as_str(), "$0");
+    assert!(!host.is_empty());
+
+    // The listing before the change: two sessions, id and name.
+    let sessions: Vec<(String, String)> = blocks[2]
+        .text()
+        .iter()
+        .map(|line| {
+            let (id, name) = line.split_once(' ').expect("session id and name");
+            (id.to_string(), name.to_string())
+        })
+        .collect();
+    assert_eq!(
+        sessions,
+        vec![
+            ("$0".to_string(), "one".to_string()),
+            ("$1".to_string(), "two".to_string())
+        ]
+    );
+    // And after it: three rows, the new session among them. tmux orders the
+    // listing by name, so it is the membership that holds, not the order.
+    let after = blocks[3].text();
+    assert_eq!(after.len(), 3);
+    assert!(after.iter().any(|line| line.ends_with(" three")));
+
+    let notes = notifications("11-sessions");
+    // The set moved, and the notification that says so names nothing: the
+    // re-listing above is the only way to learn what it moved to.
+    assert!(
+        notes
+            .iter()
+            .any(|n| matches!(n, Notification::SessionsChanged)),
+        "no %sessions-changed after the new session"
+    );
+    // The attach burst names the session this client is on, and it is the one
+    // the identity line reported.
+    let changed: Vec<String> = notes
+        .iter()
+        .filter_map(|n| match n {
+            Notification::SessionChanged { session, .. } => Some(session.as_str().to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(changed, vec![session.as_str().to_string()]);
 }

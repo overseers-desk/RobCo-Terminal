@@ -606,9 +606,12 @@ mod tests {
     #[test]
     fn a_reply_pairs_with_the_command_that_asked() {
         let mut codec = Codec::new();
-        let first = codec.send(&Command::HostName);
+        let first = codec.send(&Command::Server);
         let second = codec.send(&Command::ListPanes);
-        assert_eq!(first.wire, "display-message -p \"#{host_short}\"\n");
+        assert_eq!(
+            first.wire,
+            "display-message -p \"#{socket_path} #{pid} #{session_id} #{host_short}\"\n"
+        );
         assert_eq!(codec.pending(), 2);
 
         let got = codec.feed(
@@ -654,7 +657,7 @@ mod tests {
         // The whole point of the flags gate: a flags-0 block arriving while a
         // command is outstanding must leave the queue alone.
         let mut codec = Codec::new();
-        let sent = codec.send(&Command::HostName);
+        let sent = codec.send(&Command::Server);
         let got = codec.feed(
             b"%begin 1 276 0\r\nburst\r\n%end 1 276 0\r\n\
               %begin 2 281 1\r\nmine\r\n%end 2 281 1\r\n",
@@ -681,7 +684,7 @@ mod tests {
     #[test]
     fn a_percent_line_inside_a_block_is_body_not_notification() {
         let mut codec = Codec::new();
-        let sent = codec.send(&Command::HostName);
+        let sent = codec.send(&Command::Server);
         let got = codec.feed(b"%begin 1 2 1\r\n%message hello\r\n%0 %1\r\n%end 1 2 1\r\n");
         match &got[..] {
             [Event::Reply { id, block }] => {
@@ -695,7 +698,7 @@ mod tests {
     #[test]
     fn a_mismatched_guard_drops_the_body_and_says_so() {
         let mut codec = Codec::new();
-        codec.send(&Command::HostName);
+        codec.send(&Command::Server);
         let got = codec.feed(b"%begin 1 2 1\r\nbody\r\n%end 1 3 1\r\n");
         assert_eq!(
             got,
@@ -713,7 +716,7 @@ mod tests {
         let stream: &[u8] = b"%begin 1 2 1\r\nbody line\r\n%end 1 2 1\r\n%output %0 hi\r\n";
         for split in 1..stream.len() {
             let mut codec = Codec::new();
-            codec.send(&Command::HostName);
+            codec.send(&Command::Server);
             let mut got = codec.feed(&stream[..split]);
             // Split anywhere inside the block and the block is still open
             // between the two calls: the state that spans reads is real.

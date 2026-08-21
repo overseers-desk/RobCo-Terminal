@@ -2,15 +2,13 @@
 //!
 //! # The set
 //!
-//! One variant per command: a control client is not a shell, it sends eleven
-//! kinds of line and no others, and the closed set is what lets every reply be
-//! paired with a known question.
+//! One variant per command, and no way to say anything else: a control client
+//! is not a shell, and the closed set is what lets every reply be paired with
+//! a known question.
 //!
-//! `resize-window` is deliberately absent. A control client's screen size
-//! reaches tmux through `refresh-client -C`, which is the client-size law
-//! recorded in `app::channels`' module doc; `resize-window` sets
-//! one window's size against the client's, and a client sharing one bank
-//! geometry across every window has no use for it.
+//! `resize-window` is deliberately absent: a client's screen size reaches
+//! tmux through `refresh-client -C` (the client-size law in `app::channels`),
+//! and one bank geometry across every window has no use for a per-window size.
 //!
 //! # Quoting, measured against tmux 3.5a's own lexer
 //!
@@ -30,12 +28,10 @@
 //!   `'#{host_short}'` still expands.
 //! * `;` inside quotes is literal; bare, it separates commands.
 //!
-//! So there is one quoting function here, [`quote_format`], and it is for
-//! format strings: it protects the quote, the backslash and the dollar, and
-//! deliberately leaves `#` alone, which is the whole point of quoting a
-//! format. Free user text never needs quoting at all, because the one command
-//! that carries it, `send-keys`, carries it as hex (see
-//! [`escape::hex_arguments`](crate::escape::hex_arguments)).
+//! So [`quote_format`] protects the quote, the backslash and the dollar and
+//! leaves `#` alone, which is the whole point of quoting a format. Free user
+//! text needs no quoting at all: the one command that carries it, `send-keys`,
+//! carries it as hex ([`escape::hex_arguments`](crate::escape::hex_arguments)).
 
 use crate::escape::hex_arguments;
 use crate::ids::{PaneId, WindowId};
@@ -55,11 +51,15 @@ pub const CAPTURE_HISTORY: u32 = 1000;
 /// [`Command::send_keys`] rather than as one variant that expands.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    /// `display-message -p "#{host_short}"`: the name the appliance titles
-    /// the gateway with.
-    HostName,
+    /// The server in one reply line: its socket, its pid, the session this
+    /// client is attached to, and the host name the appliance titles the
+    /// gateway with.
+    Server,
 
-    /// The session listing shared by the bootstrap and the `%window-add`
+    /// Every session on the server, one line each: id and name.
+    ListSessions,
+
+    /// The pane listing shared by the bootstrap and the `%window-add`
     /// re-query: one line per pane, across every window of the session.
     ListPanes,
 
@@ -126,9 +126,14 @@ impl Command {
     /// The command as tmux reads it, without its terminating newline.
     pub fn to_wire(&self) -> String {
         match self {
-            Command::HostName => {
-                format!("display-message -p {}", quote_format("#{host_short}"))
-            }
+            Command::Server => format!(
+                "display-message -p {}",
+                quote_format("#{socket_path} #{pid} #{session_id} #{host_short}")
+            ),
+            Command::ListSessions => format!(
+                "list-sessions -F {}",
+                quote_format("#{session_id} #{session_name}")
+            ),
             Command::ListPanes => format!(
                 "list-panes -s -F {}",
                 quote_format("#{window_id} #{pane_id} #{pane_active} #{window_name}")
@@ -197,12 +202,16 @@ mod tests {
     #[test]
     fn the_bootstrap_pair_is_the_references_own_text() {
         assert_eq!(
-            Command::HostName.to_wire(),
-            r##"display-message -p "#{host_short}""##
+            Command::Server.to_wire(),
+            r##"display-message -p "#{socket_path} #{pid} #{session_id} #{host_short}""##
         );
         assert_eq!(
             Command::ListPanes.to_wire(),
             r##"list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}""##
+        );
+        assert_eq!(
+            Command::ListSessions.to_wire(),
+            r##"list-sessions -F "#{session_id} #{session_name}""##
         );
     }
 

@@ -1,11 +1,8 @@
 //! The three object ids tmux hands out, each keeping its sigil.
 //!
-//! A pane is `%3`, a window `@1`, a session `$0`. The sigil is part of the id
-//! and not decoration: it is what a `-t` target takes, so an id that has been
-//! stripped of it has to be rebuilt before it can be used, and the rebuild is
-//! where the wrong sigil gets attached. These types keep the whole token and
-//! validate the sigil on the way in, so a `%output` naming `@1` is a parse
-//! failure here rather than a mystery three layers up.
+//! A pane is `%3`, a window `@1`, a session `$0`. The sigil is what a `-t`
+//! target takes, so these types keep the whole token and validate it on the
+//! way in: a `%output` naming `@1` is a parse failure, not a mystery upstream.
 
 macro_rules! tmux_id {
     ($name:ident, $sigil:literal, $what:literal) => {
@@ -57,6 +54,18 @@ tmux_id!(PaneId, '%', "pane");
 tmux_id!(WindowId, '@', "window");
 tmux_id!(SessionId, '$', "session");
 
+/// Read the line [`Command::Server`](crate::Command::Server) comes back with:
+/// socket path, pid, the attached session's id, host name. Split from the
+/// right, because only the socket can hold a space.
+pub fn parse_server(line: &str) -> Option<(String, u32, SessionId, String)> {
+    let mut fields = line.trim().rsplitn(4, char::is_whitespace);
+    let host = fields.next()?.to_string();
+    let session = SessionId::parse(fields.next()?)?;
+    let pid = fields.next()?.parse().ok()?;
+    let socket = fields.next()?.to_string();
+    (!socket.is_empty() && !host.is_empty()).then_some((socket, pid, session, host))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,5 +88,32 @@ mod tests {
     #[test]
     fn the_number_is_the_tail() {
         assert_eq!(WindowId::parse("@17").unwrap().number(), 17);
+    }
+
+    #[test]
+    fn the_server_line_gives_up_its_four_fields() {
+        let (socket, pid, session, host) =
+            parse_server("/tmp/tmux-1000/default 4242 $0 workshop").unwrap();
+        assert_eq!(socket, "/tmp/tmux-1000/default");
+        assert_eq!(pid, 4242);
+        assert_eq!(session.as_str(), "$0");
+        assert_eq!(host, "workshop");
+    }
+
+    #[test]
+    fn a_socket_path_may_hold_a_space() {
+        let (socket, _, session, host) =
+            parse_server("/tmp/my sockets/default 7 $12 host\n").unwrap();
+        assert_eq!(socket, "/tmp/my sockets/default");
+        assert_eq!(session.number(), 12);
+        assert_eq!(host, "host");
+    }
+
+    #[test]
+    fn a_line_that_is_not_four_fields_is_not_a_server() {
+        assert!(parse_server("/tmp/s 4242 $0").is_none());
+        assert!(parse_server("/tmp/s notapid $0 host").is_none());
+        assert!(parse_server("/tmp/s 4242 @0 host").is_none());
+        assert!(parse_server("").is_none());
     }
 }

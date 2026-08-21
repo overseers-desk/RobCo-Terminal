@@ -1,5 +1,5 @@
 display-message -p "#{socket_path} #{pid} #{session_id} #{host_short}"
 list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}"
-list-windows -F "#{window_id} #{window_name}"
-refresh-client -C 100x30
+list-sessions -F "#{session_id} #{session_name}"
+list-sessions -F "#{session_id} #{session_name}"
 detach-client

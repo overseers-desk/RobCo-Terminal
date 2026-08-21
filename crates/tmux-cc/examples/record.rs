@@ -46,6 +46,7 @@ fn main() {
     error_and_extended_output(&out);
     quoting(&out);
     notification_zoo(&out);
+    sessions(&out);
 
     std::fs::write(out.join("README.md"), readme(&version)).expect("write README");
     println!("done");
@@ -75,7 +76,7 @@ fn fresh_session(out: &Path) {
     let server = Server::start("fresh", "one", "/bin/cat");
     let mut gateway = server.attach("one");
     gateway.settle(500);
-    gateway.send(&Command::HostName);
+    gateway.send(&Command::Server);
     gateway.send(&Command::ListPanes);
     gateway.settle(400);
     gateway.send(&Command::ListWindows);
@@ -283,7 +284,9 @@ fn quoting(out: &Path) {
     // display-message prints its default status line instead of erroring.
     gateway.send_raw("display-message -p #{host_short}");
     gateway.settle(300);
-    gateway.send(&Command::HostName);
+    // The same format quoted, by hand: the pair is about the lexer, so it
+    // stays one field whatever the command set asks for elsewhere.
+    gateway.send_raw(r##"display-message -p "#{host_short}""##);
     gateway.settle(300);
     gateway.send_raw(r#"display-message -p "dollar ${MYVAR} end""#);
     gateway.settle(300);
@@ -361,6 +364,30 @@ fn notification_zoo(out: &Path) {
     write(out, "10-notification-zoo", &gateway);
 }
 
+/// What a client learns about the server it is attached to: the identity
+/// line, the session listing, and what a session appearing sounds like.
+fn sessions(out: &Path) {
+    let server = Server::start("sessions", "one", "/bin/cat");
+    server.run(&["new-session", "-d", "-s", "two", "/bin/cat"]);
+    let mut gateway = server.attach("one");
+    gateway.settle(600);
+    gateway.send(&Command::Server);
+    gateway.send(&Command::ListPanes);
+    gateway.send(&Command::ListSessions);
+    gateway.settle(600);
+    // A third session, from the other hand: `%sessions-changed` says only
+    // that the set moved, and may say it more than once per change, so the
+    // listing is asked for again rather than counted.
+    server.run(&["new-session", "-d", "-s", "three", "/bin/cat"]);
+    gateway.wait_for(b"%sessions-changed", 3000);
+    gateway.settle(900);
+    gateway.send(&Command::ListSessions);
+    gateway.settle(600);
+    gateway.send(&Command::DetachClient);
+    gateway.settle(500);
+    write(out, "11-sessions", &gateway);
+}
+
 fn readme(version: &str) -> String {
     format!(
         "# Recorded tmux control-mode transcripts\n\
@@ -377,15 +404,16 @@ fn readme(version: &str) -> String {
          \n\
          | file | what it holds |\n\
          |---|---|\n\
-         | `01-fresh-session` | Attach to a one-window session, the attach bootstrap (host, list-panes, list-windows), a client resize, a client-side detach. The attach burst's blocks and the replies to those commands are both here, which is where the `%begin` flags field gives itself away. |\n\
+         | `01-fresh-session` | Attach to a one-window session, the client's bootstrap (host, list-panes, list-windows), a client resize, a client-side detach. The attach burst's blocks and the replies to those commands are both here, which is where the `%begin` flags field gives itself away. |\n\
          | `02-second-window` | `new-window` through the codec: `%window-add`, `%session-window-changed`, `%layout-change`, and the re-listing that finds the new window's pane, which `%window-add` does not name. |\n\
          | `03-rename` | Renames from the server, one awkward name at a time: two consecutive spaces, a backslash, a tab and a BEL, valid UTF-8, and bytes that are not UTF-8. The evidence behind `escape::unvis` -- a name is C-escaped by `vis(3)`, not octal-escaped like a payload -- and behind `%session-renamed` carrying a session id the manual does not mention. |\n\
          | `04-output-octal` | Two windows producing output, one of them writing all 256 byte values through a raw tty. The escaping set is measured here: `0x00..=0x1f` and `\\`, and nothing else. |\n\
          | `05-kill-window` | A background window killed from the server and the current one killed through the codec. Both arrive as `%unlinked-window-close`; `%window-close` never appears. |\n\
          | `06-detach` | The server throwing this client off with `detach-client -t`. |\n\
-         | `07a-before-the-kill`, `07b-reattach` | Issue #4's shape. The first client builds a three-window session and is SIGKILLed mid-protocol (no `%exit`, no `ST`). The second attaches onto that session: its burst announces **no** window, so a client that learns windows from notifications alone comes up empty. |\n\
+         | `07a-before-the-kill`, `07b-reattach` | The killed-client re-attach shape. The first client builds a three-window session and is SIGKILLed mid-protocol (no `%exit`, no `ST`). The second attaches onto that session: its burst announces **no** window, so a client that learns windows from notifications alone comes up empty. |\n\
          | `08-error-and-extended-output` | A command tmux refuses (`%error`), and the `%extended-output` form that the `pause-after` client flag turns `%output` into. |\n\
          | `09-quoting` | tmux's command lexer, probed: unquoted `#{{...}}` swallowed as a comment, the same quoted, `${{VAR}}` expanded inside double quotes, `\\\"` and `\\\\` unescaped, and single quotes not stopping format expansion. |\n\
-         | `10-notification-zoo` | As many notification names as one session can be made to emit: `%sessions-changed`, `%unlinked-window-add`, `%session-renamed`, the paste-buffer pair, `%message` (inside a reply block, which the manual says cannot happen), `%layout-change`, `%window-pane-changed`, `%pane-mode-changed`, `%client-session-changed`, and `%exit` under a dying server. |\n"
+         | `10-notification-zoo` | As many notification names as one session can be made to emit: `%sessions-changed`, `%unlinked-window-add`, `%session-renamed`, the paste-buffer pair, `%message` (inside a reply block, which the manual says cannot happen), `%layout-change`, `%window-pane-changed`, `%pane-mode-changed`, `%client-session-changed`, and `%exit` under a dying server. |\n\
+         | `11-sessions` | What a client learns about the server it attached to: the identity line (`#{{socket_path}} #{{pid}} #{{session_id}} #{{host_short}}`), `list-sessions` over two sessions, a third session created from the other hand (`%sessions-changed`, which names nothing and may repeat), and the re-listing that finds the third. The socket path in the identity line carries the recording run's pid, so that one field moves under a re-record. |\n"
     )
 }
