@@ -102,6 +102,14 @@ impl Server {
             .collect()
     }
 
+    /// Every window of every session on the server.
+    fn all_windows(&self) -> Vec<String> {
+        self.run(&["list-windows", "-a", "-F", "#{window_id}"])
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
     fn clients(&self) -> usize {
         self.run(&["list-clients", "-F", "#{client_pid}"])
             .lines()
@@ -201,9 +209,21 @@ fn pump_until(surface: &mut TerminalSurface, what: &str, pred: impl Fn(&Terminal
 /// Answers the tmux bank's id.
 fn attach(surface: &mut TerminalSurface, server: &Server) -> u32 {
     let windows = server.windows().len();
+    attach_expecting(surface, server, 2, windows)
+}
+
+/// The same, on a server holding more than the one session: `banks` counts
+/// home's and every attachment's, and `windows` every window that must end up
+/// with a channel of its own.
+fn attach_expecting(
+    surface: &mut TerminalSurface,
+    server: &Server,
+    banks: usize,
+    windows: usize,
+) -> u32 {
     type_attach(surface, server);
-    pump_until(surface, "the attach to raise its bank and channels", |s| {
-        s.channels().banks().len() == 2
+    pump_until(surface, "the attach to raise its banks and channels", |s| {
+        s.channels().banks().len() == banks
             && s.channels()
                 .rows()
                 .iter()
@@ -977,4 +997,170 @@ fn phase_13_a_tmux_panes_output_is_counted_as_the_redraw_it_asks_for() {
         "the output reached the glass without one pump reporting a byte, so \
          nothing but the effects clock would have drawn it"
     );
+}
+
+// ---- the sessions of a local server --------------------------------------
+
+/// Every tmux session on a local server gets a bank of its own: the one the
+/// user typed the attach into, and one the terminal raises for every other
+/// session it finds on that server, each with its own `tmux -CC` client.
+///
+/// The client the terminal starts goes to the socket the app learned from the
+/// server's own reply, which is this test's private server and never a
+/// developer's default one -- and `server.clients()` is what says so, since a
+/// client that went elsewhere would leave this server holding one.
+#[test]
+fn phase_14_a_second_session_on_the_server_gets_a_bank_and_a_client_of_its_own() {
+    if !have_tmux() {
+        return;
+    }
+    let server = Server::start();
+    server.run(&["new-session", "-d", "-s", "two", "/bin/cat"]);
+    let mut surface = surface();
+    let typed = attach_expecting(&mut surface, &server, 3, 2);
+
+    let found = surface
+        .channels()
+        .banks()
+        .iter()
+        .filter(|b| b.manager.is_tmux())
+        .map(|b| b.id)
+        .find(|id| *id != typed)
+        .unwrap_or_else(|| panic!("no bank for the session found; rows: {}", rows_of(&surface)));
+
+    for bank in [typed, found] {
+        let channels = surface.channels();
+        let gateway = channels
+            .rows()
+            .iter()
+            .find(|r| r.bank == bank && r.channel == 1)
+            .unwrap_or_else(|| panic!("bank {bank} stands on no gateway"));
+        assert!(channels.is_gateway(gateway));
+        assert!(gateway.tmux.is_none(), "a gateway row is no window's row");
+        let windows: Vec<u32> = channels
+            .rows()
+            .iter()
+            .filter(|r| r.bank == bank && r.tmux.is_some())
+            .map(|r| r.channel)
+            .collect();
+        assert_eq!(windows, vec![2], "windows fill from slot 2");
+    }
+
+    // Both banks are titled for the server they stand on, which only a gateway
+    // whose own bootstrap was answered can be.
+    let host = host();
+    pump_until(&mut surface, "both gateways to name their server", |s| {
+        let title = format!("tmux -CC # @{host}");
+        s.channels().slot_title(typed, 1) == Some(title.as_str())
+            && s.channels().slot_title(found, 1) == Some(title.as_str())
+    });
+    assert_eq!(
+        server.clients(),
+        2,
+        "the client the terminal started went to another server"
+    );
+    // Home is untouched: neither bank stands on a slot of it.
+    assert_eq!(surface.channels().first_free(0), 2);
+}
+
+/// A session killed on the server takes its bank with it and leaves home
+/// exactly as it was: nothing comes home from a bank that never stood on a
+/// home slot.
+#[test]
+fn phase_15_a_killed_session_takes_its_bank_and_home_keeps_its_slots() {
+    if !have_tmux() {
+        return;
+    }
+    let server = Server::start();
+    server.run(&["new-session", "-d", "-s", "two", "/bin/cat"]);
+    let mut surface = surface();
+    let typed = attach_expecting(&mut surface, &server, 3, 2);
+    let free = surface.channels().first_free(0);
+    let rows = surface
+        .channels()
+        .rows()
+        .iter()
+        .filter(|r| r.bank == 0)
+        .count();
+
+    server.run(&["kill-session", "-t", "two"]);
+    pump_until(&mut surface, "the killed session's bank to go", |s| {
+        s.channels().banks().len() == 2
+    });
+    assert_eq!(
+        surface.channels().first_free(0),
+        free,
+        "home was written to"
+    );
+    assert_eq!(
+        surface
+            .channels()
+            .rows()
+            .iter()
+            .filter(|r| r.bank == 0)
+            .count(),
+        rows
+    );
+    assert_eq!(
+        surface.channels().current_bank(),
+        typed,
+        "the air never left the attachment the user was on"
+    );
+    assert_eq!(server.clients(), 1, "tmux let the dead session's client go");
+}
+
+/// Phase 7 doubled: a cold appliance over a server holding two sessions and
+/// several windows restores a bank per session and a channel per window.
+#[test]
+fn phase_16_a_cold_reattach_restores_every_session_and_every_window() {
+    if !have_tmux() {
+        return;
+    }
+    let server = Server::start();
+    server.run(&["new-session", "-d", "-s", "two", "/bin/cat"]);
+    server.run(&["new-window", "-t", "one", "-n", "second"]);
+    server.run(&["new-window", "-t", "two", "-n", "other"]);
+    let windows = server.all_windows();
+    assert_eq!(windows.len(), 4, "two sessions of two windows each");
+
+    let mut first = surface();
+    attach_expecting(&mut first, &server, 3, 4);
+
+    // The kill: dropping the surface closes every PTY master, and SIGHUP takes
+    // both tmux clients with it, mid-protocol, no detach and no %exit.
+    drop(first);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while server.clients() > 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the killed appliance's clients never left the server's books"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(server.all_windows(), windows, "the server kept everything");
+
+    let mut second = surface();
+    attach_expecting(&mut second, &server, 3, 4);
+    for window in &windows {
+        assert!(
+            second
+                .channels()
+                .rows()
+                .iter()
+                .any(|r| r.tmux.as_ref().is_some_and(|(w, _)| w.as_str() == window)),
+            "window {window} got no channel on re-attach; rows: {}",
+            rows_of(&second)
+        );
+    }
+    // And the names came back with them, both sessions'.
+    pump_until(&mut second, "the restored titles", |s| {
+        let titles: Vec<&str> = s
+            .channels()
+            .rows()
+            .iter()
+            .map(|r| r.title.as_str())
+            .collect();
+        titles.contains(&"second") && titles.contains(&"other")
+    });
+    assert_eq!(server.clients(), 2);
 }
