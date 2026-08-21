@@ -44,6 +44,13 @@ pub struct TermSize {
 const MIN_COLS: usize = 2;
 const MIN_ROWS: usize = 1;
 
+/// The grid the window is never dragged under: the 80x24 an ANSI terminal
+/// is specified in, and the size a curses program that never asks
+/// `TIOCGWINSZ` draws for. [`Viewport::well_floor`] turns it into the pixels
+/// the window's minimum-size hint is set from.
+pub const FLOOR_COLS: usize = 80;
+pub const FLOOR_ROWS: usize = 24;
+
 impl TermSize {
     /// Build directly from cell counts. Used by tests and by any caller
     /// that already knows the grid it wants.
@@ -145,7 +152,7 @@ impl Viewport {
     /// now folded into that same remainder rather than sized separately.
     pub fn term_size(&self) -> TermSize {
         let (cw, ch) = self.physical_cell();
-        let inset = (2.0 * self.margin).round().max(0.0) as u32;
+        let inset = self.inset();
         let available_width = self.width.saturating_sub(inset);
         let available_height = self.height.saturating_sub(inset);
         TermSize::new(
@@ -154,6 +161,30 @@ impl Viewport {
             cw,
             ch,
         )
+    }
+
+    /// The well that holds exactly [`FLOOR_COLS`] x [`FLOOR_ROWS`] cells, in
+    /// physical pixels: [`Viewport::term_size`] read backwards, so a well of
+    /// this size divides into that grid and one pixel less does not.
+    ///
+    /// Physical rather than logical because that is the unit the division is
+    /// exact in. The cell is rounded to whole physical pixels before anything
+    /// is counted (`physical_cell`), and eighty of those rounded cells is not
+    /// eighty logical cells scaled: at DPR 1.1 a 9-pixel cell is drawn 10
+    /// physical pixels wide, so the eighty need 800 and the logical floor
+    /// scaled would have promised 792 and delivered seventy-nine columns.
+    pub fn well_floor(&self) -> (u32, u32) {
+        let (cw, ch) = self.physical_cell();
+        let inset = self.inset();
+        (
+            FLOOR_COLS as u32 * u32::from(cw) + inset,
+            FLOOR_ROWS as u32 * u32::from(ch) + inset,
+        )
+    }
+
+    /// The margin taken off both edges of an axis, in physical pixels.
+    fn inset(&self) -> u32 {
+        (2.0 * self.margin).round().max(0.0) as u32
     }
 }
 
@@ -192,6 +223,52 @@ mod tests {
         // 9 * 1.5 = 13.5 -> 14, not 13.
         assert_eq!(v.physical_cell(), (14, 30));
         assert_eq!(v.term_size().cols(), 800 / 14);
+    }
+
+    #[test]
+    fn the_well_floor_is_the_least_well_holding_eighty_by_twenty_four() {
+        // Every combination of a cell that rounds and a margin that is not a
+        // whole number of pixels: the floor holds the grid, and a pixel off
+        // either axis loses a column or a row. That pair is what makes it a
+        // floor rather than an estimate of one.
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            for cell in [(9.0, 20.0), (12.0, 28.0), (6.0, 13.0)] {
+                for margin in [0.0, 7.3, 28.820842763492422] {
+                    let mut v = Viewport::new(0, 0, scale, CellSize::new(cell.0, cell.1));
+                    v.margin = margin * scale;
+                    let (w, h) = v.well_floor();
+                    let at_floor = Viewport {
+                        width: w,
+                        height: h,
+                        ..v
+                    };
+                    let grid = at_floor.term_size();
+                    assert_eq!(
+                        (grid.cols(), grid.rows()),
+                        (FLOOR_COLS, FLOOR_ROWS),
+                        "at floor {w}x{h}, scale {scale}, cell {cell:?}, margin {margin}"
+                    );
+                    for narrower in [
+                        Viewport {
+                            width: w - 1,
+                            ..at_floor
+                        },
+                        Viewport {
+                            height: h - 1,
+                            ..at_floor
+                        },
+                    ] {
+                        let grid = narrower.term_size();
+                        assert!(
+                            grid.cols() < FLOOR_COLS || grid.rows() < FLOOR_ROWS,
+                            "{}x{} still holds the floor grid",
+                            narrower.width,
+                            narrower.height
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

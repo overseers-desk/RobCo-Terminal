@@ -86,7 +86,7 @@ pub use search::{search, SearchHit};
 // worth the collision at the root.
 pub use selection::{Selection, SelectionController, TripleClickMode};
 pub use session::{Pumped, Session, SessionConfig, Term, INPUT_CAP};
-pub use size::{CellSize, TermSize, Viewport};
+pub use size::{CellSize, TermSize, Viewport, FLOOR_COLS, FLOOR_ROWS};
 pub use tmux_cc::ControlModeTap;
 pub use tmux_pane::{ChannelSession, TmuxPane};
 pub use viewport::{ScrollPosition, ViewportChange};
