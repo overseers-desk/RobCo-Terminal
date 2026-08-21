@@ -2553,7 +2553,6 @@ impl TerminalSurface {
         }
     }
 
-    /// The clipboard onto the pty, from `Ctrl+Shift+V` or the middle button.
     /// `force_bracketed` is the pointer's Ctrl asking for brackets the
     /// terminal's own mode did not.
     fn paste(&mut self, force_bracketed: bool) {

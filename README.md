@@ -228,8 +228,10 @@ rules it has to obey.
 | `F11` | Fullscreen, with or without modifiers |
 | `Shift`+`Up` / `PageUp` | Scroll back through history |
 
-Selecting text copies it. Middle-click pastes the primary selection, and
-holding `Ctrl` while you do it forces bracketed paste.
+Selecting text copies it, and `Ctrl`+`Shift`+`C` copies it again after
+something else has taken the clipboard. Middle-click pastes, as
+`Ctrl`+`Shift`+`V` does; holding `Ctrl` while you middle-click forces
+bracketed paste.
 
 The digit `0` on its own means channel 10. Digits are typed one at a time,
 and the chord fires the moment no longer slot number could still match what
