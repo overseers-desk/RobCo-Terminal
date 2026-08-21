@@ -53,15 +53,12 @@
 //! * **Names decode.** `%window-renamed` names arrive `vis(3)`-escaped and the
 //!   codec unescapes them; reading them verbatim would show `a\\b` for a
 //!   window named `a\b` (the escaping defect recorded at D1a).
-//! * **The client-size debounce keeps no timer object.** The 150 ms policy is
-//!   held as a deadline the surface's pump polls, since this process has an
-//!   event loop tick to poll it on.
 
 use std::collections::HashMap;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use tmux_cc::{Codec, Command, CommandId, Event, Notification, PaneId, WindowId};
+use tmux_cc::{Codec, Command, CommandId, Event, Notification, PaneId, SessionId, WindowId};
 
 /// The resize debounce: a drag is a burst of sizes and only the one it
 /// settles on is worth a round trip.
@@ -117,6 +114,8 @@ enum Intent {
     Ignore,
     Host,
     ListPanes,
+    /// Every session on the server, for the surface to bank.
+    ListSessions,
     /// The rename sweep that closes the attach burst.
     WindowNames,
     /// A pane's scrollback and screen.
@@ -145,6 +144,15 @@ pub enum GatewayEvent {
     /// The tmux server's hostname resolved:
     /// `channels::Channels::host_changed`.
     HostChanged(String),
+    /// Every session the server holds, as this gateway last listed them, with
+    /// the server it listed them on and the one this gateway is attached to.
+    /// The whole listing: which of them are worth a bank is the surface's.
+    SessionsSeen {
+        attached: SessionId,
+        socket: String,
+        server_pid: u32,
+        sessions: Vec<(SessionId, String)>,
+    },
     /// A window needs a channel: `channels::Channels::open_tmux_window`,
     /// then [`Gateway::attach_window`] if the slot was granted.
     WindowAdded {
@@ -191,6 +199,14 @@ pub struct Gateway<W: Write> {
     panes: HashMap<PaneId, PaneGate>,
 
     host: String,
+    /// Which server this is and which of its sessions this client is on, off
+    /// the `Server` reply: the key a session listing is read against.
+    socket: String,
+    server_pid: u32,
+    session: Option<SessionId>,
+    /// A re-listing this advance owes, so the two `%sessions-changed` one
+    /// `new-session` sends cost one round trip.
+    relist_due: bool,
     attached: bool,
     /// The first `list-panes` reply has been consumed; window notifications
     /// mean something now.
@@ -214,10 +230,10 @@ pub struct Gateway<W: Write> {
 }
 
 impl<W: Write> Gateway<W> {
-    /// Raise the client and send the bootstrap pair at once: the server's name,
-    /// then the session listing whose reply becomes the initial channels.
-    /// No timer and no wait for `%session-changed`. See the module doc's
-    /// first divergence.
+    /// Raise the client and send the bootstrap at once: the server this client
+    /// is on, the panes of the session it is attached to, and the sessions the
+    /// server holds beside it. No timer and no wait for `%session-changed`.
+    /// See the module doc's first divergence.
     pub fn new(writer: W) -> Self {
         let mut gateway = Self {
             codec: Codec::new(),
@@ -228,6 +244,10 @@ impl<W: Write> Gateway<W> {
             names: HashMap::new(),
             panes: HashMap::new(),
             host: String::new(),
+            socket: String::new(),
+            server_pid: 0,
+            session: None,
+            relist_due: false,
             attached: true,
             bootstrapped: false,
             sent_size: None,
@@ -240,6 +260,7 @@ impl<W: Write> Gateway<W> {
         };
         gateway.command(&Command::Server, Intent::Host);
         gateway.command(&Command::ListPanes, Intent::ListPanes);
+        gateway.command(&Command::ListSessions, Intent::ListSessions);
         gateway
     }
 
@@ -519,6 +540,11 @@ impl<W: Write> Gateway<W> {
                 }
             }
         }
+        // One listing for however many `%sessions-changed` this advance
+        // carried: tmux sends two for a single `new-session`.
+        if std::mem::take(&mut self.relist_due) {
+            self.command(&Command::ListSessions, Intent::ListSessions);
+        }
         out
     }
 
@@ -544,10 +570,37 @@ impl<W: Write> Gateway<W> {
         match intent {
             Intent::Ignore => {}
             Intent::Host => {
-                if let Some((_, _, _, host)) = block.text().first().and_then(|l| tmux_cc::parse_server(l)) {
+                if let Some((socket, pid, session, host)) =
+                    block.text().first().and_then(|l| tmux_cc::parse_server(l))
+                {
+                    self.socket = socket;
+                    self.server_pid = pid;
+                    self.session = Some(session);
                     self.host = host;
                     out.push(GatewayEvent::HostChanged(self.host.clone()));
                 }
+            }
+            Intent::ListSessions => {
+                // "<session id> <session name>"; the name is the remainder and
+                // may hold spaces. Which of them this client is on is the
+                // `Server` reply's, which lands first or not at all.
+                let Some(attached) = self.session.clone() else {
+                    return;
+                };
+                let sessions = block
+                    .text()
+                    .iter()
+                    .filter_map(|line| {
+                        let (id, name) = line.split_once(' ')?;
+                        Some((SessionId::parse(id)?, name.to_string()))
+                    })
+                    .collect();
+                out.push(GatewayEvent::SessionsSeen {
+                    attached,
+                    socket: self.socket.clone(),
+                    server_pid: self.server_pid,
+                    sessions,
+                });
             }
             Intent::ListPanes => {
                 // "<window id> <pane id> <pane active> <window name>"; the
@@ -760,20 +813,19 @@ impl<W: Write> Gateway<W> {
                 out.push(GatewayEvent::Output { pane, bytes: data });
             }
             // What tmux says to the user rather than about the session:
-            // `%message` is the control client's own message line (`display-message`
-            // to a client that has no status line), and `%config-error` is a
-            // line of `.tmux.conf` the server could not run.
-            //
+            // `%message` is the control client's own message line, and
+            // `%config-error` a line of `.tmux.conf` the server could not run.
             // A warning line is the surface for both, not a placeholder for a
-            // richer one: neither notification is about a channel, a queue,
-            // or anything else this appliance's own event model has a
-            // display for, so there is nothing for a toast to be a stand-in
-            // for.
-            //
-            // Placed above the bootstrap gate deliberately: a `.tmux.conf`
-            // error arrives during the attach burst, before any listing has
-            // come back. Its gate stands below the same line.
+            // richer one: neither is about a channel or a queue, so there is
+            // nothing for a toast to stand in for. Placed above the bootstrap
+            // gate deliberately -- a `.tmux.conf` error arrives during the
+            // attach burst, before any listing has come back.
             Notification::Message { message } => log::warn!("tmux: %message {message}"),
+            // A session came or went. Placed here for the same reason: the
+            // attach burst carries these, and the listing they ask for is
+            // owed once per advance however many of them arrive
+            // ([`Gateway::advance`]).
+            Notification::SessionsChanged => self.relist_due = true,
             Notification::ConfigError { message } => log::warn!("tmux: %config-error {message}"),
             // A name this codec knows, in a shape it does not
             // (`tmux_cc::Notification::Malformed`, distinct from `Unknown`:
@@ -788,10 +840,17 @@ impl<W: Write> Gateway<W> {
                 String::from_utf8_lossy(&rest)
             ),
             Notification::Exit { .. } => self.teardown(false, out),
-            // End of the attach burst. The bootstrap already went out at
-            // construction; nothing needs to wait for this, since the flags
-            // gate already made the burst harmless.
-            Notification::SessionChanged { .. } => {}
+            // During the attach burst it is the burst's end, and the bootstrap
+            // has already gone out; afterwards it is `switch-client`, and this
+            // client is on another session of the same server now.
+            // `%client-session-changed` stays unhandled: re-listing on the
+            // notification another client's arrival sends is a spawn loop.
+            Notification::SessionChanged { session, .. } => {
+                if self.bootstrapped {
+                    self.session = Some(session);
+                    self.relist_due = true;
+                }
+            }
             // Window notifications only make sense once the initial set is
             // known; before that the bootstrap listing is the one source of
             // truth.
@@ -976,13 +1035,14 @@ mod tests {
         s
     }
 
-    /// Walk a fresh gateway through the attach: hostname, one-window listing,
-    /// rename sweep. Command numbers 0,1 are the constructor's; 2 is the
-    /// sweep.
+    /// Walk a fresh gateway through the attach: server, one-window listing,
+    /// one-session listing, rename sweep. Command numbers 0,1,2 are the
+    /// constructor's; 3 is the sweep.
     fn attach<W: Write>(gateway: &mut Gateway<W>) -> Vec<GatewayEvent> {
         let mut events = gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
         events.extend(gateway.advance(reply(1, "@0 %0 1 bash").as_bytes()));
-        events.extend(gateway.advance(reply(2, "@0 bash").as_bytes()));
+        events.extend(gateway.advance(reply(2, "$0 one").as_bytes()));
+        events.extend(gateway.advance(reply(3, "@0 bash").as_bytes()));
         events
     }
 
@@ -994,8 +1054,58 @@ mod tests {
             vec![
                 r##"display-message -p "#{socket_path} #{pid} #{session_id} #{host_short}""##,
                 r##"list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}""##,
+                r##"list-sessions -F "#{session_id} #{session_name}""##,
             ]
         );
+    }
+
+    /// The listing the surface banks from: every session the server holds,
+    /// and which of them this client is attached to.
+    #[test]
+    fn a_session_listing_names_the_whole_server_and_the_session_this_client_is_on() {
+        let (mut gateway, _wire) = gateway();
+        gateway.advance(reply(0, "/tmp/tmux-1000/default 4242 $0 prime").as_bytes());
+        gateway.advance(reply(1, "@0 %0 1 bash").as_bytes());
+        let events = gateway.advance(reply(2, "$0 one\n$3 two three").as_bytes());
+        assert_eq!(
+            events,
+            vec![GatewayEvent::SessionsSeen {
+                attached: SessionId::parse("$0").unwrap(),
+                socket: "/tmp/tmux-1000/default".into(),
+                server_pid: 4242,
+                sessions: vec![
+                    (SessionId::parse("$0").unwrap(), "one".into()),
+                    (SessionId::parse("$3").unwrap(), "two three".into()),
+                ],
+            }]
+        );
+    }
+
+    /// `new-session` sends `%sessions-changed` twice on tmux 3.5a. Two
+    /// notifications in one advance are one round trip.
+    #[test]
+    fn sessions_changed_relists_once_an_advance_however_often_it_arrives() {
+        let (mut gateway, wire) = gateway();
+        attach(&mut gateway);
+        wire.clear();
+        assert_eq!(
+            gateway.advance(b"%sessions-changed\r\n%sessions-changed\r\n"),
+            vec![]
+        );
+        assert_eq!(
+            wire.lines(),
+            vec![r##"list-sessions -F "#{session_id} #{session_name}""##]
+        );
+        // And the reply lands on the intent that was registered for it.
+        let events = gateway.advance(reply(4, "$0 one\n$1 two").as_bytes());
+        assert!(matches!(
+            events.as_slice(),
+            [GatewayEvent::SessionsSeen { sessions, .. }] if sessions.len() == 2
+        ));
+        // A second burst asks again: the coalescing is per advance, not once.
+        wire.clear();
+        gateway.advance(b"%sessions-changed\r\n");
+        assert_eq!(wire.lines().len(), 1);
     }
 
     #[test]
@@ -1034,8 +1144,11 @@ mod tests {
             ]
         );
         assert!(wire.lines().last().unwrap().starts_with("list-windows"));
+        // The session listing (command 2) stands between the two: the sweep
+        // was sent behind it and its reply comes back behind it too.
+        gateway.advance(reply(2, "$0 one").as_bytes());
         // The sweep answers with one name moved on and one standing still.
-        let events = gateway.advance(reply(2, "@0 vim\n@1 logs").as_bytes());
+        let events = gateway.advance(reply(3, "@0 vim\n@1 logs").as_bytes());
         assert_eq!(
             events,
             vec![GatewayEvent::WindowRenamed {
@@ -1058,8 +1171,8 @@ mod tests {
         // Before the capture lands, %output is dropped: the capture on its
         // way holds those same bytes.
         assert_eq!(gateway.advance(b"%output %0 dropped\r\n"), vec![]);
-        // The capture (command 3): home-and-erase, then the screen.
-        let events = gateway.advance(reply(3, "line-one\nline-two").as_bytes());
+        // The capture (command 4): home-and-erase, then the screen.
+        let events = gateway.advance(reply(4, "line-one\nline-two").as_bytes());
         assert_eq!(
             events,
             vec![GatewayEvent::Output {
@@ -1069,9 +1182,9 @@ mod tests {
         );
         // Between capture and cursor, output backlogs.
         assert_eq!(gateway.advance(b"%output %0 kept\r\n"), vec![]);
-        // The cursor (command 4) at x=3,y=1 of a 24-row pane: the backlog
+        // The cursor (command 5) at x=3,y=1 of a 24-row pane: the backlog
         // flushes first, then the walk-up.
-        let events = gateway.advance(reply(4, "3 1 24").as_bytes());
+        let events = gateway.advance(reply(5, "3 1 24").as_bytes());
         assert_eq!(
             events,
             vec![GatewayEvent::Output {
@@ -1097,8 +1210,8 @@ mod tests {
         wire.clear();
         assert_eq!(gateway.advance(b"%window-add @1\r\n"), vec![]);
         assert!(wire.lines()[0].starts_with("list-panes -s"));
-        // The re-listing (command 3) carries both windows; only @1 lands.
-        let events = gateway.advance(reply(3, "@0 %0 1 bash\n@1 %1 1 fresh").as_bytes());
+        // The re-listing (command 4) carries both windows; only @1 lands.
+        let events = gateway.advance(reply(4, "@0 %0 1 bash\n@1 %1 1 fresh").as_bytes());
         assert_eq!(
             events,
             vec![GatewayEvent::WindowAdded {
@@ -1178,8 +1291,8 @@ mod tests {
         let window = WindowId::parse("@0").unwrap();
         gateway.attach_window(&window, &PaneId::parse("%0").unwrap());
         // Finish %0's bootstrap so the switch is from a live pane.
-        gateway.advance(reply(3, "old").as_bytes());
-        gateway.advance(reply(4, "0 0 24").as_bytes());
+        gateway.advance(reply(4, "old").as_bytes());
+        gateway.advance(reply(5, "0 0 24").as_bytes());
         wire.clear();
 
         let events = gateway.advance(b"%window-pane-changed @0 %5\r\n");
@@ -1204,10 +1317,10 @@ mod tests {
         attach(&mut gateway);
         let pane = PaneId::parse("%0").unwrap();
         gateway.attach_window(&WindowId::parse("@0").unwrap(), &pane);
-        // Both replies error (command 3, 4): the pane must not stay deaf.
-        let err = "%begin 1 103 1\r\nno such pane\r\n%error 1 103 1\r\n";
-        gateway.advance(err.as_bytes());
+        // Both replies error (command 4, 5): the pane must not stay deaf.
         let err = "%begin 1 104 1\r\nno such pane\r\n%error 1 104 1\r\n";
+        gateway.advance(err.as_bytes());
+        let err = "%begin 1 105 1\r\nno such pane\r\n%error 1 105 1\r\n";
         gateway.advance(err.as_bytes());
         let events = gateway.advance(b"%output %0 alive\r\n");
         assert_eq!(
@@ -1233,13 +1346,13 @@ mod tests {
         let pane = PaneId::parse("%0").unwrap();
         gateway.attach_window(&WindowId::parse("@0").unwrap(), &pane);
 
-        // The capture (command 3) errors...
-        let err = "%begin 1 103 1\r\nno such pane\r\n%error 1 103 1\r\n";
+        // The capture (command 4) errors...
+        let err = "%begin 1 104 1\r\nno such pane\r\n%error 1 104 1\r\n";
         assert_eq!(gateway.advance(err.as_bytes()), vec![]);
-        // ...and the cursor (command 4) succeeds, from the bottom of a
+        // ...and the cursor (command 5) succeeds, from the bottom of a
         // 24-row pane: live, this is `ESC [ 23 A ESC [ 1 G`.
         assert_eq!(
-            gateway.advance(reply(4, "0 0 24").as_bytes()),
+            gateway.advance(reply(5, "0 0 24").as_bytes()),
             vec![],
             "the cursor walked a screen that was never drawn"
         );
@@ -1313,10 +1426,14 @@ mod tests {
             lines[1],
             r##"list-panes -s -F "#{window_id} #{pane_id} #{pane_active} #{window_name}""##
         );
+        assert_eq!(
+            lines[2],
+            r##"list-sessions -F "#{session_id} #{session_name}""##
+        );
         // And the paste itself, reassembled from the hex `send-keys` lines:
         // every byte, once, in order.
         let mut delivered = Vec::new();
-        for line in &lines[2..] {
+        for line in &lines[3..] {
             let hex = line
                 .strip_prefix("send-keys -H -t %0 ")
                 .unwrap_or_else(|| panic!("not a send-keys line: {line:?}"));
@@ -1409,8 +1526,8 @@ mod tests {
         let window = WindowId::parse("@0").unwrap();
         let pane = PaneId::parse("%0").unwrap();
         gateway.attach_window(&window, &pane);
-        // The capture (command 3) comes back; the cursor never will.
-        let events = gateway.advance(reply(3, "the screen").as_bytes());
+        // The capture (command 4) comes back; the cursor never will.
+        let events = gateway.advance(reply(4, "the screen").as_bytes());
         assert!(
             !events.is_empty(),
             "the capture reply draws the pane's screen"

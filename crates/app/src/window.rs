@@ -989,6 +989,9 @@ impl TerminalSurface {
                         }
                     }
                 }
+                GatewayEvent::SessionsSeen { sessions, .. } => {
+                    log::debug!("tmux: bank {bank} sees {} session(s)", sessions.len());
+                }
                 GatewayEvent::Detached { lost_protocol } => collapse = Some(lost_protocol),
             }
         }
