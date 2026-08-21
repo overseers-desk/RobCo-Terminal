@@ -261,7 +261,7 @@ fn main() -> ExitCode {
     shell_config.bank_width = bank_width;
     // At scale factor 1, which is the unit the default window size is quoted
     // in; each window re-measures against its own factor once it has one.
-    shell_config.well_floor = app::window::well_floor_for(&initial_config, 1.0);
+    shell_config.well_minimum = app::window::well_minimum_for(&initial_config, 1.0);
     // A second proxy, for the other direction: the single-instance listener's
     // hands new windows in, and each surface hands its bank width back out.
     let surface_proxy = event_loop.create_proxy();

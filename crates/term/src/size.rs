@@ -46,7 +46,7 @@ const MIN_ROWS: usize = 1;
 
 /// The grid the window is never dragged under: the 80x24 an ANSI terminal
 /// is specified in, and the size a curses program that never asks
-/// `TIOCGWINSZ` draws for. [`Viewport::well_floor`] turns it into the pixels
+/// `TIOCGWINSZ` draws for. [`Viewport::well_minimum`] turns it into the pixels
 /// the window's minimum-size hint is set from.
 pub const FLOOR_COLS: usize = 80;
 pub const FLOOR_ROWS: usize = 24;
@@ -173,7 +173,7 @@ impl Viewport {
     /// eighty logical cells scaled: at DPR 1.1 a 9-pixel cell is drawn 10
     /// physical pixels wide, so the eighty need 800 and the logical floor
     /// scaled would have promised 792 and delivered seventy-nine columns.
-    pub fn well_floor(&self) -> (u32, u32) {
+    pub fn well_minimum(&self) -> (u32, u32) {
         let (cw, ch) = self.physical_cell();
         let inset = self.inset();
         (
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn the_well_floor_is_the_least_well_holding_eighty_by_twenty_four() {
+    fn the_well_minimum_is_the_least_well_holding_eighty_by_twenty_four() {
         // Every combination of a cell that rounds and a margin that is not a
         // whole number of pixels: the floor holds the grid, and a pixel off
         // either axis loses a column or a row. That pair is what makes it a
@@ -236,7 +236,7 @@ mod tests {
                 for margin in [0.0, 7.3, 28.820842763492422] {
                     let mut v = Viewport::new(0, 0, scale, CellSize::new(cell.0, cell.1));
                     v.margin = margin * scale;
-                    let (w, h) = v.well_floor();
+                    let (w, h) = v.well_minimum();
                     let at_floor = Viewport {
                         width: w,
                         height: h,

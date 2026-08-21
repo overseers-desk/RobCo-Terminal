@@ -162,7 +162,7 @@ pub struct Cabinet {
     chassis_style: ChassisStyle,
     geometry: BankGeometry,
     layout: WindowLayout,
-    well_floor: (i32, i32),
+    well_minimum: (i32, i32),
     seam: SeamDrag,
 }
 
@@ -184,8 +184,8 @@ impl Cabinet {
             layout,
             // A starting value: the bare tube's own floor, which stands until
             // the host has resolved a font and can say what a terminal grid
-            // costs it (`set_well_floor`).
-            well_floor: (
+            // costs it (`set_well_minimum`).
+            well_minimum: (
                 crate::layout::CRT_MINIMUM_WIDTH,
                 crate::layout::MINIMUM_HEIGHT,
             ),
@@ -279,19 +279,19 @@ impl Cabinet {
     /// The seam's travel and the window's minimum-size hint are then the same
     /// number seen from two sides, which is why it is held here rather than
     /// asked for at each of the two.
-    pub fn set_well_floor(&mut self, width: i32, height: i32) {
-        self.well_floor = (width, height);
+    pub fn set_well_minimum(&mut self, width: i32, height: i32) {
+        self.well_minimum = (width, height);
     }
 
     /// The floor as it now stands.
-    pub fn well_floor(&self) -> (i32, i32) {
-        self.well_floor
+    pub fn well_minimum(&self) -> (i32, i32) {
+        self.well_minimum
     }
 
     /// The window's least inner size for the bank as it now stands, in
     /// logical pixels.
     pub fn min_inner_size(&self) -> (i32, i32) {
-        crate::layout::min_inner_size(self.bank_width() as i32, self.well_floor)
+        crate::layout::min_inner_size(self.bank_width() as i32, self.well_minimum)
     }
 
     pub fn geometry(&self) -> &BankGeometry {
@@ -404,7 +404,7 @@ impl Cabinet {
             led_characters: self.cfg.general.led_characters,
             unit_width: self.display.unit_width(),
             window_width: self.layout.crt.right(),
-            well_floor_width: f64::from(self.well_floor.0),
+            well_minimum_width: f64::from(self.well_minimum.0),
             bank_width: self.layout.bank.width,
         };
         let shown = self.cfg.general.chassis_shown;
@@ -469,7 +469,7 @@ mod tests {
         // wider than 6 px, so a drag out to the far edge lands on the
         // display's own least strip count rather than following the hand.
         let mut c = stock();
-        c.set_well_floor(1018, 730);
+        c.set_well_minimum(1018, 730);
         assert_eq!(c.min_inner_size(), (184 + 1018, 730));
         assert!(c.pointer_pressed(184.0));
         assert_eq!(

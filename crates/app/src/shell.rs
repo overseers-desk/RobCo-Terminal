@@ -136,7 +136,7 @@ pub trait Surface {
     /// The default answers it for the default cell, through the same
     /// arithmetic the real surface uses, so a shell whose windows are empty
     /// still carries a floor that means something.
-    fn well_floor(&self) -> PhysicalSize<u32> {
+    fn well_minimum(&self) -> PhysicalSize<u32> {
         let cell = self.cell_size();
         let (width, height) = term::Viewport::new(
             0,
@@ -144,7 +144,7 @@ pub trait Surface {
             1.0,
             term::CellSize::new(cell.width as f32, cell.height as f32),
         )
-        .well_floor();
+        .well_minimum();
         PhysicalSize::new(width, height)
     }
     /// The size badge to put on the next frame: its text, and the opacity
@@ -231,11 +231,12 @@ pub struct ShellConfig {
     /// It moves at runtime, because the seam drag re-fits the strips: a surface
     /// sends [`ShellEvent::SetBankWidth`] and every window's hint follows.
     pub bank_width: u32,
-    /// The screen well's floor in *logical* pixels, for the size the first
-    /// window opens at: the room this profile's font needs for a
-    /// `term::FLOOR_COLS` x `term::FLOOR_ROWS` grid
-    /// (`crate::window::well_floor_for`). Zero leaves the default window size
-    /// alone, which is what a shell whose windows are empty
+    /// The screen well's floor in *logical* pixels -- filled from
+    /// `crate::window::well_minimum_for` at scale factor 1, where the logical
+    /// and physical numbers are the same one -- for the size the first window
+    /// opens at: the room this profile's font needs for a
+    /// `term::FLOOR_COLS` x `term::FLOOR_ROWS` grid. Zero leaves the default
+    /// window size alone, which is what a shell whose windows are empty
     /// ([`ShellConfig::empty`]) wants.
     ///
     /// It is asked for here, before any window exists, because that is the
@@ -244,7 +245,7 @@ pub struct ShellConfig {
     /// frame is a resize the user watches happen. The rule itself is each
     /// window's own minimum-size hint, which every surface measures against
     /// the font it is drawing with and re-applies as that font moves.
-    pub well_floor: (u32, u32),
+    pub well_minimum: (u32, u32),
     /// Builds whatever goes inside a window. Called once per window, so
     /// each window gets its own surface and session.
     pub surface_factory: SurfaceFactory,
@@ -258,7 +259,7 @@ impl ShellConfig {
             fullscreen: false,
             show_terminal_size: true,
             bank_width: 0,
-            well_floor: (0, 0),
+            well_minimum: (0, 0),
             surface_factory: Box::new(|_| Box::new(EmptySurface)),
         }
     }
@@ -293,7 +294,7 @@ impl WindowState {
     /// arriving, so a font that grew mid-session would otherwise leave the
     /// window standing at a size the hint says is not allowed.
     fn settle_min_inner_size(&mut self, bank_width: u32) {
-        let floor = self.surface.well_floor();
+        let floor = self.surface.well_minimum();
         let (min_width, min_height) = chassis::layout::min_inner_size_physical(
             bank_width,
             self.window.scale_factor(),
@@ -374,8 +375,8 @@ impl Shell {
         // is the same number on the display the default was chosen for; on
         // any other scale factor the hint applied below corrects it.
         let (width, height) = (
-            width.max(self.config.bank_width + self.config.well_floor.0),
-            height.max(self.config.well_floor.1),
+            width.max(self.config.bank_width + self.config.well_minimum.0),
+            height.max(self.config.well_minimum.1),
         );
 
         let mut attributes = WindowAttributes::default()

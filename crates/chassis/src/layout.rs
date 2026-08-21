@@ -18,13 +18,13 @@
 ///
 /// The floor that actually stands is the host's, because it is the terminal
 /// grid that sets it: the well never goes under the pixels 80x24 characters
-/// need (`term::Viewport::well_floor`), and a host that has resolved a font
-/// hands that in through [`Cabinet::set_well_floor`]. Both the seam clamp and
+/// need (`term::Viewport::well_minimum`), and a host that has resolved a font
+/// hands that in through [`Cabinet::set_well_minimum`]. Both the seam clamp and
 /// the window's minimum-size hint read the one the cabinet holds, so they stay
 /// the same rule seen from two sides.
 ///
 /// [`Cabinet`]: crate::Cabinet
-/// [`Cabinet::set_well_floor`]: crate::Cabinet::set_well_floor
+/// [`Cabinet::set_well_minimum`]: crate::Cabinet::set_well_minimum
 pub const CRT_MINIMUM_WIDTH: i32 = 320;
 
 pub const MINIMUM_HEIGHT: i32 = 240;
@@ -130,11 +130,14 @@ impl WindowLayout {
 /// The window's least inner size: a bank of this width beside a well of this
 /// floor. The hint has to follow the seam drag, which is what
 /// `app::shell::Shell::set_bank_width` exists to do, and it has to follow the
-/// font, which is what `Cabinet::set_well_floor` exists to do.
+/// font, which is what `Cabinet::set_well_minimum` exists to do.
 ///
 /// Both arguments are in the same unit and the answer comes back in it.
-pub fn min_inner_size(bank_width: i32, well_floor: (i32, i32)) -> (i32, i32) {
-    (bank_width.max(0) + well_floor.0.max(0), well_floor.1.max(0))
+pub fn min_inner_size(bank_width: i32, well_minimum: (i32, i32)) -> (i32, i32) {
+    (
+        bank_width.max(0) + well_minimum.0.max(0),
+        well_minimum.1.max(0),
+    )
 }
 
 /// The same composition in the physical pixels winit's `Size::Physical` hint
@@ -148,15 +151,15 @@ pub fn min_inner_size(bank_width: i32, well_floor: (i32, i32)) -> (i32, i32) {
 /// is the same conversion for a caller that wants the bank's own footprint to
 /// draw it. The well's floor arrives physical because it counts whole cells
 /// and a cell is only a whole number of pixels once the scale factor is in it
-/// (`term::Viewport::well_floor`).
+/// (`term::Viewport::well_minimum`).
 pub fn min_inner_size_physical(
     bank_width: u32,
     scale_factor: f64,
-    well_floor: (u32, u32),
+    well_minimum: (u32, u32),
 ) -> (u32, u32) {
     let scale = scale_factor.max(0.0);
     let bank = (f64::from(bank_width) * scale).round() as u32;
-    (bank.saturating_add(well_floor.0), well_floor.1)
+    (bank.saturating_add(well_minimum.0), well_minimum.1)
 }
 
 #[cfg(test)]

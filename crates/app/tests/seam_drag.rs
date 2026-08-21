@@ -38,7 +38,7 @@ const WINDOW_H: u32 = 768;
 /// This rig's well floor: `term::FLOOR_COLS` x `term::FLOOR_ROWS` cells of
 /// 9 x 18, plus the 29 px the default profile's distortion margin takes off
 /// each edge before any of them are counted.
-const WELL_FLOOR: (i32, i32) = (720 + 58, 432 + 58);
+const WELL_MINIMUM: (i32, i32) = (720 + 58, 432 + 58);
 
 /// The shipped profile's bank: the annunciator's furniture around twelve
 /// characters of the measured UNSCII 8 cell.
@@ -195,7 +195,7 @@ fn a_hidden_chassis_has_no_seam_and_no_column() {
     // cabinet at all has.
     assert_eq!(bank.layout().crt.width, f64::from(WINDOW_W));
     // No bank, so the window's floor is the well's floor and nothing else.
-    assert_eq!(bank.min_inner_size(), WELL_FLOOR);
+    assert_eq!(bank.min_inner_size(), WELL_MINIMUM);
 
     // The bank's own measures still exist and nothing reads them: a drag where
     // the boundary would have been moves nothing.
