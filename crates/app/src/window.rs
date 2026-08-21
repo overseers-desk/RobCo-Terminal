@@ -1080,10 +1080,10 @@ impl TerminalSurface {
         text: Option<&str>,
         modifiers: ModifiersState,
     ) {
-        // The bank's own keys first: they are window-level shortcuts that
-        // run before the emulation ever sees the event, so the keytab is not
-        // the authority on them.
-        if self.channel_key(logical, modifiers) {
+        // The shortcut layer first: these are window-level keys that run
+        // before the emulation ever sees the event, so the keytab is not the
+        // authority on them.
+        if self.shortcut_key(logical, modifiers) {
             return;
         }
         // Then the gateway's own keyboard, which stands between the shortcuts
@@ -1311,16 +1311,23 @@ impl TerminalSurface {
     ///
     /// | key | handler |
     /// |---|---|
+    /// | `Ctrl+Shift+C` | [`Self::copy_selection`] |
+    /// | `Ctrl+Shift+V` | [`Self::paste`] |
     /// | `Ctrl+Shift+T` | [`Self::new_channel`] |
     /// | `Ctrl+Shift+W` | [`Self::close_channel`] |
+    /// | `Ctrl+Shift+Left/Right` | [`Self::move_channel`] |
     /// | `Ctrl+PgUp/PgDown` | [`Self::cycle_channel`] |
     /// | `Alt+PgUp/PgDown` | [`Self::step_bank`] |
     /// | `Alt+<digit>` | [`Self::chord_digit`] (select) |
     /// | `Alt+Shift+<digit>` | [`Self::chord_digit`] (store) |
     ///
-    /// `Ctrl+Shift+N`/`Q` are the *shell*'s (a window, not a channel) and
-    /// never reach here; [`crate::shell`] takes them first.
-    fn channel_key(&mut self, logical: &winit::keyboard::Key, modifiers: ModifiersState) -> bool {
+    /// The clipboard pair and the tab-moving arrows are the chords Konsole
+    /// and GNOME Terminal both put here, so a hand arriving from either
+    /// finds them where it left them.
+    ///
+    /// `Ctrl+Shift+N`/`Q` and `F11` are the *shell*'s (a window, not a
+    /// channel) and never reach here; [`crate::shell`] takes them first.
+    fn shortcut_key(&mut self, logical: &winit::keyboard::Key, modifiers: ModifiersState) -> bool {
         use winit::keyboard::{Key, NamedKey};
 
         let ctrl = modifiers.control_key();
@@ -1346,12 +1353,28 @@ impl TerminalSurface {
             Key::Character(c) if chord_mod && is_digit(c) => {
                 self.chord_digit(c.as_bytes()[0], shift)
             }
+            Key::Named(NamedKey::ArrowLeft) if ctrl && shift => {
+                self.move_channel(-1);
+                true
+            }
+            Key::Named(NamedKey::ArrowRight) if ctrl && shift => {
+                self.move_channel(1);
+                true
+            }
             Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("t") => {
                 self.new_channel();
                 true
             }
             Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("w") => {
                 self.close_channel();
+                true
+            }
+            Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("c") => {
+                self.copy_selection();
+                true
+            }
+            Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("v") => {
+                self.paste(false);
                 true
             }
             _ => false,
@@ -1455,6 +1478,29 @@ impl TerminalSurface {
     /// `Ctrl+PgUp` / `Ctrl+PgDown`.
     pub fn cycle_channel(&mut self, direction: i32) {
         self.channels.cycle_open(direction);
+        self.channel_changed();
+    }
+
+    /// `Ctrl+Shift+Left` / `Ctrl+Shift+Right`. The session on screen takes
+    /// the slot beside its own and swaps with whoever sits there, which is
+    /// the `Alt+Shift+<digit>` store aimed at a neighbour rather than at a
+    /// numeral. The ends of the bank are walls: slot 1 has nothing to its
+    /// left and the cap has nothing to its right, and a step into either
+    /// leaves the bank as it stands.
+    ///
+    /// Unlike the chord, this names no numeral, so it stands whether or not
+    /// the bank is on show.
+    pub fn move_channel(&mut self, direction: i32) {
+        let (page, channel) = (
+            self.channels.current_page(),
+            self.channels.current_channel(),
+        );
+        // Slot 0 does not exist, and the cap is the model's to enforce:
+        // `move_current_to` answers false for either and nothing moves.
+        let Some(target) = channel.checked_add_signed(direction) else {
+            return;
+        };
+        self.channels.move_current_to(page, target);
         self.channel_changed();
     }
 
@@ -2151,9 +2197,11 @@ impl TerminalSurface {
         // any other and inert on a gateway, and the pointer is handed a
         // Shift it did not press so a drag marks the screen instead of
         // reporting to a program -- nothing the mouse does is written to the
-        // control-mode wire. What is left is the keyboard, and the keyboard
-        // never reaches here: [`Self::gateway_key`] holds it, and the one key
-        // with a meaning goes out as `detach-client`.
+        // control-mode wire. What is left is the keyboard. Every key the
+        // emulation would encode is held by [`Self::gateway_key`], and the
+        // one key with a meaning goes out as `detach-client`; the shortcut
+        // layer runs earlier still, so `Ctrl+Shift+V` does arrive here, a
+        // paste like the middle button's and swallowed on the same terms.
         //
         // So this is the same swallow, for the same reason. Its teeth are
         // protocol hygiene: the gateway channel's pty is the control wire,
@@ -2489,7 +2537,26 @@ impl TerminalSurface {
         self.last_selection = Some(text);
     }
 
-    fn paste_primary(&mut self, ctrl_held: bool) {
+    /// `Ctrl+Shift+C`. Copy-on-select has usually put this same text on the
+    /// clipboard already; the keystroke matters after another application
+    /// has taken the clipboard since, and to the hand that reaches for it
+    /// out of habit. A surface with no display keeps the text and skips the
+    /// platform call, as [`Self::copy_on_select`] does.
+    fn copy_selection(&mut self) {
+        let Some(text) = self.last_selection.clone() else {
+            return;
+        };
+        if self.window.is_some() {
+            if let Err(e) = clipboard::copy(&text) {
+                log::debug!("could not copy the selection: {e}");
+            }
+        }
+    }
+
+    /// The clipboard onto the pty, from `Ctrl+Shift+V` or the middle button.
+    /// `force_bracketed` is the pointer's Ctrl asking for brackets the
+    /// terminal's own mode did not.
+    fn paste(&mut self, force_bracketed: bool) {
         if self.window.is_none() {
             return;
         }
@@ -2497,7 +2564,7 @@ impl TerminalSurface {
             Ok(text) => {
                 // The terminal's own DECSET 2004 decides bracketing; the
                 // routing table asks for it too when Ctrl was held.
-                let bracketed = ctrl_held || self.mode_contains(Mode::BRACKETED_PASTE);
+                let bracketed = force_bracketed || self.mode_contains(Mode::BRACKETED_PASTE);
                 let bytes = clipboard::bracket_paste(&text, bracketed);
                 self.write(&bytes);
             }
@@ -2656,7 +2723,7 @@ impl Surface for TerminalSurface {
             PointerAction::ReportToProgram => {
                 self.report_mouse(report_button(button), cell, mods, true)
             }
-            PointerAction::PastePrimary { bracketed } => self.paste_primary(bracketed),
+            PointerAction::PastePrimary { bracketed } => self.paste(bracketed),
             PointerAction::Ignore => {}
         }
     }

@@ -287,6 +287,47 @@ fn an_alt_shift_digit_chord_stores_the_session_onto_the_slot() {
     );
 }
 
+/// `Ctrl+Shift+Left`/`Right` walk the session on screen along the bank, one
+/// slot per press, swapping with an occupied neighbour and taking a dark one
+/// outright. The ends of the bank are walls.
+#[test]
+fn ctrl_shift_arrows_walk_the_channel_along_the_bank() {
+    let mut surface = surface();
+    let first = wait_for_prompt(&mut surface);
+    character(&mut surface, "t", CTRL_SHIFT);
+    let second = wait_for_prompt(&mut surface);
+    assert_eq!(surface.channels().current_channel(), 2);
+
+    // Left onto slot 1, which is occupied: the two swap.
+    named(&mut surface, NamedKey::ArrowLeft, CTRL_SHIFT);
+    assert_eq!(surface.channels().current_channel(), 1);
+    assert_eq!(
+        wait_for_prompt(&mut surface),
+        second,
+        "the session on screen kept its screen; only its slot number moved"
+    );
+    named(&mut surface, NamedKey::PageDown, CTRL);
+    assert_eq!(surface.channels().current_channel(), 2);
+    assert_eq!(wait_for_prompt(&mut surface), first, "the displaced session");
+
+    // Right onto slot 3, which is dark: nothing is displaced.
+    named(&mut surface, NamedKey::ArrowRight, CTRL_SHIFT);
+    assert_eq!(surface.channels().current_channel(), 3);
+    assert_eq!(surface.channels().slot_title(0, 2), None, "the slot it left");
+}
+
+/// Slot 1 has nothing to its left, and the press leaves the bank as it stands.
+#[test]
+fn ctrl_shift_left_on_the_first_slot_is_a_wall() {
+    let mut surface = surface();
+    let only = wait_for_prompt(&mut surface);
+    assert_eq!(surface.channels().current_channel(), 1);
+
+    named(&mut surface, NamedKey::ArrowLeft, CTRL_SHIFT);
+    assert_eq!(surface.channels().current_channel(), 1);
+    assert_eq!(wait_for_prompt(&mut surface), only);
+}
+
 /// `"0"` commits as slot 10, and a two-digit chord is read as an ordinary
 /// decimal.
 #[test]

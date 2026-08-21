@@ -218,11 +218,14 @@ rules it has to obey.
 | `Alt`+`Shift`+digit | Move the channel on screen to that slot |
 | `Ctrl`+`Shift`+`T` | New channel |
 | `Ctrl`+`Shift`+`W` | Close this channel |
+| `Ctrl`+`Shift`+`C` | Copy the selection |
+| `Ctrl`+`Shift`+`V` | Paste |
 | `Ctrl`+`PageUp` / `PageDown` | Previous / next channel |
+| `Ctrl`+`Shift`+`Left` / `Right` | Move the channel on screen one slot |
 | `Alt`+`PageUp` / `PageDown` | Page the bank without switching channel |
 | `Ctrl`+`Shift`+`N` | New window |
 | `Ctrl`+`Shift`+`Q` | Close this window |
-| `F11` | Fullscreen |
+| `F11` | Fullscreen, with or without modifiers |
 | `Shift`+`Up` / `PageUp` | Scroll back through history |
 
 Selecting text copies it. Middle-click pastes the primary selection, and
