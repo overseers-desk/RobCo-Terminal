@@ -363,7 +363,7 @@ impl Badge {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
-        target: (u32, u32),
+        target_size: (u32, u32),
         well: (i32, i32, u32, u32),
         atlas: &GlyphAtlas,
         scale: u32,
@@ -373,7 +373,7 @@ impl Badge {
         let mut rects: Vec<Option<BadgeRect>> = vec![None; entries.len()];
         let scale = scale.max(1);
         let cell = atlas.cell;
-        if target.0 == 0 || target.1 == 0 || cell.width == 0 || cell.height == 0 {
+        if target_size.0 == 0 || target_size.1 == 0 || cell.width == 0 || cell.height == 0 {
             return rects;
         }
 
@@ -466,7 +466,7 @@ impl Badge {
             &self.uniforms,
             0,
             bytemuck::bytes_of(&Uniforms {
-                viewport: [target.0 as f32, target.1 as f32],
+                viewport: [target_size.0 as f32, target_size.1 as f32],
                 scale: scale as i32,
                 radius: CORNER_RADIUS * scale_factor.max(f64::EPSILON) as f32,
             }),

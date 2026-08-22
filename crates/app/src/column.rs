@@ -1071,9 +1071,12 @@ impl Blit {
         queue: &wgpu::Queue,
         buffer: &wgpu::Buffer,
         dest: (i32, i32, u32, u32),
-        target: (u32, u32),
+        target_size: (u32, u32),
     ) {
-        let (tw, th) = (f64::from(target.0.max(1)), f64::from(target.1.max(1)));
+        let (tw, th) = (
+            f64::from(target_size.0.max(1)),
+            f64::from(target_size.1.max(1)),
+        );
         let data: [f32; 4] = [
             (f64::from(dest.0) / tw) as f32,
             (f64::from(dest.1) / th) as f32,
@@ -1161,14 +1164,14 @@ impl Blit {
         output: &wgpu::TextureView,
         bind_group: &wgpu::BindGroup,
         dest: (i32, i32, u32, u32),
-        target: (u32, u32),
+        target_size: (u32, u32),
     ) {
         self.record(
             encoder,
             output,
             bind_group,
             dest,
-            target,
+            target_size,
             self.over.as_ref().unwrap_or(&self.pipeline),
             "bank furniture",
         );
@@ -1181,7 +1184,7 @@ impl Blit {
         output: &wgpu::TextureView,
         bind_group: &wgpu::BindGroup,
         dest: (i32, i32, u32, u32),
-        target: (u32, u32),
+        target_size: (u32, u32),
         pipeline: &wgpu::RenderPipeline,
         label: &str,
     ) {
@@ -1192,7 +1195,7 @@ impl Blit {
         let y0 = dest.1.max(0) as u32;
         let x1 = (dest.0 + dest.2 as i32).max(0) as u32;
         let y1 = (dest.1 + dest.3 as i32).max(0) as u32;
-        let (x1, y1) = (x1.min(target.0), y1.min(target.1));
+        let (x1, y1) = (x1.min(target_size.0), y1.min(target_size.1));
         if x0 >= x1 || y0 >= y1 {
             return;
         }

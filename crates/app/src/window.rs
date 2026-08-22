@@ -146,13 +146,13 @@ const BASE_FONT_SCALING: f64 = 0.75;
 /// drawn in. The arithmetic of [`Glass::geometry`], with nothing in it that
 /// needs a device, so the unit conversion can be measured without one.
 fn chain_geometry(
-    target: (u32, u32),
+    target_size: (u32, u32),
     integer_scale: u32,
     cfg: &Config,
     scale_factor: f64,
 ) -> Geometry {
     let scale = integer_scale.max(1) as f32;
-    let (width, height) = (target.0 as f32, target.1 as f32);
+    let (width, height) = (target_size.0 as f32, target_size.1 as f32);
     let ratio = if scale_factor > 0.0 {
         scale_factor as f32
     } else {

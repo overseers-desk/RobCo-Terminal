@@ -346,9 +346,9 @@ impl Params {
                 geom.output_height as f64,
                 0.0,
             );
-            let style = chassis::frame_style(cfg);
+            let bezel = chassis::frame_style(cfg);
             let shell = chassis::shell_metrics(cfg);
-            for (name, value) in chassis::frame::frame_params(&style, &shell, cfg, &layout) {
+            for (name, value) in chassis::frame::frame_params(&bezel, &shell, cfg, &layout) {
                 if params.get(name).is_none() {
                     params.set(name, value);
                 }
@@ -389,8 +389,6 @@ impl Params {
         }
     }
 }
-
-
 
 /// The rasterization mode constants, in their declared order.
 fn raster_mode(r: Rasterization) -> f32 {
