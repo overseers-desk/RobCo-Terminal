@@ -98,7 +98,7 @@ void main() {
     vec2 nrm = normalize(px - sizePx * 0.5 + vec2(1e-5));
     vec2 L = normalize(lightDir);
 
-    float surf = metalField(px + vec2(params.seed * 137.0, params.seed * 61.0));
+    float surf = metalField(px + vec2(params.seed * 137.0, params.seed * 61.0), 9.2);
     vec3 col = baseColor.rgb * surf;
 
     float blotch = smoothstep(0.60, 0.92, fbm(px * 0.008 + vec2(params.seed * 31.0)));
