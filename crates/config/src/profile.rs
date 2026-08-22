@@ -888,4 +888,46 @@ mod tests {
             reloaded.snapshot()
         );
     }
+    /// The external JSON profile format's own key list, spelled and ordered
+    /// as the format records it, not as the schema declares it. This is a
+    /// deliberate second encoding: the format is a contract with every file
+    /// already written and every reader outside this build, so it is pinned
+    /// here rather than derived from `ScreenSettings`/`ChassisSettings`. A
+    /// field added, renamed, reordered, or re-spelled without updating the
+    /// export trips this, which is the point -- the schema and the format
+    /// move on separate clocks.
+    #[test]
+    fn the_exported_key_lists_are_the_json_profile_formats_own() {
+        const SCREEN_KEYS: &[&str] = &[
+            "name", "backgroundColor", "fontColor", "flickering", "horizontalSync",
+            "staticNoise", "chromaColor", "saturationColor", "screenCurvature",
+            "glowingLine", "burnIn", "bloom", "rasterization", "jitter", "rgbShift",
+            "brightness", "contrast", "ambientLight", "windowOpacity", "fontName",
+            "fontSource", "fontWidth", "lineSpacing", "margin", "blinkingCursor",
+            "frameSize", "screenRadius", "frameColor", "frameShininess",
+        ];
+        const CHASSIS_KEYS: &[&str] = &[
+            "name", "shell", "channelIndicator", "channelDisplay", "frameSize",
+            "screenRadius", "frameColor", "frameShininess",
+        ];
+
+        let snapshot = Profile::default().snapshot();
+        let value: serde_json::Value =
+            serde_json::from_str(&snapshot).expect("a profile snapshot is JSON");
+        for (axis, expected) in [("screen", SCREEN_KEYS), ("chassis", CHASSIS_KEYS)] {
+            let got: Vec<&str> = value[axis]
+                .as_object()
+                .expect("an axis serializes as an object")
+                .keys()
+                .map(String::as_str)
+                .collect();
+            assert_eq!(
+                got, expected,
+                "the exported `{axis}` keys have drifted from the JSON profile \
+                 format's contract; if the schema changed on purpose, update the \
+                 contract list here and `docs/config.md` in the same breath"
+            );
+        }
+    }
+
 }
