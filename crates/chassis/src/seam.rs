@@ -104,15 +104,73 @@ impl SeamContext<'_> {
         let at_pointer =
             self.geometry
                 .characters_for_width(pointer_x, self.led_characters, self.unit_width);
-        // What the window has room for.
-        let at_limit = self.geometry.characters_for_width(
-            self.window_width - self.well_minimum_width,
+        // What the window has room for...
+        let at_limit = limit_characters(
+            self.geometry,
             self.led_characters,
             self.unit_width,
+            self.window_width,
+            self.well_minimum_width,
         );
         // ...and never below what the display will hold.
         self.geometry.min_units.max(at_pointer.min(at_limit))
     }
+}
+
+/// The count whose bank leaves the screen well exactly its floor, unclamped at
+/// both ends: the room the window has, said in characters.
+///
+/// Unclamped because its two callers hold the bounds in opposite orders, and a
+/// clamp here would hide which of them bit ([`BankGeometry::characters_for_width`]
+/// keeps the same discipline).
+fn limit_characters(
+    geometry: &BankGeometry,
+    measured_at: i32,
+    unit_width: f64,
+    window_width: f64,
+    well_minimum_width: f64,
+) -> i32 {
+    geometry.characters_for_width(window_width - well_minimum_width, measured_at, unit_width)
+}
+
+/// The count a bank is drawn at in a window this wide: the configured count,
+/// held down to what the window can spare beside the well's floor.
+///
+/// The seam's own answer to a pointer, with the hand taken out of it. Three
+/// properties the callers rely on:
+///
+/// * it never widens. A count the user set below the display's floor by hand
+///   is left where it is, since `min(configured, ...)` is the outer bound;
+/// * it stops at the display's floor, which is the least strip the kit will
+///   draw, so a window narrower than that leaves the bank standing and the
+///   window's own minimum-size hint to carry the argument;
+/// * it is idempotent. Re-fitting a fitted bank against the same window
+///   returns the same count, which is what lets it run on every resize
+///   without ratcheting.
+///
+/// `geometry` is the bank as measured at `configured`, which is the count
+/// `characters_for_width` measures its delta from.
+///
+/// Note the clamp order against [`SeamContext::characters_at`]: there the
+/// display's floor wins over the window's room, because a hand that has run
+/// out of room should still hold a legible strip. Here the configured count
+/// wins over both. The two shapes look alike enough to be folded together by
+/// mistake; they answer different questions.
+pub fn fitted_characters(
+    geometry: &BankGeometry,
+    configured: i32,
+    unit_width: f64,
+    window_width: f64,
+    well_minimum_width: f64,
+) -> i32 {
+    let at_limit = limit_characters(
+        geometry,
+        configured,
+        unit_width,
+        window_width,
+        well_minimum_width,
+    );
+    configured.min(geometry.min_units.max(at_limit))
 }
 
 /// The seam's interaction state: whether the pointer is over the grab strip and
@@ -380,6 +438,59 @@ mod tests {
         // starts moving again the moment the window is widened.
         let wide = ctx(&g, &led, 1920.0);
         assert!(wide.characters_at(f64::MAX / 4.0) > ceiling);
+    }
+
+    #[test]
+    fn the_fit_is_the_drags_ceiling_with_no_hand_on_it() {
+        // One rule, two callers. In a window whose room has run out, a pointer
+        // dragged past the edge lands on the ceiling, and the fit finds the
+        // same count with no pointer at all: a window that narrows moves the
+        // bank exactly as far as a hand pushed against the limit would have.
+        //
+        // Both are measured from the count `stock()` measured its geometry at,
+        // which is what `characters_for_width` takes its delta from.
+        let (g, led) = stock();
+        let cramped = ctx(&g, &led, 500.0);
+        let ceiling = cramped.characters_at(f64::MAX / 4.0);
+        assert!(ceiling < 12, "the window still has room: {ceiling}");
+        assert_eq!(
+            fitted_characters(
+                &g,
+                12,
+                led.unit_width(),
+                500.0,
+                crate::layout::CRT_MINIMUM_WIDTH as f64
+            ),
+            ceiling
+        );
+    }
+
+    #[test]
+    fn the_fit_leaves_a_bank_the_user_set_narrow_where_it_is() {
+        // Below the display's own floor by hand, in a window with room to
+        // spare: the fit is not a widener.
+        let (g, led) = stock();
+        assert_eq!(g.min_units, 8);
+        assert_eq!(fitted_characters(&g, 4, led.unit_width(), 1920.0, 320.0), 4);
+    }
+
+    #[test]
+    fn re_fitting_a_fitted_bank_returns_the_same_count() {
+        // The property that lets the fit run on every resize without
+        // ratcheting: fit, re-measure the bank at what the fit landed, fit
+        // again against the same window, and the count stands.
+        let led = LedMetrics::default();
+        let shell = shells::annunciator();
+        let g = BankGeometry::new(&shell, &led, 12, ChannelIndicator::Glow);
+        let once = fitted_characters(&g, 12, led.unit_width(), 500.0, 320.0);
+        assert!(
+            once < 12 && once >= g.min_units,
+            "the fit did not bite: {once}"
+        );
+
+        let refitted = BankGeometry::new(&shell, &led, once, ChannelIndicator::Glow);
+        let again = fitted_characters(&refitted, once, led.unit_width(), 500.0, 320.0);
+        assert_eq!(once, again);
     }
 
     #[test]
