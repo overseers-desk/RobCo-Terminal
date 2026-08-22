@@ -19,8 +19,8 @@
 //! **The frame is not chrome over the glass; it is drawn under the curvature.**
 //! The frame renders into a texture the dynamic pass samples, feeding the
 //! frame-source slot, and the frame shader distorts its own coordinates by
-//! the same `distortCoordinates` the glass uses (`frame_metal.frag`, and
-//! [`crate::params::distort_coordinates`] here). That is how the bezel hugs a
+//! the same `distortCoordinates` the glass uses (`frame_metal.frag`, and the
+//! `robco-shader-oracle` crate's `distort_coordinates` here). That is how the bezel hugs a
 //! curved tube instead of standing square around it. The rule that chassis
 //! chrome composites over the glass rather than through the chain is about
 //! the *bank column*, which is flat and square and to the left of

@@ -20,7 +20,7 @@
 //!   screen region in whole-character steps.
 //! - [`frame`]: the bezel's and the chassis metal's uniform sets, and the
 //!   derivations that sit between a stored setting and a shader.
-//! - [`oracle`]: CPU forms of the three metals' closed-form math, the
+//! - [`params`]: the uniform-payload structs for the three metals, the
 //!   independent-formula side of their per-pass tests.
 //! - [`displays`]: the two channel-display kits, LED and tape: the raster
 //!   each one composes over `term::fonts::led`'s proven glyphs, and the
@@ -65,8 +65,8 @@
 //!
 //! Chassis chrome lives outside the CRT chain and composites over the
 //! glass. That is why this crate is meant to depend on no part of `crt`, not
-//! even for the two small functions its [`oracle`] and `crt::oracle` both
-//! carry, which the shaders' own `.frag` files duplicate between themselves
+//! even for the two small functions the `robco-shader-oracle` crate carries
+//! once for both, which the shaders' own `.frag` files duplicate between themselves
 //! for the same reason. The one piece that is genuinely in both worlds is
 //! the bezel; [`frame`]'s module doc says what it is doing there. [`color`]
 //! is the same trade made once for the whole crate: the two colour helpers

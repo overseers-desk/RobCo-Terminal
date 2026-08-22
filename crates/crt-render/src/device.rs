@@ -10,7 +10,7 @@
 //! directly. Two other crates create devices the chain runs on and cannot call
 //! it, because this crate depends on them and the reverse would be a cycle:
 //! `term::gpu` and `crt_burnin::headless` each restate the same filter, each
-//! says so at the restatement, and `tests/device_features.rs` asserts all three
+//! says so at the restatement, and `tests/suite/device_features.rs` asserts all three
 //! agree on a real adapter.
 //!
 //! - `PIPELINE_CACHE`. librashader calls `create_pipeline_cache` whenever its

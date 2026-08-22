@@ -44,7 +44,7 @@ pub const ALIAS: &str = "Burn";
 ///
 /// The decay is a subtraction of about 0.032 per frame at 60 Hz, so the
 /// framebuffer's resolution is the decay's accuracy, and the choice is measured
-/// rather than assumed (`tests/burn_in.rs`, `tests/mount.rs`).
+/// rather than assumed (`tests/suite/burn_in.rs`, `tests/suite/mount.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Precision {
     /// `float_framebuffer = true`, which librashader maps to `Rgba16Float`.

@@ -14,7 +14,7 @@ use super::common::{field_mapping, frame_viewport_size, jitter, rgb, Rect};
 ///
 /// The crate's one home for these numbers: [`crate::metrics::shells::annunciator`]
 /// composes these same constants into the `ShellMetrics` the bank reads,
-/// rather than restating them, and `tests/metrics_homes.rs` pins that
+/// rather than restating them, and `tests/suite/metrics_homes.rs` pins that
 /// composition as a regression check. A correction to any of these numbers
 /// belongs here and only here.
 pub mod metrics {
@@ -77,7 +77,7 @@ pub fn plate_rect(chassis_size: (f64, f64)) -> Rect {
 /// contract). `chassis_rect`/`frame_region` feed
 /// [`field_mapping`](super::common::field_mapping) for `field_scale`/
 /// `field_offset`; the caller passes the resulting [`FieldMapping::viewport`]
-/// to `crate::params::chassis_metal` separately, matching that function's own
+/// to the `robco-shader-oracle` crate's `chassis_metal` separately, matching that function's own
 /// `(uv, viewport, params)` signature.
 pub fn chassis_metal_params(chassis: Rect, frame_region: Option<Rect>) -> ChassisMetalParams {
     let fm = field_mapping(chassis, frame_region);

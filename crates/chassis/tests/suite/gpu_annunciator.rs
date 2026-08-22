@@ -2,8 +2,8 @@
 //! cheaply: renders the annunciator shell's `chassis_metal` region
 //! through the real preset (`shaders/metal/chassis_metal.slangp`) using
 //! parameters this crate's drawing-recipe function produced, and checks the
-//! readback against [`chassis::oracle`] -- the same cross-check
-//! `tests/chassis_metal.rs` runs, here anchored to this shell's actual fixed
+//! readback against [`oracle`] -- the same cross-check
+//! `tests/suite/chassis_metal.rs` runs, here anchored to this shell's actual fixed
 //! parameters instead of arbitrary test values.
 
 use std::path::PathBuf;
@@ -26,7 +26,7 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 #[test]
 fn annunciator_chassis_metal_region_renders_as_the_oracle_predicts() {
     // `shaders/metal/` moved here with the metals; this is the same file
-    // `tests/chassis_metal.rs` mounts.
+    // `tests/suite/chassis_metal.rs` mounts.
     let preset =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/metal/chassis_metal.slangp");
     assert!(preset.is_file(), "expected {preset:?} to exist");

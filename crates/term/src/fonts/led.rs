@@ -10,7 +10,7 @@
 //! `chassis` turns into premultiplied white (`[a, a, a, a]`) on the way to
 //! the upload.
 //!
-//! Parity, measured against the golden rasters (`tests/font_parity.rs`):
+//! Parity, measured against the golden rasters (`tests/suite/font_parity.rs`):
 //! every low-resolution face is pixel-identical, which is the case that
 //! matters, since the LED and tape displays choose from the low-resolution
 //! list alone. The scalable faces differ on a few hundred pixels out of tens

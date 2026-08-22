@@ -15,11 +15,11 @@
 //!   keeps the contract in one place per shell.
 //! - **Chassis + frame**: the drawing recipe. Each region is painted with
 //!   one of the three procedural metal shaders whose math lives in
-//!   [`crate::oracle`] (`chassis_metal`, `plate_metal`, `frame_metal`). What
+//!   the `robco-shader-oracle` crate (`chassis_metal`, `plate_metal`, `frame_metal`). What
 //!   differs shell to shell is which regions exist, their geometry, and the
 //!   fixed parameters (colors, light direction, grain/mottle/scratch/vignette
 //!   amounts) that shell chooses: held here as functions that build
-//!   [`crate::oracle`]'s param structs, so a done-test can hand them
+//!   [`crate::params`]'s structs, so a done-test can hand them
 //!   straight to the oracle (or to a real GPU render of the same preset).
 //!
 //! Two things every shell's chassis does identically, factored into

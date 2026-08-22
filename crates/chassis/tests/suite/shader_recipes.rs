@@ -1,6 +1,6 @@
 //! Done-test: each shell's drawing recipe -- which region gets which of the
 //! three procedural metal shaders, with which fixed parameters -- checked
-//! against hand-recorded expected values, then fed through `chassis::oracle`
+//! against hand-recorded expected values, then fed through `oracle`
 //! (the same CPU math this crate's own per-shader done-tests check against a
 //! real GPU render) to confirm the wiring produces valid shader output, not
 //! just a struct that happens to compile.

@@ -1,5 +1,5 @@
 //! Consolidates the RMSE-over-PNG measurement three earlier efforts each
-//! wrote ad hoc: `crates/term/tests/font_parity.rs`'s single-channel
+//! wrote ad hoc: `crates/term/tests/suite/font_parity.rs`'s single-channel
 //! `led_raster_rmse_against_golden`, `crates/term/src/fonts/subpixel.rs`'s
 //! luma/chroma split (documented there, never checked in as reusable code),
 //! and the whole-scene/glass/bank figures recorded by hand, which were

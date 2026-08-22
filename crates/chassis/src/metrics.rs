@@ -38,7 +38,7 @@
 //!   [`ShellMetrics`]'s pager triple reads those, on the same terms as the
 //!   `metrics` ones.
 //!
-//! `tests/metrics_homes.rs` pins each single home's composed shape against
+//! `tests/suite/metrics_homes.rs` pins each single home's composed shape against
 //! its constants/functions as a regression check, so a shell or kit
 //! silently regaining a second, drifting copy of its metrics would fail a
 //! test rather than a code review.

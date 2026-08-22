@@ -123,7 +123,7 @@ pub fn jitter(numeral: &str) -> f64 {
 /// The slotted screw head every chassis kit bolts its plate down with.
 ///
 /// A canvas painting, not a shader, which is why it is painted here rather
-/// than passed to one of [`crate::oracle`]'s metals: a countersink ring, a
+/// than passed to one of the `robco-shader-oracle` crate's metals: a countersink ring, a
 /// domed head lit from the caller's own light direction, a lit rim arc with a
 /// shadow arc opposite it, and a slot cut across the dome at the caller's
 /// angle -- no two screws left a factory aligned.

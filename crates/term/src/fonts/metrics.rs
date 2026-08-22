@@ -7,7 +7,7 @@
 //!
 //! The rule, established against the golden metrics table for all 24
 //! bundled faces (`tests/fixtures/golden-fonts.json`, checked by
-//! `tests/font_parity.rs`) and fitting candidate arithmetics to it:
+//! `tests/suite/font_parity.rs`) and fitting candidate arithmetics to it:
 //!
 //! ```text
 //! metric_26_6 = floor(design_units * pixel_size * 64 / units_per_em)

@@ -472,7 +472,7 @@ mod tests {
     /// still runs, reports itself unavailable, and never panics reaching
     /// for a query set. This is the pure-logic half of that test; the
     /// GPU-backed half (a real device that deliberately did not request
-    /// the features) lives in `tests/frame_stats.rs`.
+    /// the features) lives in `tests/suite/frame_stats.rs`.
     #[test]
     fn an_instrument_the_adapter_cannot_time_reports_unavailable_not_a_panic() {
         let window = Window::new();

@@ -71,6 +71,6 @@ robco-shader-oracle = { path = "../shader-oracle" }
 serde_json = "1"
 tempfile = "3"
 # The one headless GPU harness (and the machine-wide device lock that comes
-# with it): `tests/bank_column.rs` mounts the casting on a real device with no
+# with it): `tests/suite/bank_column.rs` mounts the casting on a real device with no
 # window, the same way `robco-chassis`'s own shader tests do.
 robco-crt-burnin = { path = "../crt-burnin" }

@@ -56,7 +56,7 @@
 //!   site, and all three call sites now do: the app's surface setup calls
 //!   [`device::required_features`](device::required_features), and `term::gpu`
 //!   and `crt_burnin::headless` restate the same filter because a dependency
-//!   on this crate would be a cycle. `tests/device_features.rs` holds the
+//!   on this crate would be a cycle. `tests/suite/device_features.rs` holds the
 //!   three to one answer.
 //!
 //! # How the pass bodies are sourced
@@ -89,9 +89,9 @@
 //!   them as they stand.
 
 //!
-//! Two further modules came with the pass ports: [`color`], the color-helper
-//! module, and [`oracle`], CPU forms of the closed-form shader math
-//! the per-pass tests compare against. This crate's own tests reach the one
+//! One further module came with the pass ports: [`color`], the color-helper
+//! module. The closed-form shader math the per-pass tests compare against
+//! now lives in the `robco-shader-oracle` crate. This crate's own tests reach the one
 //! headless GPU harness directly, as `crt_burnin::headless`: the rebuild had
 //! grown three copies of it and they are folded there, in the lowest crate
 //! that owns a device.

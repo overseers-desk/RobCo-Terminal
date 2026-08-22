@@ -374,7 +374,7 @@ mod tests {
     /// Stated about *whatever* the machine has rather than about a named
     /// family, because a test that needs DejaVu installed is a test that fails
     /// on a machine rather than about one. The named-family evidence is
-    /// `tests/system_fonts.rs`, which says so out loud when it skips.
+    /// `tests/suite/system_fonts.rs`, which says so out loud when it skips.
     #[test]
     fn the_system_half_is_populate_system_fonts() {
         let system: Vec<_> = fonts().iter().filter(|f| f.is_system).collect();

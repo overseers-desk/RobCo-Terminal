@@ -16,7 +16,7 @@ use super::common::{field_mapping, frame_viewport_size, rgb, Rect};
 /// The crate's one home for these numbers: [`crate::metrics::shells::switchboard`]
 /// composes these same constants into the `ShellMetrics` the bank reads (and
 /// restates `PAGER_HEIGHT` as `SWITCHBOARD_PAGER_HEIGHT`), rather than
-/// restating the numbers, and `tests/metrics_homes.rs` pins that composition
+/// restating the numbers, and `tests/suite/metrics_homes.rs` pins that composition
 /// as a regression check. A correction to any of these numbers belongs here
 /// and only here.
 pub mod metrics {

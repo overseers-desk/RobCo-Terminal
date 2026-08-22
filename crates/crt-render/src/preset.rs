@@ -55,7 +55,7 @@ pub const PASSES: &[Pass] = &[
         // the static pass reads through the screen curvature and the bloom
         // reads to blur. Nearest there point-samples a pixel font through a
         // warp: 14% of the grid's lit pixels and 7% of its strokes do not
-        // arrive (`tests/glyph_survival.rs`), where linear filtering resamples
+        // arrive (`tests/suite/glyph_survival.rs`), where linear filtering resamples
         // the glyph edges instead of losing them outright.
         //
         // One texture, one answer for all of it: the terminal grid is
@@ -66,7 +66,7 @@ pub const PASSES: &[Pass] = &[
         // accumulator at coordinates it was not written at -- does not arise at
         // this mount: the accumulator renders a full-screen quad into a
         // framebuffer the same size as the feedback it samples, so every fetch
-        // lands on a texel centre. `tests/burn_in_chain.rs` measures the ramp
+        // lands on a texel centre. `tests/suite/burn_in_chain.rs` measures the ramp
         // that would drift if it did not.
         filter_linear: true,
         note: "the burn-in accumulator, shader and all, from `crt-burnin`. \
