@@ -54,8 +54,18 @@ pub struct BankGeometry {
     pub pad_cells_y: i32,
     pub strip_width: i32,
     pub strip_height: i32,
-    /// The fewest characters the display will hold; the seam drag's floor.
+    /// The fewest characters the display will hold; the seam drag's floor and
+    /// the fit's.
     pub min_units: i32,
+    /// The character count these measures were cut for, which is the count
+    /// the strips are drawn at.
+    ///
+    /// It is the configured `general.led_characters` in a window with room
+    /// for it, and the fit's answer in one without
+    /// ([`crate::seam::fitted_characters`]). Whoever draws a strip reads it
+    /// here rather than from the settings, so the lamps and the width they
+    /// were measured for cannot disagree.
+    pub characters: i32,
     /// A row is at least the shell's window, and grows if the strip inside
     /// it does.
     pub row_height: i32,
@@ -129,6 +139,7 @@ impl BankGeometry {
             strip_width,
             strip_height,
             min_units: display.min_units(),
+            characters: led_characters,
             row_height,
             track_width,
             lane_in_chassis,

@@ -545,7 +545,10 @@ fn led_piece(
     row: &StripRow,
     bright: bool,
 ) -> Option<Piece> {
-    let characters = cfg.general.led_characters.max(0) as u32;
+    // The count the strip was measured at, not the count the settings ask
+    // for: in a window too narrow for the configured bank the two part
+    // company, and the lamps belong to the width beside them.
+    let characters = geometry.characters.max(0) as u32;
     let cell_width = kit.cell_width.max(1) as u32;
     let cell_height = kit.cell_height.max(1) as u32;
     let pad_cells_y = geometry.pad_cells_y.max(0) as u32;
