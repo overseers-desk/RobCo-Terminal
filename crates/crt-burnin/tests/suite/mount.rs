@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use crt_burnin::chain::BurnInChain;
 use crt_burnin::decay::decay_step;
-use crt_burnin::headless::{Cell, Gpu};
+use crt_burnin::headless::Cell;
 use crt_burnin::{
     preset_pass_block, preset_pass_block_with, write_shader, write_shader_with, Precision,
 };
@@ -28,11 +28,7 @@ const STEADY: Cell = Cell::new(40, 24, 56, 40);
 
 const PASSTHROUGH: &str = include_str!("../../shaders/passthrough.slang");
 
-fn gpu() -> &'static Gpu {
-    use std::sync::OnceLock;
-    static GPU: OnceLock<Gpu> = OnceLock::new();
-    GPU.get_or_init(|| Gpu::new().expect("headless wgpu device"))
-}
+use crate::gpu;
 
 fn workdir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("crt-burnin-{name}-{}", std::process::id()));

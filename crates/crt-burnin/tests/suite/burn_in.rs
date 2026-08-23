@@ -7,7 +7,7 @@
 //! anything the `decay` unit tests do not already cover.
 
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Mutex, MutexGuard};
 
 use crt_burnin::chain::BurnInChain;
 use crt_burnin::decay::decay_step;
@@ -37,11 +37,9 @@ const STEADY: Cell = Cell::new(40, 24, 56, 40);
 /// the expensive part of every test here, and concurrent chains on one queue
 /// make the frame timings in the reported numbers meaningless.
 fn gpu() -> (&'static Gpu, MutexGuard<'static, ()>) {
-    static GPU: OnceLock<Gpu> = OnceLock::new();
     static LOCK: Mutex<()> = Mutex::new(());
     let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let g = GPU.get_or_init(|| Gpu::new().expect("headless wgpu device"));
-    (g, guard)
+    (crate::gpu(), guard)
 }
 
 fn preset(name: &str) -> PathBuf {
