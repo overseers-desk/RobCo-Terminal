@@ -11,7 +11,6 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 ---
 
 ## 1. Input latency and stutter → P1
-
 > "I always assumed that it was my bloated vim and tmux configs that made it feel a bit sluggish sometimes, but it turns out i was the terminal. Now everything feels instantaneous."
 > — uvesten, Hacker News, January 2017
 > https://news.ycombinator.com/item?id=13343402
@@ -87,7 +86,6 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 ---
 
 ## 2. GPU rendering that costs or breaks → P2
-
 > "cool-retro-term was maxing out the integrated Intel GPU which caused the entire system to stutter and lag... both the MBP and my current XPS 15 are unable to drive cool-retro-term on a 4k display with the CPU integrated graphics, and they both overheat and throttle if I use the nvidia graphics card"
 > — the_pwner224, Hacker News, November 2019
 > https://news.ycombinator.com/item?id=21415465
@@ -163,7 +161,6 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 ---
 
 ## 3. The retro CRT look, wanted and resented → P3
-
 > "when I run one command seems so fast! Maybe would be good add an option to simulate the old hardware.. a 'line lag' time"
 > — AlanJAS, Swordfish90/cool-retro-term issue #153, October 2014
 > https://github.com/Swordfish90/cool-retro-term/issues/153
@@ -251,7 +248,6 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 ---
 
 ## 4. Font rendering: crispness, scale, and ligatures → P4
-
 > "It's not that featureful. It can't even handle bitmap fonts, only slow and blurry truetype fonts."
 > — snvzz, Hacker News, September 2018
 > https://news.ycombinator.com/item?id=17926772
@@ -268,17 +264,17 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 > https://news.ycombinator.com/item?id=25295895
 > Maps to: P4
 
-> "foot is really nice. It supports bitmap fonts and wayland, both are musts for me. It also has a cool url hints mode like termite did. I always missed that while using alacritty (after termite, or rather pango, dropped bitmap support and I had to switch)."
-> — opan, Hacker News, December 2021
-> https://news.ycombinator.com/item?id=29562230
-> Context: foot launch thread; bitmap support as a switching reason.
-> Maps to: P4, P10
-
 > "The onny difference I see is that the font rendering is slightly bolder and more blurry in Kitty, and I really hope I'll solve this, 'cause I prefer the crispness I get in Alacritty."
 > — u/Hexalyse, r/archlinux, June 2021 (score 6)
 > https://old.reddit.com/r/archlinux/comments/n9noje/alacritty_vs_kitty/
 > Context: identical font config across both terminals.
 > Maps to: P4
+
+> "foot is really nice. It supports bitmap fonts and wayland, both are musts for me. It also has a cool url hints mode like termite did. I always missed that while using alacritty (after termite, or rather pango, dropped bitmap support and I had to switch)."
+> — opan, Hacker News, December 2021
+> https://news.ycombinator.com/item?id=29562230
+> Context: foot launch thread; bitmap support as a switching reason.
+> Maps to: P4, P10
 
 > "CRT already supports these if you add them to the QML and resources. Bitmap fonts have the benefit of being pixel-perfect by default, so they work with the low-resolution rasterization methods without requiring hinting/alignment tweaks. It would be nice if there was a way to use them like this without having to recompile the program."
 > — @ali1234, Swordfish90/cool-retro-term issue #740, July 2022
@@ -328,7 +324,6 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 ---
 
 ## 5. Many sessions at once → P5
-
 > "I suffer from the same problem of too many terminal windows and browser tabs, and honestly it doesn't seem to help me much. It just dilutes my attention."
 > — meowface, Hacker News, ~2014
 > https://news.ycombinator.com/item?id=7998521
@@ -400,24 +395,23 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 6. tmux control mode outside iTerm2 → P6
-
 > "Now that multi-window support is on the roadmap, how about support for control mode in tmux? (tmux -CC) Essentially this allows the user to attach to a tmux session but instead of showing the ncurses UI in the same terminal window the terminal emulator opens actual windows for each window in the tmux session."
 > — @jansol, alacritty/alacritty issue #2410, May 2019 (42 reactions)
 > https://github.com/alacritty/alacritty/issues/2410
 > Context: maintainer: "there is absolutely no desire to implement features like tabs/splits/panes in Alacritty"; in 2022, "I don't see this issue playing well with Alacritty's goals". Declined in effect.
 > Maps to: P6, P12
 
-> "Well macOS makes things difficult. But lets see what we can do."
-> — @kovidgoyal, kovidgoyal/kitty issue #2422 "kitty as a tmux replacement", March 2020 (25 reactions)
-> https://github.com/kovidgoyal/kitty/issues/2422
-> Context: the reporter called tmux "insanely slow on macOS"; closed via workarounds, not control mode.
-> Maps to: P6, P7
-
 > "This tmux integration might seem like a small thing but once you have it it's hard to give up. basic crap like scrolling and copying and pasting from a tmux pane is straight up nastiness. Iterm2 fixes all those pain points amazingly"
 > — u/locusofself, r/devops, January 2020 (score 1)
 > https://old.reddit.com/r/devops/comments/eh13br/do_any_windows_terminals_support_tmux_cc_like/
 > Context: looking for a Windows terminal with iTerm2's `-CC` support.
 > Maps to: P6
+
+> "Well macOS makes things difficult. But lets see what we can do."
+> — @kovidgoyal, kovidgoyal/kitty issue #2422 "kitty as a tmux replacement", March 2020 (25 reactions)
+> https://github.com/kovidgoyal/kitty/issues/2422
+> Context: the reporter called tmux "insanely slow on macOS"; closed via workarounds, not control mode.
+> Maps to: P6, P7
 
 > "I prefer to use actual tmux since that's portable. Otherwise you're basically just using an alternate pane split solution which is limited to a single terminal application."
 > — u/cicatrix1, r/tmux, July 2020 (score 3)
@@ -463,18 +457,11 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 7. Sessions surviving the terminal → P7
-
 > "To me, forcing me to use tmux to get scrollback is precisely violating the idea of 'one tool doing one thing'. You're forcing me to compose a Swiss army knife (tmux) into situations where all I need is a knife (a terminal that works well with the idioms of my environment)."
 > — stormbrew, Hacker News, January 2017
 > https://news.ycombinator.com/item?id=13342428
 > Context: Alacritty Show HN.
 > Maps to: P7, P10
-
-> "Kovid really bugs me and is a reason I turned away from kitty too. ... Kovid seems to think tmux is really about splitting panes and peoples' main draw to it isn't about persistence... Oh, and kitty phones home"
-> — godelski, Hacker News, August 2024
-> https://news.ycombinator.com/item?id=41233328
-> Context: "Okay, I Like WezTerm" thread; persistence named as tmux's real draw.
-> Maps to: P7, P12, P11
 
 > "I got disconnected from my VPS when I was doing a 'do-release-upgrade'"
 > — u/auron_py, r/selfhosted, March 2024 (score 872)
@@ -486,6 +473,12 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 > — u/llamedo, r/selfhosted, March 2024 (score 6)
 > https://old.reddit.com/r/selfhosted/comments/1bbw6ta/psa_use_tmux/
 > Maps to: P7, P10
+
+> "Kovid really bugs me and is a reason I turned away from kitty too. ... Kovid seems to think tmux is really about splitting panes and peoples' main draw to it isn't about persistence... Oh, and kitty phones home"
+> — godelski, Hacker News, August 2024
+> https://news.ycombinator.com/item?id=41233328
+> Context: "Okay, I Like WezTerm" thread; persistence named as tmux's real draw.
+> Maps to: P7, P12, P11
 
 > "Resurrect was really exciting for me when I started using it, but in practice every session I've resurrected I'm unable to really use the shell afterwards. It will always crash, and I'm unable to add tabs or panes."
 > — u/wyldstallionesquire, r/zellij, September 2024 (score 3)
@@ -507,7 +500,6 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 8. Configuration → P8
-
 > "headsup, pretty sure one still has to recompile foot to change their font or font size. yeah it's that minimalistic."
 > — rektide, Hacker News, December 2021
 > https://news.ycombinator.com/item?id=29559078
@@ -548,7 +540,6 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 9. Platform reach and desktop fit on Linux → P9
-
 > "It would be great to have built packages for debian environment, namely Ubuntu. There are lot of build requirements that would make it harder to build yourself."
 > — @timfallmk, Swordfish90/cool-retro-term issue #136, October 2014
 > https://github.com/Swordfish90/cool-retro-term/issues/136
@@ -602,6 +593,10 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 10. Table-stakes missing → P10
+> "Unfortunately there is no support for ligatures. A good programming font like fira or source code pro makes for such a quality of life improvement. At least easier on the eyes."
+> — WD-42, Hacker News, September 2023
+> https://news.ycombinator.com/item?id=37625635
+> Maps to: P10, P4
 
 > "Really need scrollback search though. Was a bit surprised it was launched without that."
 > — ilrwbwrkhv, Hacker News, December 2024
@@ -624,15 +619,9 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 > https://old.reddit.com/r/commandline/comments/1o6tkgz/recommend_me_terminal_emulators/
 > Maps to: P10
 
-> "Unfortunately there is no support for ligatures. A good programming font like fira or source code pro makes for such a quality of life improvement. At least easier on the eyes."
-> — WD-42, Hacker News, September 2023
-> https://news.ycombinator.com/item?id=37625635
-> Maps to: P10, P4
-
 ---
 
 ## 11. Weight, bloat, and creep → P11
-
 > "So is my current terminal app, which clocks in at 250 kilobyte. And its memory and CPU footprint is so low, I can't find it in htop without filtering."
 > — usrbinbash, Hacker News, December 2021
 > https://news.ycombinator.com/item?id=29556773
@@ -680,7 +669,6 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 12. Maintainer conduct → P12
-
 > "Usually I agree but the maintainer of kitty is bonkers rude. There have been several issues concerning privacy and security regarding kitty. The responses of the maintainer regarding these very valid concerns made me switch to wezterm/sakura/foot in an instant."
 > — razemio, Hacker News, April 2023
 > https://news.ycombinator.com/item?id=35588591
@@ -696,7 +684,6 @@ The kitty and Alacritty entries under §3, §4 and §6 carry the same pain; it i
 ---
 
 ## 13. Choosing at all → P13
-
 > "I just use tmux, I don't want my terminal emulator to do anything it doesn't have to for that end."
 > — u/IGTHSYCGTH, r/tmux, July 2020 (score 2)
 > https://old.reddit.com/r/tmux/comments/hwllvp/iterm2_integration/

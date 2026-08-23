@@ -51,12 +51,12 @@ Demand is the frequency and intensity with which the pain is voiced in the corpu
 
 ## Sources
 
-- HN, Ghostty 1.0 launch thread, https://news.ycombinator.com/item?id=42517172 (comments cited individually in voices.md)
-- HN, "Okay, I Like WezTerm", https://news.ycombinator.com/item?id=41227188
+- HN, Ghostty 1.0 launch thread, https://news.ycombinator.com/item?id=42517447 (comments cited individually in voices.md)
+- HN, "Okay, I Like WezTerm", https://news.ycombinator.com/item?id=41223934
 - HN, Alacritty Show HN, https://news.ycombinator.com/item?id=13338592
-- HN, cool-retro-term threads, https://news.ycombinator.com/item?id=36799287 and https://news.ycombinator.com/item?id=30738123
-- HN, Rio launch, https://news.ycombinator.com/item?id=36060222
-- HN, "Measured: Typing latency of Zutty", https://news.ycombinator.com/item?id=35811173
+- HN, cool-retro-term threads, https://news.ycombinator.com/item?id=36798774 and https://news.ycombinator.com/item?id=30734137
+- HN, Rio launch, https://news.ycombinator.com/item?id=36057687
+- HN, "Measured: Typing latency of Zutty", https://news.ycombinator.com/item?id=35807660
 - GitHub, ghostty-org/ghostty #1935 (tmux control mode), https://github.com/ghostty-org/ghostty/issues/1935
 - GitHub, alacritty/alacritty #2410, kovidgoyal/kitty #4842 and #2422, wezterm/wezterm #336, #5182, #6985, #6806, #8052, Swordfish90/cool-retro-term #117, #235, #347, #740, #925, #934
 - Reddit, r/commandline "why is kitty's font rendering so weird", https://old.reddit.com/r/commandline/comments/1iysy73/
