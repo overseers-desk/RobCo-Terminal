@@ -253,4 +253,71 @@ mod tests {
             );
         }
     }
+    /// `docs/config.md` documents every key and its shipped default. That
+    /// table is a hand-written home for facts whose authority is the schema
+    /// and the shipped presets, so it drifts silently: a field added, a
+    /// default changed, and the doc still says the old thing. This pins it.
+    /// `Config::default()` is the shipped profile (Default Amber over
+    /// Annunciator), so its serialized keys and values are the ground truth
+    /// the three tables must match, key for key and default for default.
+    /// Prose descriptions stay hand-written and unchecked; only the key and
+    /// the Default cell are machine facts. A generator was rejected in #4:
+    /// it would not delete the lines it costs.
+    #[test]
+    fn docs_config_md_matches_the_shipped_defaults() {
+        use std::collections::BTreeMap;
+
+        // Ground truth: every `section.key = value` of the default config,
+        // the value spelled exactly as TOML serializes it.
+        let toml = toml::to_string(&Config::default()).expect("default config serializes");
+        let mut truth: BTreeMap<(String, String), String> = BTreeMap::new();
+        let mut section = String::new();
+        for line in toml.lines() {
+            let line = line.trim();
+            if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                section = name.to_string();
+            } else if let Some((key, value)) = line.split_once(" = ") {
+                truth.insert((section.clone(), key.trim().to_string()), value.trim().to_string());
+            }
+        }
+
+        // The doc's three tables. A section opens at `### `...`[name]``; a
+        // data row is `| `key` | `default` | ... |`.
+        let doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/config.md"));
+        let strip = |cell: &str| cell.trim().trim_matches('`').to_string();
+        let mut documented: BTreeMap<(String, String), String> = BTreeMap::new();
+        let mut section = String::new();
+        for line in doc.lines() {
+            if line.starts_with("### ") {
+                section = ["general", "screen", "chassis"]
+                    .into_iter()
+                    .find(|s| line.contains(&format!("[{s}]")))
+                    .unwrap_or("")
+                    .to_string();
+            } else if !section.is_empty() && line.starts_with("| `") {
+                let cols: Vec<&str> = line.trim_matches('|').split('|').collect();
+                if cols.len() >= 2 {
+                    documented.insert((section.clone(), strip(cols[0])), strip(cols[1]));
+                }
+            }
+        }
+
+        let truth_keys: Vec<_> = truth.keys().cloned().collect();
+        let doc_keys: Vec<_> = documented.keys().cloned().collect();
+        assert_eq!(
+            truth_keys, doc_keys,
+            "docs/config.md and the schema disagree on which keys exist; a key \
+             was added or removed without updating the doc table"
+        );
+        for (key, want) in &truth {
+            assert_eq!(
+                documented.get(key),
+                Some(want),
+                "docs/config.md lists a stale default for {}.{}: doc says {:?}, \
+                 the shipped default is {:?}",
+                key.0, key.1, documented.get(key), want
+            );
+        }
+    }
+
 }
