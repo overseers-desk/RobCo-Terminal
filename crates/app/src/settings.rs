@@ -247,11 +247,19 @@ pub fn distortion_margin(config: &Config) -> f64 {
         + (1.0 - std::f64::consts::FRAC_1_SQRT_2) * screen_radius(config)
 }
 
-/// The frame size: `raw_frame_size * 0.05`. This is the value *before* the
-/// `normalized_screen_scale` factor applied on top -- multiply this by
-/// [`term::distortion::normalized_screen_scale`] to get the value
-/// [`term::distortion::DistortionParams::frame_size`] wants.
-pub fn distortion_frame_size(config: &Config) -> f64 {
+/// The frame size at unit screen scale: `raw_frame_size * 0.05`.
+///
+/// One number reaches the shader under three magnitudes, and this is the
+/// middle one. The setting the user moves is a 0-to-1 slider, 0.45 on the
+/// shipped cabinet, reached through `Config::raw_frame_size`. This is that
+/// slider at the scale the distortion is written in, 0.0225. The third is
+/// this multiplied by [`term::distortion::normalized_screen_scale`], which
+/// is what [`term::distortion::DistortionParams::frame_size`] wants and what
+/// varies with the window.
+///
+/// The name says which of the three it is, since a value read into a uniform
+/// expecting another of them misdraws the moulding rather than failing.
+pub fn unscaled_frame_size(config: &Config) -> f64 {
     config.raw_frame_size() * 0.05
 }
 
@@ -544,7 +552,7 @@ mod tests {
     }
 
     /// The frozen v1 default is Default Amber + Annunciator, chassis
-    /// shown: `distortion_margin`/`distortion_frame_size` therefore read
+    /// shown: `distortion_margin`/`unscaled_frame_size` therefore read
     /// the *chassis*'s frame/radius (0.45/0.44), not the screen's own
     /// (0.1/0.1), and `config.screen.margin` (0.3) either way, since
     /// margin has no chassis counterpart. Expected values hand-computed
@@ -562,7 +570,7 @@ mod tests {
             28.820842763492422,
             1e-9
         ));
-        assert!(approx_eq(distortion_frame_size(&config), 0.0225, 1e-9));
+        assert!(approx_eq(unscaled_frame_size(&config), 0.0225, 1e-9));
     }
 
     /// With the chassis off, the screen's own frame/radius govern instead
@@ -578,7 +586,7 @@ mod tests {
         let mut config = Config::default();
         config.general.chassis_shown = false;
         assert!(approx_eq(screen_radius(&config), 15.6, 1e-9));
-        assert!(approx_eq(distortion_frame_size(&config), 0.005, 1e-9));
+        assert!(approx_eq(unscaled_frame_size(&config), 0.005, 1e-9));
         let expected_margin = 1.0 + 39.0 * 0.3 + (1.0 - std::f64::consts::FRAC_1_SQRT_2) * 15.6;
         assert!(approx_eq(distortion_margin(&config), expected_margin, 1e-9));
     }

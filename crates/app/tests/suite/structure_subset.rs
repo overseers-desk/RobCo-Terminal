@@ -93,7 +93,7 @@ fn both_crates_derive_the_same_frame_size() {
         let uniform = Params::build(&cfg, &geom, time, DegaussState::IDLE)
             .get("FrameSize")
             .expect("the FrameSize uniform");
-        let pointer = app::settings::distortion_frame_size(&cfg) * normalized;
+        let pointer = app::settings::unscaled_frame_size(&cfg) * normalized;
 
         assert!(
             (f64::from(uniform) - pointer).abs() < 1e-6,

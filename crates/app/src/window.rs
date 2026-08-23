@@ -2486,7 +2486,7 @@ impl TerminalSurface {
                     // half the inset the glass was drawn with, and the cell it
                     // landed on drifted from the cell under the cursor.
                     settings::distortion_margin(&config) * self.viewport.scale_factor,
-                    settings::distortion_frame_size(&config) * normalized_screen_scale,
+                    settings::unscaled_frame_size(&config) * normalized_screen_scale,
                     config.screen.screen_curvature,
                 )
             }

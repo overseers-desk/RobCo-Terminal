@@ -117,7 +117,7 @@ impl Params {
         // screen's own moulding) -- see `raw_frame_size` below.
         //
         // The same number appears one crate up as
-        // `app::settings::distortion_frame_size * normalized_screen_scale`,
+        // `app::settings::unscaled_frame_size * normalized_screen_scale`,
         // which is what `term::distortion` inverts for the pointer. They are
         // not one function because the crates cannot see each other; they are
         // held to one answer by a test in `crates/app`, because a pointer that
