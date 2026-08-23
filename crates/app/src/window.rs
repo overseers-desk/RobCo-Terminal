@@ -2021,15 +2021,19 @@ impl TerminalSurface {
         self.settle_bank();
     }
 
-    /// Tell the shell what the bank now measures, so the window's
-    /// minimum-width hint follows the seam.
+    /// Tell the shell what the bank now measures, and what it measures at its
+    /// narrowest: the first sizes a window opened next, the second is the
+    /// minimum-size hint's own term.
     fn announce_bank_width(&self) {
         let (Some(proxy), Some(cabinet)) = (self.shell_events.as_ref(), self.cabinet.as_ref())
         else {
             return;
         };
         if proxy
-            .send_event(ShellEvent::SetBankWidth(cabinet.bank_width()))
+            .send_event(ShellEvent::SetBankWidth {
+                width: cabinet.bank_width(),
+                minimum: cabinet.min_bank_width(),
+            })
             .is_err()
         {
             log::debug!("the shell is gone; the bank width has nowhere to go");
@@ -2701,7 +2705,17 @@ impl TerminalSurface {
         self.pending_led_characters = Some(update.led_characters);
         self.relayout();
         if let Some(proxy) = self.shell_events.as_ref() {
-            let _ = proxy.send_event(ShellEvent::SetBankWidth(update.bank_width));
+            // The drag re-based the configured count, so the bank's least
+            // moved with it: dragging below the display's own floor takes the
+            // hint down too, since the fit does not widen what a hand set.
+            let minimum = self
+                .cabinet
+                .as_ref()
+                .map_or(update.bank_width, |c| c.min_bank_width());
+            let _ = proxy.send_event(ShellEvent::SetBankWidth {
+                width: update.bank_width,
+                minimum,
+            });
         }
         if let Some(window) = self.window.as_ref() {
             window.request_redraw();

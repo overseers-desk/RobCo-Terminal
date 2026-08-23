@@ -207,12 +207,12 @@ fn main() -> ExitCode {
         );
     }
     let (default_width, default_height) = app::geometry::DEFAULT_SIZE;
-    let bank_width = chassis::Cabinet::from_config(
+    let bank = chassis::Cabinet::from_config(
         &initial_config,
         f64::from(default_width),
         f64::from(default_height),
-    )
-    .bank_width();
+    );
+    let (bank_width, bank_minimum) = (bank.bank_width(), bank.min_bank_width());
 
     let (event_loop, proxy) = match Shell::event_loop() {
         Ok(pair) => pair,
@@ -259,6 +259,7 @@ fn main() -> ExitCode {
     let mut shell_config = ShellConfig::empty(&identity);
     shell_config.fullscreen = options.fullscreen;
     shell_config.bank_width = bank_width;
+    shell_config.bank_minimum = bank_minimum;
     // At scale factor 1, which is the unit the default window size is quoted
     // in; each window re-measures against its own factor once it has one.
     shell_config.well_minimum = app::window::well_minimum_for(&initial_config, 1.0);

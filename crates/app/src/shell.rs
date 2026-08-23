@@ -38,6 +38,7 @@ use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
 use crate::geometry;
 use crate::instance::NewWindow;
 use crate::overlay::{GridSize, SizeOverlay};
+use crate::workarea;
 
 /// How often the loop wakes while the size badge is visible. The fade
 /// animates at 60 Hz, the same assumption `crate::window::EFFECTS_BASE_FRAME`
@@ -202,7 +203,13 @@ pub enum ShellEvent {
     /// an `EventLoopProxy` rather than a `&mut Shell` for the ordinary reason:
     /// the shell owns the surface, so the arrow cannot run the other way
     /// directly.
-    SetBankWidth(u32),
+    SetBankWidth {
+        /// The bank as it now stands, which sizes a window opened next.
+        width: u32,
+        /// The bank at its narrowest, which is the hint's own term: a bank
+        /// fitted to a window cannot set the floor that window is held to.
+        minimum: u32,
+    },
 }
 
 /// Everything the shell needs to know that it does not decide itself.
@@ -231,6 +238,17 @@ pub struct ShellConfig {
     /// It moves at runtime, because the seam drag re-fits the strips: a surface
     /// sends [`ShellEvent::SetBankWidth`] and every window's hint follows.
     pub bank_width: u32,
+    /// The channel bank at its narrowest, in *logical* pixels: its footprint
+    /// at the display's least strip, which is the term the minimum-size hint
+    /// reserves (`chassis::Cabinet::min_bank_width`).
+    ///
+    /// Apart from [`ShellConfig::bank_width`] because the two answer different
+    /// questions. The bank's live width says how much room the appliance is
+    /// using and sizes the window opened next; its least says how much room a
+    /// window is obliged to keep, and holding still is the whole of its job:
+    /// a hint that rose as the bank widened would grow a window the user had
+    /// narrowed.
+    pub bank_minimum: u32,
     /// The screen well's floor in *logical* pixels -- filled from
     /// `crate::window::well_minimum_for` at scale factor 1, where the logical
     /// and physical numbers are the same one -- for the size the first window
@@ -259,6 +277,7 @@ impl ShellConfig {
             fullscreen: false,
             show_terminal_size: true,
             bank_width: 0,
+            bank_minimum: 0,
             well_minimum: (0, 0),
             surface_factory: Box::new(|_| Box::new(EmptySurface)),
         }
@@ -293,10 +312,10 @@ impl WindowState {
     /// manager enforces a minimum size on the next drag, not on the hint
     /// arriving, so a font that grew mid-session would otherwise leave the
     /// window standing at a size the hint says is not allowed.
-    fn settle_min_inner_size(&mut self, bank_width: u32) {
+    fn settle_min_inner_size(&mut self, bank_minimum: u32) {
         let floor = self.surface.well_minimum();
         let (min_width, min_height) = chassis::layout::min_inner_size_physical(
-            bank_width,
+            bank_minimum,
             self.window.scale_factor(),
             (floor.width, floor.height),
         );
@@ -369,14 +388,21 @@ impl Shell {
     }
 
     fn open_window(&mut self, event_loop: &ActiveEventLoop, fullscreen: bool) {
-        let (width, height) = geometry::DEFAULT_SIZE;
-        // The appliance's default size, raised to what a terminal grid costs
-        // this profile. The default is physical and the floor logical, which
-        // is the same number on the display the default was chosen for; on
-        // any other scale factor the hint applied below corrects it.
-        let (width, height) = (
-            width.max(self.config.bank_width + self.config.well_minimum.0),
-            height.max(self.config.well_minimum.1),
+        // A fullscreen window's inner size is the compositor's to choose, so
+        // nothing is measured for one and no property is read.
+        let usable = (!fullscreen)
+            .then(|| workarea::usable_size(event_loop))
+            .flatten();
+        let (width, height) = opening_size(
+            (
+                self.config.bank_width + self.config.well_minimum.0,
+                self.config.well_minimum.1,
+            ),
+            (
+                self.config.bank_minimum + self.config.well_minimum.0,
+                self.config.well_minimum.1,
+            ),
+            usable,
         );
 
         let mut attributes = WindowAttributes::default()
@@ -428,20 +454,21 @@ impl Shell {
         // attributes: half of it is the surface's font, which is resolved
         // against this window's scale factor, and that exists only once the
         // window is on a monitor.
-        state.settle_min_inner_size(self.config.bank_width);
+        state.settle_min_inner_size(self.config.bank_minimum);
         self.windows.insert(id, state);
     }
 
     /// Re-applies the minimum-size hint to every window. The bank's width
     /// changes at runtime as the user drags the seam, and the hint is
     /// what contract item 4 measures, so it has to follow.
-    pub fn set_bank_width(&mut self, bank_width: u32) {
-        if self.config.bank_width == bank_width {
+    pub fn set_bank_width(&mut self, width: u32, minimum: u32) {
+        if (self.config.bank_width, self.config.bank_minimum) == (width, minimum) {
             return;
         }
-        self.config.bank_width = bank_width;
+        self.config.bank_width = width;
+        self.config.bank_minimum = minimum;
         for state in self.windows.values_mut() {
-            state.settle_min_inner_size(bank_width);
+            state.settle_min_inner_size(minimum);
         }
     }
 }
@@ -461,6 +488,36 @@ fn with_identity(attributes: WindowAttributes, identity: &str) -> WindowAttribut
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 fn with_identity(attributes: WindowAttributes, _identity: &str) -> WindowAttributes {
     attributes
+}
+
+/// The size the first window is created at: the appliance's default, raised
+/// to hold the bank the profile asks for beside a terminal grid, then held
+/// down to the desktop it has to fit on, then raised again past nothing.
+///
+/// `want` is that raised default, `floor` the window's own minimum, and
+/// `usable` the desktop with its panels taken off, or `None` where no monitor
+/// answered. The three are in physical pixels, the unit the default size is
+/// quoted in; the floor is logical and the two are the same number on the
+/// display the default was chosen for, with any other scale factor corrected
+/// by the hint the window carries.
+///
+/// The floor wins over the desktop, deliberately. On a screen too small to
+/// hold the least bank beside eighty columns by twenty-four, the window is
+/// wider than the desktop and the terminal is a terminal; the alternative is
+/// a window that fits the screen and cannot show a grid every curses program
+/// assumes it has.
+fn opening_size(want: (u32, u32), floor: (u32, u32), usable: Option<(u32, u32)>) -> (u32, u32) {
+    let (want_w, want_h) = (
+        geometry::DEFAULT_SIZE.0.max(want.0),
+        geometry::DEFAULT_SIZE.1.max(want.1),
+    );
+    match usable {
+        Some((usable_w, usable_h)) => (
+            want_w.min(usable_w).max(floor.0),
+            want_h.min(usable_h).max(floor.1),
+        ),
+        None => (want_w, want_h),
+    }
 }
 
 /// A window's size in character cells.
@@ -486,7 +543,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
             ShellEvent::NewWindow(request) => {
                 self.open_window(event_loop, request.fullscreen);
             }
-            ShellEvent::SetBankWidth(bank_width) => self.set_bank_width(bank_width),
+            ShellEvent::SetBankWidth { width, minimum } => self.set_bank_width(width, minimum),
         }
     }
 
@@ -527,7 +584,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
                     // Both halves of the hint are in device pixels and the
                     // factor converting them has just changed, so neither
                     // half is the number it was.
-                    state.settle_min_inner_size(self.config.bank_width);
+                    state.settle_min_inner_size(self.config.bank_minimum);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -671,7 +728,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
         // back to waiting exactly as it did before.
         let mut wake_at: Option<Instant> = None;
         let mut finished: Vec<WindowId> = Vec::new();
-        let bank_width = self.config.bank_width;
+        let bank_minimum = self.config.bank_minimum;
         for (id, state) in self.windows.iter_mut() {
             state.overlay.tick(delta);
             let opacity = state.overlay.opacity();
@@ -693,7 +750,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
             // which reaches the shell as an event. The check is arithmetic
             // over numbers the surface already holds, and the hint is only
             // written when it moved.
-            state.settle_min_inner_size(bank_width);
+            state.settle_min_inner_size(bank_minimum);
             let tick = state.surface.tick();
             if tick.redraw {
                 state.window.request_redraw();
@@ -723,6 +780,44 @@ impl ApplicationHandler<ShellEvent> for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_roomy_desktop_leaves_the_opening_size_alone() {
+        // 1024x768 is the appliance's own default and this desktop has room
+        // for it, so nothing here changes what the window opens at.
+        let opened = opening_size((567, 240), (519, 240), Some((1920, 1080)));
+        assert_eq!(opened, geometry::DEFAULT_SIZE);
+    }
+
+    #[test]
+    fn a_profile_wider_than_the_default_opens_at_its_own_width() {
+        // The shipped cabinet with a font whose grid costs 1018 px: the
+        // window opens at the bank plus that, rather than at 1024 and being
+        // grown a frame later.
+        let opened = opening_size((1265, 730), (1217, 730), Some((1920, 1080)));
+        assert_eq!(opened, (1265, 768));
+    }
+
+    #[test]
+    fn a_desktop_narrower_than_the_appliance_holds_the_window_down_to_it() {
+        let opened = opening_size((1265, 730), (1217, 730), Some((1152, 864)));
+        assert_eq!(opened, (1217, 768));
+    }
+
+    #[test]
+    fn the_terminal_grid_beats_the_desktop_when_the_two_cannot_both_hold() {
+        // A netbook screen against a profile whose least bank and eighty
+        // columns want more than it has: the window is wider than the
+        // desktop, which is the decision this function records.
+        let opened = opening_size((1265, 730), (1217, 730), Some((1024, 600)));
+        assert_eq!(opened, (1217, 730));
+        assert!(opened.0 > 1024 && opened.1 > 600);
+    }
+
+    #[test]
+    fn no_monitor_leaves_the_appliance_its_own_default() {
+        assert_eq!(opening_size((1265, 730), (1217, 730), None), (1265, 768));
+    }
 
     #[test]
     fn a_window_size_becomes_a_grid_size_by_cell_division() {

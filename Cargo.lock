@@ -2747,6 +2747,7 @@ dependencies = [
  "tempfile",
  "wgpu",
  "winit",
+ "x11rb",
 ]
 
 [[package]]

@@ -66,6 +66,15 @@ bytemuck = { version = "1", features = ["derive"] }
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3"
 
+# The usable desktop, which winit does not report: it answers with the
+# monitor's own rectangle and nothing takes a panel's strut off it. The
+# X11 root window carries `_NET_WORKAREA`, which is the value a panel
+# publishes for exactly this question, and this reads it. Already in the
+# lock file through winit's own X11 backend and through arboard, so it
+# costs a dependency line rather than a download.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+x11rb = "0.13"
+
 [dev-dependencies]
 robco-shader-oracle = { path = "../shader-oracle" }
 serde_json = "1"

@@ -64,6 +64,7 @@ pub mod settings;
 pub mod shell;
 pub mod tmux;
 pub mod window;
+pub mod workarea;
 
 /// The application's version, as `--version` prints it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
