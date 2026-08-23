@@ -27,10 +27,7 @@ use serde::{Deserialize, Serialize};
 /// ([`ChassisSettings::bank_font_name`]), since a bank need not be lamps: one
 /// may be lettered by hand, another stamped by a label maker, and each wants
 /// a face of its own.
-///
-/// This carries more than the storage blob of the same name in the format
-/// this schema round-trips through, which holds nine keys and keeps the
-/// bank's own two in the profile blob beside it.
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralSettings {
