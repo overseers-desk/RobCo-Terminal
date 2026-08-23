@@ -236,17 +236,17 @@ fn the_led_strip_metrics_composes_the_bare_functions() {
     assert_eq!(stock.pad_cells as u32, LED_PAD_CELLS);
     assert_eq!(stock.side_pad_cells as u32, LED_SIDE_PAD_CELLS);
 
-    for &(cell_width, cell_height) in &[(5u32, 8u32), (8, 9), (8, 16), (9, 11)] {
+    for &(lamp_cell_width, lamp_cell_height) in &[(5u32, 8u32), (8, 9), (8, 16), (9, 11)] {
         let composed = LedMetrics {
-            cell_width: cell_width as i32,
-            cell_height: cell_height as i32,
+            lamp_cell_width: lamp_cell_width as i32,
+            lamp_cell_height: lamp_cell_height as i32,
             ..LedMetrics::default()
         };
 
         assert_eq!(
             composed.unit_width(),
-            led::metrics::unit_width(cell_width, LED_DOT_PITCH),
-            "unit_width at cell {cell_width}x{cell_height}"
+            led::metrics::unit_width(lamp_cell_width, LED_DOT_PITCH),
+            "unit_width at cell {lamp_cell_width}x{lamp_cell_height}"
         );
         assert_eq!(
             composed.min_units() as u32,
@@ -256,27 +256,27 @@ fn the_led_strip_metrics_composes_the_bare_functions() {
         for n in [0u32, 1, 7, 8, 12, 40] {
             assert_eq!(
                 i64::from(composed.width_for_units(n as i32)),
-                led::metrics::width_for_units(cell_width, n, LED_SIDE_PAD_CELLS, LED_DOT_PITCH),
-                "width_for_units({n}) at cell {cell_width}x{cell_height}"
+                led::metrics::width_for_units(lamp_cell_width, n, LED_SIDE_PAD_CELLS, LED_DOT_PITCH),
+                "width_for_units({n}) at cell {lamp_cell_width}x{lamp_cell_height}"
             );
         }
         for pad in [0u32, 1, 4, 15, 32] {
             assert_eq!(
                 i64::from(composed.height_for_pad_cells(pad as i32)),
-                led::metrics::height_for_pad_cells(cell_height, pad, LED_DOT_PITCH),
-                "height_for_pad_cells({pad}) at cell {cell_width}x{cell_height}"
+                led::metrics::height_for_pad_cells(lamp_cell_height, pad, LED_DOT_PITCH),
+                "height_for_pad_cells({pad}) at cell {lamp_cell_width}x{lamp_cell_height}"
             );
         }
         for hole in [0i32, 6, 12, 35, 44, 60] {
             assert_eq!(
                 i64::from(composed.pad_cells_for_hole(hole)),
                 led::metrics::pad_cells_for_hole(
-                    cell_height,
+                    lamp_cell_height,
                     f64::from(hole),
                     LED_DOT_PITCH,
                     LED_PAD_CELLS
                 ),
-                "pad_cells_for_hole({hole}) at cell {cell_width}x{cell_height}"
+                "pad_cells_for_hole({hole}) at cell {lamp_cell_width}x{lamp_cell_height}"
             );
         }
     }

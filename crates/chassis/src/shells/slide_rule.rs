@@ -646,16 +646,16 @@ fn counter_lamps(cfg: &config::Config, panel: PaintRect, page_label: &str) -> Op
     let crate::Display::Led(kit) = crate::display_kit(cfg) else {
         return None;
     };
-    let cell_width = kit.cell_width.max(1) as u32;
-    let cell_height = kit.cell_height.max(1) as u32;
-    let grid = crate::displays::led::grid_size(cell_width, cell_height, 2, 0, 0, 0);
+    let lamp_cell_width = kit.lamp_cell_width.max(1) as u32;
+    let lamp_cell_height = kit.lamp_cell_height.max(1) as u32;
+    let grid = crate::displays::led::grid_size(lamp_cell_width, lamp_cell_height, 2, 0, 0, 0);
     let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name)
         .or_else(|| term::fonts::font_by_name(crate::displays::led::DEFAULT_LED_FONT_NAME))?;
     let source = crate::furniture::led_grid(
         entry.data(),
         entry.pixel_size,
         page_label,
-        cell_width,
+        lamp_cell_width,
         grid,
         0,
         0,

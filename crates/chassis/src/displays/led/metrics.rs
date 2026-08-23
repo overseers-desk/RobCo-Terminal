@@ -19,8 +19,8 @@
 use crate::js;
 
 /// One character's width on the panel, unrounded.
-pub fn unit_width(cell_width: u32, dot_pitch: f64) -> f64 {
-    cell_width as f64 * dot_pitch
+pub fn unit_width(lamp_cell_width: u32, dot_pitch: f64) -> f64 {
+    lamp_cell_width as f64 * dot_pitch
 }
 
 pub fn min_units(min_characters: u32) -> u32 {
@@ -29,26 +29,26 @@ pub fn min_units(min_characters: u32) -> u32 {
 
 /// A strip's height for a given band of unlit rows above and below the
 /// glyphs.
-pub fn height_for_pad_cells(cell_height: u32, pad_cells_y: u32, dot_pitch: f64) -> i64 {
-    js::round(((cell_height + pad_cells_y) as f64) * dot_pitch) as i64
+pub fn height_for_pad_cells(lamp_cell_height: u32, pad_cells_y: u32, dot_pitch: f64) -> i64 {
+    js::round(((lamp_cell_height + pad_cells_y) as f64) * dot_pitch) as i64
 }
 
 /// Rounded, not truncated -- a floored strip would leave the row half a
 /// pixel short of the window it has to hold. `n` counts visible characters;
 /// the side pad cells ride on top.
-pub fn width_for_units(cell_width: u32, n: u32, side_pad_cells: u32, dot_pitch: f64) -> i64 {
-    js::round(cell_width as f64 * (n + 2 * side_pad_cells) as f64 * dot_pitch) as i64
+pub fn width_for_units(lamp_cell_width: u32, n: u32, side_pad_cells: u32, dot_pitch: f64) -> i64 {
+    js::round(lamp_cell_width as f64 * (n + 2 * side_pad_cells) as f64 * dot_pitch) as i64
 }
 
 /// A fixture names the hole it punched in pixels, the display answers in
 /// lamp rows -- never less than the settings' own floor.
 pub fn pad_cells_for_hole(
-    cell_height: u32,
+    lamp_cell_height: u32,
     hole_height: f64,
     dot_pitch: f64,
     floor_pad_cells: u32,
 ) -> i64 {
-    let from_hole = js::round(hole_height / dot_pitch) as i64 - cell_height as i64;
+    let from_hole = js::round(hole_height / dot_pitch) as i64 - lamp_cell_height as i64;
     (floor_pad_cells as i64).max(from_hole)
 }
 

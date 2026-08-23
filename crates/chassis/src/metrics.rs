@@ -195,14 +195,14 @@ pub trait DisplayMetrics {
 
 /// The LED panel's measures.
 ///
-/// `cell_width`/`cell_height` are the profile lamp font's own metrics
+/// `lamp_cell_width`/`lamp_cell_height` are the profile lamp font's own metrics
 /// (`max(1, round(advance_width))` and `max(1, ceil(height))`), so they
 /// arrive measured rather than computed here: the geometry stays testable
 /// without a font stack.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LedMetrics {
-    pub cell_width: i32,
-    pub cell_height: i32,
+    pub lamp_cell_width: i32,
+    pub lamp_cell_height: i32,
     /// Default 1.5.
     pub dot_pitch: f64,
     /// Default 8.
@@ -216,7 +216,7 @@ pub struct LedMetrics {
 impl DisplayMetrics for LedMetrics {
     /// Arithmetic owned by [`crate::displays::led::metrics::unit_width`].
     fn unit_width(&self) -> f64 {
-        crate::displays::led::metrics::unit_width(self.cell_width.max(0) as u32, self.dot_pitch)
+        crate::displays::led::metrics::unit_width(self.lamp_cell_width.max(0) as u32, self.dot_pitch)
     }
 
     fn min_units(&self) -> i32 {
@@ -226,7 +226,7 @@ impl DisplayMetrics for LedMetrics {
     /// Arithmetic owned by [`crate::displays::led::metrics::width_for_units`].
     fn width_for_units(&self, n: i32) -> i32 {
         crate::displays::led::metrics::width_for_units(
-            self.cell_width.max(0) as u32,
+            self.lamp_cell_width.max(0) as u32,
             n.max(0) as u32,
             self.side_pad_cells.max(0) as u32,
             self.dot_pitch,
@@ -237,7 +237,7 @@ impl DisplayMetrics for LedMetrics {
     /// [`crate::displays::led::metrics::height_for_pad_cells`].
     fn height_for_pad_cells(&self, pad_cells: i32) -> i32 {
         crate::displays::led::metrics::height_for_pad_cells(
-            self.cell_height.max(0) as u32,
+            self.lamp_cell_height.max(0) as u32,
             pad_cells.max(0) as u32,
             self.dot_pitch,
         ) as i32
@@ -247,7 +247,7 @@ impl DisplayMetrics for LedMetrics {
     /// [`crate::displays::led::metrics::pad_cells_for_hole`].
     fn pad_cells_for_hole(&self, hole_height: i32) -> i32 {
         crate::displays::led::metrics::pad_cells_for_hole(
-            self.cell_height.max(0) as u32,
+            self.lamp_cell_height.max(0) as u32,
             hole_height as f64,
             self.dot_pitch,
             self.pad_cells.max(0) as u32,
@@ -262,8 +262,8 @@ impl Default for LedMetrics {
     /// overwrites it.
     fn default() -> Self {
         LedMetrics {
-            cell_width: 5,
-            cell_height: 8,
+            lamp_cell_width: 5,
+            lamp_cell_height: 8,
             dot_pitch: 1.5,
             min_characters: 8,
             pad_cells: 4,
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn led_metrics_match_the_defining_formulas() {
         let led = LedMetrics::default();
-        // unit_width = cell_width * dot_pitch = 5 * 1.5.
+        // unit_width = lamp_cell_width * dot_pitch = 5 * 1.5.
         assert_eq!(led.unit_width(), 7.5);
         // width_for_units(12) = round(5 * (12 + 2) * 1.5) = round(105) = 105.
         assert_eq!(led.width_for_units(12), 105);

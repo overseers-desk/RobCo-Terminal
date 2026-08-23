@@ -13,7 +13,7 @@
 //! - `content_x = bank_padding + (lane_in_chassis ? 0 : track_width) +
 //!   track_gap`
 //! - `track_width` and `track_gap` are the shell's only under the pointer law
-//! - `width_for_units(n) = round(cell_width * (n + 2 * side_pad_cells) *
+//! - `width_for_units(n) = round(lamp_cell_width * (n + 2 * side_pad_cells) *
 //!   dot_pitch)`
 //! - the well takes what the bank leaves
 //! - `normalized_screen_scale = 1024 / max(1, 0.5 * crt_region.width + 0.5 *

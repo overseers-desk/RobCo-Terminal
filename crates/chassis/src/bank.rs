@@ -344,7 +344,7 @@ mod tests {
         // dividing by it would explode the count rather than yield one.
         let shell = ShellMetrics::new(0);
         let led = LedMetrics {
-            cell_height: 0,
+            lamp_cell_height: 0,
             pad_cells: 0,
             dot_pitch: 0.0,
             ..LedMetrics::default()

@@ -153,10 +153,10 @@ pub fn led_metrics(font_name: &str) -> LedMetrics {
     let entry = term::fonts::font_by_name(font_name)
         .or_else(|| term::fonts::font_by_name(displays::led::DEFAULT_LED_FONT_NAME))
         .expect("the bundled catalogue always carries the default lamp font");
-    let (cell_width, cell_height) = displays::led::cell_metrics(entry.data(), entry.pixel_size);
+    let (lamp_cell_width, lamp_cell_height) = displays::led::cell_metrics(entry.data(), entry.pixel_size);
     LedMetrics {
-        cell_width: cell_width as i32,
-        cell_height: cell_height as i32,
+        lamp_cell_width: lamp_cell_width as i32,
+        lamp_cell_height: lamp_cell_height as i32,
         dot_pitch: displays::led::LED_DOT_PITCH,
         min_characters: displays::led::MIN_LED_CHARACTERS as i32,
         pad_cells: displays::led::LED_PAD_CELLS as i32,
@@ -232,7 +232,7 @@ mod tests {
         let cfg = Config::default();
         assert_eq!(cfg.chassis.bank_font_name, "COZETTE_SCALED");
         let led = led_metrics(&cfg.chassis.bank_font_name);
-        assert_eq!((led.cell_width, led.cell_height), (6, 13));
+        assert_eq!((led.lamp_cell_width, led.lamp_cell_height), (6, 13));
         assert_eq!(led.unit_width(), 9.0); // 6 * 1.5
         assert_eq!(led.width_for_units(12), 126); // round(6 * 14 * 1.5)
         assert_ne!(led, LedMetrics::default());

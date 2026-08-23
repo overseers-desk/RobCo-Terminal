@@ -284,7 +284,7 @@ pub fn led_grid(
     font_data: &[u8],
     pixel_size: u32,
     text: &str,
-    cell_width: u32,
+    lamp_cell_width: u32,
     grid: (u32, u32),
     left_pad_cells: u32,
     top_pad_cells: u32,
@@ -293,7 +293,7 @@ pub fn led_grid(
     let mut alpha = vec![0u8; (grid_w * grid_h) as usize];
     if !text.is_empty() {
         if let Some(r) = term::fonts::led::led_text_image(font_data, pixel_size, text) {
-            let x0 = left_pad_cells * cell_width;
+            let x0 = left_pad_cells * lamp_cell_width;
             let y0 = top_pad_cells;
             for y in 0..r.height.min(grid_h.saturating_sub(y0)) {
                 for x in 0..r.width.min(grid_w.saturating_sub(x0)) {
@@ -549,12 +549,12 @@ fn led_piece(
     // for: in a window too narrow for the configured bank the two part
     // company, and the lamps belong to the width beside them.
     let characters = geometry.characters.max(0) as u32;
-    let cell_width = kit.cell_width.max(1) as u32;
-    let cell_height = kit.cell_height.max(1) as u32;
+    let lamp_cell_width = kit.lamp_cell_width.max(1) as u32;
+    let lamp_cell_height = kit.lamp_cell_height.max(1) as u32;
     let pad_cells_y = geometry.pad_cells_y.max(0) as u32;
     let grid = led::grid_size(
-        cell_width,
-        cell_height,
+        lamp_cell_width,
+        lamp_cell_height,
         characters,
         led::LED_SIDE_PAD_CELLS,
         led::LED_SIDE_PAD_CELLS,
@@ -569,7 +569,7 @@ fn led_piece(
         entry.data(),
         entry.pixel_size,
         shown,
-        cell_width,
+        lamp_cell_width,
         grid,
         led::LED_SIDE_PAD_CELLS,
         pad_cells_y / 2,
@@ -1309,8 +1309,8 @@ mod tests {
         };
         // `characters: 2`, every pad at 0.
         let kit = crate::led_metrics(&cfg.chassis.bank_font_name);
-        assert_eq!(param("gridSizeX"), (kit.cell_width.max(1) * 2) as f32);
-        assert_eq!(param("gridSizeY"), kit.cell_height.max(1) as f32);
+        assert_eq!(param("gridSizeX"), (kit.lamp_cell_width.max(1) * 2) as f32);
+        assert_eq!(param("gridSizeY"), kit.lamp_cell_height.max(1) as f32);
         // `spillStrength: 0.12`, unlike a channel window's own
         // `led::spill_strength`.
         assert_eq!(param("spillStrength"), 0.12);

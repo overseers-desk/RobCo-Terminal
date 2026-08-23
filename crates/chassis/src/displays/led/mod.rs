@@ -29,15 +29,15 @@ pub const DEFAULT_LED_CHARACTERS: u32 = 12;
 pub const DEFAULT_LED_FONT_NAME: &str = "UNSCII_8_SCALED";
 
 /// The LED cell a chosen font implies, from the advance and scaled metrics
-/// of `"M"` at the font's own catalogue pixel size. `(cell_width,
-/// cell_height)`.
+/// of `"M"` at the font's own catalogue pixel size. `(lamp_cell_width,
+/// lamp_cell_height)`.
 pub fn cell_metrics(font_data: &[u8], pixel_size: u32) -> (u32, u32) {
     let advance = term::fonts::metrics::char_advance_px(font_data, 'M', pixel_size).unwrap_or(0.0);
     let scaled = term::fonts::metrics::scaled_metrics(font_data, pixel_size);
     let height = scaled.map(|m| m.height()).unwrap_or(0.0);
-    let cell_width = (advance.round() as i64).max(1) as u32;
-    let cell_height = (height.ceil() as i64).max(1) as u32;
-    (cell_width, cell_height)
+    let lamp_cell_width = (advance.round() as i64).max(1) as u32;
+    let lamp_cell_height = (height.ceil() as i64).max(1) as u32;
+    (lamp_cell_width, lamp_cell_height)
 }
 
 /// The three panel colours a window is struck from.
@@ -95,15 +95,15 @@ pub const SPILL_DEAD: (f32, f32) = (0.0, 0.0);
 
 /// The lamp grid a title's cell count and padding imply.
 pub fn grid_size(
-    cell_width: u32,
-    cell_height: u32,
+    lamp_cell_width: u32,
+    lamp_cell_height: u32,
     characters: u32,
     pad_cells_left: u32,
     pad_cells_right: u32,
     pad_cells_y: u32,
 ) -> (u32, u32) {
-    let grid_w = cell_width * (characters + pad_cells_left + pad_cells_right);
-    let grid_h = cell_height + pad_cells_y;
+    let grid_w = lamp_cell_width * (characters + pad_cells_left + pad_cells_right);
+    let grid_h = lamp_cell_height + pad_cells_y;
     (grid_w, grid_h)
 }
 
