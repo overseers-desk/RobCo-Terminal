@@ -264,7 +264,11 @@ mod tests {
         assert_eq!(c.bank_width(), 3 + 46 + 16 + 168 + 14);
         assert_eq!(c.bank_width(), 247);
         assert_eq!(c.layout().crt.width, 1024.0 - 247.0);
-        assert_eq!(c.min_inner_size(), (247 + 320, 240));
+        // The hint holds the bank at its least strip (eight characters of
+        // the measured cell) beside the bare tube's floor, since the fit is
+        // what gives the window back the difference.
+        assert_eq!(c.min_bank_width(), 199);
+        assert_eq!(c.min_inner_size(), (199 + 320, 240));
 
         // A hidden chassis is no bank at all, and the well takes the window.
         let mut bare = cfg.clone();

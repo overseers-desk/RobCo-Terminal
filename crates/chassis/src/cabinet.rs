@@ -172,7 +172,16 @@ impl Cabinet {
     /// display).
     pub fn new(cfg: &Config, display: Display, width: f64, height: f64) -> Self {
         let shell = crate::shell_metrics(cfg);
-        let geometry = Self::measure(cfg, &shell, &display);
+        // A starting value: the bare tube's own floor, which stands until the
+        // host has resolved a font and can say what a terminal grid costs it
+        // (`set_well_minimum`). The bank is fitted against it from the first
+        // measurement, so a window opened too narrow draws a narrowed bank on
+        // its first frame rather than on its second.
+        let well_minimum = (
+            crate::layout::CRT_MINIMUM_WIDTH,
+            crate::layout::MINIMUM_HEIGHT,
+        );
+        let geometry = Self::measure(cfg, &shell, &display, width, f64::from(well_minimum.0));
         let layout = WindowLayout::new(width, height, Self::footprint(cfg, &geometry));
         Cabinet {
             cfg: cfg.clone(),
@@ -182,13 +191,7 @@ impl Cabinet {
             chassis_style: crate::chassis_style(cfg),
             geometry,
             layout,
-            // A starting value: the bare tube's own floor, which stands until
-            // the host has resolved a font and can say what a terminal grid
-            // costs it (`set_well_minimum`).
-            well_minimum: (
-                crate::layout::CRT_MINIMUM_WIDTH,
-                crate::layout::MINIMUM_HEIGHT,
-            ),
+            well_minimum,
             seam: SeamDrag::new(),
         }
     }
@@ -203,13 +206,38 @@ impl Cabinet {
         Cabinet::new(cfg, crate::display_kit(cfg), width, height)
     }
 
-    fn measure(cfg: &Config, shell: &ShellMetrics, display: &Display) -> BankGeometry {
-        BankGeometry::new(
-            shell,
-            display,
-            cfg.general.led_characters,
-            crate::channel_indicator(cfg),
-        )
+    /// The bank's measures for this profile in a window this wide.
+    ///
+    /// Measured twice when the window cannot hold the configured strip: once
+    /// at the count the settings ask for, because that is the count
+    /// [`crate::seam::fitted_characters`] takes its delta from, and once more
+    /// at the count the fit landed. Both are arithmetic over integers, with no
+    /// font work and no allocation between them.
+    ///
+    /// The configured count is not touched. It stays in `cfg` as the user's
+    /// wish, and the window gets what it has room for.
+    fn measure(
+        cfg: &Config,
+        shell: &ShellMetrics,
+        display: &Display,
+        window_width: f64,
+        well_minimum_width: f64,
+    ) -> BankGeometry {
+        let indicator = crate::channel_indicator(cfg);
+        let configured = cfg.general.led_characters;
+        let at_configured = BankGeometry::new(shell, display, configured, indicator);
+        let fitted = crate::seam::fitted_characters(
+            &at_configured,
+            configured,
+            display.unit_width(),
+            window_width,
+            well_minimum_width,
+        );
+        if fitted == configured {
+            at_configured
+        } else {
+            BankGeometry::new(shell, display, fitted, indicator)
+        }
     }
 
     /// The bank's footprint, zero when no bank stands. A hidden chassis is
@@ -245,17 +273,32 @@ impl Cabinet {
         self.apply_settings(cfg, crate::display_kit(cfg))
     }
 
-    /// The window changed size, in logical pixels. The bank does not move,
-    /// but the well does, and the well is what every curvature-bearing
-    /// uniform is scaled by.
+    /// The window changed size, in logical pixels. The well takes most of
+    /// the difference, and the bank takes the rest: a window too narrow to
+    /// hold the configured strip beside a terminal grid draws a narrower
+    /// strip, down to the display's own least.
     pub fn resized(&mut self, width: f64, height: f64) {
         self.layout = WindowLayout::new(width, height, self.layout.bank.width);
+        self.remeasure();
     }
 
+    /// Re-derive the bank from the profile, the kit and the window as they
+    /// all now stand.
+    ///
+    /// The window's width is recovered from the layout rather than passed in.
+    /// `crt.right()` is the window's own right edge whatever the bank is
+    /// doing, since the two rectangles are cut from it and meet at the seam.
     fn remeasure(&mut self) {
-        self.geometry = Self::measure(&self.cfg, &self.shell, &self.display);
+        let window_width = self.layout.crt.right();
+        self.geometry = Self::measure(
+            &self.cfg,
+            &self.shell,
+            &self.display,
+            window_width,
+            f64::from(self.well_minimum.0),
+        );
         self.layout = WindowLayout::new(
-            self.layout.crt.right(),
+            window_width,
             self.layout.bank.height,
             Self::footprint(&self.cfg, &self.geometry),
         );
@@ -280,7 +323,14 @@ impl Cabinet {
     /// number seen from two sides, which is why it is held here rather than
     /// asked for at each of the two.
     pub fn set_well_minimum(&mut self, width: i32, height: i32) {
+        if self.well_minimum == (width, height) {
+            return;
+        }
         self.well_minimum = (width, height);
+        // The floor is one of the fit's three inputs, and it moves with the
+        // font rather than with the window, so a font that grew mid-session
+        // narrows the bank with no resize behind it.
+        self.remeasure();
     }
 
     /// The floor as it now stands.
@@ -288,10 +338,45 @@ impl Cabinet {
         self.well_minimum
     }
 
-    /// The window's least inner size for the bank as it now stands, in
-    /// logical pixels.
+    /// The count the settings ask for, whatever the window has room to draw.
+    ///
+    /// The bank on screen is [`BankGeometry::characters`]; the two are the
+    /// same number in any window with room for the strip.
+    pub fn configured_characters(&self) -> i32 {
+        self.cfg.general.led_characters
+    }
+
+    /// The narrowest this bank is ever drawn: its footprint at the display's
+    /// own least strip, or at the configured count when that is narrower
+    /// still, since the fit does not widen.
+    ///
+    /// This is the bank term of the window's minimum-size hint. The hint is a
+    /// constraint on the window's width, so it cannot be a function of the
+    /// window's width: a hint that rose as the bank widened would chase a
+    /// window the user had narrowed, `Shell` growing the window to meet a
+    /// hint it had just raised.
+    pub fn min_bank_width(&self) -> u32 {
+        if !self.cfg.general.chassis_shown {
+            return 0;
+        }
+        let least = self
+            .configured_characters()
+            .min(self.geometry.min_units)
+            .max(0);
+        BankGeometry::new(
+            &self.shell,
+            &self.display,
+            least,
+            crate::channel_indicator(&self.cfg),
+        )
+        .implicit_width
+        .max(0) as u32
+    }
+
+    /// The window's least inner size: the bank at its narrowest beside a well
+    /// at its floor, in logical pixels.
     pub fn min_inner_size(&self) -> (i32, i32) {
-        crate::layout::min_inner_size(self.bank_width() as i32, self.well_minimum)
+        crate::layout::min_inner_size(self.min_bank_width() as i32, self.well_minimum)
     }
 
     pub fn geometry(&self) -> &BankGeometry {
@@ -401,7 +486,10 @@ impl Cabinet {
     pub fn cursor_moved(&mut self, x: f64) -> Option<SeamUpdate> {
         let ctx = SeamContext {
             geometry: &self.geometry,
-            led_characters: self.cfg.general.led_characters,
+            // The count on screen, not the count the settings ask for: a drag
+            // that began on a fitted bank measures from the strip the hand
+            // can see, or its first motion jumps by the difference.
+            led_characters: self.geometry.characters,
             unit_width: self.display.unit_width(),
             window_width: self.layout.crt.right(),
             well_minimum_width: f64::from(self.well_minimum.0),
@@ -440,7 +528,11 @@ mod tests {
         let c = stock();
         assert_eq!(c.bank_width(), 184);
         assert_eq!(c.layout().crt.width, 840.0);
-        assert_eq!(c.min_inner_size(), (504, 240));
+        // The hint reserves the bank at its least, not at the twelve
+        // characters it is standing at: 154 px of strip beside the bare
+        // tube's 320.
+        assert_eq!(c.min_bank_width(), 154);
+        assert_eq!(c.min_inner_size(), (474, 240));
         assert_eq!(c.frame_params().len(), 36);
         assert_eq!(c.chassis_params().len(), 14);
     }
@@ -461,21 +553,82 @@ mod tests {
     }
 
     #[test]
-    fn the_hosts_floor_moves_the_hint_and_the_seam_together() {
-        // One number, two sides. A host whose font needs 1018 px of well for
-        // its eighty columns raises the window's floor by the difference, and
-        // in the same act stops the seam drag where the well would fall under
-        // it: on a 1024 px window there is no room left over for a bank
-        // wider than 6 px, so a drag out to the far edge lands on the
-        // display's own least strip count rather than following the hand.
+    fn the_hosts_floor_narrows_the_bank_and_moves_the_hint() {
+        // One number, three places. A host whose font needs 1018 px of well
+        // for its eighty columns leaves a 1024 px window nothing to spare, so
+        // the bank falls to the display's least strip on the spot, with no
+        // resize and no hand behind it; the hint stands at that least strip
+        // beside the new floor; and the setting is untouched.
         let mut c = stock();
+        assert_eq!(c.geometry().characters, 12);
         c.set_well_minimum(1018, 730);
-        assert_eq!(c.min_inner_size(), (184 + 1018, 730));
-        assert!(c.pointer_pressed(184.0));
-        assert_eq!(
-            c.cursor_moved(900.0).map(|u| u.led_characters),
-            Some(c.geometry().min_units)
+        assert_eq!(c.geometry().characters, c.geometry().min_units);
+        assert_eq!(c.configured_characters(), 12);
+        assert_eq!(c.min_inner_size(), (154 + 1018, 730));
+    }
+
+    #[test]
+    fn a_window_too_narrow_fits_the_bank_and_leaves_the_setting_alone() {
+        let mut c = stock();
+        c.set_well_minimum(320, 240);
+        assert_eq!(c.geometry().characters, 12);
+        assert_eq!(c.bank_width(), 184);
+
+        c.resized(460.0, 768.0);
+        let fitted = c.geometry().characters;
+        assert!(
+            fitted < 12 && fitted >= c.geometry().min_units,
+            "the bank did not fit: {fitted}"
         );
+        assert!(c.bank_width() < 184);
+        assert_eq!(c.configured_characters(), 12);
+    }
+
+    #[test]
+    fn widening_gives_the_bank_back_its_configured_width() {
+        let mut c = stock();
+        c.resized(460.0, 768.0);
+        assert!(c.geometry().characters < 12);
+        c.resized(1920.0, 768.0);
+        assert_eq!(c.geometry().characters, 12);
+        assert_eq!(c.bank_width(), 184);
+    }
+
+    #[test]
+    fn the_hint_holds_still_while_the_bank_fits() {
+        // The hint is a constraint on the window's width, so it does not move
+        // with the window's width. Were it to, the shell would grow a window
+        // to meet a hint its own narrowing had just raised.
+        let mut c = stock();
+        let hint = c.min_inner_size();
+        c.resized(460.0, 768.0);
+        assert_eq!(c.min_inner_size(), hint);
+        c.resized(1920.0, 768.0);
+        assert_eq!(c.min_inner_size(), hint);
+    }
+
+    #[test]
+    fn a_drag_starts_from_the_bank_the_hand_can_see() {
+        // The window is chosen to fit the bank strictly between the display's
+        // least strip and the twelve the settings ask for, since a bank
+        // already at its least cannot move and a bank at its configured width
+        // has nothing to prove. Dragging one character inwards from the drawn
+        // seam lands one below the drawn count; measured from the configured
+        // count instead, the same pointer would land a character higher, and
+        // the seam would jump out from under the hand on its first motion,
+        // which is the fault this test stands against.
+        let mut c = stock();
+        c.resized(495.0, 768.0);
+        let drawn = c.geometry().characters;
+        assert!(
+            drawn > c.geometry().min_units && drawn < 12,
+            "the window did not fit the bank between the two bounds: {drawn}"
+        );
+
+        let edge = c.bank_width() as f64;
+        assert!(c.pointer_pressed(edge));
+        let landed = c.cursor_moved(edge - 8.0).map(|u| u.led_characters);
+        assert_eq!(landed, Some(drawn - 1));
     }
 
     #[test]
