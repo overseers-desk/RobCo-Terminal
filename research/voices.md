@@ -23,6 +23,12 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 > Context: Hyper (Electron terminal) launch thread.
 > Maps to: P1, P11
 
+> "I believe the most important thing when it comes to performance of a terminal, is the startup performance. And here, Alacritty just sucks, I literally see a white screen for 0.5 to 0.8 seconds each time I start a new instance."
+> — u/Glum_Juggernaut_1759, r/rust, June 2022 (score 3)
+> https://old.reddit.com/r/rust/comments/hach2x/wezterm_a_gpuaccelerated_crossplatform_terminal/
+> Context: on switching from Alacritty to WezTerm.
+> Maps to: P1
+
 > "I can only offer anecdote and no concrete measurements. But I've used bad terminal emulators and good ones, and I can really notice the difference. When the letters appear even a few frames after they should, there's a definite (if mild) feeling of discomfort. Like some kind of sensory-motor 'friction'. I can still get work done, but I'm just a little less happy."
 > — _dain_, Hacker News, May 2023
 > https://news.ycombinator.com/item?id=35812619
@@ -86,6 +92,12 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 ---
 
 ## 2. GPU rendering that costs or breaks → P2
+> "The terminal flashes every few seconds if a program with a continually updating multi-line output is running (e.g. `saldl`). I consider this one of the ultimate performance tests of terminal emulators ;)"
+> — u/acc_test, r/rust, January 2017 (score 10)
+> https://old.reddit.com/r/rust/comments/5mf2yh/announcing_alacritty_a_gpuaccelerated_terminal/
+> Context: the Alacritty announcement; render glitches on first try.
+> Maps to: P2
+
 > "cool-retro-term was maxing out the integrated Intel GPU which caused the entire system to stutter and lag... both the MBP and my current XPS 15 are unable to drive cool-retro-term on a 4k display with the CPU integrated graphics, and they both overheat and throttle if I use the nvidia graphics card"
 > — the_pwner224, Hacker News, November 2019
 > https://news.ycombinator.com/item?id=21415465
@@ -121,6 +133,12 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 > https://news.ycombinator.com/item?id=41227738
 > Context: "Okay, I Like WezTerm" thread.
 > Maps to: P2
+
+> "I started to go over the settings of Kitty and found linux_display_server auto... Now just playing with it I changed it to wayland, BIG surprise no changes still lagged. However I changed it to x11 and restarted Kitty.... it's smooth as butter, it's just as smooth as the other terminals. Now the big question is why is it lagging with the wayland display server?"
+> — u/NaraDesho, r/kde, October 2024 (score 1)
+> https://old.reddit.com/r/kde/comments/1gfz4i6/kittyfish_resize_lag_vs_alacrittykonsole_why_is/
+> Context: resize lag under Wayland, gone under X11.
+> Maps to: P2, P9
 
 > "I have a traumatic experience with GPU-based GUI. ... the system fell back to something called 'llvmpipe'. The result was that the widgets reacted approximately with 30 second lag to every action. So what I am asking, if you are making a GPU-based rendering toolkit, please write also SIMD software fallback without shaders."
 > — codedokode, Hacker News, December 2024
@@ -505,6 +523,12 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 > https://news.ycombinator.com/item?id=29559078
 > Maps to: P8
 
+> "However, the default configuration is annoying."
+> — u/RealNC, r/kde, May 2022 (score 9)
+> https://old.reddit.com/r/kde/comments/utk096/what_is_the_advantage_to_a_drop_down_terminal_vs/
+> Context: praising Yakuake's drop-down toggle and posting a full custom config to make it bearable.
+> Maps to: P8
+
 > "I don't think I've ever encountered a problem where terminal emulation would be too slow. What I do have encountered are terminal emulators that go bonkers and require some arcane configuration magic to figure out what to emulate. GNOME terminal works and looks pleasant to boot."
 > — jampekka, Hacker News, September 2023
 > https://news.ycombinator.com/item?id=37625284
@@ -522,9 +546,10 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 > https://old.reddit.com/r/commandline/comments/1htimkk/kitty_vs_ghostty_terminal_emulators/
 > Maps to: P8
 
-> [paraphrase] It would take an hour fiddling with config files and command-line settings to whip a new terminal into shape; the lack of a graphical configuration option will hinder adoption.
+> "It would take an hour or so fiddling with configuration files and command line settings to whip it into what I'd consider shape, as inured as I am to `xfce4-terminal` with a side order of `xterm`. … I suspect that the lack of a graphical configuration option will be a hindrance to adoption for a lot of folks and, for the nonce, I'm not sure it brings enough to the party for me to spend the time fussing with settings, especially considering the lack of a title bar, the presence of which I personally find useful."
 > — Philo T Farnsworth, The Register forums, January 2025
 > https://forums.theregister.com/forum/all/2025/01/08/ghostty_1/
+> Context: Ghostty 1.0 as The Register's readers met it.
 > Maps to: P8
 
 > "It has a pronounced console flash when starting in Windows that is infuriating - mintty avoids this completely... It has a text config which could be a positive but to have a change take place you have to restart"
@@ -593,6 +618,12 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 10. Table-stakes missing → P10
+> "If this gets a few extra little perks like tabs, scrollback and in-app configuration, I could see myself switching to this for sure."
+> — u/dada_, r/rust, January 2017 (score 12)
+> https://old.reddit.com/r/rust/comments/5mf2yh/announcing_alacritty_a_gpuaccelerated_terminal/
+> Context: the Alacritty announcement; what is missing before it is a daily driver.
+> Maps to: P10
+
 > "Unfortunately there is no support for ligatures. A good programming font like fira or source code pro makes for such a quality of life improvement. At least easier on the eyes."
 > — WD-42, Hacker News, September 2023
 > https://news.ycombinator.com/item?id=37625635

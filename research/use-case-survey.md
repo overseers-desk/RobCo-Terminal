@@ -2,7 +2,7 @@
 
 Snapshot taken August 2026. Re-snapshot trigger: a mainstream terminal shipping tmux control mode on Linux, a new retro/CRT terminal reaching the top tier, or six months elapsed.
 
-Sources: Hacker News (launch and comparison threads of cool-retro-term, Ghostty, WezTerm, Alacritty, kitty, Rio, foot, Contour, Warp, Tabby, Hyper, Zutty; the typing-latency threads), the issue trackers of cool-retro-term, Ghostty, WezTerm, kitty, Alacritty, Rio, Contour, Zellij and tmux, Reddit (r/commandline, r/linux, r/unixporn, r/archlinux, r/KittyTerminal, r/wezterm, r/Fedora, r/tmux, r/selfhosted, r/zellij, r/ClaudeCode, r/ClaudeAI), Lobsters, The Register forums, and developer blogs.
+Sources: Hacker News (launch and comparison threads of cool-retro-term, Ghostty, WezTerm, Alacritty, kitty, Rio, foot, Contour, Warp, Tabby, Hyper, Zutty; the typing-latency threads), the issue trackers of cool-retro-term, Ghostty, WezTerm, kitty, Alacritty, Rio, Contour, Zellij and tmux, Reddit (r/commandline, r/linux, r/unixporn, r/archlinux, r/KittyTerminal, r/wezterm, r/Fedora, r/tmux, r/selfhosted, r/zellij, r/ClaudeCode, r/ClaudeAI, r/rust, r/kde), Lobsters, The Register forums, and developer blogs.
 
 This file is the index for the folder. It defines the pain taxonomy: the distinct pains people voice about living with a desktop terminal emulator, numbered once here. `voices.md` maps each quote to a pain number, `competitive-landscape.md` records what the field supplies for each, and `status.md` records which RobCo Terminal covers. The numbers are stable identifiers, not a ranking.
 
