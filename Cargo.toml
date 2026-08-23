@@ -38,3 +38,11 @@ debug = "line-tables-only"
 
 [profile.test]
 debug = "line-tables-only"
+
+# The crash logger writes module+offset frames; turning those into file:line
+# takes line tables in the shipped binary, so the release profile carries them.
+# Line tables alone, not full debug info: they cost a few megabytes of a
+# section the loader never pages in, and they are the whole of what
+# `addr2line` needs against a crash log.
+[profile.release]
+debug = "line-tables-only"
