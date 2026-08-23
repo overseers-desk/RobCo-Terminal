@@ -339,13 +339,63 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 > https://news.ycombinator.com/item?id=42248813
 > Maps to: P5, P12
 
+> "too many terminal tabs, constantly forgetting which session was thinking vs waiting for input"
+> — u/asheshgoplani, r/ClaudeCode, December 2025 (score 318)
+> https://old.reddit.com/r/ClaudeCode/comments/1pxyn37/i_got_tired_of_managing_15_terminal_tabs_for_my/
+> Context: the post behind Agent Deck, a tmux dashboard for agent sessions; the many-sessions pain in its 2025 form, one shell per AI agent.
+> Maps to: P5
+
+> "I've bounced off of tmux so many times because I forget to check in on other sessions, and have never loved the interaction model."
+> — u/attabui, r/ClaudeCode, December 2025 (score 13)
+> https://old.reddit.com/r/ClaudeCode/comments/1pxyn37/i_got_tired_of_managing_15_terminal_tabs_for_my/
+> Maps to: P5, P7
+
+> "with only 3–4 Claude tabs in my terminal I already feel overwhelmed"
+> — u/Ana8567, r/ClaudeCode, December 2025 (score 2)
+> https://old.reddit.com/r/ClaudeCode/comments/1pxyn37/i_got_tired_of_managing_15_terminal_tabs_for_my/
+> Maps to: P5
+
+> "having a keyboard shortcut to switch between sessions without going via the menu would be awseome"
+> — u/bzBetty, r/ClaudeCode, December 2025 (score 1)
+> https://old.reddit.com/r/ClaudeCode/comments/1pxyn37/i_got_tired_of_managing_15_terminal_tabs_for_my/
+> Maps to: P5
+
+> "I kept getting lost whenever I worked with multiple coding agents. I'd start a few sessions in tmux, open another to test something, spin up one more for a different repo… and after a while I had no idea: which session was still running, which one was waiting for input, where that 'good' conversation actually lived"
+> — u/Frayo44, r/ClaudeAI, February 2026 (score 105)
+> https://old.reddit.com/r/ClaudeAI/comments/1rb4jvs/i_got_tired_of_managing_10_terminal_tabs_for_my/
+> Context: the post behind agent-view, another tmux overlay.
+> Maps to: P5
+
+> "I use Profiles in iTerm2. Double click on one and I'm cd'd in the correct folder. I rename the tabs and apply colors to them. I create multiple windows when too many tabs are spawned."
+> — u/Conscious-Drawer-364, r/ClaudeAI, February 2026 (score 2)
+> https://old.reddit.com/r/ClaudeAI/comments/1rb4jvs/i_got_tired_of_managing_10_terminal_tabs_for_my/
+> Context: the coping mechanism: rename and colour by hand.
+> Maps to: P5
+
+> "What do you people do that requires 10+ agent sessions? I usually have 1 session per project, so 3 parallel sessions at most."
+> — u/NekoLu, r/ClaudeAI, February 2026 (score 21)
+> https://old.reddit.com/r/ClaudeAI/comments/1rb4jvs/i_got_tired_of_managing_10_terminal_tabs_for_my/
+> Context: the counter-segment inside the thread.
+> Maps to: P5, P13
+
+> "I was running multiple agents across multiple tmux sessions and have no idea which one needed my attention"
+> — u/Palanikannan_M, r/tmux, March 2026 (score 317)
+> https://old.reddit.com/r/tmux/comments/1s6oze9/built_an_agent_orchestrator_within_tmux/
+> Context: the post behind a tmux sidebar for agent sessions.
+> Maps to: P5
+
+> "Do you guys actually work this way? I feel like my brain would be so fried at the end of the day trying to maintain this level of orchestration and management."
+> — u/Orlandocollins, r/tmux, March 2026 (score 10)
+> https://old.reddit.com/r/tmux/comments/1s6oze9/built_an_agent_orchestrator_within_tmux/
+> Maps to: P5, P13
+
 > "With many tabs open, tab labels become unreadable, and there is no configuration that recovers them — the bar always shrinks tabs to fit the window, without limit... Every increase in legibility costs characters, because the width per tab..."
 > — @mmcc007, wezterm/wezterm issue #8052, August 2026
 > https://github.com/wezterm/wezterm/issues/8052
 > Context: open; 24 tabs at 1360 px leave two or three legible characters per label.
 > Maps to: P5
 
-No verbatim complaint found for "which tab is which" or "numbered tab access" in the venues swept; the closest is the WezTerm issue above and the Alacritty no-tabs stance. The Reddit multi-session sweep is recorded in the README as a gap.
+No verbatim complaint found for tab-bar or status-bar visual clutter as such; the closest is the iTerm2 rename-and-colour workaround above and the WezTerm label issue.
 
 ---
 
@@ -362,6 +412,24 @@ No verbatim complaint found for "which tab is which" or "numbered tab access" in
 > https://github.com/kovidgoyal/kitty/issues/2422
 > Context: the reporter called tmux "insanely slow on macOS"; closed via workarounds, not control mode.
 > Maps to: P6, P7
+
+> "This tmux integration might seem like a small thing but once you have it it's hard to give up. basic crap like scrolling and copying and pasting from a tmux pane is straight up nastiness. Iterm2 fixes all those pain points amazingly"
+> — u/locusofself, r/devops, January 2020 (score 1)
+> https://old.reddit.com/r/devops/comments/eh13br/do_any_windows_terminals_support_tmux_cc_like/
+> Context: looking for a Windows terminal with iTerm2's `-CC` support.
+> Maps to: P6
+
+> "I prefer to use actual tmux since that's portable. Otherwise you're basically just using an alternate pane split solution which is limited to a single terminal application."
+> — u/cicatrix1, r/tmux, July 2020 (score 3)
+> https://old.reddit.com/r/tmux/comments/hwllvp/iterm2_integration/
+> Context: the counter-segment on control mode: portability over integration.
+> Maps to: P6, P13
+
+> "For many years, I've been using iTerm2's tmux integration as a way to transparently maintain multiple per-project sets of terminal windows/tabs, both locally and remotely... Sadly, I haven't seen any other terminal emulator that uses it, which is a total shame... I had wanted to try out warp, but the lack of tmux -CC integration threw off my workflow so much, I couldn't even give it a fair try."
+> — u/FullyHalfBaked, r/commandline, February 2024 (score 5)
+> https://old.reddit.com/r/commandline/comments/1ar7c9z/anybody_know_of_any_linux_or_windows_terminal/
+> Context: "Anybody know of any Linux or Windows terminal..." with control mode; a reply: "I still look for this from time to time. Terminator has git issues open about it, but I never find anything else."
+> Maps to: P6
 
 > "tmux has a feature called Control Mode, which allows a client i.e a terminal emulator such as Ghostty to manage tmux panes. This has the benefit of enabling native integration with the terminal emulator..."
 > — @yankcrime, ghostty-org/ghostty issue #1935, July 2024 (731 reactions)
@@ -408,11 +476,33 @@ No verbatim complaint found for "which tab is which" or "numbered tab access" in
 > Context: "Okay, I Like WezTerm" thread; persistence named as tmux's real draw.
 > Maps to: P7, P12, P11
 
+> "I got disconnected from my VPS when I was doing a 'do-release-upgrade'"
+> — u/auron_py, r/selfhosted, March 2024 (score 872)
+> https://old.reddit.com/r/selfhosted/comments/1bbw6ta/psa_use_tmux/
+> Context: the post behind "PSA: Use TMUX".
+> Maps to: P7
+
+> "I like the idea of using tmux because of all its benefits. But what bugs me the most about it is the scrolling, I find it so hard to get it working."
+> — u/llamedo, r/selfhosted, March 2024 (score 6)
+> https://old.reddit.com/r/selfhosted/comments/1bbw6ta/psa_use_tmux/
+> Maps to: P7, P10
+
+> "Resurrect was really exciting for me when I started using it, but in practice every session I've resurrected I'm unable to really use the shell afterwards. It will always crash, and I'm unable to add tabs or panes."
+> — u/wyldstallionesquire, r/zellij, September 2024 (score 3)
+> https://old.reddit.com/r/zellij/comments/1fo675i/im_starting_to_wonder_of_i_should_switch_to_tmux/
+> Maps to: P7
+
 > "I loathe iTerm2 because it has no way to customize key bindings, which conflict with how I want to use my shell. Alacritty is enough for me. I need no frills since I run everything in tmux."
 > — u/tblancher, r/commandline, October 2025 (score 3)
 > https://old.reddit.com/r/commandline/comments/1o6tkgz/recommend_me_terminal_emulators/
 > Context: the counter-segment: tmux underneath, any terminal on top.
 > Maps to: P7, P13
+
+> "I use tmux -Cc with iterm2 then I have a Claude code script that just reattach them all when I get disconnected, saves tab layout panels everything"
+> — u/Ultramen, r/tmux, April 2026 (score 2)
+> https://old.reddit.com/r/tmux/comments/1sujraw/managing_tmux_across_multiple_ssh_servers/
+> Context: survival solved by control mode plus a reattach script, on macOS.
+> Maps to: P7, P6
 
 ---
 
@@ -607,6 +697,11 @@ The kitty and Alacritty entries under §3, §4 and §6 carry the same pain; it i
 
 ## 13. Choosing at all → P13
 
+> "I just use tmux, I don't want my terminal emulator to do anything it doesn't have to for that end."
+> — u/IGTHSYCGTH, r/tmux, July 2020 (score 2)
+> https://old.reddit.com/r/tmux/comments/hwllvp/iterm2_integration/
+> Maps to: P13, P6
+
 > "As someone who still just uses whatever terminal emulator my desktop environment provides, what are the advantages of choosing another terminal emulator application? ... I've never experienced latency or any problems otherwise related to rendering, so I wonder why some terminals nowadays pride themselves in using GPU rendering."
 > — doodlesdev, Hacker News, May 2023
 > https://news.ycombinator.com/item?id=36060222
@@ -663,6 +758,11 @@ The kitty and Alacritty entries under §3, §4 and §6 carry the same pain; it i
 > — pm, Lobsters, September 2025
 > https://lobste.rs/s/7a4lle/rio_terminal_hardware_accelerated_gpu
 > Maps to: P13, P1
+
+> "Is tmux really that hard to use? or screen?"
+> — u/Inevitable_Mistake32, r/ClaudeAI, February 2026 (score 3)
+> https://old.reddit.com/r/ClaudeAI/comments/1rb4jvs/i_got_tired_of_managing_10_terminal_tabs_for_my/
+> Maps to: P13, P5
 
 ---
 

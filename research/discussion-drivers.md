@@ -2,7 +2,7 @@
 
 Snapshot taken August 2026. Companion to `use-case-survey.md`. That file surveys the pains people voice about terminal emulators. This one asks what a terminal launch draws on Hacker News, which kinds of post draw replies rather than upvotes, and what the precedent is for a retro CRT terminal in particular.
 
-The data is the Hacker News front page as the Algolia search API returns it (stories matching the tool names in `competitive-landscape.md` plus "terminal emulator", "tmux control mode", "terminal emulator latency", with 40 points or more; August 2026). Score, comment count, and comments-per-score are recorded together because comments-per-score is the discussion intensity signal: upvotes measure passing approval, comments measure engagement. Reddit is not tabulated: the multi-session sweep did not return (see the README), and Reddit post scores were not collected systematically.
+The data is the Hacker News front page as the Algolia search API returns it (stories matching the tool names in `competitive-landscape.md` plus "terminal emulator", "tmux control mode", "terminal emulator latency", with 40 points or more; August 2026). Score, comment count, and comments-per-score are recorded together because comments-per-score is the discussion intensity signal: upvotes measure passing approval, comments measure engagement. Reddit is not tabulated systematically; the few Reddit post scores the sweeps carried (the agent-session dashboard posts at 105–318, "PSA: Use TMUX" at 872) are in `voices.md` and read the same way as the HN table below.
 
 ## Posts in the corpus
 
@@ -91,4 +91,4 @@ The positioning moves these findings imply are recorded in `status.md`, since th
 
 ## Method note
 
-HN figures from the Algolia API (`/api/v1/search?tags=story`, `/api/v1/items/<id>`), August 2026, comment counts as Algolia reports them. The Reddit multi-session sweep failed on browser contention and was re-run serially; its entries, where they arrived, are in `voices.md`, and Reddit post scores are not tabulated here.
+HN figures from the Algolia API (`/api/v1/search?tags=story`, `/api/v1/items/<id>`), August 2026, comment counts as Algolia reports them. The Reddit multi-session sweep failed on browser contention and was re-run serially; its entries are in `voices.md`, and Reddit post scores are not tabulated here.
