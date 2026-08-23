@@ -26,11 +26,11 @@
 //! file, because the file is the source of truth here and a roster inside a
 //! value would be a second store with its own rules.
 
-pub mod toml;
 pub mod presets;
 pub mod profile;
 pub mod schema;
 pub mod structural;
+pub mod toml;
 pub mod watch;
 
 pub use profile::{Profile, Tuning};
@@ -84,8 +84,30 @@ impl Config {
     /// diff-against-defaults contract; nothing here writes anything.
     pub fn load(path: &std::path::Path) -> Result<Config, toml::ConfigError> {
         let mut doc = toml::read_document(path)?;
+        warn_retired_keys(&doc);
         toml::resolve_presets(&mut doc);
         toml::deserialize(doc)
+    }
+}
+
+/// Say so once when a file carries a key this schema has moved.
+///
+/// An unknown key is otherwise silent: the deserializer fills the field it
+/// knows from the default and drops the rest, so a user whose bank font
+/// stopped taking effect would have nothing to read but the bank. One line
+/// naming where the setting went is the whole of it; the key itself is not
+/// honoured, since a value in two tables is the arrangement being left
+/// behind.
+fn warn_retired_keys(doc: &::toml_edit::DocumentMut) {
+    const RETIRED: &[(&str, &str, &str)] = &[(
+        "general",
+        "led_font_name",
+        "chassis.bank_font_name, so a cabinet letters its own bank",
+    )];
+    for (table, key, moved_to) in RETIRED {
+        if doc.get(table).and_then(|t| t.get(key)).is_some() {
+            log::warn!("{table}.{key} has moved to {moved_to}");
+        }
     }
 }
 
@@ -142,6 +164,28 @@ mod tests {
     // explicitly: the glob above brings in this crate's own `toml` module,
     // which would otherwise win over the dependency of the same name.
     use ::toml;
+
+    #[test]
+    fn a_file_still_carrying_the_retired_bank_font_key_loads() {
+        // The key is not honoured, and the file is not refused for carrying
+        // it: an unknown key is a key this schema does not model, which is
+        // what a diff-against-defaults file is allowed to hold. The warning
+        // the load emits is the user's cue, and is not a value.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[general]\nled_font_name = \"TERMINESS_SCALED\"\nled_characters = 20\n",
+        )
+        .expect("seed the config");
+
+        let cfg = Config::load(&path).expect("a file with a retired key still loads");
+        assert_eq!(cfg.general.led_characters, 20);
+        assert_eq!(
+            cfg.chassis.bank_font_name,
+            ChassisSettings::default().bank_font_name
+        );
+    }
 
     #[test]
     fn general_settings_default_round_trips_through_toml() {
@@ -277,7 +321,10 @@ mod tests {
             if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
                 section = name.to_string();
             } else if let Some((key, value)) = line.split_once(" = ") {
-                truth.insert((section.clone(), key.trim().to_string()), value.trim().to_string());
+                truth.insert(
+                    (section.clone(), key.trim().to_string()),
+                    value.trim().to_string(),
+                );
             }
         }
 
@@ -315,9 +362,11 @@ mod tests {
                 Some(want),
                 "docs/config.md lists a stale default for {}.{}: doc says {:?}, \
                  the shipped default is {:?}",
-                key.0, key.1, documented.get(key), want
+                key.0,
+                key.1,
+                documented.get(key),
+                want
             );
         }
     }
-
 }

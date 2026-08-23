@@ -14,8 +14,7 @@
 //! object; they are UI-list metadata, so they are not reproduced here.
 
 use crate::schema::{
-    ChannelDisplay, ChannelIndicator, ChassisSettings, Rasterization, ScreenSettings,
-    Shell,
+    ChannelDisplay, ChannelIndicator, ChassisSettings, Rasterization, ScreenSettings, Shell,
 };
 
 /// The built-in screen presets, in `screensList` order. Index 0 is the
@@ -318,6 +317,7 @@ pub fn chassis_presets() -> Vec<ChassisSettings> {
             screen_radius: 0.44,
             frame_color: "#001735".to_string(),
             frame_shininess: 0.3,
+            bank_font_name: "COZETTE_SCALED".to_string(),
         },
         ChassisSettings {
             name: "Slide Rule".to_string(),
@@ -328,6 +328,7 @@ pub fn chassis_presets() -> Vec<ChassisSettings> {
             screen_radius: 1.0,
             frame_color: "#a77d37".to_string(),
             frame_shininess: 0.15,
+            bank_font_name: "COZETTE_SCALED".to_string(),
         },
         ChassisSettings {
             name: "Switchboard".to_string(),
@@ -338,6 +339,7 @@ pub fn chassis_presets() -> Vec<ChassisSettings> {
             screen_radius: 0.7,
             frame_color: "#461725".to_string(),
             frame_shininess: 0.2,
+            bank_font_name: "DEPARTURE_MONO_SCALED".to_string(),
         },
     ]
 }

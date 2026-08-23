@@ -82,8 +82,8 @@ pub mod furniture;
 pub mod js;
 pub mod layout;
 pub mod metrics;
-pub mod params;
 pub mod paint;
+pub mod params;
 pub mod seam;
 pub mod shaders;
 pub mod shells;
@@ -135,8 +135,8 @@ pub fn chassis_style(cfg: &Config) -> frame::ChassisStyle {
 /// font and which carries its own.
 pub fn display_kit(cfg: &Config) -> Display {
     match cfg.chassis.channel_display {
-        config::ChannelDisplay::Led => Display::Led(led_metrics(&cfg.general.led_font_name)),
-        config::ChannelDisplay::Tape => Display::Tape(tape_metrics()),
+        config::ChannelDisplay::Led => Display::Led(led_metrics(&cfg.chassis.bank_font_name)),
+        config::ChannelDisplay::Tape => Display::Tape(tape_metrics(&cfg.chassis.bank_font_name)),
     }
 }
 
@@ -146,9 +146,9 @@ pub fn display_kit(cfg: &Config) -> Display {
 /// over the proven 26.6 path). The four remaining measures are the
 /// settings' own defaults.
 ///
-/// A `general.led_font_name` naming no bundled face falls back to the
-/// shipped default rather than refusing to measure: a hand-edited config is
-/// not a reason to have no bank.
+/// A cabinet's `bank_font_name` naming no bundled face falls back to the lamp
+/// strip's own shipped face rather than refusing to measure: a hand-edited
+/// config is not a reason to have no bank.
 pub fn led_metrics(font_name: &str) -> LedMetrics {
     let entry = term::fonts::font_by_name(font_name)
         .or_else(|| term::fonts::font_by_name(displays::led::DEFAULT_LED_FONT_NAME))
@@ -164,11 +164,16 @@ pub fn led_metrics(font_name: &str) -> LedMetrics {
     }
 }
 
-/// The punch wheel's one letter size, so this reads no profile: the advance
-/// of `"M"` in Departure Mono at 20 px, the 12 px of blank tape at either
-/// end, and the same character floor the LED strip takes.
-pub fn tape_metrics() -> TapeMetrics {
-    let entry = term::fonts::font_by_name(displays::tape::FONT_NAME)
+/// The punch wheel's letter size for the face this cabinet stamps its tape
+/// in: the advance of `"M"` at 20 px, the 12 px of blank tape at either end,
+/// and the same character floor the lamp strip takes.
+///
+/// The letter size is the wheel's and not the face's, so a cabinet that names
+/// another face stamps it at the same 20 px. A name matching no bundled face
+/// falls back to the tape's own, the way the lamp strip falls back to its.
+pub fn tape_metrics(font_name: &str) -> TapeMetrics {
+    let entry = term::fonts::font_by_name(font_name)
+        .or_else(|| term::fonts::font_by_name(displays::tape::FONT_NAME))
         .expect("the bundled catalogue always carries the tape's own face");
     TapeMetrics {
         unit_width: displays::tape::metrics::unit_width(entry.data()),
@@ -219,24 +224,31 @@ mod tests {
     #[test]
     fn the_stock_profile_measures_its_lamp_font_rather_than_a_fixture() {
         // `LedMetrics::default()`'s 5x8 cell is a fixture and says so; the
-        // shipped profile's lamp font is UNSCII 8, whose "M" advances 8 px at
-        // its own catalogue pixel size and whose scaled height ceils to 8.
-        // The difference is the whole point of measuring: a bank built on the
-        // fixture is 184 px wide and the appliance the user gets is 247.
+        // shipped cabinet letters its bank in Cozette, whose "M" advances
+        // 6 px at its own catalogue pixel size and whose scaled height ceils
+        // to 13. The difference is the whole point of measuring: a bank built
+        // on the fixture is 184 px wide and the appliance the user gets is
+        // 205.
         let cfg = Config::default();
-        assert_eq!(cfg.general.led_font_name, "UNSCII_8_SCALED");
-        let led = led_metrics(&cfg.general.led_font_name);
-        assert_eq!((led.cell_width, led.cell_height), (8, 8));
-        assert_eq!(led.unit_width(), 12.0); // 8 * 1.5
-        assert_eq!(led.width_for_units(12), 168); // round(8 * 14 * 1.5)
+        assert_eq!(cfg.chassis.bank_font_name, "COZETTE_SCALED");
+        let led = led_metrics(&cfg.chassis.bank_font_name);
+        assert_eq!((led.cell_width, led.cell_height), (6, 13));
+        assert_eq!(led.unit_width(), 9.0); // 6 * 1.5
+        assert_eq!(led.width_for_units(12), 126); // round(6 * 14 * 1.5)
         assert_ne!(led, LedMetrics::default());
 
-        // A name no bundled face answers to falls back rather than refusing.
-        assert_eq!(led_metrics("NO_SUCH_FACE"), led);
+        // A name no bundled face answers to falls back on the strip's own
+        // shipped face rather than refusing, which is a different face from
+        // the one this cabinet names.
+        assert_eq!(
+            led_metrics("NO_SUCH_FACE"),
+            led_metrics(displays::led::DEFAULT_LED_FONT_NAME)
+        );
+        assert_ne!(led_metrics("NO_SUCH_FACE"), led);
 
         // Departure Mono at 20 px, the tape's one letter size, measured the
         // same way.
-        let tape = tape_metrics();
+        let tape = tape_metrics("DEPARTURE_MONO_SCALED");
         assert_eq!(tape.end_pad, 12);
         assert_eq!(tape.min_characters, 8);
         assert!(
@@ -245,30 +257,63 @@ mod tests {
             tape.unit_width
         );
 
-        // And the profile picks between them.
+        // And the cabinet picks between them, each kit lettering the bank in
+        // the face that cabinet names: the shipped cabinet's lamps in
+        // Cozette, the switchboard's tape stamped in Departure Mono.
         assert_eq!(display_kit(&cfg), Display::Led(led));
+        let switchboard = config::presets::chassis_presets()
+            .into_iter()
+            .find(|c| c.name == "Switchboard")
+            .expect("the switchboard is a shipped cabinet");
+        assert_eq!(switchboard.bank_font_name, "DEPARTURE_MONO_SCALED");
         let mut tape_cfg = cfg.clone();
-        tape_cfg.chassis.channel_display = config::ChannelDisplay::Tape;
+        tape_cfg.chassis = switchboard;
         assert_eq!(display_kit(&tape_cfg), Display::Tape(tape));
     }
 
     #[test]
-    fn a_cabinet_built_from_the_shipped_profile_alone_stands_247_px_wide() {
+    fn two_cabinets_letter_their_banks_in_their_own_faces() {
+        // The point of the setting being the cabinet's: taking a look takes
+        // the face its bank is lettered in, and a bank cut for a wider cell
+        // is a wider bank.
+        let mut cfg = Config::default();
+        let widths: Vec<u32> = ["COZETTE_SCALED", "UNSCII_8_SCALED"]
+            .into_iter()
+            .map(|face| {
+                cfg.chassis.bank_font_name = face.to_string();
+                Cabinet::from_config(&cfg, 1024.0, 768.0).bank_width()
+            })
+            .collect();
+        assert_eq!(widths, vec![205, 247]);
+    }
+
+    #[test]
+    fn a_tape_cabinet_stamps_the_face_it_names_and_falls_back_to_its_own() {
+        // The tape's letter size is the punch wheel's, so another face is
+        // stamped at the same 20 px and measures differently; a face the
+        // catalogue does not carry leaves the wheel its own.
+        let departure = tape_metrics("DEPARTURE_MONO_SCALED");
+        assert_ne!(tape_metrics("COZETTE_SCALED"), departure);
+        assert_eq!(tape_metrics("NO_SUCH_FACE"), departure);
+    }
+
+    #[test]
+    fn a_cabinet_built_from_the_shipped_profile_alone_stands_205_px_wide() {
         // The whole constructor path, profile to cabinet, with no kit handed
         // in: the sum over the annunciator's own measures -- 3 (bank_padding)
-        // + 46 (numeral_width) + 16 (column_gap) + 168 (twelve characters of
+        // + 46 (numeral_width) + 16 (column_gap) + 126 (twelve characters of
         // the measured cell) + 14 (right_padding). The glow indicator draws
         // no rail, so no lane is cut for one.
         let cfg = Config::default();
         let c = Cabinet::from_config(&cfg, 1024.0, 768.0);
-        assert_eq!(c.bank_width(), 3 + 46 + 16 + 168 + 14);
-        assert_eq!(c.bank_width(), 247);
-        assert_eq!(c.layout().crt.width, 1024.0 - 247.0);
+        assert_eq!(c.bank_width(), 3 + 46 + 16 + 126 + 14);
+        assert_eq!(c.bank_width(), 205);
+        assert_eq!(c.layout().crt.width, 1024.0 - 205.0);
         // The hint holds the bank at its least strip (eight characters of
         // the measured cell) beside the bare tube's floor, since the fit is
         // what gives the window back the difference.
-        assert_eq!(c.min_bank_width(), 199);
-        assert_eq!(c.min_inner_size(), (199 + 320, 240));
+        assert_eq!(c.min_bank_width(), 169);
+        assert_eq!(c.min_inner_size(), (169 + 320, 240));
 
         // A hidden chassis is no bank at all, and the well takes the window.
         let mut bare = cfg.clone();
@@ -281,22 +326,22 @@ mod tests {
 
     #[test]
     fn a_reload_re_measures_the_kit_and_not_only_the_geometry() {
-        // `general.led_font_name` moves the cell the strips are cut from, so a
-        // reload that only re-applied the standing kit would keep the old
-        // bank. Terminess's cell is 6 px against UNSCII's 8, which takes 42 px
-        // off twelve characters of strip and the same 42 off the bank.
+        // `chassis.bank_font_name` moves the cell the strips are cut from, so
+        // a reload that only re-applied the standing kit would keep the old
+        // bank. UNSCII 8's cell is 8 px against Cozette's 6, which adds 42 px
+        // to twelve characters of strip and the same 42 to the bank.
         let cfg = Config::default();
         let mut c = Cabinet::from_config(&cfg, 1024.0, 768.0);
-        assert_eq!(c.bank_width(), 247);
+        assert_eq!(c.bank_width(), 205);
 
-        let mut narrow = cfg.clone();
-        narrow.general.led_font_name = "TERMINESS_SCALED".to_string();
-        let width = c.apply_config(&narrow);
+        let mut wider = cfg.clone();
+        wider.chassis.bank_font_name = "UNSCII_8_SCALED".to_string();
+        let width = c.apply_config(&wider);
         assert_eq!(width, c.bank_width());
-        assert_eq!(width, 247 - 42);
+        assert_eq!(width, 205 + 42);
         assert_eq!(
             c.bank_width(),
-            Cabinet::from_config(&narrow, 1024.0, 768.0).bank_width()
+            Cabinet::from_config(&wider, 1024.0, 768.0).bank_width()
         );
     }
 

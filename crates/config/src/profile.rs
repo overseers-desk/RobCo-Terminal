@@ -4,9 +4,11 @@
 //!
 //! A **profile** is a whole appliance: the screen behind the glass and the
 //! chassis it stands in -- `{screen: ..., chassis: ...}` and nothing else.
-//! The twelve `_CURRENT_SETTINGS` keys ([`GeneralSettings`]) are
-//! deliberately outside a profile: they are "the user's" rather than a
-//! profile's, because switching a look must not re-fit the LED bank.
+//! The app-level settings ([`GeneralSettings`]) sit outside a profile: they
+//! are the user's rather than a look's, being the strip width a hand dragged
+//! the seam to and whether a cabinet is drawn at all. The face a cabinet
+//! letters its bank in is the cabinet's, so it rides inside the profile with
+//! the rest of the axis, and taking a look therefore re-fits the bank.
 //!
 //! Three things live here.
 //!
@@ -89,9 +91,8 @@ impl Profile {
         }
     }
 
-    /// Stand this appliance up in `config`, leaving the twelve general
-    /// settings alone: this moves exactly these two axes and never touches
-    /// `_CURRENT_SETTINGS`.
+    /// Stand this appliance up in `config`, leaving the app-level settings
+    /// alone: this moves exactly these two axes.
     pub fn apply_to(&self, config: &mut Config) {
         config.screen = self.screen.clone();
         config.chassis = self.chassis.clone();
@@ -104,8 +105,9 @@ impl Profile {
     /// schema structs declare them ([`ScreenSettings`], [`ChassisSettings`]),
     /// in declaration order, spelled the JSON format's way: camelCase keys,
     /// `rasterization` and `fontSource` as integers. Nothing else. In
-    /// particular the general settings are absent, so re-fitting the LED
-    /// bank or hiding the chassis does not mark a profile modified.
+    /// particular the app-level settings are absent, so dragging the seam or
+    /// hiding the cabinet does not mark a profile modified, while taking a
+    /// cabinet that letters its bank in another face does.
     pub fn snapshot(&self) -> String {
         let mut out = String::new();
         write_value(&mut out, 0, &json_value(self));
@@ -201,7 +203,10 @@ pub fn export_json(name: &str, profile: &Profile) -> String {
         .as_object_mut()
         .expect("a profile serializes as an object");
     map.insert("name".into(), serde_json::Value::from(name));
-    map.insert("profileVersion".into(), serde_json::Value::from(PROFILE_VERSION));
+    map.insert(
+        "profileVersion".into(),
+        serde_json::Value::from(PROFILE_VERSION),
+    );
     let mut out = String::new();
     write_value(&mut out, 0, &value);
     out
@@ -346,7 +351,10 @@ fn to_json_format(value: &mut serde_json::Value) {
     for (key, mut value) in entries {
         to_json_format(&mut value);
         if let Some(codes) = coded_enum(&key) {
-            if let Some(code) = value.as_str().and_then(|w| codes.iter().position(|c| *c == w)) {
+            if let Some(code) = value
+                .as_str()
+                .and_then(|w| codes.iter().position(|c| *c == w))
+            {
                 value = serde_json::Value::from(code as u64);
             }
         }
@@ -539,9 +547,9 @@ mod tests {
         assert!(!tuning.is_modified(&profile));
     }
 
-    /// The general settings are outside the equality, because a profile
-    /// never reads them. Re-fitting the LED bank or hiding the chassis is
-    /// the user's business, not the profile's.
+    /// The app-level settings are outside the equality, because a profile
+    /// never reads them. Dragging the seam or hiding the cabinet is the
+    /// user's business, not the profile's.
     #[test]
     fn general_settings_are_outside_the_equality() {
         let mut config = Config::default();
@@ -552,6 +560,12 @@ mod tests {
         config.general.font_scaling = 3.0;
 
         assert!(!tuning.is_modified(&Profile::from_config(&config)));
+
+        // The face the bank is lettered in is the cabinet's, so it is inside
+        // the equality: taking a cabinet that letters its bank another way is
+        // taking a different look.
+        config.chassis.bank_font_name = "UNSCII_8_SCALED".to_string();
+        assert!(tuning.is_modified(&Profile::from_config(&config)));
     }
 
     /// Both axes are inside it, which is what makes the model two-axis
@@ -899,16 +913,46 @@ mod tests {
     #[test]
     fn the_exported_key_lists_are_the_json_profile_formats_own() {
         const SCREEN_KEYS: &[&str] = &[
-            "name", "backgroundColor", "fontColor", "flickering", "horizontalSync",
-            "staticNoise", "chromaColor", "saturationColor", "screenCurvature",
-            "glowingLine", "burnIn", "bloom", "rasterization", "jitter", "rgbShift",
-            "brightness", "contrast", "ambientLight", "windowOpacity", "fontName",
-            "fontSource", "fontWidth", "lineSpacing", "margin", "blinkingCursor",
-            "frameSize", "screenRadius", "frameColor", "frameShininess",
+            "name",
+            "backgroundColor",
+            "fontColor",
+            "flickering",
+            "horizontalSync",
+            "staticNoise",
+            "chromaColor",
+            "saturationColor",
+            "screenCurvature",
+            "glowingLine",
+            "burnIn",
+            "bloom",
+            "rasterization",
+            "jitter",
+            "rgbShift",
+            "brightness",
+            "contrast",
+            "ambientLight",
+            "windowOpacity",
+            "fontName",
+            "fontSource",
+            "fontWidth",
+            "lineSpacing",
+            "margin",
+            "blinkingCursor",
+            "frameSize",
+            "screenRadius",
+            "frameColor",
+            "frameShininess",
         ];
         const CHASSIS_KEYS: &[&str] = &[
-            "name", "shell", "channelIndicator", "channelDisplay", "frameSize",
-            "screenRadius", "frameColor", "frameShininess",
+            "name",
+            "shell",
+            "channelIndicator",
+            "channelDisplay",
+            "frameSize",
+            "screenRadius",
+            "frameColor",
+            "frameShininess",
+            "bankFontName",
         ];
 
         let snapshot = Profile::default().snapshot();
@@ -929,5 +973,4 @@ mod tests {
             );
         }
     }
-
 }

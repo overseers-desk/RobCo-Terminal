@@ -203,8 +203,8 @@ impl Cabinet {
     /// ([`crate::display_kit`]) rather than taking one.
     ///
     /// This is the constructor a host uses: it has a `Config` and a window, and
-    /// no reason to know that one of the two kits reads `general.led_font_name`
-    /// and the other carries its own face.
+    /// no reason to know which display kit a cabinet carries, both of them
+    /// lettering the bank from the cabinet's own face.
     pub fn from_config(cfg: &Config, width: f64, height: f64) -> Self {
         Cabinet::new(cfg, crate::display_kit(cfg), width, height)
     }
@@ -269,7 +269,7 @@ impl Cabinet {
     /// A settings reload, re-measuring the display kit from the new profile.
     /// The [`Cabinet::from_config`] half of [`Cabinet::apply_settings`], and
     /// the one a host that never handles a kit itself calls: a change of
-    /// `general.led_font_name` or of `chassis.channel_display` moves the cell
+    /// `chassis.bank_font_name` or of `chassis.channel_display` moves the cell
     /// the strips are cut from, so the kit has to be re-measured and not only
     /// re-applied.
     pub fn apply_config(&mut self, cfg: &Config) -> u32 {

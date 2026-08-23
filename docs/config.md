@@ -54,11 +54,11 @@ is quick, but it clears whatever phosphor burn-in had accumulated, so the
 ghost of your last screenful starts over. Those keys are:
 
 `general.window_scaling`, `general.font_scaling`, `general.bloom_quality`,
-`general.burn_in_quality`, `general.chassis_shown`, `general.led_font_name`,
+`general.burn_in_quality`, `general.chassis_shown`,
 `general.led_characters`, `screen.font_name`, `screen.font_source`,
 `screen.font_width`, `screen.line_spacing`, `screen.margin`,
 `screen.frame_size`, `chassis.shell`, `chassis.channel_indicator`,
-`chassis.channel_display`, `chassis.frame_size`.
+`chassis.channel_display`, `chassis.frame_size`, `chassis.bank_font_name`.
 
 Nothing else about them is special. If you are not chasing a burn-in trail
 across an edit, you will not notice the difference.
@@ -158,7 +158,6 @@ profile switch.
 | `burn_in_quality` | `0.5` | Sizes the burn-in accumulator. |
 | `led_characters` | `12` | How many characters wide the bank's channel strips are. Dragging the seam between the bank and the screen well writes this key for you. On a window too small to hold both this and the terminal's floor, the strips draw narrower than this; the setting itself is not touched. |
 | `chassis_shown` | `true` | Whether the cabinet is drawn around the tube at all. With it off, the tube stands bare in its own moulding, and the `[screen]` table's frame keys govern rather than `[chassis]`'s (see below). |
-| `led_font_name` | `"UNSCII_8_SCALED"` | The face the bank's channel windows are lettered in. A name matching no bundled face falls back to the shipped one. |
 | `show_menubar` | `false` | Present in the schema; nothing in this build reads it. |
 | `use_custom_command` | `false` | As above. Use `--program` or `-e` to run something other than your shell. |
 | `custom_command` | `""` | As above. |
@@ -230,6 +229,7 @@ is on air.
 | `screen_radius` | `0.44` | Corner radius of that bezel, `4` to `120` pixels across the range. |
 | `frame_color` | `"#001735"` | Bezel colour. |
 | `frame_shininess` | `0.3` | How hard the bezel's highlight is. |
+| `bank_font_name` | `"COZETTE_SCALED"` | The face this cabinet letters its channel bank in. Each cabinet carries its own: the lamp cabinets letter their strips in Cozette, and `Switchboard` stamps its tape in Departure Mono. A name matching no bundled face falls back to the kit's own. Bundled faces are listed under `[screen]`'s `font_name`. |
 
 The shells differ in more than colour: each has its own furniture, and
 the presets pair each with the indicator and display style it was built

@@ -20,7 +20,7 @@
 //!   whole chassis draw): `general.chassis_shown`, `chassis.shell`.
 //! - **Texture source swap** (a different glyph or LED-bank atlas must be
 //!   built and bound, not just re-parameterized): `screen.font_name`,
-//!   `screen.font_source`, `general.led_font_name`,
+//!   `screen.font_source`, `chassis.bank_font_name`,
 //!   `general.led_characters`, `chassis.channel_indicator`,
 //!   `chassis.channel_display`.
 //!
@@ -53,7 +53,6 @@ pub const STRUCTURAL: &[&str] = &[
     "general.bloom_quality",
     "general.burn_in_quality",
     "general.chassis_shown",
-    "general.led_font_name",
     "general.led_characters",
     "screen.font_name",
     "screen.font_source",
@@ -65,6 +64,7 @@ pub const STRUCTURAL: &[&str] = &[
     "chassis.channel_indicator",
     "chassis.channel_display",
     "chassis.frame_size",
+    "chassis.bank_font_name",
 ];
 
 /// Compare two config snapshots and say whether the change between them is
@@ -84,7 +84,9 @@ pub fn classify(old: &Config, new: &Config) -> KeyClass {
 }
 
 fn at<'v>(value: &'v serde_json::Value, dotted: &str) -> Option<&'v serde_json::Value> {
-    dotted.split('.').try_fold(value, |value, part| value.get(part))
+    dotted
+        .split('.')
+        .try_fold(value, |value, part| value.get(part))
 }
 
 #[cfg(test)]

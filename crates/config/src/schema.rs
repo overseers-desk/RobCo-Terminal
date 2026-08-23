@@ -17,11 +17,20 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The `_CURRENT_SETTINGS` blob. These are the app-level knobs that stand
-/// apart from any screen or chassis -- window chrome, performance budget,
-/// and the three properties (`ledCharacters`, `chassisShown`, `ledFontName`)
-/// that belong to "the user" rather than to a profile, because switching a
-/// look must not re-fit the LED bank.
+/// The app-level knobs that stand apart from any screen or cabinet: window
+/// chrome, performance budget, and the two properties that are the user's
+/// rather than a look's. `chassisShown` is whether a cabinet is drawn at
+/// all, and `ledCharacters` is the strip width a hand dragged the seam to;
+/// neither is a thing a cabinet gets to choose on the user's behalf.
+///
+/// The face a cabinet letters its bank in is the cabinet's
+/// ([`ChassisSettings::bank_font_name`]), since a bank need not be lamps: one
+/// may be lettered by hand, another stamped by a label maker, and each wants
+/// a face of its own.
+///
+/// This carries more than the storage blob of the same name in the format
+/// this schema round-trips through, which holds nine keys and keeps the
+/// bank's own two in the profile blob beside it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralSettings {
@@ -50,9 +59,6 @@ pub struct GeneralSettings {
     /// Whether the chassis casting/bezel/bank is drawn around the screen at
     /// all. The user's own setting, not a profile's.
     pub chassis_shown: bool,
-    /// The face the channel bank's windows are lettered in. The user's own
-    /// setting, not a profile's.
-    pub led_font_name: String,
 }
 
 /// Which family of rasterization the shader pipeline applies to glyphs,
@@ -171,6 +177,15 @@ pub struct ChassisSettings {
     pub screen_radius: f64,
     pub frame_color: String,
     pub frame_shininess: f64,
+    /// The face this cabinet letters its channel bank in.
+    ///
+    /// Declared last so the profile snapshot, which renders these fields in
+    /// declaration order, keeps the shape its format test pins.
+    ///
+    /// A name matching no bundled face falls back to the kit's own: the lamp
+    /// strip's shipped face, or the tape's, depending on which display the
+    /// cabinet carries.
+    pub bank_font_name: String,
 }
 
 impl Default for GeneralSettings {
@@ -190,7 +205,6 @@ impl Default for GeneralSettings {
             custom_command: String::new(),
             led_characters: 12,
             chassis_shown: true,
-            led_font_name: "UNSCII_8_SCALED".to_string(),
         }
     }
 }

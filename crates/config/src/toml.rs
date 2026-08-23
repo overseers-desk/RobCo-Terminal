@@ -518,8 +518,8 @@ name = \"Default Amber\"\n\
         write_key(&path, "screen.bloom", Scalar::Float(0.25)).unwrap();
         write_key(
             &path,
-            "general.led_font_name",
-            Scalar::String("TERMINESS_SCALED".to_string()),
+            "general.custom_command",
+            Scalar::String("/bin/sh".to_string()),
         )
         .unwrap();
 
@@ -530,7 +530,7 @@ name = \"Default Amber\"\n\
             #[serde(default)]
             chassis_shown: bool,
             #[serde(default)]
-            led_font_name: String,
+            custom_command: String,
         }
         #[derive(Debug, Deserialize, PartialEq, Default)]
         struct Screen {
@@ -548,7 +548,7 @@ name = \"Default Amber\"\n\
         let read: Both = load(&path).unwrap();
         assert_eq!(read.general.led_characters, 20);
         assert!(!read.general.chassis_shown);
-        assert_eq!(read.general.led_font_name, "TERMINESS_SCALED");
+        assert_eq!(read.general.custom_command, "/bin/sh");
         assert_eq!(read.screen.bloom, 0.25);
     }
 

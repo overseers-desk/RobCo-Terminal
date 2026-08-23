@@ -472,7 +472,7 @@ pub fn bank_pieces(
                 // whatever the slot holds, and the label, when there is
                 // one, lies in it.
                 pieces.push(Piece::painted(strip, tape::well_chrome(strip)));
-                pieces.extend(tape_piece(kit, strip, row, bright));
+                pieces.extend(tape_piece(cfg, kit, strip, row, bright));
             }
         }
     }
@@ -561,7 +561,7 @@ fn led_piece(
         pad_cells_y,
     );
 
-    let entry = term::fonts::font_by_name(&cfg.general.led_font_name)
+    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name)
         .or_else(|| term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME))?;
     let shown = led::visible_text(&row.title, row.open, characters as usize);
     // The top band splits the vertical pad in half, rounded down.
@@ -606,11 +606,20 @@ fn led_piece(
 ///
 /// The well's gradient floor around the label is a vector rectangle, not a
 /// pass; see this module's doc on where that line runs.
-fn tape_piece(kit: &TapeMetrics, strip: Rect, row: &StripRow, _bright: bool) -> Option<Piece> {
+fn tape_piece(
+    cfg: &Config,
+    kit: &TapeMetrics,
+    strip: Rect,
+    row: &StripRow,
+    _bright: bool,
+) -> Option<Piece> {
     /// The label's inset inside the well.
     const WELL_INSET: f64 = 3.0;
 
-    let entry = term::fonts::font_by_name(tape::FONT_NAME)?;
+    // The cabinet's own face, the one `tape_metrics` measured the wheel from,
+    // so the stamp and the spacing it was cut for agree.
+    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name)
+        .or_else(|| term::fonts::font_by_name(tape::FONT_NAME))?;
     let label_h = (strip.height - 2.0 * WELL_INSET).max(1.0);
     let letter_scale = tape::letter_scale(label_h);
     let raster_size = tape::raster_size(label_h, letter_scale);
@@ -699,8 +708,8 @@ mod tests {
         assert_eq!(pieces.len(), 1 + 4 + 2 * rows as usize + 1);
         assert_eq!(pieces[0].pass, Pass::Plate);
         // The annunciator's plate: 8px left margin, 2px top margin, no
-        // right margin, 8px bottom margin, over a 247px bank.
-        assert_eq!(pieces[0].rect, Rect::new(8.0, 2.0, 239.0, 758.0));
+        // right margin, 8px bottom margin, over a 205px bank.
+        assert_eq!(pieces[0].rect, Rect::new(8.0, 2.0, 197.0, 758.0));
         assert!(pieces[0].source.is_none());
 
         // Four 28px screws, two at the plate's head and two 25px off its
@@ -711,7 +720,7 @@ mod tests {
             assert_eq!((p.rect.width, p.rect.height), (28.0, 28.0));
         }
         assert_eq!((pieces[1].rect.x, pieces[1].rect.y), (18.0, 16.0));
-        assert_eq!(pieces[2].rect.x, 247.0 - 12.0 - 28.0);
+        assert_eq!(pieces[2].rect.x, 205.0 - 12.0 - 28.0);
         assert_eq!(pieces[3].rect.y, 768.0 - 25.0 - 28.0);
 
         let row_piece = |i: usize| &pieces[5 + 2 * i];
@@ -751,7 +760,7 @@ mod tests {
             g.row_height as f64 + g.row_spacing
         );
         // The strip's right edge is the bank less the shell's right padding.
-        assert_eq!(strip_x + g.strip_width as f64, 247.0 - 14.0);
+        assert_eq!(strip_x + g.strip_width as f64, 205.0 - 14.0);
         // ...and the grown rectangle overhangs the bank on purpose: the
         // spill is light thrown on the plate, and the plate runs on.
         assert!(strip_piece(0).rect.y - sy as f64 <= 61.0);
@@ -761,7 +770,7 @@ mod tests {
         // was drawn in: the same sharing `strip_rect` gives the hit test.
         let furniture = row_piece(0);
         assert_eq!(furniture.rect.x, g.content_x as f64);
-        assert_eq!(furniture.rect.width, 247.0 - g.content_x as f64);
+        assert_eq!(furniture.rect.width, 205.0 - g.content_x as f64);
         assert_eq!(furniture.rect.height, g.row_height as f64);
         assert_eq!(
             row_piece(1).rect.y - furniture.rect.y,
@@ -1299,7 +1308,7 @@ mod tests {
                 .1
         };
         // `characters: 2`, every pad at 0.
-        let kit = crate::led_metrics(&cfg.general.led_font_name);
+        let kit = crate::led_metrics(&cfg.chassis.bank_font_name);
         assert_eq!(param("gridSizeX"), (kit.cell_width.max(1) * 2) as f32);
         assert_eq!(param("gridSizeY"), kit.cell_height.max(1) as f32);
         // `spillStrength: 0.12`, unlike a channel window's own
