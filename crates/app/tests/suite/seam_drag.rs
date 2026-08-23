@@ -41,8 +41,9 @@ const WINDOW_H: u32 = 768;
 const WELL_MINIMUM: (i32, i32) = (720 + 58, 432 + 58);
 
 /// The shipped profile's bank: the annunciator's furniture around twelve
-/// characters of the measured UNSCII 8 cell.
-const STOCK_BANK: u32 = 247;
+/// characters of the measured Cozette cell, the face that cabinet letters
+/// its bank in.
+const STOCK_BANK: u32 = 205;
 
 fn scripted() -> SessionConfig {
     SessionConfig {
@@ -132,9 +133,9 @@ fn a_drag_re_fits_the_bank_writes_the_count_and_survives_the_reload() {
     );
 
     // Grab the seam at the bank's own edge and pull it right to x = 400.
-    // The characters-for-width formula: 12 + round((400 - 247) / 12) = 25
+    // The characters-for-width formula: 12 + round((400 - 205) / 9) = 34
     // characters, and the bank width that count implies is
-    // 3 + 46 + 16 + round(8 * 27 * 1.5) + 14 = 403.
+    // 3 + 46 + 16 + round(6 * 36 * 1.5) + 14 = 403.
     drag(&mut surface, f64::from(STOCK_BANK), 400.0);
     assert_eq!(surface.cabinet().unwrap().bank_width(), 403);
 
@@ -142,19 +143,19 @@ fn a_drag_re_fits_the_bank_writes_the_count_and_survives_the_reload() {
     // there -- and it is there as one changed value in a file otherwise
     // untouched, comment and all.
     wait_until(
-        || fs::read_to_string(&path).unwrap().contains("= 25"),
+        || fs::read_to_string(&path).unwrap().contains("= 34"),
         "the drag to reach the config file",
     );
     let written = fs::read_to_string(&path).unwrap();
     assert_eq!(
         written,
-        "# the appliance\n[general]\nled_characters = 25  # twelve\n\n[screen]\nbloom = 0.4\n"
+        "# the appliance\n[general]\nled_characters = 34  # twelve\n\n[screen]\nbloom = 0.4\n"
     );
 
     // ...and it comes back through the ordinary reload, carrying what the
     // cabinet already holds, so nothing jumps.
     wait_until(
-        || settings.current().general.led_characters == 25,
+        || settings.current().general.led_characters == 34,
         "the watcher to publish the new count",
     );
     surface.redraw();

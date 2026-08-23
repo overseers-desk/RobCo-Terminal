@@ -27,7 +27,7 @@ use crt_burnin::headless;
 const WINDOW_W: u32 = 1024;
 const WINDOW_H: u32 = 768;
 /// The shipped profile's bank, and the well it leaves.
-const BANK: u32 = 247;
+const BANK: u32 = 205;
 
 /// What the frame carries before the column goes on: a colour no metal
 /// produces, so "untouched" is unambiguous.
@@ -301,7 +301,11 @@ fn the_castings_field_is_the_wells_logical_size_on_a_hidpi_display() {
     const TOL: f32 = 0.003;
     const TELLING: f32 = 0.010;
     let mut telling = 0;
-    for x in (0..BANK).step_by(11) {
+    // The step is the sampling density, not a property: it wants enough
+    // telling points on a column this wide to make the count below mean
+    // something, and the column's width follows the face the cabinet letters
+    // its bank in.
+    for x in (0..BANK).step_by(7) {
         for y in (0..WINDOW_H).step_by(29) {
             let uv = [
                 (x as f32 + 0.5) / BANK as f32,
