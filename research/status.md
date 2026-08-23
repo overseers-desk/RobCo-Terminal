@@ -1,6 +1,6 @@
 # RobCo Terminal status
 
-The single record of what RobCo Terminal does, and the only file in `research/` written from the code rather than from the field. The sibling files describe the market: the pain taxonomy in `use-case-survey.md`, the verbatim quotes in `voices.md`, the competitor supply in `competitive-landscape.md`, the discussion dynamics in `discussion-drivers.md`. This file says which of those pains RobCo Terminal covers, how, and where in the code; then how rare each covered capability is in the field; then what position follows. Update it when the code changes; update the siblings when the field changes. Pain numbers (P1-P13) are defined in `use-case-survey.md`.
+The single record of what RobCo Terminal does, and the only file in `research/` written from the code rather than from the field. The sibling files describe the market: the pain taxonomy in `use-case-survey.md`, the verbatim quotes in `voices.md`, the terminals that ship a look and what the wider field supplies in `competitive-landscape.md`, the discussion dynamics in `discussion-drivers.md`. This file says which of those pains RobCo Terminal covers, how, and where in the code; then how rare each covered capability is in the field; then what position follows. Update it when the code changes; update the siblings when the field changes. Pain numbers (P1-P13) are defined in `use-case-survey.md`.
 
 Snapshot August 2026, read at commit `2e4cace`.
 

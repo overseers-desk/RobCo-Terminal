@@ -9,7 +9,7 @@ The folder was produced by the PLACE methodology (Poll, Landscape, Audit, Contra
 ## Files
 
 - `voices.md`: quotebook of user pain-points by category. Each entry is a verbatim quote (or a clearly marked paraphrase) with link, date, context, and the pain it maps to.
-- `competitive-landscape.md`: feature matrix of terminal emulators and multiplexers (the field), columns being the pain numbers, plus a per-pain supply note. Dated snapshot. RobCo Terminal is not in the matrix; its coverage is in `status.md`.
+- `competitive-landscape.md`: a feature matrix of the terminals that ship a retro look, columns being the pain numbers, over a reference survey of the rest of the category and a per-pain supply note. Dated snapshot. RobCo Terminal is in neither; its coverage is in `status.md`.
 - `use-case-survey.md`: the pain taxonomy and per-pain demand signal. Holds the canonical pain numbers. Dated snapshot.
 - `discussion-drivers.md`: what a terminal launch draws on Hacker News, what pulls replies, and the specific precedent for a retro CRT terminal. Dated snapshot.
 - `status.md`: RobCo Terminal's coverage of each pain with source paths and ceilings, the feature catalogue, the rarity of each capability against the field, the gaps, the known issues a reader of the code meets, and the positioning that follows. The only file written from the code.
