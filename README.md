@@ -41,15 +41,16 @@ a slot. `Ctrl`+`Shift`+`T` opens a new one. Switching channels degausses, the
 way changing input on real hardware did.
 
 **tmux as channels.** Type `tmux -CC` in any channel, on this machine or
-over ssh. The terminal notices tmux's control mode, and that server's windows
-arrive as their own bank of channels. tmux windows are then bank slots like
-any other, switched with the same chords. There is no status bar
-to read, because the bank is doing that job. The channel you typed the
-command in becomes the attachment's gateway and stops taking keystrokes;
-press `Enter` on it to detach, and its bank collapses back to the single
-channel you started from. Nothing is lost if the terminal dies mid-session,
-which is why a local tmux under this young program is a sane habit:
-re-attach cold and the windows come back with their titles.
+over ssh. The terminal notices tmux's control mode, and the session you
+attached arrives as a bank of channels of its own: the channel you typed in
+becomes its gateway and stops taking keystrokes, the session's windows fill
+the slots after it, and they are switched with the same chords as any other.
+On a local server every other session gets a bank too, each with a gateway
+the terminal starts for it; over ssh you get the session you attached. There
+is no status bar to read, because the bank is doing that job. `Enter` on a
+gateway detaches: a channel you typed in comes home, one the terminal started
+closes. Nothing is lost if the terminal dies mid-session: run `tmux -CC`
+again and every session comes back with its windows and their titles.
 
 ## Will it run here
 

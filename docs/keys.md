@@ -72,7 +72,10 @@ history behind it, so there the same keys are the program's own.
 A channel attached to a tmux server through control mode is a picture to
 read and copy from rather than a surface to type at, because that channel's
 pty carries the protocol itself. Every key is dropped there, except `Enter`,
-which detaches the client and brings the channel home.
+which detaches the client: a channel you typed `tmux -CC` in comes home, and
+one the terminal started for a session it found closes. Typing `tmux -CC` at
+a session that already has a bank opens a second one; tmux allows a second
+client and the terminal does not refuse it.
 
 ## Not bound
 
