@@ -1,0 +1,100 @@
+# RobCo Terminal status
+
+The single record of what RobCo Terminal does, and the only file in `research/` written from the code rather than from the field. The sibling files describe the market: the pain taxonomy in `use-case-survey.md`, the verbatim quotes in `voices.md`, the competitor supply in `competitive-landscape.md`, the discussion dynamics in `discussion-drivers.md`. This file says which of those pains RobCo Terminal covers, how, and where in the code; then how rare each covered capability is in the field; then what position follows. Update it when the code changes; update the siblings when the field changes. Pain numbers (P1-P13) are defined in `use-case-survey.md`.
+
+Snapshot August 2026, read at commit `2e4cace`.
+
+## Coverage
+
+| Pain | Coverage | How | Code |
+|---|---|---|---|
+| P1 Latency and stutter | Partial, unmeasured | PTY drained at ~125 Hz and child output coalesced to one frame per 16.7 ms, so a flood cannot paint frames nobody sees; effects animate at 20 Hz by default; a `--frame-stats` instrument logs p50/p99 GPU timings | `crates/app/src/window.rs` (`POLL_INTERVAL`, `output_pending`), `crates/crt-render/src/pacing.rs`, `crates/app/src/frame_stats.rs`. Ceiling: nothing is vsync-paced (the loop is a timer assuming 60 Hz), the redraw is synchronous on the loop thread, and no keystroke-to-glyph figure is recorded anywhere; `frame_stats.rs` says the budget question is open |
+| P2 GPU cost and breakage | None | wgpu picks a backend and logs it; `WGPU_BACKEND` overrides via wgpu's own parsing | `crates/app/src/gpu.rs`, `crates/crt-render/src/device.rs`. Ceiling: `force_fallback_adapter: false`, no software path; with no adapter the window clears each frame rather than the process dying. The effects cost is real and unmeasured |
+| P3 The retro CRT look | Solved, beyond the field | A six-pass librashader chain: curvature, bloom, five rasterization modes, static, flicker, horizontal wobble, jitter, a travelling scan line, RGB shift, chroma bleed, phosphor colour, burn-in persistence in a feedback framebuffer, ambient light, a degauss on channel change; fourteen named screen presets; three cabinets drawn outside the chain so the chassis stays straight while the picture bulges; the pointer mapped back through the curvature | `crates/crt-render/src/{preset,chain,params,degauss}.rs`, `crates/crt-burnin/`, `crates/chassis/src/{cabinet,shells/*,bank,furniture}.rs`, `crates/term/src/distortion.rs`, `crates/app/src/column.rs`. Ceilings: effect shapes are constants (bloom ×2.5, jitter 0.007, grain 0.025 unconditional); no user-supplied shader or preset path; a chain rebuild (window scaling, bloom quality, chassis toggle, resize, font change) wipes the burn-in ghost; the pointer inverse reuses the forward kernel, exact at curvature 0 and off by up to 38% of screen width at 0.5 and 73% at 0.7 by the crate's own test table, which covers the shipped `Commodore 64`, `Apple ][` and `Commodore PET` presets |
+| P4 Fonts | Solved for ASCII bitmap faces; None beyond | 24 bundled faces, the 16 low-resolution ones drawn from their embedded strikes, thresholded and magnified by an integer uniform, never re-rasterised; `font_parity` pins all 24 against golden rasters; installed monospace families load by `screen.font_name` | `crates/term/src/fonts/{raster,system,sizing}.rs`, `crates/term/src/atlas.rs`, `shader.wgsl`. Ceilings: the atlas holds printable ASCII only and does not grow, so box drawing, nerd-font icons, accented letters, CJK and emoji draw a blank cell with no tofu and no log (`lib.rs:103` says otherwise and is wrong); no ligatures; `screen.font_source` is read by nothing; bold and italic get no face; `ScalePolicy::Floor` can render a face up to 25% smaller than asked |
+| P5 Many sessions | Solved | A numbered channel bank drawn as cabinet chrome beside the glass, up to 99 slots, lamp or tape display; `Alt`+digit selects, `Alt`+`Shift`+digit stores, chords fire when no longer slot could match; move, cycle, close, page; multi-window with per-window banks; the bank fits the window width without overwriting the configured count; a draggable seam that writes the count back to the config | `crates/app/src/{channels,chord,bank,shell}.rs`, `crates/chassis/src/{bank,seam,cabinet}.rs`, `crates/chassis/src/displays/`. Ceilings: the pager rocker is drawn but not clickable (`Alt+PgUp/PgDn` only); tape labels do not mark the live channel; no cross-window move; the store-acknowledgement blink is computed and unconsumed |
+| P6 tmux control mode | Solved, one channel per window | `tmux -CC` typed in any channel is detected by DCS; the session's windows become channels on a bank of their own, the typed-in channel becomes the gateway (a picture; `Enter` detaches); on a local server every other session gets a bank with a client the terminal starts; over ssh the attached session only; keys go out as `send-keys -H` hex; a "tmux input dropped" badge on backpressure; the protocol codec has zero dependencies | `crates/tmux-cc/`, `crates/term/src/tmux_cc.rs`, `crates/app/src/tmux.rs`, `crates/app/src/window.rs` (`bank_sessions`, `gateway_key`), `crates/app/src/channels.rs` (`attach`, `collapse_bank`). Ceilings: panes are not drawn (one channel per tmux window, the active pane only); `%layout-change`, copy mode, tmux's mouse, paste buffers, `new-session`/`kill-session`/`rename-*` are parsed or absent and not surfaced; `FOUND_BANK_CAP = 8` banks; locality is a `/proc` uid heuristic; one client geometry for every window |
+| P7 Sessions surviving the terminal | Solved through tmux | Nothing is on disk; `tmux -CC` again re-derives every bank, row and title from the server and restores each screen with `capture-pane -S -1000` | `crates/app/src/tmux.rs` (bootstrap: `display-message`, `list-panes -s`, `list-sessions`, `list-windows`). Ceiling: `CAPTURE_HISTORY = 1000` lines; no survival without a tmux server |
+| P8 Configuration | Solved | One TOML file watched and reloaded on save; a parse error keeps the last good state and logs; the file is a diff against a named `[screen]`/`[chassis]` preset; named looks as `config.<name>.toml` via `--profile`, an unknown name refused with the known names listed; `SIGUSR1` forces a reload; the app writes one key back in place preserving comments | `crates/config/src/{watch,toml,profile,presets,structural}.rs`, `crates/app/src/settings.rs`. Ceilings: no debounce on the watcher; `[general]` has no preset concept; save-as-profile and cool-retro-term-compatible JSON import/export are built, tested and unreachable (no flag, no key); `set_dotted` returns `Ok` without writing through a non-table |
+| P9 Linux fit | Partial | Own window chrome (no toolkit header bar); X11 measured, Wayland runs; `xtask install/dist/deb` produce a prefix install, a reproducible tarball, and a no-root `.deb` with `dpkg-shlibdeps`-derived depends, each checked by running the installed copy in a scrubbed environment | `crates/xtask/src/install.rs`, `crates/app/src/paths.rs`. Ceilings: no published package, no CI, no LICENSE file despite `GPL-3.0-or-later` in every manifest, placeholder icon and `Maintainer`; macOS and Windows unbuilt, and `paths.rs` would misplace crash logs and the shader cache on both; X11 PRIMARY selection is not used (copy-on-select and middle-click both use CLIPBOARD) |
+| P10 Table stakes | Partial | 10,000-line scrollback with sub-line glide; character, word and rectangular selection with copy-on-select; `Ctrl`+middle-click forces bracketed paste; IME pre-edit drawn inside the grid through the curvature; synchronized updates (DECSET 2026) with a timeout; a size badge during drag; dropped-input badge; single-instance handoff; 199 esctest tests pass under a 32-family include regex | `crates/term/src/{viewport,selection,search,hotspots,session}.rs`, `crates/app/src/{clipboard,overlay,instance}.rs`. Ceilings: the selection is never drawn (engine only; `Selection::is_selected` has no caller in the renderer); scrollback search and URL hotspots are complete, tested, and unwired; triple-click unwired; the cursor does not blink (`screen.blinking_cursor` is intended only); scrollback size is a compile-time constant; rio-vt replies are dropped (`VoidListener`), so CPR, DA, DECRQSS and OSC 52 go unanswered; the 256-colour palette collapses to one phosphor colour by the shipped monochrome scheme |
+| P11 Weight | Solved | Native Rust, one binary, fonts and shaders compiled in (the preset is written to `~/.cache/robco-term/preset/` at startup for librashader to read) | `crates/app`, `crates/xtask/src/install.rs`. No accounts, telemetry, or AI |
+| P12, P13 | not features | | The name is a Fallout reference and says what it looks like; see Positioning |
+
+## Feature catalogue
+
+The features behind the coverage above, each with its code home and the pains it serves.
+
+- Six-pass CRT chain with fourteen presets, burn-in persistence, degauss on switch: `crates/crt-render`, `crates/crt-burnin`. Serves P3.
+- Cabinet drawn outside the chain; three shells; bezel inside the chain hugging the glass: `crates/chassis`, `crates/app/src/column.rs`. Serves P3, P5.
+- Pointer mapped through the curvature (exact at low curvature): `crates/term/src/distortion.rs`. Serves P3.
+- Numbered channel bank with digit chords, paging, move, multi-window, seam drag writing the config: `crates/app/src/{channels,chord,bank,shell}.rs`, `crates/chassis/src/{seam,bank}.rs`. Serves P5.
+- tmux control mode: detection, session-to-bank, gateway, local-server discovery, hex keys, backpressure badge, recovery by re-attach: `crates/tmux-cc`, `crates/app/src/tmux.rs`. Serves P6, P7.
+- Bitmap faces from embedded strikes at integer scale, 24 bundled, system monospace families by name: `crates/term/src/fonts`. Serves P4 (ASCII only).
+- One watched TOML, diff against presets, live reload, last-good on error, named looks, SIGUSR1: `crates/config`, `crates/app/src/settings.rs`. Serves P8.
+- Output governor and 20 Hz effect pacing; `--frame-stats`: `crates/app/src/window.rs`, `crates/crt-render/src/pacing.rs`, `crates/app/src/frame_stats.rs`. Serves P1 (unmeasured).
+- 80×24 window floor computed from font, margin and bank: `crates/term/src/size.rs`, `crates/chassis/src/layout.rs`. A quality property.
+- Install, reproducible tarball, `.deb`; `xtask verify`, `snap`, `compare`, `mask`; shader oracle; headless burn-in rig: `crates/xtask`, `crates/shader-oracle`, `crates/crt-burnin/src/headless.rs`. Quality properties, not shipped.
+- Sub-line scroll glide, rectangular selection, copy-on-select, forced bracketed paste, IME in the grid, DECSET 2026, size and dropped-input badges, single instance, crash log with line tables: `crates/term`, `crates/app`. Serves P10.
+
+## Differentiation map
+
+For each shipped capability, how rare the same thing is in the field, read from `competitive-landscape.md`. A description of the built product, not a build-priority ranking.
+
+- CRT chain as a built-in, preset-driven look: rare. One dedicated product (cool-retro-term), one Electron plugin set, one experimental Windows flag; three mainstream terminals take a user's own shader.
+- Burn-in persistence, degauss on switch, a cabinet drawn around the glass, and the pointer mapped through the curvature: documented in none of the surveyed products. The nearest is a Hyper plugin's optional monitor frame.
+- Numbered channel bank as chrome with digit chords to select and store: unique among surveyed GUI terminals; the model is tmux's prefix+number, and Ghostty, Zellij and Windows Terminal bind numbered tabs, but none draws a persistent strip outside the text area.
+- tmux control mode on Linux: rare. iTerm2 is the macOS reference; WezTerm ships it in nightlies with an ssh-latency bug; Ghostty's request is open at 731 reactions; Alacritty, kitty and Hyper declined. A Linux terminal that attaches a typed `tmux -CC`, banks every local session, and recovers by re-attaching is documented in no other surveyed product; panes-as-windows (iTerm2) is the part RobCo Terminal does not do.
+- Bitmap faces from embedded strikes at integer scale: rare. foot promises bitmap fonts; WezTerm loads strikes; none documents integer-only magnification without re-rasterising. Bounded hard by the ASCII-only atlas.
+- Config as a diff against a named preset, with live reload and last-good-on-error: the live reload is common; the diff-against-preset form is claimed by none of the surveyed products.
+- Window chrome of its own, no toolkit header bar: rare on Linux (Qt and GTK terminals pay the desktop-fit complaint; Rust terminals mostly draw no chrome at all).
+- Native, single binary, no accounts: common among the Rust, C and Zig terminals; the differentiation is against Electron and Warp only.
+- Output governor and frame-stats instrument: implementation details no tool markets; the latency figure that would make them a claim is not recorded.
+
+## Gaps
+
+Architectural limits, given the design (a GPU-only librashader chain over a rio-vt core, tmux as the only persistence):
+
+- No software rendering path; the effects cost GPU time that is not measured.
+- No session survival without a tmux server.
+- Effect shapes are constants in shader source; no user shader.
+- A chain rebuild erases the burn-in ghost.
+
+Not built, but feasible within the architecture:
+
+- A growable glyph atlas with a fallback chain (the sizing module's `fallback_chain` exists with no caller), which is the gap between the code and "a daily terminal on Linux".
+- Drawing the selection; wiring the built scrollback search, URL hotspots, triple-click, save-as-profile, JSON profile import/export, and the pager rocker's click.
+- A listener for rio-vt replies (CPR, DA, DECRQSS, OSC 52).
+- An analytic inverse for the curvature mapping, so clicks land at the high-curvature presets.
+- tmux panes as channels; a debounced config watcher; a blinking cursor; X11 PRIMARY.
+- A keystroke-to-glyph latency measurement under each preset, published.
+- A LICENSE file, an icon, a maintainer, a package.
+
+## Known issues a reader of the code meets
+
+- `crates/term/src/lib.rs:103` says the atlas grows on demand; it does not (ASCII only).
+- `crates/chassis/src/furniture.rs:30-35` says the switchboard lever is unpainted; it is painted at rest (the throw is unbuilt).
+- `docs/config.md:193` describes `screen.font_source` as functional; nothing reads it.
+- `crates/term/src/pointer.rs` `PastePrimary` pastes CLIPBOARD.
+- `crates/app/src/crashlog.rs` installs no altstack, so a stack-overflow SIGSEGV cannot run it.
+- `crates/chassis/src/shells/switchboard.rs:4` cites an untracked `Deep-Blue.png` as its measurement source.
+- The README's "two known feature gaps", "holds its frame budget with room to spare", and "nothing is looked up at run time" are unsupported by the tree (`known-gaps.txt` holds four entries all expected to fail on xterm too; no committed frame measurement; the preset cache is written at startup).
+- The workspace has no TODO/FIXME markers; deferred work is prose at the code that owns it, so a marker sweep reports the tree clean.
+
+## Positioning
+
+Relocated from the discussion-volume findings in `discussion-drivers.md`, and kept here, in the product file, as explicit strategy.
+
+The honest read first. The corpus's verdict on the CRT terminal category is "neat for a few minutes, not a daily driver", and the code as it stands earns that verdict on one point: a terminal that draws a blank cell for every non-ASCII character (box drawing, nerd-font icons, accents) is not yet a daily driver for the audience that posts, whose prompts and TUIs are full of them, and it does not highlight a selection. Those two are feasible gaps, not architectural ones, and a launch before they close would draw the precedent's comments and then confirm them. A launch after they close has a hook no prior CRT terminal had.
+
+What the field supplies, read against what is built, gives RobCo Terminal three claims no surveyed product makes: a CRT look that is a piece of hardware (cabinet, numbered bank, burn-in, degauss, clicks that land through the glass) rather than a post-process filter; tmux control mode on Linux, with every local session arriving as a bank and surviving the terminal's death; and a config that is a short diff against a named preset and reloads on save. The first is the picture that reaches a front page on its own (six times in twelve years for the incumbent, at 250–300 points); the second is the grievance lane (731 reactions on Ghostty's open issue, two maintainers' refusals); the third is the reply to the "an hour of fiddling" complaint.
+
+Three moves follow.
+
+1. Lead with the number the category lacks. No surveyed product publishes keystroke-to-glyph latency under CRT effects, and the incumbent's is described as "unbearable". A measured figure per preset, from the `--frame-stats` instrument plus an input-to-photon measurement, turns "a CRT terminal you can work in" from an adjective into a test the comment section runs. Without it the launch is one more picture.
+2. Ride the control-mode grievance onto the look. "tmux -CC on Linux" is the sentence that fills a thread by itself; the retro look is what makes the post a picture as well as a grievance. The posting that says both, and names Ghostty #1935 and the Alacritty and kitty refusals, borrows a loaded comment section. The honest bound goes in the same sentence: windows, not panes.
+3. Name the incumbent's open issues as the fixed list. The cool-retro-term tracker is the category's published wishlist: packages since 2014, CPU since 2015, HiDPI since 2017, bitmap fonts since 2022, Wayland crashes in 2026. A comparison post against that list is the form (benchmark or comparison) that draws 0.85–1.3 comments per point in the corpus, against 0.25–0.40 for a picture.
+
+The name passes. "RobCo Terminal" claims a look (the Fallout terminal's) and the noun "terminal", and the Audit shows both; it claims no session management, no multiplexing, and no platform it lacks. No naming note is needed.
+
+The corpus shows no CRT terminal launch converting its front page into a daily-use userbase; the three moves above are the ones that would make this one the first to try.
