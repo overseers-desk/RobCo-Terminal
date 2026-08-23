@@ -3,9 +3,10 @@
 //!
 //! The split is two rectangles: the screen well runs from the bank column's
 //! right edge to the window's, and the bank column takes the window's left
-//! edge for exactly the bank's own width. Neither ever moves for the other:
-//! the bank's width follows the LED strip settings alone, so dragging the
-//! window edge cannot move the screen well's left edge.
+//! edge for exactly the bank's own width. Neither moves for the other within
+//! one measurement: dragging the window edge cannot move the screen well's
+//! left edge. What sets the bank's width in the first place is
+//! `crate::bank`'s concern, not this module's.
 //!
 //! One thing worth stating rather than leaving implicit: this crate draws no
 //! menu bar inside the window, so the content area is the window. Anything

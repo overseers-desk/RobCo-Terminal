@@ -14,7 +14,7 @@
 //!
 //! The window contract, in full:
 //!
-//! - initial size 1024x768; minimum size `bankWidth + crtMinimumWidth` by
+//! - initial size 1024x768; minimum size `bankMinimum + crtMinimumWidth` by
 //!   240 (see [`crate::geometry`]);
 //! - `--fullscreen` and F11 toggle fullscreen, with or without modifiers,
 //!   so Konsole's Ctrl+Shift+F11 is the same key;

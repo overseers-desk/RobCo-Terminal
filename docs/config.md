@@ -156,7 +156,7 @@ profile switch.
 | `show_terminal_size` | `true` | Whether the size badge appears in the well while you drag the window. |
 | `bloom_quality` | `0.5` | Sizes the bloom framebuffer and sets the blur radius. Costs GPU; buys a smoother glow. |
 | `burn_in_quality` | `0.5` | Sizes the burn-in accumulator. |
-| `led_characters` | `12` | How many characters wide the bank's channel strips are. Dragging the seam between the bank and the screen well writes this key for you. |
+| `led_characters` | `12` | How many characters wide the bank's channel strips are. Dragging the seam between the bank and the screen well writes this key for you. On a window too small to hold both this and the terminal's floor, the strips draw narrower than this; the setting itself is not touched. |
 | `chassis_shown` | `true` | Whether the cabinet is drawn around the tube at all. With it off, the tube stands bare in its own moulding, and the `[screen]` table's frame keys govern rather than `[chassis]`'s (see below). |
 | `led_font_name` | `"UNSCII_8_SCALED"` | The face the bank's channel windows are lettered in. A name matching no bundled face falls back to the shipped one. |
 | `show_menubar` | `false` | Present in the schema; nothing in this build reads it. |

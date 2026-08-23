@@ -6,9 +6,14 @@
 //! the channel state machines, not with the chassis.
 //!
 //! The one fact the rest of the window turns on is [`BankGeometry::implicit_width`]:
-//! the bank's width follows the LED strip settings alone and never the window's
-//! size, so dragging the window edge cannot move the screen well's left edge.
-//! Everything else in the layout is measured from it.
+//! the bank's width follows the LED strip settings, fitted by
+//! `chassis::Cabinet::measure` to what the window can spare beside the screen
+//! well's floor when the configured strip does not fit -- the fit never
+//! widens a bank the user set narrow, and never below the display's own
+//! least strip. That fit is screen-fit only; it is never written back to the
+//! settings, so a wider window later re-fits from the same configured count
+//! rather than from whatever the narrow window last drew. Everything else in
+//! the layout is measured from whatever width this settles on.
 
 use crate::metrics::{DisplayMetrics, ShellMetrics};
 

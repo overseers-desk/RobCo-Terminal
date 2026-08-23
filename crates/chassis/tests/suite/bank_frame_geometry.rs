@@ -52,10 +52,13 @@ fn stock_bank() -> BankGeometry {
 
 #[test]
 fn the_bank_never_moves_with_the_window() {
-    // Its width follows the LED strip settings alone and never the window's
-    // size, so dragging the window edge cannot move the screen well's left
-    // edge. This is the load-bearing claim of the whole layout, so it gets a
-    // test of its own rather than an assertion inside one.
+    // `g` is one measurement, taken once above; laying it out in windows of
+    // every size below must not itself move it, so dragging the window edge
+    // cannot move the screen well's left edge. Whether a resize asks for a
+    // new measurement at a different width is `Cabinet::measure`'s call, made
+    // before `g` is built, not this layout's. This is the load-bearing claim
+    // of the whole layout, so it gets a test of its own rather than an
+    // assertion inside one.
     let g = stock_bank();
     let expected = 3 + 46 + 16 + led_strip_width(12) + 14; // annunciator
     assert_eq!(expected, 184);

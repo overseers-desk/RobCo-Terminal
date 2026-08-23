@@ -244,10 +244,11 @@ fn run_inner(binary: &Path, profile: &str, screen_width: u32) -> Result<()> {
         bail!("no window: the rest of the contract cannot be checked");
     };
 
-    // Item 4: the minimum-size hint, the instrument the `--units` seam drag
-    // reads the bank's movement through -- and the window standing at or
-    // above it, since a window under its own minimum is a window showing
-    // less than the terminal grid the minimum exists to hold.
+    // Item 4: the minimum-size hint exists, and the window stands at or above
+    // it, since a window under its own minimum is a window showing less than
+    // the terminal grid the minimum exists to hold. The hint reserves the
+    // bank at its narrowest, not its live width, so it is not the instrument
+    // `--units` reads the seam drag through; `compare --region bank` is.
     match x11::min_size_hint(&wid) {
         Ok((min_width, min_height)) => {
             let geometry = capture("xdotool", &["getwindowgeometry", "--shell", wid.as_str()])

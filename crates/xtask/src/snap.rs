@@ -36,11 +36,12 @@ pub const CONTRACT: &str = r#"
    to the launched PID and has geometry width > 100.
 3. `Ctrl+Shift+T` opens one more channel/tab.
 4. The window's program-specified minimum width (as read by
-   `xprop -id <wid> WM_NORMAL_HINTS`) is the channel bank's live pixel width
-   plus the least screen well the binary will work in, and the window never
-   stands under it. The well's share is fixed for as long as the font is, so
-   a change in that minimum is the bank's own movement -- which is what
-   --units reads the seam drag through, and all it needs from this item.
+   `xprop -id <wid> WM_NORMAL_HINTS`) is the channel bank's narrowest pixel
+   width plus the least screen well the binary will work in, and the window
+   never stands under it. The bank term is the least the strips are ever
+   drawn at, not their live width, so this minimum does not move as a seam
+   drag widens or narrows the bank; --units reads the drag through the pixel
+   comparison `compare --region bank` does instead.
 5. HOME, XDG_DATA_HOME, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_RUNTIME_DIR
    and TMPDIR are honored for settings/socket isolation, so concurrent
    scratch runs never collide with a real user session or each other.
@@ -294,18 +295,7 @@ fn find_window(class: &str, app_pid: u32) -> Result<Option<String>> {
 /// a profile with a different bank needs its own number here.
 const SHIPPED_BANK_WIDTH: i64 = 247;
 
-/// The window's program-specified minimum width. It moves exactly as the bank
-/// does, the screen well's share of it being fixed for as long as the font
-/// is, so the difference between two readings is what the drag moved the bank
-/// by (contract item 4).
-fn hint_width(wid: &str) -> Result<i64> {
-    let (min_width, _min_height) = x11::min_size_hint(wid)?;
-    Ok(min_width)
-}
-
 fn fit_units(wid: &str, height: u32, units: i64) -> Result<()> {
-    let start_hint = hint_width(wid)?;
-
     let start = SHIPPED_BANK_WIDTH + 2;
     let target = start + 12 * (units - 12);
 
@@ -354,16 +344,9 @@ fn fit_units(wid: &str, height: u32, units: i64) -> Result<()> {
     )?;
     sleep(Duration::from_millis(200));
     run_ok("xdotool", &["mouseup", "1"])?;
-
-    // Verify the fit against the same instrument: a drag that missed by a
-    // character or more is a loud warning, never a quietly wrong picture. A
-    // drag that moved the hint by nothing at all is the profile answering
-    // that it has no bank to fit, and reads as the same warning.
+    // The button-up writes the count to the settings file and the reload
+    // comes back through the watcher, so the picture is a round trip behind
+    // the hand; the screenshot is taken after it has landed.
     sleep(Duration::from_millis(500));
-    let moved = hint_width(wid)? - start_hint;
-    let want = 12 * (units - 12);
-    if (moved - want).abs() >= 12 {
-        eprintln!("warning: seam drag moved the bank by {moved} px, wanted {want}");
-    }
     Ok(())
 }

@@ -73,10 +73,13 @@
 //! to reach the settings, because the seam is a settings edit and the
 //! configuration file is the source of truth; and
 //! [`SeamUpdate::bank_width`] has to reach `Shell::set_bank_width`, because the
-//! window's minimum-size hint is what stops the well being dragged under its
-//! floor from the other side. The cabinet updates its own copy of the character
-//! count as it goes, so a settings reload that arrives later carrying the same
-//! value is a no-op rather than a jump.
+//! appliance draws the bank at that width and a window standing open has to
+//! redraw it as the drag moves. The window's minimum-size hint answers a
+//! different question -- the bank at its narrowest, from
+//! [`Cabinet::min_bank_width`], not the width a drag just landed -- and does
+//! not move with this update. The cabinet updates its own copy of the
+//! character count as it goes, so a settings reload that arrives later
+//! carrying the same value is a no-op rather than a jump.
 
 use crate::bank::BankGeometry;
 use crate::frame::{self, ChassisStyle, FrameStyle, Param};
