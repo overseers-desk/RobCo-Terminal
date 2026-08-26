@@ -3626,6 +3626,7 @@ dependencies = [
  "serde_json",
  "signal-hook 0.3.18",
  "tempfile",
+ "tokio",
  "wgpu",
  "winit",
  "x11rb",
@@ -3692,6 +3693,7 @@ name = "robco-ssh-link"
 version = "0.1.0"
 dependencies = [
  "rand",
+ "robco-ssh-link",
  "russh",
  "tempfile",
  "tokio",

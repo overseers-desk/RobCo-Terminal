@@ -78,8 +78,11 @@ x11rb = "0.13"
 
 [dev-dependencies]
 # The known_hosts fixtures mint their own throwaway keys; the rand
-# generation matches the one russh's key types are built against.
+# generation matches the one russh's key types are built against. The
+# ssh flow test drives the in-process far side ssh-link's suite shares.
 rand = { version = "0.10", features = ["thread_rng"] }
+robco-ssh-link = { path = "../ssh-link", features = ["test-server"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 robco-shader-oracle = { path = "../shader-oracle" }
 serde_json = "1"
 tempfile = "3"

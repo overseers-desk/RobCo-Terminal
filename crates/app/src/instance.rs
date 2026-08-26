@@ -49,34 +49,48 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// The request a second launch sends to the running one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NewWindow {
     pub fullscreen: bool,
+    /// `--ssh [user@]host[:port]`: the window dials this instead of opening
+    /// a shell. On the wire so a second `--ssh` invocation's handoff opens
+    /// the window that was asked for, not a shell that happens to be local.
+    pub ssh: Option<String>,
 }
 
 impl NewWindow {
     /// The wire line, without its terminator.
     pub fn encode(&self) -> String {
+        let mut line = "new-window".to_string();
         if self.fullscreen {
-            "new-window --fullscreen".to_string()
-        } else {
-            "new-window".to_string()
+            line.push_str(" --fullscreen");
         }
+        if let Some(ssh) = &self.ssh {
+            line.push_str(" --ssh ");
+            line.push_str(ssh);
+        }
+        line
     }
 
     /// Parses a wire line. An *empty* message and anything starting with
-    /// `new-window` are both new-window requests, and the rest of the line
-    /// is ignored; that keeps a future message type from being read as a
+    /// `new-window` are both new-window requests, and an unknown token is
+    /// ignored; that keeps a future message type from being read as a
     /// window request by an older binary.
     pub fn decode(line: &str) -> Option<Self> {
         let line = line.trim_end_matches(['\n', '\r']);
-        if line.is_empty() || line.starts_with("new-window") {
-            Some(NewWindow {
-                fullscreen: line.contains("--fullscreen"),
-            })
-        } else {
-            None
+        if !(line.is_empty() || line.starts_with("new-window")) {
+            return None;
         }
+        let mut tokens = line.split_whitespace().skip(1);
+        let mut request = NewWindow::default();
+        while let Some(token) = tokens.next() {
+            match token {
+                "--fullscreen" => request.fullscreen = true,
+                "--ssh" => request.ssh = tokens.next().map(str::to_string),
+                _ => {}
+            }
+        }
+        Some(request)
     }
 }
 
@@ -320,21 +334,24 @@ mod tests {
 
     #[test]
     fn wire_format_round_trips() {
-        assert_eq!(NewWindow { fullscreen: false }.encode(), "new-window");
+        assert_eq!(NewWindow::default().encode(), "new-window");
         assert_eq!(
-            NewWindow { fullscreen: true }.encode(),
+            NewWindow { fullscreen: true, ssh: None }.encode(),
             "new-window --fullscreen"
         );
         assert_eq!(
             NewWindow::decode("new-window --fullscreen\n"),
-            Some(NewWindow { fullscreen: true })
+            Some(NewWindow { fullscreen: true, ssh: None })
         );
         assert_eq!(
             NewWindow::decode("new-window\n"),
-            Some(NewWindow { fullscreen: false })
+            Some(NewWindow::default())
         );
         // An empty message is a new-window request too.
-        assert_eq!(NewWindow::decode(""), Some(NewWindow { fullscreen: false }));
+        assert_eq!(NewWindow::decode(""), Some(NewWindow::default()));
+        let dialled = NewWindow { fullscreen: true, ssh: Some("overseer@vault:2222".into()) };
+        assert_eq!(dialled.encode(), "new-window --fullscreen --ssh overseer@vault:2222");
+        assert_eq!(NewWindow::decode(&dialled.encode()), Some(dialled));
         assert_eq!(NewWindow::decode("degauss"), None);
     }
 
@@ -351,13 +368,13 @@ mod tests {
         };
         primary.serve(move |req| tx.send(req).unwrap());
 
-        match acquire("test-identity", NewWindow { fullscreen: true }) {
+        match acquire("test-identity", NewWindow { fullscreen: true, ssh: None }) {
             Role::Delivered => {}
             _ => panic!("second acquire should deliver to the primary"),
         }
 
         let got = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert_eq!(got, NewWindow { fullscreen: true });
+        assert_eq!(got, NewWindow { fullscreen: true, ssh: None });
     }
 
     /// A socket file with nothing behind it (the primary was SIGKILLed)

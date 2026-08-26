@@ -17,11 +17,18 @@ path = "src/lib.rs"
 [dependencies]
 russh = { version = "=0.63.1", default-features = false, features = ["ring", "rsa"] }
 tokio = { version = "1", default-features = false, features = ["rt", "sync", "net", "time", "io-util"] }
+tokio-stream = { version = "0.1", features = ["net"], optional = true }
+rand = { version = "0.10", features = ["thread_rng"], optional = true }
 
 # The suite runs a russh server in-process over loopback, and an agent over
 # a Unix socket in a tempdir: no daemon, no gate, nothing to skip on.
+# `test-server` compiles an in-process far side (a russh server on loopback
+# and an agent on a Unix socket) for this crate's suite and the app's;
+# nothing of it reaches a shipped binary.
+[features]
+test-server = ["dep:tokio-stream", "dep:rand"]
+
 [dev-dependencies]
+robco-ssh-link = { path = ".", features = ["test-server"] }
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
-tokio-stream = { version = "0.1", features = ["net"] }
-rand = { version = "0.10", features = ["thread_rng"] }

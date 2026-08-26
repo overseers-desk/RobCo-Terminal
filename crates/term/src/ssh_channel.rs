@@ -30,13 +30,17 @@ use crate::dcs::{DcsParser, DcsTap};
 use crate::session::{Pumped, Term};
 use crate::size::TermSize;
 
-/// What the wire has for the grid. The transport's progress and failure
-/// text arrives already rendered as `Data`: how a notice looks on the
-/// glass is the adapter's decision, not this crate's.
+/// What the wire has for the grid.
 #[derive(Debug)]
 pub enum SshEvent {
-    /// Bytes for the parser: remote output, or a rendered notice.
+    /// Remote bytes for the parser: the shell's own output.
     Data(Vec<u8>),
+    /// Transport progress or failure text, arriving already rendered as
+    /// bytes: how a notice looks on the glass is the adapter's decision,
+    /// not this crate's. A separate variant from `Data` because a notice
+    /// is not the connection having lived (see [`SshChannel::pump`]'s Eof
+    /// law), and because nothing a transport says can open a DCS envelope.
+    Notice(Vec<u8>),
     /// The remote command's exit status. Carried for a consumer that
     /// wants it; not printed, for parity with a local shell's exit.
     ExitStatus(u32),
@@ -64,6 +68,9 @@ pub struct SshChannel<T: DcsTap> {
     dcs: DcsParser<T>,
     size: TermSize,
     wire: Box<dyn SshWire>,
+    /// A remote byte has arrived: the connection lived. What `Eof` means
+    /// depends on it.
+    lived: bool,
     eof: bool,
 }
 
@@ -83,15 +90,24 @@ impl<T: DcsTap> SshChannel<T> {
             dcs: DcsParser::new(tap),
             size,
             wire,
+            lived: false,
             eof: false,
         }
     }
 
     /// Drain what the connection thread handed over and apply it.
     ///
-    /// Every chunk goes to both consumers, tap then grid, exactly as the
-    /// PTY pump does; the sync timeout is honoured here for the same
+    /// Every remote chunk goes to both consumers, tap then grid, exactly as
+    /// the PTY pump does; the sync timeout is honoured here for the same
     /// reason it is there: owning the loop means nothing else will.
+    ///
+    /// The Eof law: a connection that lived (a remote byte arrived) ends
+    /// its row through `Pumped::eof`, the path a died PTY walks. One that
+    /// never lived does not -- the row stays, wearing the transport's
+    /// refusal. A shell that fails to spawn never takes a slot; a
+    /// connection that fails to establish already has one, and that slot is
+    /// the only place its refusal is readable. Closing it is the user's,
+    /// once they have read why it is dead.
     pub fn pump(&mut self) -> Pumped {
         let mut out = Pumped::default();
         if self.eof {
@@ -101,14 +117,21 @@ impl<T: DcsTap> SshChannel<T> {
         while let Some(event) = self.wire.try_event() {
             match event {
                 SshEvent::Data(chunk) => {
+                    self.lived = true;
                     out.bytes += chunk.len();
                     self.dcs.feed(&chunk);
                     self.processor.advance(&mut self.term, &chunk);
                 }
+                SshEvent::Notice(chunk) => {
+                    out.bytes += chunk.len();
+                    self.processor.advance(&mut self.term, &chunk);
+                }
                 SshEvent::ExitStatus(_) => {}
                 SshEvent::Eof => {
-                    self.eof = true;
-                    out.eof = true;
+                    if self.lived {
+                        self.eof = true;
+                        out.eof = true;
+                    }
                     break;
                 }
             }
@@ -245,6 +268,21 @@ mod tests {
         // The same geometry again is not a second far-side call.
         s.resize(TermSize::new(40, 10, 9, 18));
         assert_eq!(wire.resizes.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_connection_that_never_lived_keeps_its_row_wearing_the_refusal() {
+        let wire = FakeWire::default();
+        {
+            let mut q = wire.events.lock().unwrap();
+            q.push_back(SshEvent::Notice(b"[ssh: refused]".to_vec()));
+            q.push_back(SshEvent::Eof);
+        }
+        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let pumped = s.pump();
+        assert!(!pumped.eof, "an unlived connection's end is not a row's end");
+        assert!(viewport_text(s.term())[0].contains("refused"));
+        assert!(!s.pump().eof, "and stays not-ended: the user closes it");
     }
 
     #[test]

@@ -109,6 +109,7 @@ fn main() -> ExitCode {
 
     let request = NewWindow {
         fullscreen: options.fullscreen,
+        ssh: options.ssh.clone(),
     };
     let role = instance::acquire(&identity, request);
     if matches!(role, Role::Delivered) {
@@ -258,6 +259,7 @@ fn main() -> ExitCode {
 
     let mut shell_config = ShellConfig::empty(&identity);
     shell_config.fullscreen = options.fullscreen;
+    shell_config.ssh = options.ssh.clone();
     shell_config.bank_width = bank_width;
     shell_config.bank_minimum = bank_minimum;
     // At scale factor 1, which is the unit the default window size is quoted
@@ -267,8 +269,12 @@ fn main() -> ExitCode {
     // hands new windows in, and each surface hands its bank width back out.
     let surface_proxy = event_loop.create_proxy();
     let frame_stats_enabled = options.frame_stats;
-    shell_config.surface_factory = Box::new(move |window| {
-        let mut surface = TerminalSurface::new(window, &session.clone(), frame_stats_enabled);
+    shell_config.surface_factory = Box::new(move |window, ssh| {
+        // The spelling was validated at the CLI (and a handoff's came off a
+        // CLI too); one that fails anyway opens the window on a shell.
+        let dial = ssh.and_then(|spec| app::ssh::SshRequest::parse(spec).ok());
+        let mut surface =
+            TerminalSurface::new(window, &session.clone(), frame_stats_enabled, dial.as_ref());
         surface.set_shell_events(surface_proxy.clone());
         // The config this run resolved, whether or not a file is behind it.
         // Under `--default-settings` there is no handle to attach and this is

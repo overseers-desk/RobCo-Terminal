@@ -198,6 +198,13 @@ impl<S> Channels<S> {
     /// The first channel is not a channel change, so nothing flinches.
     pub fn start(&mut self, session: impl FnOnce() -> Option<S>) {
         self.open_channel(0, 1, session);
+        self.started();
+    }
+
+    /// The set has come up on its first channel, however that channel was
+    /// made: the tube arms only now, so the arrival was not a channel
+    /// change and nothing flinched.
+    pub fn started(&mut self) {
         self.degauss_armed = true;
         self.degauss_pending = false;
     }

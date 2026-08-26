@@ -53,8 +53,12 @@ pub struct Options {
     /// list). That distinction is `Option<Command>` here, with `args`
     /// possibly empty.
     pub command: Option<Command>,
-    /// `--fullscreen`. Also the payload of the new-window IPC message.
+    /// `--fullscreen`. Also a payload of the new-window IPC message.
     pub fullscreen: bool,
+    /// `--ssh [user@]host[:port]`: channel 1 dials this instead of opening
+    /// a shell. Validated here so a bad spelling fails before a window
+    /// exists; the parsed form is [`crate::ssh::SshRequest`].
+    pub ssh: Option<String>,
     /// `--verbose`.
     pub verbose: bool,
     /// `--frame-stats`: the live-preview throughput instrument, off
@@ -91,6 +95,7 @@ pub fn help(program_name: &str) -> String {
 \x20 -e <cmd>            Command to execute. This option will catch all following arguments, so use it as the last option.\n\
 \x20 --program <prog>    Program to run instead of the user's shell.\n\
 \x20 --fullscreen        Run {program_name} in fullscreen.\n\
+\x20 --ssh [user@]host[:port]  Open the first channel on an SSH connection to 'host'.\n\
 \x20 -p|--profile <prof> Run {program_name} with the given profile.\n\
 \x20 -h|--help           Print this help.\n\
 \x20 --verbose           Print additional information such as profiles and settings.\n\
@@ -138,6 +143,17 @@ where
                     i += 1;
                 }
                 None => return Outcome::Fail("--workdir needs a directory\n".into()),
+            },
+            "--ssh" => match args.get(i + 1) {
+                Some(v) => {
+                    let spec = v.to_string_lossy().into_owned();
+                    if let Err(e) = crate::ssh::SshRequest::parse(&spec) {
+                        return Outcome::Fail(format!("--ssh: {e}\n"));
+                    }
+                    opts.ssh = Some(spec);
+                    i += 1;
+                }
+                None => return Outcome::Fail("--ssh needs a destination\n".into()),
             },
             "--program" => match args.get(i + 1) {
                 Some(v) => {

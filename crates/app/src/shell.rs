@@ -165,7 +165,9 @@ pub trait Surface {
 }
 
 /// Builds the surface for a newly created window.
-pub type SurfaceFactory = Box<dyn FnMut(&Arc<Window>) -> Box<dyn Surface>>;
+/// Builds a window's surface. The second argument is the `--ssh` destination
+/// this window dials, if it was launched with one.
+pub type SurfaceFactory = Box<dyn FnMut(&Arc<Window>, Option<&str>) -> Box<dyn Surface>>;
 
 /// What a surface wants after one [`Surface::tick`].
 #[derive(Debug, Clone, Copy, Default)]
@@ -189,7 +191,7 @@ impl Surface for EmptySurface {}
 
 /// Events the shell's event loop accepts from elsewhere: another thread, or a
 /// [`Surface`] that has something to say back to the shell that owns it.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum ShellEvent {
     /// Another launch of this binary asked for a window.
     NewWindow(NewWindow),
@@ -218,6 +220,10 @@ pub struct ShellConfig {
     pub identity: String,
     /// Whether the first window comes up fullscreen (`--fullscreen`).
     pub fullscreen: bool,
+    /// The `--ssh` destination every window this process opens dials, the
+    /// way the session config's program applies to every window. `None`
+    /// opens shells, which is the default.
+    pub ssh: Option<String>,
     /// The `showTerminalSize` setting for the size overlay.
     pub show_terminal_size: bool,
     /// The channel bank's width in *logical* pixels, which sets the
@@ -275,11 +281,12 @@ impl ShellConfig {
         ShellConfig {
             identity: identity.into(),
             fullscreen: false,
+            ssh: None,
             show_terminal_size: true,
             bank_width: 0,
             bank_minimum: 0,
             well_minimum: (0, 0),
-            surface_factory: Box::new(|_| Box::new(EmptySurface)),
+            surface_factory: Box::new(|_, _| Box::new(EmptySurface)),
         }
     }
 }
@@ -387,7 +394,7 @@ impl Shell {
         self.windows.len()
     }
 
-    fn open_window(&mut self, event_loop: &ActiveEventLoop, fullscreen: bool) {
+    fn open_window(&mut self, event_loop: &ActiveEventLoop, fullscreen: bool, ssh: Option<&str>) {
         // A fullscreen window's inner size is the compositor's to choose, so
         // nothing is measured for one and no property is read.
         let usable = (!fullscreen)
@@ -434,7 +441,7 @@ impl Shell {
         // dropped -- exactly the silent-failure shape an IME regression takes.
         window.set_ime_allowed(true);
 
-        let surface = (self.config.surface_factory)(&window);
+        let surface = (self.config.surface_factory)(&window, ssh);
         let mut overlay = SizeOverlay::new(self.config.show_terminal_size);
         overlay.resized(grid_size(window.inner_size(), surface.cell_size()));
 
@@ -535,13 +542,14 @@ impl ApplicationHandler<ShellEvent> for Shell {
         }
         self.started = true;
         let fullscreen = self.config.fullscreen;
-        self.open_window(event_loop, fullscreen);
+        let ssh = self.config.ssh.clone();
+        self.open_window(event_loop, fullscreen, ssh.as_deref());
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ShellEvent) {
         match event {
             ShellEvent::NewWindow(request) => {
-                self.open_window(event_loop, request.fullscreen);
+                self.open_window(event_loop, request.fullscreen, request.ssh.as_deref());
             }
             ShellEvent::SetBankWidth { width, minimum } => self.set_bank_width(width, minimum),
         }
@@ -633,7 +641,8 @@ impl ApplicationHandler<ShellEvent> for Shell {
                         }
                     }
                     PhysicalKey::Code(KeyCode::KeyN) if ctrl_shift => {
-                        self.open_window(event_loop, false);
+                        let ssh = self.config.ssh.clone();
+                        self.open_window(event_loop, false, ssh.as_deref());
                     }
                     PhysicalKey::Code(KeyCode::KeyQ) if ctrl_shift => {
                         self.windows.remove(&window_id);

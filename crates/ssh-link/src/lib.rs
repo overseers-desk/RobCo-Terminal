@@ -19,6 +19,8 @@
 //! exchange when there is an input surface to drive them.
 
 mod channel;
+#[cfg(feature = "test-server")]
+pub mod test_server;
 mod thread;
 
 pub use channel::{ChannelHandle, WireEvent};

@@ -84,9 +84,11 @@ use term::fonts::sizing::{ScalePolicy, SizingRequest};
 use term::pointer::{self, on_press, PointerAction, PointerContext};
 use term::rio_vt::crosswords::Mode;
 use term::selection::{self, SelectionController};
+use ssh_link::{Link, SshTarget};
 use term::{
     CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, ResolvedFont,
-    RioGrid, Scheme, ScrollPosition, Session, SessionConfig, Target, TmuxPane, Viewport,
+    RioGrid, Scheme, ScrollPosition, Session, SessionConfig, SshChannel, Target, TmuxPane,
+    Viewport,
 };
 use tmux_cc::{PaneId, SessionId};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -105,6 +107,7 @@ use crate::gpu::Gpu;
 use crate::input::{encode_winit_key, KeyAction, KeyboardModes, Modifiers};
 use crate::settings::{self, SettingsHandle};
 use crate::shell::{ShellEvent, Surface, Tick};
+use crate::ssh::{KnownHosts, SshRequest, WireAdapter};
 use crate::tmux::{Gateway, GatewayEvent};
 use crate::{clipboard, mouse, paths};
 
@@ -135,6 +138,11 @@ pub const SHED_PTY: &str = "input dropped";
 /// The same, for the queue on the way to a tmux server: the tmux server is
 /// not reading its control wire, so what is being dropped is `send-keys`.
 pub const SHED_TMUX: &str = "tmux input dropped";
+
+/// The same, for an SSH channel's wire: the network or the remote program
+/// has stopped taking bytes, which is a different remedy from either of the
+/// two above.
+pub const SHED_SSH: &str = "ssh input dropped";
 
 /// Not a config key: a fixed multiplier applied to the stored `fontScaling`.
 /// `SizingRequest::default()` carries the same 0.75, and this name exists so
@@ -416,6 +424,9 @@ pub struct TerminalSurface {
     /// (`term::Session::control_mode_writer`); the read side arrives through the
     /// gateway's DCS tap on every [`TerminalSurface::pump`].
     gateways: HashMap<BankId, Gateway<std::fs::File>>,
+    /// One SSH connection per bank, beside the gateways: the `Link` is the
+    /// connection thread's lifetime, and dropping it is the disconnect.
+    ssh_links: HashMap<BankId, Link>,
     /// Every session seen, by socket, server pid and id: banked, in flight, or
     /// owed; the model holds banks, so a listing is read against this.
     sessions: HashMap<(String, u32, SessionId), SessionSlot>,
@@ -558,7 +569,7 @@ pub struct TerminalSurface {
     /// input queues, and the gateways' command queues. A count that has moved is
     /// exactly "something the user typed was thrown away since we last looked",
     /// which is what [`Self::notice`] then says out loud.
-    sheds_seen: (u64, u64),
+    sheds_seen: (u64, u64, u64),
 }
 
 impl Glass {
@@ -660,7 +671,12 @@ impl TerminalSurface {
     /// surface: a window that shows nothing beats a process that dies
     /// with no window at all, which is what the contract harness would
     /// see.
-    pub fn new(window: &Arc<Window>, session: &SessionConfig, frame_stats_enabled: bool) -> Self {
+    pub fn new(
+        window: &Arc<Window>,
+        session: &SessionConfig,
+        frame_stats_enabled: bool,
+        ssh: Option<&SshRequest>,
+    ) -> Self {
         let window = Arc::clone(window);
         let physical = window.inner_size();
 
@@ -723,8 +739,19 @@ impl TerminalSurface {
             viewport,
             window_size,
             Some(cabinet),
+            ssh.is_none(),
         );
         surface.glass = glass;
+        // The set comes up on the connection instead of a shell; the tube
+        // arms after it, the law `Channels::start` applies to channel 1.
+        if let Some(req) = ssh {
+            surface.connect_ssh(req);
+            surface.channels.started();
+            surface.on_air = (
+                surface.channels.current_bank(),
+                surface.channels.current_channel(),
+            );
+        }
         surface
     }
 
@@ -742,7 +769,7 @@ impl TerminalSurface {
     /// that wants one asks, and it is the only way a headless surface gets one.
     pub fn headless(session: &SessionConfig, viewport: Viewport) -> Self {
         let window_size = (viewport.width, viewport.height);
-        Self::assemble(None, None, session, viewport, window_size, None)
+        Self::assemble(None, None, session, viewport, window_size, None, true)
     }
 
     fn assemble(
@@ -752,6 +779,7 @@ impl TerminalSurface {
         viewport: Viewport,
         window_size: (u32, u32),
         cabinet: Option<Cabinet>,
+        start_home: bool,
     ) -> Self {
         let columns = viewport.term_size().cols();
         // The set comes up on channel 1, and the tube is armed only after
@@ -759,13 +787,16 @@ impl TerminalSurface {
         // flinches.
         let mut channels = Channels::new();
         let size = viewport.term_size();
-        channels.start(|| spawn(session, size));
+        if start_home {
+            channels.start(|| spawn(session, size));
+        }
         let on_air = (channels.current_bank(), channels.current_channel());
         Self {
             window,
             gpu,
             channels,
             gateways: HashMap::new(),
+            ssh_links: HashMap::new(),
             sessions: HashMap::new(),
             on_air,
             session_config: session.clone(),
@@ -800,7 +831,7 @@ impl TerminalSurface {
             size_badge: (String::new(), 0.0),
             ime_area: None,
             notice: crate::overlay::Notice::default(),
-            sheds_seen: (0, 0),
+            sheds_seen: (0, 0, 0),
         }
     }
 
@@ -856,6 +887,11 @@ impl TerminalSurface {
                 self.eof = true;
             }
         }
+        // A dead row may have been an SSH bank's last: the model swept the
+        // bank, and the link follows it here. Dropping the link is the
+        // disconnect, so a bank closed by hand hangs up too.
+        self.ssh_links
+            .retain(|bank, _| self.channels.manager_of(*bank).is_some());
         // A pane row's own `pump` above read nothing and could not: its bytes
         // arrive off the gateway's wire, drained here, after the loop that
         // counted. Counted only there, a tmux window on the air never asked for
@@ -879,19 +915,73 @@ impl TerminalSurface {
     /// Both at once is one badge -- the pty one, the wire nearer the user's
     /// hand -- because they are one event, "your typing is being thrown away",
     /// and the log line beside it carries the byte counts.
+    /// Open an SSH connection as a new bank, its first channel on the air.
+    /// The trust policy is the program's own (`crate::ssh::KnownHosts`).
+    pub fn connect_ssh(&mut self, req: &SshRequest) {
+        self.connect_ssh_with(req, Box::new(KnownHosts::new()));
+    }
+
+    /// The same, under a caller's trust policy: what a test with fixture
+    /// files drives.
+    pub fn connect_ssh_with(&mut self, req: &SshRequest, policy: Box<dyn ssh_link::HostPolicy>) {
+        let size = self.viewport.term_size();
+        // The remote pty faces the same glass the local ones do, so it
+        // advertises the TERM the session config gives them.
+        let term_name = self
+            .session_config
+            .env
+            .iter()
+            .find(|(key, _)| key == "TERM")
+            .map(|(_, value)| value.clone())
+            .unwrap_or_else(|| "xterm-256color".to_string());
+        let (pix_w, pix_h) = size.pixel_size();
+        let target = SshTarget {
+            user: req.user.clone(),
+            host: req.host.clone(),
+            port: req.port,
+            term: term_name,
+            size: (size.cols() as u16, size.rows() as u16, pix_w, pix_h),
+        };
+        let (link, handle) = match Link::connect(target, policy) {
+            Ok(pair) => pair,
+            Err(e) => {
+                log::error!("could not start the ssh thread for {}: {e}", req.host);
+                return;
+            }
+        };
+        let scrollback = self.session_config.scrollback;
+        let wire = WireAdapter::new(handle);
+        let bank = self.channels.open_ssh_bank(&req.user, &req.host, req.port, move || {
+            Some(ChannelSession::Ssh(SshChannel::new(
+                size,
+                scrollback,
+                ControlModeTap::default(),
+                Box::new(wire),
+            )))
+        });
+        if let Some(bank) = bank {
+            self.ssh_links.insert(bank, link);
+        }
+    }
+
     fn watch_the_write_queues(&mut self) {
-        let pty: u64 = self
-            .channels
-            .rows_mut()
-            .map(|row| row.session.sheds())
-            .sum();
+        let mut pty: u64 = 0;
+        let mut ssh: u64 = 0;
+        for row in self.channels.rows_mut() {
+            match &row.session {
+                ChannelSession::Ssh(_) => ssh += row.session.sheds(),
+                _ => pty += row.session.sheds(),
+            }
+        }
         let tmux: u64 = self.gateways.values().map(|gateway| gateway.sheds()).sum();
         let seen = self.sheds_seen;
-        self.sheds_seen = (pty, tmux);
+        self.sheds_seen = (pty, tmux, ssh);
         if pty > seen.0 {
             self.notice.raise(SHED_PTY, Instant::now());
         } else if tmux > seen.1 {
             self.notice.raise(SHED_TMUX, Instant::now());
+        } else if ssh > seen.2 {
+            self.notice.raise(SHED_SSH, Instant::now());
         }
     }
 

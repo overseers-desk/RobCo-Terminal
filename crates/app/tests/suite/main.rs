@@ -18,5 +18,6 @@ mod seam_drag;
 mod settings_live_reload;
 mod shed_notice;
 mod size_badge;
+mod ssh_flow;
 mod structure_subset;
 mod tmux_flow;

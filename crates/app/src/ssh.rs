@@ -215,7 +215,7 @@ impl SshWire for WireAdapter {
         Some(match self.handle.try_event()? {
             WireEvent::Data(bytes) => SshEvent::Data(bytes),
             WireEvent::Notice(text) => {
-                SshEvent::Data(format!("\r\n\x1b[2m[ssh: {text}]\x1b[0m\r\n").into_bytes())
+                SshEvent::Notice(format!("\r\n\x1b[2m[ssh: {text}]\x1b[0m\r\n").into_bytes())
             }
             WireEvent::ExitStatus(status) => SshEvent::ExitStatus(status),
             WireEvent::Eof => SshEvent::Eof,
