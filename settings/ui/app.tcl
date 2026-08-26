@@ -41,7 +41,7 @@ proc ::rcsettings::ui::app::start {} {
     # replaced itself with an error about a missing binary would be worse
     # than the error alone.
     wm withdraw .
-    ::rcsettings::ui::theme::init
+    styles
 
     if {[catch {::rcsettings::dump::load} dumpdata]} {
         tk_messageBox -icon error -title "RobCo Terminal Settings" \
@@ -59,6 +59,23 @@ proc ::rcsettings::ui::app::start {} {
     build
     note_stamp
     wm deiconify .
+}
+
+# The ttk base, and the two styles this window needs for function. The base
+# is clam rather than the platform theme: clam draws every widget in pure Tk
+# and so puts the same window on X11, Windows and macOS, where the X11 default
+# theme and aqua each ignore a different subset of the options a form sets.
+# Everything else wears clam's stock look, this window having no business
+# theming itself when the terminal's own glass is what the user chose.
+proc ::rcsettings::ui::app::styles {} {
+    ttk::style theme use clam
+    # The root is a plain Tk widget and does not follow ttk's background, so
+    # it is told what clam's own frames use.
+    . configure -background [ttk::style lookup TFrame -background]
+    # An error on the status line has to be readable as an error without the
+    # message being read, so it is the one thing here that carries a colour.
+    ttk::style configure StatusError.TLabel -foreground #b00020
+    ::rcsettings::ui::form::styles
 }
 
 # The bytes Cancel puts back, and whether there were any.
@@ -84,8 +101,8 @@ proc ::rcsettings::ui::app::build {} {
     # The width is asked for in characters rather than left to the text: the
     # resting message is the config file's path, and a path in a deep
     # directory would otherwise open the window as wide as it is long.
-    ttk::label $Status -style Status.TLabel -anchor w -width 40
-    ttk::frame .sep -style Sep.TFrame -height 1
+    ttk::label $Status -anchor w -width 40 -padding {8 3}
+    ttk::separator .sep -orient horizontal
     ttk::frame .buttons -padding {10 8}
     ttk::button .buttons.cancel -text "Cancel" \
         -command [list ::rcsettings::ui::app::cancel]
@@ -126,7 +143,7 @@ proc ::rcsettings::ui::app::rest {} {
     variable Status
     variable StatusAfter
     if {$StatusAfter ne ""} { after cancel $StatusAfter; set StatusAfter "" }
-    $Status configure -style Status.TLabel -text [::rcsettings::model::path]
+    $Status configure -style "" -text [::rcsettings::model::path]
 }
 
 proc ::rcsettings::ui::app::say {msg {isError 0}} {
@@ -135,7 +152,7 @@ proc ::rcsettings::ui::app::say {msg {isError 0}} {
     if {$Status eq "" || ![winfo exists $Status]} { return }
     if {$StatusAfter ne ""} { after cancel $StatusAfter }
     $Status configure -text $msg \
-        -style [expr {$isError ? "StatusError.TLabel" : "Status.TLabel"}]
+        -style [expr {$isError ? "StatusError.TLabel" : ""}]
     # An error stands until something else happens; a report of a write that
     # worked is not worth reading twice and clears itself.
     set StatusAfter [expr {$isError ? "" \

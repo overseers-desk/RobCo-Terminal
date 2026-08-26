@@ -135,6 +135,21 @@ proc ::rcsettings::ui::form::say {msg {isError 0}} {
     if {$StatusCmd ne ""} { {*}$StatusCmd $msg $isError }
 }
 
+# The two things a row needs a style for, neither of them decoration. The
+# pinned dot is one glyph in a fixed-width column at the head of every row,
+# and on a row the file does not pin it is drawn in the tab's own background
+# rather than removed, so the column holds its width either way. The reset
+# control is flat and unbordered because a page of twenty-six rows would
+# otherwise read as a wall of buttons; it is disabled and not hidden on an
+# unpinned row, a control that vanishes moving every column beside it.
+proc ::rcsettings::ui::form::styles {} {
+    ttk::style configure Pin.TLabel -anchor center
+    ttk::style configure Unpinned.TLabel -anchor center \
+        -foreground [ttk::style lookup TLabel -background]
+    ttk::style configure Reset.TButton -relief flat -borderwidth 0 \
+        -padding {4 0}
+}
+
 # ---------------------------------------------------------------- the page --
 
 # Build $table's whole page under $parent and return the widget to pack.
@@ -160,7 +175,7 @@ proc ::rcsettings::ui::form::page {parent table} {
     set canvas $outer.canvas
     canvas $canvas -highlightthickness 0 -borderwidth 0 \
         -width [expr {34 * $line}] -height [expr {26 * $line}] \
-        -background [::rcsettings::ui::theme::c bg] \
+        -background [ttk::style lookup TFrame -background] \
         -yscrollcommand [list $outer.sb set]
     ttk::scrollbar $outer.sb -orient vertical -command [list $canvas yview]
     grid $canvas   -row 0 -column 0 -sticky nsew
@@ -246,9 +261,9 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
 
     set pin $g.pin_$key
     ttk::label $pin -text "•" -width 2 -style Unpinned.TLabel
-    ttk::label $g.lbl_$key -text $label -style Field.TLabel
+    ttk::label $g.lbl_$key -text $label -anchor w
     set readout $g.val_$key
-    ttk::label $readout -width 8 -style Value.TLabel -text ""
+    ttk::label $readout -width 8 -anchor e -text ""
     set reset $g.rst_$key
     ttk::button $reset -text "↺" -width 2 -style Reset.TButton \
         -takefocus 0 -command [list ::rcsettings::ui::form::on_reset $id]
@@ -307,8 +322,12 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
             # option to fill a label with an arbitrary colour per widget,
             # which is why this one control is not a ttk widget.
             set w $g.ctl_$key
+            # The edge is a fixed neutral grey rather than a colour of the
+            # window's: a swatch has to have an outline to be a swatch at all,
+            # and a value of #000000 against a light background otherwise has
+            # no edge to show where it ends.
             canvas $w -width 56 -height 18 -highlightthickness 1 \
-                -highlightbackground [::rcsettings::ui::theme::c swatch_edge] \
+                -highlightbackground #808080 \
                 -borderwidth 0 -cursor hand2
             bind $w <Button-1> [list ::rcsettings::ui::form::on_colour $id]
         }
@@ -528,7 +547,8 @@ proc ::rcsettings::ui::form::refresh_row {id} {
                 if {[valid_colour $value]} {
                     $w configure -background $value
                 } else {
-                    $w configure -background [::rcsettings::ui::theme::c field]
+                    $w configure \
+                        -background [ttk::style lookup TFrame -background]
                 }
                 [dict get $row readout] configure -text $value
             }
@@ -554,7 +574,7 @@ proc ::rcsettings::ui::form::preset_picker {body table} {
     set f $body.preset
     ttk::frame $f
     pack $f -side top -fill x -pady {0 10}
-    ttk::label $f.lbl -text "Preset" -style Field.TLabel
+    ttk::label $f.lbl -text "Preset" -anchor w
     ttk::combobox $f.cb -state readonly -exportselection 0
     pack $f.lbl -side left -padx {0 10}
     pack $f.cb -side left -fill x -expand 1

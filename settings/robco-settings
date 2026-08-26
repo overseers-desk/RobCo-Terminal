@@ -24,7 +24,7 @@ if {[lsearch -exact $argv --version] >= 0 || [lsearch -exact $argv -v] >= 0} {
     exit 0
 }
 
-foreach ui {theme.tcl form.tcl ssh_page.tcl preset_dialog.tcl app.tcl} {
+foreach ui {form.tcl ssh_page.tcl preset_dialog.tcl app.tcl} {
     source [file join $ROOT ui $ui]
 }
 

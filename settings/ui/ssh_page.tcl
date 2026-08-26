@@ -89,7 +89,7 @@ proc ::rcsettings::ui::ssh_page::page {parent} {
     set canvas $outer.canvas
     canvas $canvas -highlightthickness 0 -borderwidth 0 \
         -width [expr {34 * $line}] -height [expr {26 * $line}] \
-        -background [::rcsettings::ui::theme::c bg] \
+        -background [ttk::style lookup TFrame -background] \
         -yscrollcommand [list $outer.sb set]
     ttk::scrollbar $outer.sb -orient vertical -command [list $canvas yview]
     grid $canvas   -row 0 -column 0 -sticky nsew
@@ -105,7 +105,7 @@ proc ::rcsettings::ui::ssh_page::page {parent} {
         [list ::rcsettings::ui::form::fit_window $canvas $item %w]
     ::rcsettings::ui::form::wheel_scrolls $canvas $body
 
-    ttk::label $body.caption -style Value.TLabel -anchor w -justify left \
+    ttk::label $body.caption -anchor w -justify left \
         -wraplength [expr {30 * $line}] \
         -text "The row checked here is where a new session starts, unless the\
             channel is under tmux -CC control: those windows come from tmux\
@@ -122,7 +122,7 @@ proc ::rcsettings::ui::ssh_page::page {parent} {
     pack $body.actions -side top -fill x -pady {8 0}
     ttk::button $body.actions.add -text "+" -width 3 \
         -command ::rcsettings::ui::ssh_page::on_add
-    ttk::label $body.actions.hint -style Value.TLabel -anchor w \
+    ttk::label $body.actions.hint -anchor w \
         -text "Add a server"
     pack $body.actions.add -side left
     pack $body.actions.hint -side left -padx {8 0}
@@ -146,7 +146,7 @@ proc ::rcsettings::ui::ssh_page::rebuild {} {
 
     set c 1
     foreach {key label width} $Fields {
-        ttk::label $List.h_$key -text $label -style Value.TLabel -anchor w
+        ttk::label $List.h_$key -text $label -anchor w
         grid $List.h_$key -row 0 -column $c -sticky w -padx {6 0}
         # The three text fields take the width the page has; a port is four
         # digits at its longest and gains nothing from stretching.

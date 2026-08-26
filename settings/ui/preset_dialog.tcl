@@ -41,7 +41,7 @@ proc ::rcsettings::ui::preset_dialog::open {parent table chosen on_done} {
 
     set Top .rcs_presetdlg
     if {[winfo exists $Top]} { destroy $Top }
-    toplevel $Top -background [::rcsettings::ui::theme::c bg]
+    toplevel $Top
     wm title $Top "Switch preset"
     wm resizable $Top 0 0
     wm transient $Top [winfo toplevel $parent]
@@ -50,11 +50,11 @@ proc ::rcsettings::ui::preset_dialog::open {parent table chosen on_done} {
     ttk::frame $Top.f -padding 14
     pack $Top.f -fill both -expand 1
 
-    ttk::label $Top.f.head -style Field.TLabel \
+    ttk::label $Top.f.head \
         -text "The $table table has values of your own."
     pack $Top.f.head -side top -anchor w
 
-    ttk::label $Top.f.body -style Value.TLabel -justify left -wraplength 380 \
+    ttk::label $Top.f.body -justify left -wraplength 380 \
         -text "You are moving the $table from $old to $chosen. Switching\
             drops the values you have pinned and shows $chosen as it ships.\
             Keeping your look writes those values into the file under the\
