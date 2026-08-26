@@ -158,7 +158,7 @@ proc ::rcsettings::ui::ssh_page::rebuild {} {
     ttk::radiobutton $List.local -text "Local shell" \
         -variable ::rcsettings::ui::ssh_page::Selected -value -1 \
         -command ::rcsettings::ui::ssh_page::on_select
-    grid $List.local -row 1 -column 0 -columnspan [expr {$c + 1}] -sticky w -pady 2
+    grid $List.local -row 1 -column 0 -columnspan [expr {$c + 2}] -sticky w -pady 2
 
     for {set i 0} {$i < [llength $hosts]} {incr i} {
         build_row $i [expr {$i + 2}]
@@ -185,6 +185,13 @@ proc ::rcsettings::ui::ssh_page::build_row {i r} {
         grid $w -row $r -column $c -sticky ew -padx {6 0} -pady 1
         incr c
     }
+    # The key is a path, so it can be picked as well as typed. A file
+    # dialog is configuration surface, the one place a native widget is
+    # allowed (INVARIANTS.md), and it opens where the keys live.
+    ttk::button $List.br$i -text "…" -width 2 -takefocus 0 \
+        -command [list ::rcsettings::ui::ssh_page::on_browse $i]
+    grid $List.br$i -row $r -column $c -sticky w -padx {2 0}
+    incr c
     # Takes no focus, so pressing it does not first move focus out of a box
     # and flush a write against the row that is about to go.
     ttk::button $List.rm$i -text "✕" -width 2 -style Reset.TButton \
@@ -273,6 +280,24 @@ proc ::rcsettings::ui::ssh_page::on_add {} {
     set i [expr {[llength [::rcsettings::model::ssh_hosts]] - 1}]
     if {$i >= 0 && [winfo exists $List.e${i}_host]} { focus $List.e${i}_host }
     say "a server row added; give it a host"
+}
+
+# Pick a private key file for row $i. The dialog starts in ~/.ssh when it
+# exists, and a path under home is written with the prefix spelled `~/`:
+# the spelling the terminal expands, and the one a config copied to
+# another machine survives.
+proc ::rcsettings::ui::ssh_page::on_browse {i} {
+    variable Value
+    set home [file home]
+    set dir [file join $home .ssh]
+    if {![file isdirectory $dir]} { set dir $home }
+    set path [tk_getOpenFile -title "Private key" -initialdir $dir]
+    if {$path eq ""} { return }
+    if {[string first $home/ $path] == 0} {
+        set path ~/[string range $path [string length $home/] end]
+    }
+    set Value($i.key) $path
+    flush $i key
 }
 
 proc ::rcsettings::ui::ssh_page::on_remove {i} {
