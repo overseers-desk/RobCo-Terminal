@@ -3,10 +3,10 @@
 //! ~200MB copy of the dependency stack, and this workspace's suite once
 //! weighed 21GB that way.
 
-// The support plumbing and the live test drive a real tmux on a real pty;
-// tmux runs on no Windows, so both compile on Unix alone. The transcript
-// replays are bytes against the codec and run everywhere.
-#[cfg(unix)]
+// The live test drives a real tmux on a real pty; tmux runs on no
+// Windows, so it compiles on Unix alone. `support` splits the same way
+// inside: its server and gateway are Unix, its transcript decoders are
+// not, and the replays run everywhere.
 mod support;
 #[cfg(unix)]
 mod live_tmux;
