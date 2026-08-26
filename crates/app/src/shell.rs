@@ -549,7 +549,11 @@ impl ApplicationHandler<ShellEvent> for Shell {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ShellEvent) {
         match event {
             ShellEvent::NewWindow(request) => {
-                self.open_window(event_loop, request.fullscreen, request.ssh.as_deref());
+                // A handoff that named a destination gets it; one that did
+                // not follows this process's own answer, config default
+                // included, like any other new window.
+                let ssh = request.ssh.clone().or_else(|| self.config.ssh.clone());
+                self.open_window(event_loop, request.fullscreen, ssh.as_deref());
             }
             ShellEvent::SetBankWidth { width, minimum } => self.set_bank_width(width, minimum),
         }

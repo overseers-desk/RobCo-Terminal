@@ -258,3 +258,48 @@ impl Default for ChassisSettings {
             .expect("chassis_presets() always yields at least Annunciator")
     }
 }
+
+
+/// The `[ssh]` table: the pre-configured servers the settings window's SSH
+/// tab lists as radios under localhost, and which of them a new session
+/// starts on. Read at launch by the terminal; written by the settings
+/// window under the machine-write contract like every other table.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SshSettings {
+    /// The `host` of the `[[ssh.host]]` row new sessions start on. Empty
+    /// means localhost, a local shell, which is the shipped default and
+    /// today's behaviour unchanged. A value matching no row is logged at
+    /// launch and behaves as empty, so a stale name cannot cost a window.
+    pub default: String,
+    /// The radio rows below localhost, as `[[ssh.host]]` tables.
+    #[serde(rename = "host")]
+    pub hosts: Vec<SshHost>,
+}
+
+/// One pre-configured server: an `[[ssh.host]]` row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshHost {
+    pub host: String,
+    /// Empty means the invoking user's own name, the reading `ssh` gives
+    /// a bare hostname.
+    pub user: String,
+    pub port: u16,
+    /// A key file for this host. Stored and shown by the settings tab;
+    /// the transport authenticates through the agent until key-file
+    /// loading lands (docs/ssh.md), so the field is carried, not yet
+    /// honoured.
+    pub key: String,
+}
+
+impl Default for SshHost {
+    fn default() -> Self {
+        SshHost {
+            host: String::new(),
+            user: String::new(),
+            port: 22,
+            key: String::new(),
+        }
+    }
+}

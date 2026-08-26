@@ -38,7 +38,7 @@ pub use profile::{Profile, Tuning};
 
 pub use schema::{
     ChannelDisplay, ChannelIndicator, ChassisSettings, FontSource, GeneralSettings, Rasterization,
-    ScreenSettings, Shell,
+    ScreenSettings, Shell, SshHost, SshSettings,
 };
 
 /// The three modelled settings blobs together: the shape a config file
@@ -67,6 +67,7 @@ pub struct Config {
     pub general: GeneralSettings,
     pub screen: ScreenSettings,
     pub chassis: ChassisSettings,
+    pub ssh: SshSettings,
 }
 
 impl Config {
@@ -165,6 +166,34 @@ mod tests {
     // explicitly: the glob above brings in this crate's own `toml` module,
     // which would otherwise win over the dependency of the same name.
     use ::toml;
+
+    #[test]
+    fn the_ssh_table_fills_absent_row_keys_from_the_row_default() {
+        let text = r#"
+[ssh]
+default = "vault"
+
+[[ssh.host]]
+host = "vault"
+user = "overseer"
+
+[[ssh.host]]
+host = "gw"
+port = 2222
+key = "/home/overseer/.ssh/id_gw"
+"#;
+        let cfg: Config = toml::from_str(text).unwrap();
+        assert_eq!(cfg.ssh.default, "vault");
+        assert_eq!(cfg.ssh.hosts.len(), 2);
+        assert_eq!(cfg.ssh.hosts[0].port, 22, "an absent port is ssh's own");
+        assert_eq!(cfg.ssh.hosts[1].user, "", "an absent user is the invoker's");
+        assert_eq!(cfg.ssh.hosts[1].port, 2222);
+
+        // Absent table: today's behaviour, a local shell, nothing pinned.
+        let cfg: Config = toml::from_str("").unwrap();
+        assert_eq!(cfg.ssh, SshSettings::default());
+        assert!(cfg.ssh.default.is_empty());
+    }
 
     #[test]
     fn a_file_still_carrying_the_retired_bank_font_key_loads() {
@@ -337,7 +366,7 @@ mod tests {
         let mut section = String::new();
         for line in doc.lines() {
             if line.starts_with("### ") {
-                section = ["general", "screen", "chassis"]
+                section = ["general", "screen", "chassis", "ssh"]
                     .into_iter()
                     .find(|s| line.contains(&format!("[{s}]")))
                     .unwrap_or("")

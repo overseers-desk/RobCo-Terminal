@@ -274,7 +274,12 @@ fn main() -> ExitCode {
 
     let mut shell_config = ShellConfig::empty(&identity);
     shell_config.fullscreen = options.fullscreen;
-    shell_config.ssh = options.ssh.clone();
+    // The flag outranks the config's default connection; either way every
+    // window this process opens follows the same answer.
+    shell_config.ssh = options.ssh.clone().or_else(|| {
+        app::ssh::default_request(&initial_config)
+            .map(|r| format!("{}@{}:{}", r.user, r.host, r.port))
+    });
     shell_config.bank_width = bank_width;
     shell_config.bank_minimum = bank_minimum;
     // At scale factor 1, which is the unit the default window size is quoted

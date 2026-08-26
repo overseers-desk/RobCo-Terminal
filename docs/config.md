@@ -240,6 +240,31 @@ the presets pair each with the indicator and display style it was built
 around. Mixing them works. A `slide-rule` shell with `tape` windows is a
 legitimate config, just not a combination anything shipped.
 
+### `[ssh]`
+
+Where a new session starts: on a local shell, or on one of the
+pre-configured servers below. The settings window lists these as the SSH
+tab's radios, localhost first; the terminal reads the table at launch, so a
+change applies to the next session started, and a channel under `tmux -CC`
+control is never affected (its windows come from tmux, not from spawning).
+`docs/ssh.md` carries the connection contract these rows feed.
+
+| Key | Default | What it does |
+|---|---|---|
+| `default` | `""` | The `host` of the `[[ssh.host]]` row new sessions start on. Empty means localhost, today's behaviour unchanged; a value matching no row is logged at launch and behaves as empty. |
+| `host` | `[]` | The server rows, written as `[[ssh.host]]` tables. Each carries `host` (the destination), `user` (empty means the invoking user's name), `port` (22 unless said otherwise), and `key` (a key file path, stored and shown before the transport honours it; authentication is by agent, per `docs/ssh.md`). |
+
+```toml
+[ssh]
+default = "vault.example.com"
+
+[[ssh.host]]
+host = "vault.example.com"
+user = "overseer"
+port = 22
+key = ""
+```
+
 ## A worked example
 
 ```toml

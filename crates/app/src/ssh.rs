@@ -75,6 +75,39 @@ impl SshRequest {
     }
 }
 
+/// The `[ssh]` table's answer to where a new session starts: the
+/// configured default row as a connection request, or `None` for
+/// localhost. A default naming no row, or a bare row with `$USER` unset,
+/// is logged and behaves as empty, so a stale config costs a log line and
+/// a local shell, never a window.
+pub fn default_request(cfg: &config::Config) -> Option<SshRequest> {
+    if cfg.ssh.default.is_empty() {
+        return None;
+    }
+    let Some(row) = cfg.ssh.hosts.iter().find(|h| h.host == cfg.ssh.default) else {
+        log::warn!(
+            "[ssh] default {:?} matches no [[ssh.host]] row; starting local",
+            cfg.ssh.default
+        );
+        return None;
+    };
+    let user = if row.user.is_empty() {
+        match std::env::var("USER") {
+            Ok(user) if !user.is_empty() => user,
+            _ => {
+                log::warn!(
+                    "[[ssh.host]] {:?} names no user and $USER is unset; starting local",
+                    row.host
+                );
+                return None;
+            }
+        }
+    } else {
+        row.user.clone()
+    };
+    Some(SshRequest { user, host: row.host.clone(), port: row.port })
+}
+
 /// The files trust is read from: the user's, then the machine's.
 fn known_hosts_files() -> Vec<PathBuf> {
     let mut files = Vec::new();
@@ -262,6 +295,33 @@ mod tests {
         assert!(run("@vault").is_err());
         assert!(run("overseer@").is_err());
         assert!(run("vault:notaport").is_err());
+    }
+
+    #[test]
+    fn the_configured_default_becomes_a_request_and_a_stale_one_does_not() {
+        let mut cfg = config::Config::default();
+        assert_eq!(default_request(&cfg), None, "no default, no dialling");
+
+        cfg.ssh.hosts.push(config::SshHost {
+            host: "vault".into(),
+            user: "overseer".into(),
+            port: 2222,
+            key: String::new(),
+        });
+        cfg.ssh.default = "vault".into();
+        assert_eq!(
+            default_request(&cfg),
+            Some(SshRequest { user: "overseer".into(), host: "vault".into(), port: 2222 })
+        );
+
+        cfg.ssh.default = "gone".into();
+        assert_eq!(default_request(&cfg), None, "a stale default costs a log line, not a window");
+
+        // A bare row takes the invoking user's name.
+        cfg.ssh.default = "vault".into();
+        cfg.ssh.hosts[0].user = String::new();
+        std::env::set_var("USER", "resident");
+        assert_eq!(default_request(&cfg).unwrap().user, "resident");
     }
 
     fn key(alg: Algorithm) -> PrivateKey {

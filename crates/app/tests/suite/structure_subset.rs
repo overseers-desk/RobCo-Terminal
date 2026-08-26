@@ -34,6 +34,11 @@ fn structure_reads_only_structural_keys() {
                     Some((_, alternate)) => serde_json::Value::from(*alternate),
                     None => serde_json::Value::from(format!("{s}x")),
                 },
+                // A list-shaped leaf (`[[ssh.host]]`) has no generic
+                // perturbation, and the filter chain reads no list; the
+                // day `Structure` reads one, its scalar neighbours still
+                // hold the relation this test pins.
+                serde_json::Value::Array(_) => continue,
                 other => panic!("unexpected leaf shape at {section}.{key}: {other:?}"),
             };
             moved_doc[section][key] = perturbed;
