@@ -20,8 +20,9 @@ members = [
 # `0.1.0` because they are `publish = false` internals whose versions nobody
 # reads; this one is the number a user sees.
 #
-# Bumping it is a release decision, not a packaging one: `dist` and `deb`
-# package whatever number is in the tree and never write to this file.
+# Bumping it is a release decision, not a packaging one: `dist` and
+# `stage-deb` package whatever number is in the tree and never write to
+# this file.
 [workspace.package]
 version = "0.1.0"
 

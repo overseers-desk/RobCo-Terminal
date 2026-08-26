@@ -6,7 +6,7 @@
 //! into a versioned `tar.gz`, and `stage-deb` writes them under the staging
 //! root `debian/rules` hands it, where debhelper takes over (strip, dbgsym,
 //! `${shlibs:Depends}`, the doc files) and `dpkg-buildpackage` writes the
-//! `.deb` into the parent directory, the office's shelf for packages. One
+//! `.deb` into the parent directory. One
 //! [`lay_out`] means the three can never disagree about what an installation
 //! is.
 //!
@@ -787,7 +787,6 @@ mod tests {
         assert!(!patched.contains("info script"), "{patched}");
         assert!(point_root_at("#!/usr/bin/env tclsh9.0\n", "/usr/share/x").is_err());
     }
-
 
     /// The timestamp `dist` stamps into the archive is a real commit time
     /// off git, not `0` from a parse that silently failed.

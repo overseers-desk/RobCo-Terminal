@@ -129,7 +129,7 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     assert!(text_of(&log).contains("authenticated as overseer"), "{log:?}");
 
     // An encrypted key is named and skipped, never silently ignored: its
-    // passphrase waits on the prompt surface (#14).
+    // passphrase waits on the operator surface (#14).
     let sealed = identity.encrypt(&mut rand::rng(), "tumblers").unwrap();
     let sealed_path = dir.path().join("sealed_key");
     std::fs::write(

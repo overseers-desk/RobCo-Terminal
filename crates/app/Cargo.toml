@@ -1,7 +1,7 @@
 [package]
 name = "robco-app"
 # The product's version lives in the workspace manifest, which is also where
-# `xtask dist` and `xtask deb` read it from. Inheriting it here is what makes
+# `xtask dist` and `xtask stage-deb` read it from. Inheriting it here is what makes
 # `app::VERSION` (and so `--version`) and the version stamped on a release
 # artifact the same string without a second place to remember.
 version.workspace = true
