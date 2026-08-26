@@ -102,7 +102,7 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     .unwrap();
     assert!(text_of(&log).contains("ssh-add"), "no remedy named: {log:?}");
 
-    // Agent up: connect, shell, echo, resize, remote exit — the whole life.
+    // Agent up: connect, shell, echo, resize, remote exit, the whole life.
     let sock = serve_agent(dir.path(), &identity).await;
     std::env::set_var("SSH_AUTH_SOCK", &sock);
     let saw = Arc::new(Mutex::new(None));
