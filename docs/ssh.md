@@ -4,7 +4,7 @@
 
 A connection that fails before it ever produces a remote byte keeps its channel, wearing the refusal, until you close it (`Ctrl`+`Shift`+`W`): the slot is the only place the reason is readable. A connection that dies after working ends its channel the way a local shell's exit does.
 
-Where a session starts is configuration: the `[ssh]` table in `config.toml` holds the pre-configured servers as `[[ssh.host]]` rows and names which of them is the default (`docs/config.md`). The settings window is to list those rows as its SSH tab's radios, localhost first, the checked radio being the default; the terminal reads the table at launch, so a change applies to the next session started. `--ssh` on the command line outranks the configured default for its own invocation. The on-glass chord that picks a target for one channel without touching the default is designed in the project's issue tracker (#14) and arrives separately; the sections below say exactly what this build will and will not do.
+Where a session starts is configuration: the `[ssh]` table in `config.toml` holds the pre-configured servers as `[[ssh.host]]` rows and names which of them is the default (`docs/config.md`). The settings window is to list those rows as its SSH tab's radios, localhost first, the checked radio being the default; the terminal reads the table at launch, so a change applies to the next session started. `--ssh` on the command line outranks the configured default for its own invocation, and `Shift`+`Alt`+`T` raises a picker on the glass: the same rows and localhost, a digit opening one channel there, the default untouched. The sections below say exactly what this build will and will not do.
 
 ## Host keys
 

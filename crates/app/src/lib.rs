@@ -60,6 +60,7 @@ pub mod instance;
 pub mod mouse;
 pub mod overlay;
 pub mod paths;
+pub mod picker;
 pub mod settings;
 pub mod shell;
 pub mod ssh;

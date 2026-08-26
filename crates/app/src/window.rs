@@ -438,6 +438,9 @@ pub struct TerminalSurface {
     /// One SSH connection per bank, beside the gateways: the `Link` is the
     /// connection thread's lifetime, and dropping it is the disconnect.
     ssh_links: HashMap<BankId, Link>,
+    /// The home slot the destination picker stands on, while it does.
+    /// `Shift+Alt+T` raises it; a digit or `Esc` retires it.
+    picker_slot: Option<u32>,
     /// Every session seen, by socket, server pid and id: banked, in flight, or
     /// owed; the model holds banks, so a listing is read against this.
     sessions: HashMap<(String, u32, SessionId), SessionSlot>,
@@ -816,6 +819,7 @@ impl TerminalSurface {
             channels,
             gateways: HashMap::new(),
             ssh_links: HashMap::new(),
+            picker_slot: None,
             sessions: HashMap::new(),
             on_air,
             session_config: session.clone(),
@@ -935,6 +939,109 @@ impl TerminalSurface {
     /// Both at once is one badge -- the pty one, the wire nearer the user's
     /// hand -- because they are one event, "your typing is being thrown away",
     /// and the log line beside it carries the byte counts.
+    /// Raise the destination picker on a free home slot: a bare screen
+    /// painted with the configured servers, taking the air. Idempotent
+    /// while one stands: the chord again only brings it back on air.
+    pub fn open_picker(&mut self) {
+        if let Some(slot) = self.picker_slot {
+            if self.channels.slot_title(0, slot).is_some() {
+                self.channels.select_channel(0, slot);
+                self.channel_changed();
+                return;
+            }
+            self.picker_slot = None;
+        }
+        let size = self.viewport.term_size();
+        let scrollback = self.session_config.scrollback;
+        let slot = self.channels.first_free(0);
+        let opened = self.channels.open_channel(0, slot, || {
+            Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback)))
+        });
+        if !opened {
+            log::warn!("no free home slot for the destination picker");
+            return;
+        }
+        self.picker_slot = Some(slot);
+        self.paint_picker();
+        self.channel_changed();
+    }
+
+    /// Repaint the picker's page from the live config, whole: raise,
+    /// resize, and nothing else, so tracking damage buys nothing.
+    fn paint_picker(&mut self) {
+        let Some(slot) = self.picker_slot else {
+            return;
+        };
+        let hosts = self.live_config().ssh.hosts;
+        if let Some(row) = self.channels.rows_mut().find(|r| r.bank == 0 && r.channel == slot) {
+            if let Some(screen) = row.session.tmux_pane_mut() {
+                screen.feed(&crate::picker::paint(&hosts));
+            }
+        }
+    }
+
+    /// The picker's keyboard: only while its page is the channel on the
+    /// air. Answers whether the key was the picker's.
+    fn picker_key(&mut self, logical: &winit::keyboard::Key) -> bool {
+        let Some(slot) = self.picker_slot else {
+            return false;
+        };
+        if (self.channels.current_bank(), self.channels.current_channel()) != (0, slot) {
+            // The page is standing but off the air: the keyboard is the
+            // visible channel's. A dead picker row (closed by hand) is
+            // forgotten here, the one place that would otherwise trust it.
+            if self.channels.slot_title(0, slot).is_none() {
+                self.picker_slot = None;
+            }
+            return false;
+        }
+        let hosts = self.live_config().ssh.hosts;
+        match crate::picker::read_key(logical, &hosts) {
+            crate::picker::Verdict::Localhost => {
+                // The replacement stands before the page goes, so closing
+                // the page is never closing the last channel.
+                let (config, size) = (self.session_config.clone(), self.viewport.term_size());
+                self.channels.open_first_free(|| spawn(&config, size));
+                self.retire_picker(slot);
+                true
+            }
+            crate::picker::Verdict::Host(index) => {
+                let Some(row) = hosts.get(index) else {
+                    return true;
+                };
+                let user = if row.user.is_empty() {
+                    std::env::var("USER").ok().filter(|u| !u.is_empty())
+                } else {
+                    Some(row.user.clone())
+                };
+                let Some(user) = user else {
+                    log::warn!("[[ssh.host]] {:?} names no user and $USER is unset", row.host);
+                    return true;
+                };
+                let req = SshRequest { user, host: row.host.clone(), port: row.port };
+                self.connect_ssh(&req);
+                self.retire_picker(slot);
+                true
+            }
+            crate::picker::Verdict::Cancel => {
+                self.retire_picker(slot);
+                true
+            }
+            crate::picker::Verdict::Ignored => true,
+        }
+    }
+
+    /// Take the picker's page down. Its `Close` verdict is honoured like
+    /// any channel's, so an Esc on the last channel anywhere switches the
+    /// appliance off, the law `close_channel` already applies.
+    fn retire_picker(&mut self, slot: u32) {
+        self.picker_slot = None;
+        if self.channels.close_channel(0, slot) == Close::CloseWindow {
+            self.eof = true;
+        }
+        self.channel_changed();
+    }
+
     /// Open an SSH connection as a new bank, its first channel on the air.
     /// The trust policy is the program's own (`crate::ssh::KnownHosts`).
     pub fn connect_ssh(&mut self, req: &SshRequest) {
@@ -1415,6 +1522,12 @@ impl TerminalSurface {
         if self.shortcut_key(logical, modifiers) {
             return;
         }
+        // The destination picker's keyboard, when its page is on the air:
+        // a digit connects, Esc cancels, everything else is swallowed so
+        // the page stays put. The `gateway_key` shape.
+        if self.picker_key(logical) {
+            return;
+        }
         // Then the gateway's own keyboard, which stands between the shortcuts
         // and the keytab: it holds the focus in the terminal's place, so the
         // emulation never sees a key at all, while the window's own
@@ -1679,6 +1792,7 @@ impl TerminalSurface {
     /// | `Alt+PgUp/PgDown` | [`Self::step_bank`] |
     /// | `Alt+<digit>` | [`Self::chord_digit`] (select) |
     /// | `Alt+Shift+<digit>` | [`Self::chord_digit`] (store) |
+    /// | `Alt+Shift+T` | [`Self::open_picker`] |
     ///
     /// The clipboard pair and the tab-moving arrows are the chords Konsole
     /// and GNOME Terminal both put here, so a hand arriving from either
@@ -1711,6 +1825,12 @@ impl TerminalSurface {
             }
             Key::Character(c) if chord_mod && is_digit(c) => {
                 self.chord_digit(c.as_bytes()[0], shift)
+            }
+            // The destination picker: the owner's chord, chosen over the
+            // desktop-grabbed Ctrl+Alt+T (#14).
+            Key::Character(c) if chord_mod && shift && c.eq_ignore_ascii_case("t") => {
+                self.open_picker();
+                true
             }
             Key::Named(NamedKey::ArrowLeft) if ctrl && shift => {
                 self.move_channel(-1);
@@ -2563,6 +2683,9 @@ impl TerminalSurface {
                 log::error!("could not resize the pty: {e}");
             }
         }
+        // The picker's page is bytes already parsed, so a reflow leaves it
+        // ragged: paint it again at the new geometry.
+        self.paint_picker();
         // The client-size law's resize half: the glass's grid to every
         // gateway, debounced by the gateway itself against the drag's burst.
         self.set_client_size();

@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use app::ssh::{KnownHosts, SshRequest};
 use app::window::TerminalSurface;
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use ssh_link::russh::keys::{Algorithm, PrivateKey};
 use ssh_link::test_server::{mint, serve_agent, serve_echo};
 use term::{viewport_text, CellSize, SessionConfig, Viewport};
@@ -215,4 +216,56 @@ fn a_refused_host_key_is_readable_until_the_user_closes_it() {
     // The user, having read it, closes the channel: the bank goes.
     s.close_channel();
     assert!(s.channels().rows().iter().all(|r| r.bank == 0));
+}
+
+/// The chord, as the keyboard hands it to the surface.
+fn press(surface: &mut TerminalSurface, key: Key, mods: ModifiersState) {
+    surface.key_input(&key, None, mods);
+}
+
+#[test]
+fn the_picker_offers_the_configured_rows_and_the_default_stays_put() {
+    let far = far_side();
+    let mut s = surface();
+    let mut cfg = config::Config::default();
+    cfg.ssh.hosts.push(config::SshHost {
+        host: "127.0.0.1".into(),
+        user: "overseer".into(),
+        port: far.port,
+        key: String::new(),
+    });
+    s.set_config(cfg);
+
+    // Shift+Alt+T: the page takes a free slot and the air.
+    let chord = ModifiersState::ALT | ModifiersState::SHIFT;
+    press(&mut s, Key::Character("T".into()), chord);
+    let slot = s.channels().current_channel();
+    assert_eq!(s.channels().current_bank(), 0);
+    assert_ne!(slot, 1, "the page takes a free slot, not the shell's");
+    assert!(glass_contains(&s, "SELECT DESTINATION"));
+    assert!(glass_contains(&s, "overseer@127.0.0.1"));
+
+    // Esc: the page goes, nothing opened, nothing dialled.
+    press(&mut s, Key::Named(NamedKey::Escape), ModifiersState::empty());
+    assert!(s.channels().rows().iter().all(|r| r.channel != slot));
+    assert!(s.channels().rows().iter().all(|r| r.bank == 0));
+
+    // Again, choose the configured server: a connection bank stands and
+    // the page is gone. (The trust verdict is the real policy's and this
+    // host is unknown to it; the connection path under a trusted key is
+    // the earlier tests'.)
+    press(&mut s, Key::Character("T".into()), chord);
+    press(&mut s, Key::Character("2".into()), ModifiersState::empty());
+    let bank = s.channels().current_bank();
+    assert_ne!(bank, 0, "the chosen server stands as its own bank");
+    assert_eq!(s.channels().current().unwrap().title, "overseer@127.0.0.1");
+    assert!(s.channels().rows().iter().all(|r| r.bank != 0 || r.channel == 1));
+
+    // Again, choose localhost: a second local shell, no connection.
+    press(&mut s, Key::Character("T".into()), chord);
+    press(&mut s, Key::Character("1".into()), ModifiersState::empty());
+    assert_eq!(s.channels().current_bank(), 0);
+    let home_rows = s.channels().rows().iter().filter(|r| r.bank == 0).count();
+    assert_eq!(home_rows, 2, "the shell that was asked for, beside the first");
+    assert!(!glass_contains(&s, "SELECT DESTINATION"));
 }
