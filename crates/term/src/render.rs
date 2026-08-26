@@ -22,7 +22,7 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt as _;
 
-use crate::atlas::GlyphAtlas;
+use crate::atlas::{FontContext, GlyphAtlas};
 use crate::cells::{Cell, CellGrid, CursorShape, CursorState};
 use crate::color::{Rgba, Scheme};
 use crate::gpu::{Gpu, Image, Target, TARGET_FORMAT};
@@ -118,6 +118,11 @@ pub struct GridRenderer {
     instance_buffer: wgpu::Buffer,
 
     atlas: GlyphAtlas,
+    /// The atlas generation `bind_group` was built over. An appended glyph
+    /// that pushes the atlas past its allocated height puts a new texture
+    /// behind the atlas's view, and the binding held here is then a binding to
+    /// the allocation that was thrown away.
+    bound_generation: u64,
     scheme: Scheme,
 
     cols: usize,
@@ -267,6 +272,7 @@ impl GridRenderer {
             bind_group,
             uniform_buffer,
             instance_buffer,
+            bound_generation: atlas.generation,
             atlas,
             scheme,
             cols,
@@ -356,13 +362,44 @@ impl GridRenderer {
     /// does have to be re-rasterised. A DPR change is *not* one of these.
     pub fn set_atlas(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, atlas: GlyphAtlas) {
         self.atlas = atlas;
+        self.rebind(device);
+        self.upload_all(queue);
+    }
+
+    /// Give the atlas a character it does not hold, and answer whether it can
+    /// draw the character afterwards.
+    ///
+    /// The point of the pair being here rather than at the caller is the
+    /// texture: appending can double the atlas's height, and a doubling
+    /// replaces the texture the bind group was built over. So the generation
+    /// is compared and the binding rebuilt on the spot, and the frame this
+    /// character first appears in is the frame that draws it.
+    ///
+    /// `false` is a settled no: a space, or a codepoint nothing installed on
+    /// the machine has a glyph for. Either way the cell draws empty and the
+    /// atlas remembers, so asking again is a hash lookup.
+    pub fn admit_glyph(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        font: &mut FontContext,
+        c: char,
+    ) -> bool {
+        let drawn = self.atlas.glyph(device, queue, font, c).is_some();
+        if self.atlas.generation != self.bound_generation {
+            self.rebind(device);
+        }
+        drawn
+    }
+
+    fn rebind(&mut self, device: &wgpu::Device) {
         self.bind_group = Self::make_bind_group(
             device,
             &self.bind_group_layout,
             &self.uniform_buffer,
             &self.atlas,
         );
-        self.upload_all(queue);
+        self.bound_generation = self.atlas.generation;
     }
 
     pub fn set_scheme(&mut self, queue: &wgpu::Queue, scheme: Scheme) {

@@ -29,6 +29,24 @@
 //! threshold above then eats the stems. [`crate::fonts::raster`] is the one
 //! rule, shared with the LED raster.
 //!
+//! The atlas grows. A terminal's charset is whatever the far end sends, so
+//! the printable-ASCII build is an opening balance rather than the whole
+//! account: a character with no slot is shaped, rasterised and appended to
+//! the shelf the packer left its pen on, and only the texels that changed go
+//! to the GPU. The texture doubles in height when the pen runs off the
+//! bottom, and that is the one moment the view behind a bind group is
+//! replaced, which is what [`GlyphAtlas::generation`] is counted for.
+//! Repacking the whole atlas per arriving character would cost a page of CJK
+//! one full rebuild per glyph.
+//!
+//! Which face covers a character is cosmic-text's answer rather than ours,
+//! and [`FontContext::covering_glyphs`] is the one place it is asked: give it
+//! text and a pixel size and it says, per glyph, which face and which glyph
+//! id in that face. A character the selected family has no glyph for falls to
+//! the machine's own fonts, whose database is loaded on the first character
+//! that needs it and not before, so a session that shows nothing but ASCII
+//! never pays for the enumeration.
+//!
 //! Two further things are deliberate here:
 //!
 //! * Cache keys are built with a hard zero subpixel position, so a given
@@ -39,12 +57,12 @@
 //!   A terminal is a grid; pretending otherwise reintroduces the fractional
 //!   offsets we just spent the previous point removing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use cosmic_text::{
     fontdb, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping, SwashContent,
 };
-use swash::scale::ScaleContext;
+use swash::scale::{ScaleContext, Scaler};
 
 use crate::fonts::raster;
 use crate::fonts::sizing::ResolvedFont;
@@ -111,6 +129,110 @@ impl Rasterization {
     }
 }
 
+/// One glyph on its way into the atlas: the mask swash produced, thresholded,
+/// with the placement it reported.
+struct Raster {
+    c: char,
+    w: u32,
+    h: u32,
+    left: i32,
+    top: i32,
+    data: Vec<u8>,
+}
+
+/// Rasterise one glyph out of a face's scaler and apply the mode.
+///
+/// `None` is three answers in one, and all three mean the same thing to the
+/// packer, which is that the character earns no slot. swash may decline the
+/// glyph outright. The glyph may have no ink: space and its relatives, which
+/// is why an atlas over printable ASCII holds fewer entries than the charset
+/// has characters. Or the face may draw it in colour.
+///
+/// The colour case is the one worth a word. A face that carries emoji as
+/// embedded PNG or as a `COLR` table hands back `SwashContent::Color`, four
+/// bytes a pixel, and there is no threshold and no coverage reading that turns
+/// those four bytes into the single channel this atlas holds: both modes are
+/// alpha and the shader reads one byte. So the glyph is skipped and the
+/// character is named in the log, because a cell that draws empty is worth
+/// less than a cell that draws empty for a stated reason.
+fn rasterise(
+    scaler: &mut Scaler,
+    c: char,
+    glyph_id: u16,
+    rasterization: Rasterization,
+) -> Option<Raster> {
+    let image = raster::glyph_mask(scaler, glyph_id)?;
+    let (w, h) = (image.placement.width, image.placement.height);
+    if w == 0 || h == 0 {
+        return None;
+    }
+    if !matches!(image.content, SwashContent::Mask) {
+        log::warn!(
+            "glyph {c:?} rasterised as {:?} rather than an alpha mask; the \
+             atlas is a single coverage channel in both modes, so a colour \
+             face's glyph has nowhere to go and the cell draws empty",
+            image.content
+        );
+        return None;
+    }
+    Some(Raster {
+        c,
+        w,
+        h,
+        left: image.placement.left,
+        top: image.placement.top,
+        data: image
+            .data
+            .iter()
+            .map(|v| rasterization.apply(*v))
+            .collect::<Vec<u8>>(),
+    })
+}
+
+/// The atlas texture, at whatever height the packer has grown to need.
+fn allocate(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("glyph atlas"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+/// Fill a whole texture from the atlas bytes. Both the callers are the two
+/// moments a texture has nothing in it: the initial build, and a doubling.
+/// A glyph appended into a texture that already holds the rest writes its own
+/// rectangle instead, which is the only region that differs.
+fn upload(queue: &wgpu::Queue, texture: &wgpu::Texture, width: u32, height: u32, pixels: &[u8]) {
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        pixels,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphSlot {
     /// Position in the atlas texture, in texels.
@@ -145,7 +267,30 @@ pub struct GlyphAtlas {
     /// The size everything in here was rasterised at. Recorded so a DPR change
     /// can assert it did *not* move.
     pub raster_pixel_size: u32,
+    /// How many times the texture behind [`Self::view`] has been replaced,
+    /// which happens when a glyph is appended past the allocated height.
+    /// Anything holding a bind group over this atlas records the number it
+    /// bound at and compares, because a binding built before a doubling is a
+    /// binding to an allocation this atlas has replaced, and the picture it
+    /// draws is whatever that allocation happened to hold.
+    pub generation: u64,
     slots: HashMap<char, GlyphSlot>,
+    /// Characters that have been through the rasteriser and earned no slot: a
+    /// space, a face's blank glyph, a colour glyph, a codepoint nothing on the
+    /// machine covers. Remembered because the answer is otherwise paid for
+    /// again every time the row it sits in is rebuilt, and a screen of spaces
+    /// would reshape a screen of spaces on every redraw.
+    blank: HashSet<char>,
+    /// The atlas as bytes, kept so a glyph can be appended without the GPU
+    /// being asked to read back what it already holds, and so a reallocation
+    /// has something to re-upload.
+    pixels: Vec<u8>,
+    /// The shelf packer's pen: where the next glyph goes, and how tall the
+    /// shelf it goes on has grown. Carried in the struct because packing does
+    /// not finish when the initial charset runs out.
+    pen_x: u32,
+    pen_y: u32,
+    shelf_h: u32,
     /// Every distinct byte value written into the atlas. The evidence for
     /// property 1 is taken here, before the GPU is involved at all.
     pub value_histogram: [u64; 256],
@@ -154,6 +299,142 @@ pub struct GlyphAtlas {
 impl GlyphAtlas {
     pub fn slot(&self, c: char) -> Option<&GlyphSlot> {
         self.slots.get(&c)
+    }
+
+    /// The slot a character draws from, rasterising and appending it when the
+    /// atlas does not hold one yet.
+    ///
+    /// This is the whole of what a character outside the initial charset
+    /// costs: one shaping, one rasterisation, one `write_texture` of the
+    /// glyph's own rectangle, and a doubling of the texture on the rare
+    /// occasion the shelf runs off the bottom. `None` is the settled answer
+    /// that the character has no ink to draw, and is reached again from
+    /// [`Self::blank`] without touching the font.
+    pub fn glyph(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        font: &mut FontContext,
+        c: char,
+    ) -> Option<GlyphSlot> {
+        if let Some(slot) = self.slots.get(&c) {
+            return Some(*slot);
+        }
+        if self.blank.contains(&c) {
+            return None;
+        }
+        let raster = font.glyph_raster(c, self.raster_pixel_size as f32, self.rasterization);
+        let placed = raster.and_then(|r| self.append(device, queue, r));
+        if placed.is_none() {
+            self.blank.insert(c);
+        }
+        placed
+    }
+
+    /// Put one rasterised glyph on the shelf and send it to the GPU.
+    fn append(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        r: Raster,
+    ) -> Option<GlyphSlot> {
+        if r.w > self.width {
+            // A glyph wider than the whole texture has no shelf to sit on.
+            // Nothing in a terminal face at a terminal size comes close to
+            // 512 texels, so this is a face doing something the catalogue
+            // never anticipated rather than a case worth packing around.
+            log::warn!(
+                "glyph {:?} rasterised {} texels wide, which is wider than the \
+                 {}-texel atlas; it draws as an empty cell",
+                r.c,
+                r.w,
+                self.width
+            );
+            return None;
+        }
+        if self.pen_x + r.w > self.width {
+            self.pen_x = 0;
+            self.pen_y += self.shelf_h;
+            self.shelf_h = 0;
+        }
+        let needed = self.pen_y + r.h;
+        let grew = needed > self.height;
+        if grew {
+            let mut height = self.height.max(1);
+            while height < needed {
+                height *= 2;
+            }
+            self.reallocate(device, height);
+        }
+
+        let slot = GlyphSlot {
+            atlas_x: self.pen_x,
+            atlas_y: self.pen_y,
+            width: r.w,
+            height: r.h,
+            left: r.left,
+            top: r.top,
+        };
+        for row in 0..r.h {
+            let src = (row * r.w) as usize;
+            let dst = ((slot.atlas_y + row) * self.width + slot.atlas_x) as usize;
+            self.pixels[dst..dst + r.w as usize].copy_from_slice(&r.data[src..src + r.w as usize]);
+        }
+        for v in &r.data {
+            self.value_histogram[*v as usize] += 1;
+        }
+        // A grown texture is a fresh allocation and has to be filled; an
+        // ungrown one differs from what the GPU holds by exactly this glyph's
+        // rectangle, which is the only region worth the bus.
+        if grew {
+            upload(queue, &self.texture, self.width, self.height, &self.pixels);
+        } else {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: slot.atlas_x,
+                        y: slot.atlas_y,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &r.data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(r.w),
+                    rows_per_image: Some(r.h),
+                },
+                wgpu::Extent3d {
+                    width: r.w,
+                    height: r.h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+
+        self.pen_x += r.w;
+        self.shelf_h = self.shelf_h.max(r.h);
+        self.slots.insert(r.c, slot);
+        Some(slot)
+    }
+
+    /// Take a taller texture and count the swap. The atlas bytes grow with it
+    /// and go up to the GPU in the append that asked for the height.
+    ///
+    /// The old texture goes when the field is overwritten, and with it the
+    /// view every bind group built over this atlas was made from. Hence
+    /// [`Self::generation`]: a stale binding is not an error wgpu reports, it
+    /// is a picture drawn from a dead allocation.
+    fn reallocate(&mut self, device: &wgpu::Device, height: u32) {
+        self.pixels.resize((self.width * height) as usize, 0);
+        self.height = height;
+        self.texture = allocate(device, self.width, height);
+        self.view = self
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        self.generation += 1;
     }
 
     pub fn distinct_values(&self) -> Vec<u8> {
@@ -181,6 +462,9 @@ pub struct FontContext {
     scale_context: ScaleContext,
     pub font_id: fontdb::ID,
     pub family: String,
+    /// Whether the machine's own fonts have been read into the database. See
+    /// [`Self::covering_glyphs`] for when that happens and why it waits.
+    system_fonts: bool,
 }
 
 impl FontContext {
@@ -240,12 +524,54 @@ impl FontContext {
             scale_context: ScaleContext::new(),
             font_id,
             family,
+            system_fonts: false,
         }
     }
 
-    /// Shape a string and return one glyph id plus advance per glyph, in order.
-    /// Deliberately a flat list: a terminal owns the cell assignment.
-    fn shape_to_glyph_ids(&mut self, text: &str, pixel_size: f32) -> Vec<(u16, f32)> {
+    /// Whether the machine's font database has been read. False is the
+    /// evidence that a session has asked for nothing the selected face does
+    /// not itself cover.
+    pub fn system_fonts_loaded(&self) -> bool {
+        self.system_fonts
+    }
+
+    /// Which face covers each glyph of `text` at this pixel size, which glyph
+    /// id in that face draws it, and how wide it is. One entry per glyph, in
+    /// order, deliberately flat: a terminal owns the cell assignment, and a
+    /// character is not always a glyph. `e` followed by U+0301 shapes to one
+    /// precomposed glyph rather than to a letter and a floating accent.
+    ///
+    /// This is the seam. It is the one question this crate asks a text stack,
+    /// and cosmic-text is behind it only because something has to be. Swapping
+    /// in another shaper is rewriting this body and nothing else, which is why
+    /// there is no trait here: one implementor buys indirection and hides
+    /// where the answer comes from.
+    ///
+    /// A glyph id of 0 is the face saying it has no glyph for that character,
+    /// and it is what pulls in the machine's own fonts: the database is built
+    /// holding the one selected face, and everything cosmic-text can fall back
+    /// to arrives on the first character that needs falling back. Loading it
+    /// up front would put a font enumeration, its file reads and its parse in
+    /// front of the first frame of every session, including every session that
+    /// never leaves ASCII.
+    pub fn covering_glyphs(&mut self, text: &str, pixel_size: f32) -> Vec<(fontdb::ID, u16, f32)> {
+        let shaped = self.shape(text, pixel_size);
+        if self.system_fonts || !shaped.iter().any(|(_, glyph_id, _)| *glyph_id == 0) {
+            return shaped;
+        }
+        self.system_fonts = true;
+        self.font_system.db_mut().load_system_fonts();
+        log::debug!(
+            "{:?} is not covered by {}; the machine's fonts are loaded now, {} \
+             faces of them",
+            text,
+            self.family,
+            self.font_system.db().len()
+        );
+        self.shape(text, pixel_size)
+    }
+
+    fn shape(&mut self, text: &str, pixel_size: f32) -> Vec<(fontdb::ID, u16, f32)> {
         let metrics = Metrics::new(pixel_size, pixel_size);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         let family = self.family.clone();
@@ -261,10 +587,29 @@ impl FontContext {
         let mut out = Vec::new();
         for run in buffer.layout_runs() {
             for glyph in run.glyphs.iter() {
-                out.push((glyph.glyph_id, glyph.w));
+                out.push((glyph.font_id, glyph.glyph_id, glyph.w));
             }
         }
         out
+    }
+
+    /// Shape one character, rasterise it out of whichever face covers it, and
+    /// apply the mode. The atlas's append path; [`Self::build_atlas`] is the
+    /// same three steps taken in bulk, over a charset instead of a character.
+    fn glyph_raster(&mut self, c: char, px: f32, rasterization: Rasterization) -> Option<Raster> {
+        let mut buf = [0u8; 4];
+        let (face, glyph_id, _) = self
+            .covering_glyphs(c.encode_utf8(&mut buf), px)
+            .first()
+            .copied()?;
+        let font = self.font_system.get_font(face, fontdb::Weight::NORMAL)?;
+        let mut scaler = self
+            .scale_context
+            .builder(font.as_swash())
+            .size(px)
+            .hint(true)
+            .build();
+        rasterise(&mut scaler, c, glyph_id, rasterization)
     }
 
     /// Cell metrics for a face at a given raster size. The advance comes from
@@ -273,9 +618,9 @@ impl FontContext {
     pub fn cell_metrics(&mut self, resolved: &ResolvedFont) -> CellMetrics {
         let px = resolved.raster_pixel_size as f32;
         let advance = self
-            .shape_to_glyph_ids("M", px)
+            .covering_glyphs("M", px)
             .first()
-            .map(|(_, w)| *w)
+            .map(|(_, _, w)| *w)
             .unwrap_or(px * 0.5);
         // Cell width is the face's own advance, rounded, and nothing else.
         //
@@ -327,37 +672,34 @@ impl FontContext {
         chars.sort_unstable();
         chars.dedup();
 
-        struct Raster {
-            c: char,
-            w: u32,
-            h: u32,
-            left: i32,
-            top: i32,
-            data: Vec<u8>,
-        }
         // Shaping first, rasterising second, because they want the same `self`:
-        // shaping needs the whole `FontSystem`, and the scaler holds a
-        // `FontRef` borrowed out of one face for the length of the loop.
-        let mut glyphs = Vec::with_capacity(chars.len());
+        // shaping needs the whole `FontSystem`, and a scaler holds a `FontRef`
+        // borrowed out of one face for as long as it lives. That borrow is
+        // also why the glyphs are grouped by the face that covers them and
+        // rasterised a group at a time. One scaler can speak for one face, and
+        // a charset wide enough to leave the selected family is answered by
+        // several.
+        let mut by_face: HashMap<fontdb::ID, Vec<(char, u16)>> = HashMap::new();
         for c in chars {
             let mut buf = [0u8; 4];
-            if let Some((glyph_id, _)) = self
-                .shape_to_glyph_ids(c.encode_utf8(&mut buf), px)
+            if let Some((face, glyph_id, _)) = self
+                .covering_glyphs(c.encode_utf8(&mut buf), px)
                 .first()
                 .copied()
             {
-                glyphs.push((c, glyph_id));
+                by_face.entry(face).or_default().push((c, glyph_id));
             }
         }
 
         let mut rasters = Vec::new();
-        // `None` only if the face this context was built from has gone, which
-        // it cannot: the database holds it and nothing removes it. An empty
-        // atlas is still a legal one, so this is a `if let` rather than a panic.
-        if let Some(font) = self
-            .font_system
-            .get_font(self.font_id, fontdb::Weight::NORMAL)
-        {
+        for (face, wanted) in by_face {
+            // `None` only if a face the shaper just named has gone from the
+            // database, which nothing removes it from. An atlas short one
+            // glyph is still a legal one, so this is an `if let` rather than a
+            // panic.
+            let Some(font) = self.font_system.get_font(face, fontdb::Weight::NORMAL) else {
+                continue;
+            };
             // `hint(true)` is what cosmic-text asked for and what the LED
             // raster asks for: it changes nothing on the strike path and is the
             // right answer on the outline one.
@@ -367,43 +709,18 @@ impl FontContext {
                 .size(px)
                 .hint(true)
                 .build();
-
-            for (c, glyph_id) in glyphs {
-                let Some(image) = raster::glyph_mask(&mut scaler, glyph_id) else {
-                    continue;
-                };
-                let (w, h) = (image.placement.width, image.placement.height);
-                if w == 0 || h == 0 {
-                    // Space and friends: no ink, no atlas entry needed.
-                    continue;
+            for (c, glyph_id) in wanted {
+                if let Some(r) = rasterise(&mut scaler, c, glyph_id, rasterization) {
+                    rasters.push(r);
                 }
-                // Alpha masks only. A colour bitmap in a terminal face would
-                // mean the pixel-font assumption is wrong, so say so rather
-                // than silently rendering something plausible. `raster`'s
-                // source list cannot produce one; this is the guard that keeps
-                // the list from quietly growing one.
-                assert!(
-                    matches!(image.content, SwashContent::Mask),
-                    "glyph {c:?} rasterised as {:?}, not an alpha mask; \
-                     a terminal face with colour glyphs is outside what either \
-                     rasterisation mode can carry",
-                    image.content
-                );
-                let data = image
-                    .data
-                    .iter()
-                    .map(|v| rasterization.apply(*v))
-                    .collect::<Vec<u8>>();
-                rasters.push(Raster {
-                    c,
-                    w,
-                    h,
-                    left: image.placement.left,
-                    top: image.placement.top,
-                    data,
-                });
             }
         }
+        // Back into codepoint order, which is the order the charset was sorted
+        // into and the order the shelves are packed in. A face's glyphs
+        // arriving together is a fact about the borrow above and must not
+        // become a fact about the picture: the same charset packs the same way
+        // whichever face covers what.
+        rasters.sort_unstable_by_key(|r| r.c);
 
         // Shelf packing. Padding between glyphs would be pointless: nothing
         // ever filters across a glyph boundary, because nothing ever filters.
@@ -430,6 +747,10 @@ impl FontContext {
             pen_x += r.w;
             shelf_h = shelf_h.max(r.h);
         }
+        // The pen stops where the charset ran out rather than where the
+        // texture ends, and the next character to arrive carries on from
+        // there. The one texel of height an empty atlas is given keeps the
+        // texture legal, and the first append doubles past it.
         let atlas_h = (pen_y + shelf_h).max(1);
 
         let mut pixels = vec![0u8; (atlas_w * atlas_h) as usize];
@@ -449,39 +770,8 @@ impl FontContext {
             }
         }
 
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("glyph atlas"),
-            size: wgpu::Extent3d {
-                width: atlas_w,
-                height: atlas_h,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(atlas_w),
-                rows_per_image: Some(atlas_h),
-            },
-            wgpu::Extent3d {
-                width: atlas_w,
-                height: atlas_h,
-                depth_or_array_layers: 1,
-            },
-        );
+        let texture = allocate(device, atlas_w, atlas_h);
+        upload(queue, &texture, atlas_w, atlas_h, &pixels);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         GlyphAtlas {
@@ -492,7 +782,13 @@ impl FontContext {
             cell,
             rasterization,
             raster_pixel_size: resolved.raster_pixel_size,
+            generation: 0,
             slots,
+            blank: HashSet::new(),
+            pixels,
+            pen_x,
+            pen_y,
+            shelf_h,
             value_histogram,
         }
     }
