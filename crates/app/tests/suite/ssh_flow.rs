@@ -66,7 +66,7 @@ fn surface() -> TerminalSurface {
 }
 
 fn request(port: u16) -> SshRequest {
-    SshRequest { user: "overseer".into(), host: "127.0.0.1".into(), port }
+    SshRequest { user: "overseer".into(), host: "127.0.0.1".into(), port, key: None }
 }
 
 fn known_hosts(lines: &[&str]) -> PathBuf {

@@ -14,9 +14,10 @@
 //! and its fixtures, not inside a transport.
 //!
 //! The auth surface is deliberately narrow while the operator interface is
-//! built elsewhere (#14): the agent path lives here whole, and the prompted
-//! methods (password, keyboard-interactive) enter as a step-drivable
-//! exchange when there is an input surface to drive them.
+//! built elsewhere (#14): the agent path and unencrypted key files live
+//! here whole, and the prompted methods (password, keyboard-interactive,
+//! an encrypted key's passphrase) enter as a step-drivable exchange when
+//! there is an input surface to drive them.
 
 mod channel;
 #[cfg(feature = "test-server")]
@@ -39,6 +40,10 @@ pub struct SshTarget {
     pub term: String,
     /// Initial pty geometry: cols, rows, pixel width, pixel height.
     pub size: (u16, u16, u16, u16),
+    /// The private key the configuration names for this destination,
+    /// tried ahead of the agent. `None` tries the agent and then the
+    /// default key files `ssh` itself would (see `thread::default_key_files`).
+    pub key_file: Option<std::path::PathBuf>,
 }
 
 /// The caller's host-key trust policy, consulted on the connection thread.

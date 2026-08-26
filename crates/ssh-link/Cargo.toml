@@ -31,5 +31,6 @@ test-server = ["dep:tokio-stream", "dep:rand"]
 
 [dev-dependencies]
 robco-ssh-link = { path = ".", features = ["test-server"] }
+rand = { version = "0.10", features = ["thread_rng"] }
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

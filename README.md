@@ -57,12 +57,13 @@ again and every session comes back with its windows and their titles.
 the first channel on an SSH connection the terminal itself owns, PuTTY's
 `-ssh` for a cabinet: the connection is a bank of its own, and further
 channels of it will multiplex over the one wire. Two things will surprise
-you in the first minute, both deliberate: it authenticates with your
-ssh-agent and nothing else, and an unknown host key is refused with its
-fingerprint and the command that records it rather than prompted about,
-because there is no prompt UI yet and a program should not make trust
-decisions for you. `docs/ssh.md` has the whole contract, including what it
-does not read (`~/.ssh/config`).
+you in the first minute, both deliberate: it authenticates with public keys
+alone (a configured key file, your ssh-agent, or the default `~/.ssh` keys;
+an encrypted key or a password needs a prompt that does not exist yet), and
+an unknown host key is refused with its fingerprint and the command that
+records it rather than prompted about, because there is no prompt UI yet
+and a program should not make trust decisions for you. `docs/ssh.md` has
+the whole contract, including what it does not read (`~/.ssh/config`).
 
 ## Will it run here
 
@@ -264,7 +265,8 @@ printable ASCII (box drawing, icons, accents, CJK, emoji) draws a blank cell,
 with no box and no log line. A selection can be made and copied, but it is
 never drawn. Font size has no keyboard binding, only a config key. The cursor
 does not blink, and the icon is a placeholder. Built-in SSH authenticates with
-your ssh-agent and nothing else, reads none of `~/.ssh/config`, and refuses an
+public keys alone (a configured or default key file must be unencrypted; the
+agent covers the rest), reads none of `~/.ssh/config`, and refuses an
 unknown host key rather than asking, so a password-only host or a config alias
 stops at a printed refusal; `docs/ssh.md` carries the full contract.
 

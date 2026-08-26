@@ -285,9 +285,10 @@ pub struct SshHost {
     /// a bare hostname.
     pub user: String,
     pub port: u16,
-    /// A key file for this host. Carried, not yet honoured: the
-    /// transport authenticates through the agent until key-file loading
-    /// lands (docs/ssh.md).
+    /// The private key file for this host, tried ahead of the agent; a
+    /// leading `~/` means home, and empty falls back to the agent and the
+    /// default `~/.ssh` keys (docs/ssh.md). An encrypted key waits on the
+    /// passphrase prompt.
     pub key: String,
 }
 

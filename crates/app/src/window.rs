@@ -1022,7 +1022,12 @@ impl TerminalSurface {
                     );
                     return true;
                 };
-                let req = SshRequest { user, host: row.host.clone(), port: row.port };
+                let req = SshRequest {
+                    user,
+                    host: row.host.clone(),
+                    port: row.port,
+                    key: crate::ssh::key_path(&row.key),
+                };
                 self.connect_ssh(&req);
                 self.retire_picker(slot);
                 true
@@ -1100,6 +1105,7 @@ impl TerminalSurface {
             port: req.port,
             term: term_name,
             size: (size.cols() as u16, size.rows() as u16, pix_w, pix_h),
+            key_file: req.key.clone(),
         };
         let (link, handle) = match Link::connect(target, policy) {
             Ok(pair) => pair,

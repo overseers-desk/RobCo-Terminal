@@ -29,8 +29,8 @@ Type `tmux -CC` on an SSH channel and the attachment arrives exactly as it does 
 
 ## Authentication
 
-The ssh-agent, and nothing else: `SSH_AUTH_SOCK` on Unix, the agent named pipe or Pageant on Windows. Identities are tried in the order the agent lists them, silently; in the common case you never see an authentication message at all. Every failure names its remedy on the glass: an unset `SSH_AUTH_SOCK` says to run `ssh-add`, and a refused identity list says what the server would have accepted. Password and keyboard-interactive authentication need typed input before a shell exists, which is the operator surface's territory; key files and passphrases likewise.
+Public keys, from three sources, in intent order: the key a `[[ssh.host]]` row names (`key`, with `~/` expanded to home), the ssh-agent (`SSH_AUTH_SOCK` on Unix; the OpenSSH Authentication Agent's named pipe, then Pageant, on Windows), and, only when no key is named, the default files `ssh` itself would try: `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`. Agent identities are tried in the order the agent lists them, silently; in the common case you never see an authentication message at all. A named or default key that is encrypted is announced and skipped: its passphrase is typed input before a shell exists, which is the operator surface's territory (#14), and password and keyboard-interactive authentication wait on the same surface. A lost cause closes with a line naming what the server would have accepted.
 
 ## `~/.ssh/config` is not read
 
-Not any of it, deliberately. Honouring `HostName` while ignoring `ProxyJump` connects, confidently, to the wrong place; `HostKeyAlias` silently changes which `known_hosts` entry applies. The file is worth reading only whole, and it enters when explicit key files do.
+Not any of it, deliberately. Honouring `HostName` while ignoring `ProxyJump` connects, confidently, to the wrong place; `HostKeyAlias` silently changes which `known_hosts` entry applies. The file is worth reading only whole, and reading it whole is open work beside the prompts (#14).

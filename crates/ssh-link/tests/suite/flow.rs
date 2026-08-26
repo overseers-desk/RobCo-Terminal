@@ -47,6 +47,7 @@ fn target(port: u16) -> SshTarget {
         port,
         term: "xterm-256color".into(),
         size: (80, 24, 720, 432),
+        key_file: None,
     }
 }
 
@@ -84,13 +85,17 @@ fn text_of(log: &[WireEvent]) -> String {
 
 /// The environment-touching cases in one test, sequenced: the process env
 /// is shared across the binary's threads, so exactly one test owns it.
+/// `HOME` is pointed at the scratch directory, so the default-key scan
+/// reads this test's `.ssh` and never the developer's.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_connection_lives_and_dies_on_the_glass() {
     let dir = tempfile::tempdir().unwrap();
+    std::env::set_var("HOME", dir.path());
     let identity = ed25519();
     let (port, seen) = serve_echo(vec![ed25519()], identity.public_key().clone()).await;
 
-    // No agent: the failure names the remedy and the row ends.
+    // No agent, no key anywhere: the closing line names what the server
+    // would take, and the row ends.
     std::env::remove_var("SSH_AUTH_SOCK");
     let saw = Arc::new(Mutex::new(None));
     let policy = Scripted { verdict: Ok(()), order: None, saw: saw.clone() };
@@ -100,7 +105,51 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     })
     .await
     .unwrap();
-    assert!(text_of(&log).contains("ssh-add"), "no remedy named: {log:?}");
+    assert!(text_of(&log).contains("no agent is reachable"), "{log:?}");
+    assert!(text_of(&log).contains("the server offers"), "{log:?}");
+
+    // A named key file authenticates with no agent in the world.
+    let key_path = dir.path().join("vault_key");
+    std::fs::write(
+        &key_path,
+        identity.to_openssh(ssh_key::LineEnding::LF).unwrap().as_bytes(),
+    )
+    .unwrap();
+    let policy = Scripted { verdict: Ok(()), order: None, saw: Arc::new(Mutex::new(None)) };
+    let mut with_key = target(port);
+    with_key.key_file = Some(key_path.clone());
+    let (_key_link, mut handle) = Link::connect(with_key, Box::new(policy)).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+        })
+    })
+    .await
+    .unwrap();
+    assert!(text_of(&log).contains("authenticated as overseer"), "{log:?}");
+
+    // An encrypted key is named and skipped, never silently ignored: its
+    // passphrase waits on the prompt surface (#14).
+    let sealed = identity.encrypt(&mut rand::rng(), "tumblers").unwrap();
+    let sealed_path = dir.path().join("sealed_key");
+    std::fs::write(
+        &sealed_path,
+        sealed.to_openssh(ssh_key::LineEnding::LF).unwrap().as_bytes(),
+    )
+    .unwrap();
+    let policy = Scripted { verdict: Ok(()), order: None, saw: Arc::new(Mutex::new(None)) };
+    let mut with_sealed = target(port);
+    with_sealed.key_file = Some(sealed_path);
+    let (_sealed_link, mut handle) = Link::connect(with_sealed, Box::new(policy)).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| matches!(e, WireEvent::Eof))
+    })
+    .await
+    .unwrap();
+    assert!(
+        text_of(&log).contains("cannot ask for its passphrase yet"),
+        "{log:?}"
+    );
 
     // Agent up: connect, shell, echo, resize, remote exit, the whole life.
     let sock = serve_agent(dir.path(), &identity).await;
@@ -152,6 +201,26 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     );
     assert!(text_of(&log).contains("authenticated as overseer"));
     assert_eq!(*saw.lock().unwrap(), Some(Algorithm::Ed25519));
+
+    // With the agent gone again and no key named, a key sitting in the
+    // default position carries the connection on its own.
+    std::env::remove_var("SSH_AUTH_SOCK");
+    std::fs::create_dir_all(dir.path().join(".ssh")).unwrap();
+    std::fs::write(
+        dir.path().join(".ssh").join("id_ed25519"),
+        identity.to_openssh(ssh_key::LineEnding::LF).unwrap().as_bytes(),
+    )
+    .unwrap();
+    let policy = Scripted { verdict: Ok(()), order: None, saw: Arc::new(Mutex::new(None)) };
+    let (_default_link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+        })
+    })
+    .await
+    .unwrap();
+    assert!(text_of(&log).contains("id_ed25519"), "{log:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

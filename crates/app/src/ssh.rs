@@ -54,6 +54,24 @@ pub struct SshRequest {
     pub user: String,
     pub host: String,
     pub port: u16,
+    /// The private key the `[[ssh.host]]` row names, `~`-expanded. `None`
+    /// leaves the transport to the agent and the default key files.
+    pub key: Option<std::path::PathBuf>,
+}
+
+/// A row's `key` as a path: empty is `None`, and a leading `~/` is the
+/// invoking user's home, the one spelling `ssh` accepts that the
+/// filesystem does not.
+pub(crate) fn key_path(row_key: &str) -> Option<std::path::PathBuf> {
+    if row_key.is_empty() {
+        return None;
+    }
+    if let Some(rest) = row_key.strip_prefix("~/") {
+        if let Some(home) = std::env::home_dir() {
+            return Some(home.join(rest));
+        }
+    }
+    Some(std::path::PathBuf::from(row_key))
 }
 
 impl SshRequest {
@@ -81,7 +99,9 @@ impl SshRequest {
         if host.is_empty() {
             return Err(format!("no host in '{spec}'"));
         }
-        Ok(Self { user: user.to_string(), host: host.to_string(), port })
+        // The spelling carries no key; a `[[ssh.host]]` row is where one
+        // is named.
+        Ok(Self { user: user.to_string(), host: host.to_string(), port, key: None })
     }
 }
 
@@ -114,7 +134,12 @@ pub fn default_request(cfg: &config::Config) -> Option<SshRequest> {
     } else {
         row.user.clone()
     };
-    Some(SshRequest { user, host: row.host.clone(), port: row.port })
+    Some(SshRequest {
+        user,
+        host: row.host.clone(),
+        port: row.port,
+        key: key_path(&row.key),
+    })
 }
 
 /// The machine-wide trust file, where this platform's OpenSSH keeps it:
@@ -307,7 +332,7 @@ mod tests {
         let full = run("overseer@vault:2222").unwrap();
         assert_eq!(
             full,
-            SshRequest { user: "overseer".into(), host: "vault".into(), port: 2222 }
+            SshRequest { user: "overseer".into(), host: "vault".into(), port: 2222, key: None }
         );
         assert_eq!(run("overseer@vault").unwrap().port, 22);
         std::env::set_var(USER_VAR, "resident");
@@ -315,6 +340,14 @@ mod tests {
         assert!(run("@vault").is_err());
         assert!(run("overseer@").is_err());
         assert!(run("vault:notaport").is_err());
+    }
+
+    #[test]
+    fn a_rows_key_becomes_a_path_and_tilde_means_home() {
+        assert_eq!(key_path(""), None);
+        assert_eq!(key_path("/etc/key"), Some(std::path::PathBuf::from("/etc/key")));
+        let home = std::env::home_dir().unwrap();
+        assert_eq!(key_path("~/.ssh/id_gw"), Some(home.join(".ssh").join("id_gw")));
     }
 
     #[test]
@@ -331,7 +364,12 @@ mod tests {
         cfg.ssh.default = "vault".into();
         assert_eq!(
             default_request(&cfg),
-            Some(SshRequest { user: "overseer".into(), host: "vault".into(), port: 2222 })
+            Some(SshRequest {
+                user: "overseer".into(),
+                host: "vault".into(),
+                port: 2222,
+                key: None
+            })
         );
 
         cfg.ssh.default = "gone".into();

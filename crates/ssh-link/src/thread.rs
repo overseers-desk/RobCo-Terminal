@@ -280,16 +280,18 @@ async fn drive(channel: russh::Channel<client::Msg>, mut wire: ChannelWire) {
     let _ = wire.events.send(WireEvent::Eof).await;
 }
 
-/// Agent-backed publickey auth, the one method this build speaks. Returns
-/// whether the session is authenticated; on failure the refusal the user
-/// can act on is already on the wire.
+/// Publickey auth, in intent order: the key the configuration names, then
+/// whatever agent is running, then (only when no key was named) the
+/// default key files `ssh` itself would try. Returns whether the session
+/// is authenticated; each stage's failure puts its reason on the wire, and
+/// the summary that closes a lost cause names what the server offers.
 async fn authenticate(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
 ) -> bool {
     // Not an auth attempt that could succeed: the reply's method list is
-    // what makes every later refusal name what the server would take.
+    // what makes the closing refusal name what the server would take.
     let offered = match handle.authenticate_none(target.user.clone()).await {
         Ok(AuthResult::Success) => return true,
         Ok(AuthResult::Failure { remaining_methods, .. }) => format!("{remaining_methods:?}"),
@@ -298,7 +300,102 @@ async fn authenticate(
             return false;
         }
     };
-    agent_auth(handle, target, wire, &offered).await
+    if let Some(path) = &target.key_file {
+        if try_key_file(handle, target, wire, path).await {
+            return true;
+        }
+    }
+    if agent_auth(handle, target, wire).await {
+        return true;
+    }
+    if target.key_file.is_none() {
+        for path in default_key_files() {
+            if try_key_file(handle, target, wire, &path).await {
+                return true;
+            }
+        }
+    }
+    notice(wire, format!("authentication failed; the server offers {offered}")).await;
+    false
+}
+
+/// The key files `ssh` itself tries when none is named, kept to the ones
+/// that exist. One list on every platform: OpenSSH for Windows reads the
+/// same `.ssh` under the profile directory.
+fn default_key_files() -> Vec<std::path::PathBuf> {
+    let Some(home) = std::env::home_dir() else {
+        return Vec::new();
+    };
+    ["id_ed25519", "id_ecdsa", "id_rsa"]
+        .iter()
+        .map(|name| home.join(".ssh").join(name))
+        .filter(|path| path.exists())
+        .collect()
+}
+
+/// One key file against the server. An encrypted key is named and skipped:
+/// its passphrase is a prompt this build cannot make yet (#14).
+async fn try_key_file(
+    handle: &mut client::Handle<Handler>,
+    target: &SshTarget,
+    wire: &ChannelWire,
+    path: &std::path::Path,
+) -> bool {
+    use russh::keys::{load_secret_key, Error as KeysError, PrivateKeyWithHashAlg};
+    let key = match load_secret_key(path, None) {
+        Ok(key) => key,
+        Err(KeysError::KeyIsEncrypted) => {
+            notice(
+                wire,
+                format!(
+                    "{} is encrypted; this build cannot ask for its passphrase yet",
+                    path.display()
+                ),
+            )
+            .await;
+            return false;
+        }
+        Err(e) => {
+            notice(wire, format!("could not read {}: {e}", path.display())).await;
+            return false;
+        }
+    };
+    let hash_alg = if key.algorithm().is_rsa() {
+        match handle.best_supported_rsa_hash().await {
+            Ok(Some(alg)) => alg,
+            _ => None,
+        }
+    } else {
+        None
+    };
+    match handle
+        .authenticate_publickey(
+            target.user.clone(),
+            PrivateKeyWithHashAlg::new(std::sync::Arc::new(key), hash_alg),
+        )
+        .await
+    {
+        Ok(AuthResult::Success) => {
+            notice(
+                wire,
+                format!("authenticated as {} ({})", target.user, path.display()),
+            )
+            .await;
+            true
+        }
+        Ok(AuthResult::Failure { .. }) => {
+            notice(wire, format!("the server did not accept {}", path.display())).await;
+            false
+        }
+        Err(e) => {
+            notice(
+                wire,
+                format!("authentication with {} failed: {e}", path.display()),
+            )
+            .await;
+            false
+        }
+    }
 }
 
 /// This platform's agent: whatever `SSH_AUTH_SOCK` names.
@@ -307,17 +404,15 @@ async fn agent_auth(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
-    offered: &str,
 ) -> bool {
     let agent = match AgentClient::connect_env().await {
         Ok(agent) => agent,
         Err(_) => {
-            notice(wire, "SSH_AUTH_SOCK is unset or dead: run ssh-add, then retry").await;
-            notice(wire, format!("(this build authenticates with the agent only; the server offers {offered})")).await;
+            notice(wire, "no agent is reachable (SSH_AUTH_SOCK is unset or dead)").await;
             return false;
         }
     };
-    sign_with(handle, target, wire, offered, agent).await
+    sign_with(handle, target, wire, agent).await
 }
 
 /// This platform's agents: the OpenSSH Authentication Agent service on its
@@ -328,21 +423,19 @@ async fn agent_auth(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
-    offered: &str,
 ) -> bool {
     const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
     if let Ok(agent) = AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE).await {
-        return sign_with(handle, target, wire, offered, agent).await;
+        return sign_with(handle, target, wire, agent).await;
     }
     match AgentClient::connect_pageant().await {
-        Ok(agent) => sign_with(handle, target, wire, offered, agent).await,
+        Ok(agent) => sign_with(handle, target, wire, agent).await,
         Err(_) => {
             notice(
                 wire,
                 "no agent answered: neither the OpenSSH Authentication Agent service nor Pageant is running",
             )
             .await;
-            notice(wire, format!("(this build authenticates with the agent only; the server offers {offered})")).await;
             false
         }
     }
@@ -353,7 +446,6 @@ async fn sign_with<S>(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
-    offered: &str,
     mut agent: AgentClient<S>,
 ) -> bool
 where
@@ -367,7 +459,7 @@ where
         }
     };
     if identities.is_empty() {
-        notice(wire, "the agent holds no identities: run ssh-add, then retry").await;
+        notice(wire, "the agent holds no identities").await;
         return false;
     }
 
@@ -401,6 +493,6 @@ where
         }
     }
 
-    notice(wire, format!("no identity in the agent was accepted; the server offers {offered}")).await;
+    notice(wire, "no identity in the agent was accepted").await;
     false
 }
