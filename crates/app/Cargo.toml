@@ -8,7 +8,7 @@ version.workspace = true
 edition = "2021"
 rust-version = "1.96.1"
 description = "RobCo Terminal application: the CLI contract, the single-instance shell, the winit window and its wgpu surface, the event loop driving a term session, input encoding, and the live settings handle."
-license = "GPL-3.0-or-later"
+license = "MIT"
 publish = false
 
 # The binary's own basename is the application's identity (WM_CLASS, the
