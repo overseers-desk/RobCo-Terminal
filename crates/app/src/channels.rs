@@ -73,6 +73,15 @@ pub enum Manager {
         /// there, and that second slot-2 window must not take the air.
         attach_done: bool,
     },
+    /// One SSH connection this program owns. Channels are the connection's
+    /// own multiplexed channels and fill from slot 1: there is no gateway
+    /// row, because the wire has no on-screen carrier.
+    Ssh {
+        /// Where the connection goes, as the user spelled it.
+        host: String,
+        user: String,
+        port: u16,
+    },
 }
 
 impl Manager {
@@ -80,11 +89,15 @@ impl Manager {
         matches!(self, Manager::Tmux { .. })
     }
 
+    pub fn is_ssh(&self) -> bool {
+        matches!(self, Manager::Ssh { .. })
+    }
+
     /// The home slot held for this bank's gateway, if it came from one.
     fn home_slot(&self) -> Option<u32> {
         match self {
             Manager::Tmux { home_slot, .. } => *home_slot,
-            Manager::Home => None,
+            Manager::Home | Manager::Ssh { .. } => None,
         }
     }
 }
@@ -607,8 +620,10 @@ impl<S> Channels<S> {
         }
     }
 
-    /// Home's rows and the gateways that came from a home slot: the last of
-    /// these going is the last channel going out, whatever else stands.
+    /// Home's rows, the gateways that came from a home slot, and every SSH
+    /// channel (an SSH bank stands on the user's own ask, with no home row
+    /// behind it): the last of these going is the last channel going out,
+    /// whatever else stands.
     fn anchored_rows(&self) -> usize {
         self.rows
             .iter()
@@ -618,12 +633,15 @@ impl<S> Channels<S> {
                         && self
                             .manager_of(r.bank)
                             .is_some_and(|m| m.home_slot().is_some()))
+                    || self.manager_of(r.bank).is_some_and(Manager::is_ssh)
             })
             .count()
     }
 
     /// `:384-399`. Where a single row goes. The nearest surviving row of the
-    /// same bank takes the air when the removed one had it.
+    /// same bank takes the air when the removed one had it. An SSH bank
+    /// whose last row goes goes with it: with no home slot and no gateway
+    /// there is nothing for an empty one to stand for.
     fn remove_row(&mut self, bank: BankId, channel: u32) {
         let Some(index) = self.row_of(bank, channel) else {
             return;
@@ -634,6 +652,14 @@ impl<S> Channels<S> {
             if let Some(next) = self.nearest_row(index, bank) {
                 let (b, c) = (self.rows[next].bank, self.rows[next].channel);
                 self.set_current(b, c);
+            }
+        }
+        if self.manager_of(bank).is_some_and(Manager::is_ssh)
+            && !self.rows.iter().any(|r| r.bank == bank)
+        {
+            self.banks.retain(|b| b.id != bank);
+            if self.bank_on_view == Some(bank) {
+                self.bank_on_view = None;
             }
         }
     }
@@ -800,6 +826,38 @@ impl<S> Channels<S> {
             tmux: None,
             session: gateway,
         });
+        Some(id)
+    }
+
+    /// A bank for an SSH connection the user asked for: its first channel
+    /// takes slot 1 and the air with it. The `attach_spawned` shape, but the
+    /// ask is the user's, so the arrival is a channel change like any other.
+    pub fn open_ssh_bank(
+        &mut self,
+        user: &str,
+        host: &str,
+        port: u16,
+        make: impl FnOnce() -> Option<S>,
+    ) -> Option<BankId> {
+        let session = make()?;
+        let id = self.next_bank_id;
+        self.next_bank_id += 1;
+        self.banks.push(Bank {
+            id,
+            manager: Manager::Ssh {
+                host: host.to_string(),
+                user: user.to_string(),
+                port,
+            },
+        });
+        self.insert_row(Row {
+            bank: id,
+            channel: 1,
+            title: format!("{user}@{host}"),
+            tmux: None,
+            session,
+        });
+        self.set_current(id, 1);
         Some(id)
     }
 

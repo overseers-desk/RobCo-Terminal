@@ -24,6 +24,7 @@ name = "app"
 path = "src/lib.rs"
 
 [dependencies]
+robco-ssh-link = { path = "../ssh-link" }
 robco-term = { path = "../term" }
 # The control-mode protocol codec, reached as `tmux_cc`: what the gateway in
 # `crate::tmux` speaks through. Protocol only; the session/window policy the
@@ -76,6 +77,9 @@ signal-hook = "0.3"
 x11rb = "0.13"
 
 [dev-dependencies]
+# The known_hosts fixtures mint their own throwaway keys; the rand
+# generation matches the one russh's key types are built against.
+rand = { version = "0.10", features = ["thread_rng"] }
 robco-shader-oracle = { path = "../shader-oracle" }
 serde_json = "1"
 tempfile = "3"

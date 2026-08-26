@@ -62,6 +62,7 @@ pub mod overlay;
 pub mod paths;
 pub mod settings;
 pub mod shell;
+pub mod ssh;
 pub mod tmux;
 pub mod window;
 pub mod workarea;
