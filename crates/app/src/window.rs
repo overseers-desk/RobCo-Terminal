@@ -1010,12 +1010,16 @@ impl TerminalSurface {
                     return true;
                 };
                 let user = if row.user.is_empty() {
-                    std::env::var("USER").ok().filter(|u| !u.is_empty())
+                    crate::ssh::invoking_user()
                 } else {
                     Some(row.user.clone())
                 };
                 let Some(user) = user else {
-                    log::warn!("[[ssh.host]] {:?} names no user and $USER is unset", row.host);
+                    log::warn!(
+                        "[[ssh.host]] {:?} names no user and {} is unset",
+                        row.host,
+                        crate::ssh::USER_VAR
+                    );
                     return true;
                 };
                 let req = SshRequest { user, host: row.host.clone(), port: row.port };

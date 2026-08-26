@@ -39,6 +39,15 @@ use ssh_link::russh::keys::{known_hosts, Algorithm, Error as KeysError, PublicKe
 use ssh_link::{ChannelHandle, HostPolicy, WireEvent};
 use term::ssh_channel::{SshEvent, SshWire};
 
+/// The environment variable that names the invoking user on this
+/// platform: what `ssh` itself falls back on when no user is spelled.
+pub(crate) const USER_VAR: &str = if cfg!(windows) { "USERNAME" } else { "USER" };
+
+/// The invoking user per [`USER_VAR`], an empty value read as unset.
+pub(crate) fn invoking_user() -> Option<String> {
+    std::env::var(USER_VAR).ok().filter(|u| !u.is_empty())
+}
+
 /// A destination as the command line spells it: `[user@]host[:port]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SshRequest {
@@ -48,15 +57,16 @@ pub struct SshRequest {
 }
 
 impl SshRequest {
-    /// Parse `[user@]host[:port]`. The user defaults to `$USER` and the
-    /// port to 22, which is what the same spelling means to `ssh` itself.
+    /// Parse `[user@]host[:port]`. The user defaults to the invoking
+    /// user's name and the port to 22, which is what the same spelling
+    /// means to `ssh` itself.
     pub fn parse(spec: &str) -> Result<Self, String> {
         let (user, rest) = match spec.split_once('@') {
             Some((user, rest)) if !user.is_empty() => (user.to_string(), rest),
             Some(_) => return Err(format!("no user before the '@' in '{spec}'")),
-            None => match std::env::var("USER") {
-                Ok(user) if !user.is_empty() => (user, spec),
-                _ => return Err(format!("no user in '{spec}' and $USER is unset")),
+            None => match invoking_user() {
+                Some(user) => (user, spec),
+                None => return Err(format!("no user in '{spec}' and {USER_VAR} is unset")),
             },
         };
         let (host, port) = match rest.rsplit_once(':') {
@@ -76,8 +86,9 @@ impl SshRequest {
 }
 
 /// The `[ssh]` table's default connection, or `None` for localhost. A
-/// default naming no row, or a bare row with `$USER` unset, is logged and
-/// treated as `None`: never an error, and never a blocked window.
+/// default naming no row, or a bare row with no invoking user in the
+/// environment, is logged and treated as `None`: never an error, and
+/// never a blocked window.
 pub fn default_request(cfg: &config::Config) -> Option<SshRequest> {
     if cfg.ssh.default.is_empty() {
         return None;
@@ -90,11 +101,11 @@ pub fn default_request(cfg: &config::Config) -> Option<SshRequest> {
         return None;
     };
     let user = if row.user.is_empty() {
-        match std::env::var("USER") {
-            Ok(user) if !user.is_empty() => user,
-            _ => {
+        match invoking_user() {
+            Some(user) => user,
+            None => {
                 log::warn!(
-                    "[[ssh.host]] {:?} names no user and $USER is unset; starting local",
+                    "[[ssh.host]] {:?} names no user and {USER_VAR} is unset; starting local",
                     row.host
                 );
                 return None;
@@ -106,14 +117,25 @@ pub fn default_request(cfg: &config::Config) -> Option<SshRequest> {
     Some(SshRequest { user, host: row.host.clone(), port: row.port })
 }
 
+/// The machine-wide trust file, where this platform's OpenSSH keeps it:
+/// `%ProgramData%\ssh\ssh_known_hosts` on Windows, `/etc/ssh/ssh_known_hosts`
+/// elsewhere.
+fn system_known_hosts() -> Option<PathBuf> {
+    if cfg!(windows) {
+        std::env::var_os("ProgramData")
+            .map(|d| PathBuf::from(d).join("ssh").join("ssh_known_hosts"))
+    } else {
+        Some(PathBuf::from("/etc/ssh/ssh_known_hosts"))
+    }
+}
+
 /// The files trust is read from: the user's, then the machine's.
 fn known_hosts_files() -> Vec<PathBuf> {
     let mut files = Vec::new();
     if let Some(home) = std::env::home_dir() {
         files.push(home.join(".ssh").join("known_hosts"));
     }
-    let system = PathBuf::from("/etc/ssh/ssh_known_hosts");
-    if system.exists() {
+    if let Some(system) = system_known_hosts().filter(|p| p.exists()) {
         files.push(system);
     }
     files
@@ -288,7 +310,7 @@ mod tests {
             SshRequest { user: "overseer".into(), host: "vault".into(), port: 2222 }
         );
         assert_eq!(run("overseer@vault").unwrap().port, 22);
-        std::env::set_var("USER", "resident");
+        std::env::set_var(USER_VAR, "resident");
         assert_eq!(run("vault").unwrap().user, "resident");
         assert!(run("@vault").is_err());
         assert!(run("overseer@").is_err());
@@ -318,7 +340,7 @@ mod tests {
         // A bare row takes the invoking user's name.
         cfg.ssh.default = "vault".into();
         cfg.ssh.hosts[0].user = String::new();
-        std::env::set_var("USER", "resident");
+        std::env::set_var(USER_VAR, "resident");
         assert_eq!(default_request(&cfg).unwrap().user, "resident");
     }
 
