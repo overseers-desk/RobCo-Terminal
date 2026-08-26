@@ -26,5 +26,12 @@ jobs:
       # ring's build assembles its MSVC objects with nasm.
       - uses: ilammy/setup-nasm@v1
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build -p robco-app
-      - run: cargo test -p robco-term --test suite fallback
+      - run: cargo build --release -p robco-app
+      - run: cargo test --release -p robco-term --test suite fallback
+      # The runner is this project's only Windows build machine, so what it
+      # builds is the product, kept, not a proof discarded: every green run
+      # carries an exe a tester can download and launch.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: robco-term-windows-x86_64
+          path: target/release/robco-term.exe
