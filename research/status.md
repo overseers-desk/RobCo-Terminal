@@ -49,6 +49,7 @@ For each shipped capability, how rare the same thing is in the field, read from 
 - Config as a diff against a named preset, with live reload and last-good-on-error: the live reload is common; the diff-against-preset form is claimed by none of the surveyed products.
 - Window chrome of its own, no toolkit header bar: rare on Linux (Qt and GTK terminals pay the desktop-fit complaint; Rust terminals mostly draw no chrome at all).
 - Native, single binary, no accounts: common among the Rust, C and Zig terminals; the differentiation is against Electron and Warp only.
+- A terminal that owns its SSH connection: in the surveyed field only Warp (its own SSH extension) and Wave (durable ssh blocks) do, both in the accounts-and-Electron family; none of the native terminals, and none of the four that ship a look. The corpus never surveyed the Windows market this capability serves (PuTTY is absent from it), so its rarity there is unmeasured.
 - Output governor and frame-stats instrument: implementation details no tool markets; the latency figure that would make them a claim is not recorded.
 
 ## Gaps
@@ -56,6 +57,7 @@ For each shipped capability, how rare the same thing is in the field, read from 
 Architectural limits, given the design (a GPU-only librashader chain over a rio-vt core, tmux as the only persistence):
 
 - No software rendering path; the effects cost GPU time that is not measured.
+- The pain taxonomy has no remote-access entry: P1-P13 predate built-in SSH, and the PLACE run never surveyed the market it serves, so the capability has no coverage row to sit in. Seating a P14 takes its own survey, not an invention.
 - No session survival without a tmux server.
 - Effect shapes are constants in shader source; no user shader.
 - A chain rebuild erases the burn-in ghost.
@@ -83,7 +85,7 @@ Relocated from the discussion-volume findings in `discussion-drivers.md`, and ke
 
 The honest read first. The corpus's verdict on the CRT terminal category is "neat for a few minutes, not a daily driver", and the code as it stands earns that verdict on one point: a terminal that draws a blank cell for every non-ASCII character (box drawing, nerd-font icons, accents) is not yet a daily driver for the audience that posts, whose prompts and TUIs are full of them, and it does not highlight a selection. Those two are feasible gaps, not architectural ones, and a launch before they close would draw the precedent's comments and then confirm them. A launch after they close has a hook no prior CRT terminal had.
 
-What the field supplies, read against what is built, gives RobCo Terminal three claims no surveyed product makes: a CRT look that is a piece of hardware (cabinet, numbered bank, burn-in, degauss, clicks that land through the glass) rather than a post-process filter; tmux control mode on Linux, with every local session arriving as a bank and surviving the terminal's death; and a config that is a short diff against a named preset and reloads on save. The first is the picture that reaches a front page on its own (six times in twelve years for the incumbent, at 250–300 points); the second is the grievance lane (731 reactions on Ghostty's open issue, two maintainers' refusals); the third is the reply to the "an hour of fiddling" complaint.
+What the field supplies, read against what is built, gives RobCo Terminal claims no surveyed product makes: a CRT look that is a piece of hardware (cabinet, numbered bank, burn-in, degauss, clicks that land through the glass) rather than a post-process filter; tmux control mode on Linux, with every local session arriving as a bank and surviving the terminal's death; built-in SSH that owns the connection, multiplexes channels over it, and carries tmux attachments across it, whose market sits outside the surveyed corpus; and a config that is a short diff against a named preset and reloads on save. The first is the picture that reaches a front page on its own (six times in twelve years for the incumbent, at 250–300 points); the second is the grievance lane (731 reactions on Ghostty's open issue, two maintainers' refusals); the third is the reply to the "an hour of fiddling" complaint.
 
 Three moves follow.
 
