@@ -41,7 +41,7 @@ The features behind the coverage above, each with its code home and the pains it
 
 For each shipped capability, how rare the same thing is in the field, read from `competitive-landscape.md`. A description of the built product, not a build-priority ranking.
 
-- CRT chain as a built-in, preset-driven look: rare. One dedicated product (cool-retro-term), one Electron plugin set, one experimental Windows flag; three mainstream terminals take a user's own shader.
+- CRT chain as a built-in, preset-driven look: rare. One dedicated product (cool-retro-term), one Electron plugin set, one experimental Windows flag; Ghostty and Rio take a user's own shader (WezTerm's is an unmerged pull request; kitty declined).
 - Burn-in persistence, degauss on switch, a cabinet drawn around the glass, and the pointer mapped through the curvature: documented in none of the surveyed products. The nearest is a Hyper plugin's optional monitor frame.
 - Numbered channel bank as chrome with digit chords to select and store: unique among surveyed GUI terminals; the model is tmux's prefix+number, and Ghostty, Zellij and Windows Terminal bind numbered tabs, but none draws a persistent strip outside the text area.
 - tmux control mode on Linux: rare. iTerm2 is the macOS reference; WezTerm ships it in nightlies with an ssh-latency bug; Ghostty's request is open at 731 reactions; Alacritty, kitty and Hyper declined. A Linux terminal that attaches a typed `tmux -CC`, banks every local session, and recovers by re-attaching is documented in no other surveyed product; panes-as-windows (iTerm2) is the part RobCo Terminal does not do.

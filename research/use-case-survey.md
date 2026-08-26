@@ -30,7 +30,7 @@ Demand is the frequency and intensity with which the pain is voiced in the corpu
 |---|---|---|---|
 | P1 Latency | Dominant; the largest single cluster on HN, argued on every launch | §1 | Every GPU terminal claims it; two publish numbers |
 | P2 GPU cost/breakage | High; the counter-argument to every GPU terminal, with real breakage reports | §2 | Two of the surveyed GPU terminals document a software fallback |
-| P3 Retro look | Real on both sides: feature requests at 21–23 reactions on WezTerm, declined on kitty; dismissal at scores 20–34 | §3 | One dedicated product; bring-your-own-shader in three |
+| P3 Retro look | Real on both sides: feature requests at 21–23 reactions on WezTerm, declined on kitty; dismissal at scores 20–34 | §3 | One dedicated product; bring-your-own-shader in Ghostty and Rio |
 | P4 Fonts | High; the richest Reddit cluster, 344-reaction Alacritty RFC | §4 | Bitmap strikes promised by one; fractional-scale blur open across the field |
 | P5 Many sessions | High in its 2025–26 form: one shell per AI agent, "which one was thinking vs waiting" at scores 105–318; one measured tab-label issue | §5 | Universal tabs; numbered chords in a few; overview in three; the agent-era answers are tmux overlays |
 | P6 Control mode | Very high and concentrated: 731 reactions on one issue, declines on two, a decade of open requests | §6 | iTerm2 only; WezTerm partial |
