@@ -1,0 +1,22 @@
+[package]
+name = "robco-ssh-link"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "The SSH transport: one thread per connection, bytes to the event loop"
+
+[lib]
+name = "ssh_link"
+path = "src/lib.rs"
+
+# russh refuses to build without one of its two C crypto backends (`ring` or
+# `aws-lc-rs`); `ring` is the smaller build and both link statically, so the
+# install section's claim that the binary carries what it needs stands. No
+# `flate2`: compression saves wire bytes this program never notices. `rsa`
+# stays: RSA identities are what half the world's agents still hold.
+[dependencies]
+russh = { version = "=0.63.1", default-features = false, features = ["ring", "rsa"] }
+tokio = { version = "1", default-features = false, features = ["rt", "sync", "net", "time", "io-util"] }
+
+[dev-dependencies]
+tempfile = "3"

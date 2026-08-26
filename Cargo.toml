@@ -7,6 +7,7 @@ members = [
     "crates/crt-burnin",
     "crates/crt-render",
     "crates/shader-oracle",
+    "crates/ssh-link",
     "crates/term",
     "crates/tmux-cc",
     "crates/xtask",
