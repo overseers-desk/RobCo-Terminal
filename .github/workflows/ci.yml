@@ -1,0 +1,31 @@
+# Two proofs on every push: the Linux suite stays green, and the whole
+# workspace compiles on Windows. The Windows job stops at compilation
+# (`--no-run` still builds every crate, binary and test) because no
+# runner has the GPU or the pty behaviour the executing suites assume;
+# running them there is its own piece of work.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ring's build assembles its MSVC objects with nasm.
+      - uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --no-run
