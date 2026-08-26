@@ -110,9 +110,9 @@ installed robco-term 0.1.0 to /home/you/.local
 ```
 
 Three files, and that is the whole installation. Fonts, shaders, presets and
-the noise texture are compiled into the binary, so nothing is looked up at
-run time and the binary runs from wherever you put it. `--destdir` stages
-under another root if you are packaging. The command warns you if the
+the noise texture are compiled in, and the binary unpacks its shader preset
+under `~/.cache` at startup and runs from wherever you put it. `--destdir`
+stages under another root if you are packaging. The command warns you if the
 prefix's `bin` is off your `PATH`, since the desktop entry launches by name.
 
 **As a tarball**, to move to another machine of the same architecture:
@@ -233,14 +233,14 @@ request to the one already running, which opens another window and exits.
 
 ## Status
 
-Version 0.1.0, unreleased. It is complete enough to use as a daily terminal
-on Linux: the terminal core passes the conformance suite bar two known
-feature gaps, channels and tmux control mode work against live tmux, and the
-picture holds its frame budget with room to spare.
+Version 0.1.0, unreleased. Channels and tmux control mode work against live
+tmux; the core passes the conformance suite bar the 8-bit cases xterm fails.
 
-Known gaps, so you find them here rather than by hitting them: no keyboard
-binding for font size (it is a config key), a cursor that does not blink,
-and a placeholder application icon. A licence file is still to come.
+Known gaps, so you find them here rather than by hitting them. Anything but
+printable ASCII (box drawing, icons, accents, CJK, emoji) draws a blank cell,
+with no box and no log line. A selection can be made and copied, but it is
+never drawn. Font size has no keyboard binding, only a config key. The cursor
+does not blink, the icon is a placeholder, and a licence file is to come.
 
 `cargo run -p xtask -- verify <path-to-binary>` walks a built binary through
 the window and CLI contract item by item and tells you which parts this
