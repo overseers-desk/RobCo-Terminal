@@ -53,9 +53,8 @@ The app asks the terminal for what the file cannot tell it, running
 `robco-term --dump-settings` at startup for the defaults, the resolved
 preset tables, the font catalogue and the enum value lists; it carries no
 copy of its own, so it cannot drift from the binary it serves. It looks for
-that binary beside its own executable, then on `$PATH`, and the environment
-variable `ROBCO_TERM` overrides both. Without a reachable `robco-term` it
-refuses to start and says what it looked for.
+that binary beside its own executable, then on `$PATH`. Without a reachable
+`robco-term` it refuses to start and says where it looked.
 
 ## Building and shipping it
 

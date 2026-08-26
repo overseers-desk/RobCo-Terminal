@@ -19,6 +19,7 @@ namespace import ::tcltest::*
 
 source [file join [file dirname [info script]] helpers.tcl]
 source [file join $::libdir dump.tcl]
+force_test_binary
 
 set ::uidir [file normalize [file join [file dirname [info script]] .. ui]]
 

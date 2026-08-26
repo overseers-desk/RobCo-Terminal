@@ -9,6 +9,7 @@ namespace import ::tcltest::*
 
 source [file join [file dirname [info script]] helpers.tcl]
 source [file join $::libdir model.tcl]
+force_test_binary
 
 set ::data [::rcsettings::dump::load_text $::dumptext fixture]
 set ::configdir [file join [temporaryDirectory] model-[pid]]
@@ -68,11 +69,13 @@ test dump-1.4 {an unknown table or preset is an error, never a guess} -body {
 } -result {1 1}
 
 test dump-1.5 {the error names what was looked for and where} -body {
-    set ::env(ROBCO_TERM) [file join [temporaryDirectory] not-a-binary]
+    # Both places the app looks, and no third one: a message naming a
+    # variable the app no longer reads would send the user somewhere that
+    # cannot help them.
     set msg [::rcsettings::dump::describe_search]
-    unset ::env(ROBCO_TERM)
-    expr {[string match "*ROBCO_TERM*not-a-binary*" $msg]
-          && [string match "*robco-term*PATH*" $msg]}
+    expr {[string match "*robco-term beside this interpreter*" $msg]
+          && [string match "*robco-term on PATH*" $msg]
+          && ![string match "*ROBCO_TERM*" $msg]}
 } -result 1
 
 test dump-1.6 {the real binary's dump parses} -constraints realBinary -body {

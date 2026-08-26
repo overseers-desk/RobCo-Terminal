@@ -2,6 +2,19 @@
 
 set ::libdir [file normalize [file join [file dirname [info script]] .. lib]]
 
+# The tests that run the real --dump-settings need a robco-term. One on PATH
+# is found the way the app finds it; a build tree's is named by the suite's
+# own ROBCO_SETTINGS_TEST_BINARY and handed straight to the dump namespace's
+# internal hook. This is the test harness reaching in, not configuration: the
+# app reads no environment variable to find its terminal, so there is nothing
+# here for a user to set. Call it after dump.tcl is sourced.
+proc force_test_binary {} {
+    if {[info exists ::env(ROBCO_SETTINGS_TEST_BINARY)]
+        && $::env(ROBCO_SETTINGS_TEST_BINARY) ne ""} {
+        set ::rcsettings::dump::ForcedBinary $::env(ROBCO_SETTINGS_TEST_BINARY)
+    }
+}
+
 # The one thing every writer test asserts: which lines an edit replaced.
 # Common prefix and common suffix are peeled off first, so a result of
 # {{old} {new}} is proof that every other byte of the document is

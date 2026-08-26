@@ -17,13 +17,21 @@ namespace eval ::rcsettings::dump {
     namespace export locate load load_text defaults default has_default \
         table_keys preset_names preset has_preset fonts enum enum_names
 
+    # A binary the suites point this namespace at, so a test can run the
+    # real --dump-settings against a build tree. It is empty in every run
+    # but a test's own: nothing user-facing sets it, and the app finds its
+    # terminal by looking beside itself and then on PATH, which is the whole
+    # of what a user has to know.
+    variable ForcedBinary ""
+
     # Where the binary is looked for, in order. The result is a full path
     # (or a name auto_execok resolved), never a bare guess: the error
     # message below repeats this list, so keep the two in step.
     proc candidates {} {
+        variable ForcedBinary
         set out {}
-        if {[info exists ::env(ROBCO_TERM)] && $::env(ROBCO_TERM) ne ""} {
-            lappend out $::env(ROBCO_TERM)
+        if {$ForcedBinary ne ""} {
+            lappend out $ForcedBinary
         }
         set exe [info nameofexecutable]
         if {$exe ne ""} {
@@ -48,14 +56,12 @@ namespace eval ::rcsettings::dump {
     proc describe_search {} {
         set exe [info nameofexecutable]
         set where {}
-        lappend where "the ROBCO_TERM environment variable\
-            ([expr {[info exists ::env(ROBCO_TERM)] ? "set to \"$::env(ROBCO_TERM)\"" : "not set"}])"
         lappend where "robco-term beside this interpreter\
             ([file join [file dirname $exe] robco-term])"
         lappend where "robco-term on PATH\
             ([expr {[info exists ::env(PATH)] ? $::env(PATH) : "PATH not set"}])"
         return "cannot find the robco-term binary. Looked for:\
-            [join $where {; }]. Set ROBCO_TERM to the binary's path."
+            [join $where {; }]. Put robco-term beside this program or on PATH."
     }
 
     # Run the binary and parse what it prints. A non-zero exit or unusable

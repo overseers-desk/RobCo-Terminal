@@ -1,6 +1,10 @@
 # Headless suite runner: tclsh9.0 settings/tests/all.tcl
-# Set ROBCO_TERM to a robco-term binary to include the test that runs the
-# real --dump-settings; without it that one test is skipped.
+# The tests that run the real --dump-settings need a robco-term to run.
+# One on PATH is found the way the app finds it; a build tree's is named by
+# setting ROBCO_SETTINGS_TEST_BINARY, which helpers.tcl hands to the dump
+# namespace. That variable is the suite's own and not configuration: the app
+# itself reads no environment to find its terminal. Without either, those
+# tests skip.
 
 package require tcltest 2.5
 
