@@ -245,10 +245,7 @@ impl<T: DcsTap> ChannelSession<T> {
     /// the budget-sharing writer on an SSH channel, nothing on a pane.
     pub fn control_writer(&mut self) -> Option<std::io::Result<Box<dyn std::io::Write + Send>>> {
         match self {
-            ChannelSession::Pty(s) => Some(
-                s.control_mode_writer()
-                    .map(|f| Box::new(f) as Box<dyn std::io::Write + Send>),
-            ),
+            ChannelSession::Pty(s) => Some(s.control_mode_writer()),
             ChannelSession::TmuxPane(_) => None,
             ChannelSession::Ssh(s) => Some(Ok(s.control_writer())),
         }

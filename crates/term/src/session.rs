@@ -7,8 +7,12 @@
 //! synchronous and driven by whoever calls [`Session::pump`], so the
 //! whole session runs headless in a test with no threads and no window.
 //!
-//! The PTY master is opened non-blocking by `teletypewriter`, so `pump`
-//! drains what is there and returns; it never waits on the child.
+//! Neither side of the pty ever blocks this loop, so `pump` drains what
+//! is there and returns; it never waits on the child. On Unix that is the
+//! master fd opened `O_NONBLOCK` by `teletypewriter`; on Windows it is
+//! the ConPTY pipes' buffering threads, whose reads answer zero when
+//! nothing has arrived and whose writes take what their ring has room
+//! for.
 
 use std::io::{Read, Write};
 use std::time::Instant;
@@ -18,7 +22,11 @@ use rio_vt::crosswords::grid::Dimensions;
 use rio_vt::crosswords::Crosswords;
 use rio_vt::event::{VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
-use rio_vt::teletypewriter::{create_pty_with_spawn, ProcessReadWrite, Pty, WinsizeBuilder};
+#[cfg(unix)]
+use rio_vt::teletypewriter::create_pty_with_spawn;
+#[cfg(windows)]
+use rio_vt::teletypewriter::{create_pty, ChildEvent, EventedPty};
+use rio_vt::teletypewriter::{ProcessReadWrite, Pty, WinsizeBuilder};
 
 use crate::dcs::{DcsParser, DcsTap};
 use crate::size::TermSize;
@@ -108,16 +116,30 @@ pub struct Session<T: DcsTap> {
 impl<T: DcsTap> Session<T> {
     /// Spawn the child and build the session around it.
     pub fn spawn(config: &SessionConfig, size: TermSize, tap: T) -> std::io::Result<Self> {
-        let (px_w, px_h) = size.pixel_size();
-        let pty = create_pty_with_spawn(
+        #[cfg(unix)]
+        let pty = {
+            let (px_w, px_h) = size.pixel_size();
+            create_pty_with_spawn(
+                config.program.as_deref(),
+                config.args.clone(),
+                &config.working_directory,
+                Some(config.env.clone()),
+                size.cols() as u16,
+                size.rows() as u16,
+                px_w,
+                px_h,
+            )?
+        };
+        // ConPTY's geometry is cells alone; a `program` of `None` is the
+        // platform's default console host, the analogue of the login shell.
+        #[cfg(windows)]
+        let pty = create_pty(
             config.program.as_deref(),
             config.args.clone(),
             &config.working_directory,
             Some(config.env.clone()),
             size.cols() as u16,
             size.rows() as u16,
-            px_w,
-            px_h,
         )?;
 
         let term = Crosswords::new(
@@ -162,10 +184,12 @@ impl<T: DcsTap> Session<T> {
         }
 
         loop {
-            match self.pty.read(&mut self.buf[..]) {
-                // A zero-length read means no slave fd is open. Usually
-                // that is the child having closed its end, but not
-                // always: see `child_gone`.
+            match self.pty.reader().read(&mut self.buf[..]) {
+                // A zero-length read: on Unix no slave fd is open, which
+                // is usually the child having closed its end, but not
+                // always; on Windows the buffering pipe answers zero
+                // whenever nothing has arrived, the normal idle read.
+                // `child_gone` is what tells the cases apart on both.
                 Ok(0) => {
                     if self.child_gone() {
                         self.eof = true;
@@ -258,7 +282,8 @@ impl<T: DcsTap> Session<T> {
     ///
     /// `waitpid(WNOHANG)` is the discriminator: still running means the
     /// error was transient and the next pump will find the child.
-    fn child_gone(&self) -> bool {
+    #[cfg(unix)]
+    fn child_gone(&mut self) -> bool {
         match self.pty.waitpid() {
             // Alive: whatever we just saw was the startup window.
             Ok(None) => false,
@@ -266,6 +291,14 @@ impl<T: DcsTap> Session<T> {
             // We cannot ask, so we cannot claim it is still running.
             Err(_) => true,
         }
+    }
+
+    /// The same question under ConPTY, which has no `waitpid`: the pty's
+    /// watcher thread posts the exit as an event. Consuming it here is
+    /// sound because the first `true` marks the session finished for good.
+    #[cfg(windows)]
+    fn child_gone(&mut self) -> bool {
+        matches!(self.pty.next_child_event(), Some(ChildEvent::Exited(_)))
     }
 
     /// Flush a synchronized update whose deadline has passed.
@@ -364,7 +397,7 @@ impl<T: DcsTap> Session<T> {
     /// Push the input queue at the master, keeping what it refuses.
     fn flush_input(&mut self) -> std::io::Result<()> {
         while !self.input.is_empty() {
-            match self.pty.write(&self.input) {
+            match self.pty.writer().write(&self.input) {
                 // Nothing taken and nothing wrong: backpressure, wearing a
                 // success. Stop rather than spin.
                 Ok(0) => break,
@@ -404,8 +437,21 @@ impl<T: DcsTap> Session<T> {
     /// the channel holding this session is the gateway, and a gateway
     /// swallows every byte typed, pasted or reported at it
     /// (`app::window::TerminalSurface::write`).
-    pub fn control_mode_writer(&mut self) -> std::io::Result<std::fs::File> {
-        self.pty.writer().try_clone()
+    #[cfg(unix)]
+    pub fn control_mode_writer(&mut self) -> std::io::Result<Box<dyn Write + Send>> {
+        Ok(Box::new(self.pty.writer().try_clone()?))
+    }
+
+    /// On Windows no local tmux exists to raise a control mode with, so
+    /// there is no second writer to hand out; a remote `tmux -CC` rides an
+    /// SSH channel and gets its writer there. Refusing loudly beats
+    /// wiring a gateway to a wire that cannot exist.
+    #[cfg(windows)]
+    pub fn control_mode_writer(&mut self) -> std::io::Result<Box<dyn Write + Send>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "no local tmux exists on this platform to drive a control mode",
+        ))
     }
 
     /// Force both parsers out of a DCS string that will never close.
