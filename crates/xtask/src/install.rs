@@ -1,11 +1,14 @@
-//! `xtask install`, `xtask dist` and `xtask deb`: getting the Linux build off
-//! the build machine and onto a user's.
+//! `xtask install`, `xtask dist` and `xtask stage-deb`: getting the Linux
+//! build off the build machine and onto a user's.
 //!
 //! All three lay out the same three files. `install` writes them into a prefix
 //! the caller names, `dist` writes them into a staging directory and rolls it
-//! into a versioned `tar.gz`, and `deb` writes them under `/usr` inside a
-//! package root and hands that to `dpkg-deb`. One [`lay_out`] means the three
-//! can never disagree about what an installation is.
+//! into a versioned `tar.gz`, and `stage-deb` writes them under the staging
+//! root `debian/rules` hands it, where debhelper takes over (strip, dbgsym,
+//! `${shlibs:Depends}`, the doc files) and `dpkg-buildpackage` writes the
+//! `.deb` into the parent directory, the office's shelf for packages. One
+//! [`lay_out`] means the three can never disagree about what an installation
+//! is.
 //!
 //! # What is embedded and what is installed
 //!
@@ -28,9 +31,9 @@
 //! accepts running without one (a developer install, GUI-less). The `.deb`
 //! instead ships the Tcl sources under `share/robco-term/settings`, the
 //! launcher at `bin/robco-settings` with its ROOT pointed there, and
-//! `tcl9.0`/`tk9.0` in its `Depends`: on Debian the interpreter is the
-//! distribution's to provide, the same rule `dpkg-shlibdeps` applies to
-//! the C libraries.
+//! `tcl9.0`/`tk9.0` in its `Depends` (declared in `debian/control`): on
+//! Debian the interpreter is the distribution's to provide, the same rule
+//! `dh_shlibdeps` applies to the C libraries.
 //!
 //! **Embedded**: compiled into the binary, so none of it is installed, none
 //! of it is looked up at run time, and the binary does not care where it sits
@@ -250,81 +253,6 @@ fn lay_out_settings_scripts(root: &Path) -> Result<Vec<PathBuf>> {
     written.push(installed_launcher);
 
     Ok(written)
-}
-
-/// The two files Debian policy wants under `usr/share/doc/<package>`: a
-/// changelog (this is a native package, so `changelog.gz`, dated from
-/// HEAD's commit time like the dist tarball) and a machine-readable
-/// copyright file. The license text itself is not duplicated: the crate
-/// declares GPL-3.0-or-later, and Debian keeps that text in
-/// `/usr/share/common-licenses/GPL-3`, which is what the file points at.
-fn deb_doc_files(root: &Path, version: &str) -> Result<Vec<PathBuf>> {
-    let doc = root.join("share/doc").join(NAME);
-    std::fs::create_dir_all(&doc).with_context(|| format!("creating {}", doc.display()))?;
-
-    let stamp = crate::proc::capture(
-        "date",
-        &["-u", "-R", "-d", &format!("@{}", released_commit_timestamp()?)],
-    )?;
-    let changelog = doc.join("changelog");
-    std::fs::write(
-        &changelog,
-        format!(
-            "{NAME} ({version}) unstable; urgency=medium\n\n  \
-             * Built from the source tree at this version.\n\n \
-             -- {}  {stamp}\n",
-            maintainer()
-        ),
-    )
-    .with_context(|| format!("writing {}", changelog.display()))?;
-    // -n keeps the timestamp out of the gzip header, so the same tree
-    // packages to the same bytes.
-    let status = Command::new("gzip")
-        .args(["-9", "-n", "-f"])
-        .arg(&changelog)
-        .status()
-        .context("spawning gzip")?;
-    if !status.success() {
-        bail!("gzip exited with {status}");
-    }
-    let changelog_gz = doc.join("changelog.gz");
-    set_mode(&changelog_gz, 0o644)?;
-
-    let copyright = doc.join("copyright");
-    std::fs::write(
-        &copyright,
-        format!(
-            "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n\
-             Upstream-Name: {NAME}\n\
-             Source: https://github.com/overseers-desk/RobCo-Terminal\n\
-             \n\
-             Files: *\n\
-             Copyright: 2026 RobCo Terminal contributors\n\
-             License: GPL-3.0-or-later\n\
-            \x20This package is distributed under the terms of the GNU General\n\
-            \x20Public License, version 3 or (at your option) any later version.\n\
-            \x20.\n\
-            \x20On Debian systems, the complete text of the GNU General Public\n\
-            \x20License version 3 can be found in /usr/share/common-licenses/GPL-3.\n"
-        ),
-    )
-    .with_context(|| format!("writing {}", copyright.display()))?;
-    set_mode(&copyright, 0o644)?;
-
-    Ok(vec![changelog_gz, copyright])
-}
-
-/// 0755 on every directory under `root`: the staging tree inherits the
-/// building user's umask, and dpkg-deb archives modes as it finds them.
-fn normalize_dir_modes(root: &Path) -> Result<()> {
-    set_mode(root, 0o755)?;
-    for entry in std::fs::read_dir(root).with_context(|| format!("reading {}", root.display()))? {
-        let path = entry?.path();
-        if path.is_dir() {
-            normalize_dir_modes(&path)?;
-        }
-    }
-    Ok(())
 }
 
 /// Rewrite the launcher's `set ROOT ...` line to the installed location.
@@ -657,195 +585,26 @@ fn archive(staging: &Path, stem: &str, out_dir: &Path, mtime: i64) -> Result<Pat
     Ok(tarball)
 }
 
-pub struct DebArgs {
-    pub out_dir: PathBuf,
+pub struct StageDebArgs {
+    pub root: PathBuf,
     pub binary: Option<PathBuf>,
 }
 
-/// `xtask deb`: a binary Debian package, built without root.
-///
-/// This is the one package format that needed no tooling this machine did not
-/// already have and no privilege it did not already have: `dpkg-deb
-/// --root-owner-group` writes the ownership a package needs without `fakeroot`
-/// or `sudo`, and `dpkg-shlibdeps` derives the real `Depends` from the built
-/// binary rather than from a list someone maintains by hand.
-///
-/// It is a *binary* package built from the install layout, not a Debian source
-/// package: there is no `debian/rules`, no debhelper, and no build on the
-/// packaging machine. The `debian/control` this writes into its scratch
-/// directory exists only because `dpkg-shlibdeps` refuses to run without one.
-///
-/// What that costs, stated rather than hidden: the dependency versions
-/// `dpkg-shlibdeps` computes are the ones on *this* machine's libraries, so a
-/// package built on a newer distribution declares bounds an older one cannot
-/// satisfy. That is the normal property of a locally built binary package and
-/// the reason distributions build in a clean chroot; naming it is the honest
-/// alternative to pretending the artifact is portable across releases.
-pub fn deb(args: DebArgs) -> Result<()> {
-    for tool in ["dpkg-deb", "dpkg-shlibdeps", "dpkg", "strip", "gzip", "date"] {
-        if which(tool).is_none() {
-            bail!("`{tool}` is not on PATH; `xtask deb` needs dpkg-dev, dpkg, binutils and coreutils");
-        }
-    }
+/// `xtask stage-deb`: the install layout plus the settings sources, into
+/// the staging root `debian/rules` names. Everything Debian-specific past
+/// the layout (strip and the dbgsym split, `${shlibs:Depends}`, the
+/// changelog and copyright installation, modes and ownership) is
+/// debhelper's, which is the point of packaging with it.
+pub fn stage_deb(args: StageDebArgs) -> Result<()> {
     let version = version()?;
     let binary = resolve_binary(args.binary)?;
-    let arch = crate::proc::capture("dpkg", &["--print-architecture"])?;
-
-    let scratch = tempfile::Builder::new()
-        .prefix("robco-deb.")
-        .tempdir()
-        .context("creating the deb staging directory")?;
-
-    // dpkg-shlibdeps insists on being run from a directory holding
-    // `debian/control`, and on the binary living under the package's own
-    // staging path, so the layout below is its shape, not a choice.
-    let debian = scratch.path().join("debian");
-    std::fs::create_dir_all(&debian)?;
-    std::fs::write(
-        debian.join("control"),
-        format!("Source: {NAME}\n\nPackage: {NAME}\nArchitecture: {arch}\n"),
-    )
-    .context("writing the scratch debian/control")?;
-
-    let package_root = debian.join(NAME);
-    let mut written = lay_out(&package_root.join("usr"), &binary, None)?;
-    written.extend(lay_out_settings_scripts(&package_root.join("usr"))?);
-    written.extend(deb_doc_files(&package_root.join("usr"), &version)?);
-    let installed_binary = package_root.join("usr/bin").join(NAME);
-
-    // Debian ships stripped binaries. The line tables the release profile
-    // carries stay on the build machine's unstripped copy, which is what a
-    // crash log's module+offset frames are resolved against; in the
-    // package they were a couple hundred megabytes the loader never pages
-    // in. The check below then runs the stripped copy, the one that ships.
-    let status = Command::new("strip")
-        .arg("--strip-unneeded")
-        .arg(&installed_binary)
-        .status()
-        .context("spawning strip")?;
-    if !status.success() {
-        bail!("strip exited with {status}");
+    let mut written = lay_out(&args.root, &binary, None)?;
+    written.extend(lay_out_settings_scripts(&args.root)?);
+    check_installed(&args.root.join("bin").join(NAME), &version)?;
+    for path in written {
+        println!("staged {}", path.display());
     }
-    check_installed(&installed_binary, &version)?;
-
-    // The staging directories inherit the building user's umask; dpkg-deb
-    // archives whatever it sees, and Debian directories are 0755.
-    normalize_dir_modes(&package_root)?;
-
-    // The C dependencies are read off the binary; the Tcl/Tk ones are the
-    // settings window's, stated by name because no ELF names them.
-    let depends = format!("{}, tcl9.0, tk9.0", shlibdeps(scratch.path(), &installed_binary)?);
-
-    // Installed-Size is in KiB, and is the size of the installed files, which
-    // for this package is robco-term plus two small data files plus the
-    // robco-settings sources.
-    let installed_size: u64 = written
-        .iter()
-        .filter_map(|path| std::fs::metadata(path).ok())
-        .map(|m| m.len())
-        .sum::<u64>()
-        .div_ceil(1024);
-
-    let control_dir = package_root.join("DEBIAN");
-    std::fs::create_dir_all(&control_dir)?;
-    std::fs::write(
-        control_dir.join("control"),
-        control(&version, &arch, &depends, installed_size),
-    )
-    .context("writing DEBIAN/control")?;
-
-    std::fs::create_dir_all(&args.out_dir)
-        .with_context(|| format!("creating {}", args.out_dir.display()))?;
-    let out_dir = std::fs::canonicalize(&args.out_dir)?;
-    let deb_path = out_dir.join(format!("{NAME}_{version}_{arch}.deb"));
-
-    // --root-owner-group is what makes this sudo-free: without it dpkg-deb
-    // stamps the building user's uid/gid into the archive and needs fakeroot
-    // or root to write 0:0.
-    let status = Command::new("dpkg-deb")
-        .arg("--build")
-        .arg("--root-owner-group")
-        .arg(&package_root)
-        .arg(&deb_path)
-        .status()
-        .context("spawning dpkg-deb")?;
-    if !status.success() {
-        bail!("dpkg-deb exited with {status}");
-    }
-
-    println!("wrote {}", deb_path.display());
-    println!("  Depends: {depends}");
     Ok(())
-}
-
-/// The `Depends` line, from `dpkg-shlibdeps` reading the built binary.
-fn shlibdeps(cwd: &Path, binary: &Path) -> Result<String> {
-    let output = Command::new("dpkg-shlibdeps")
-        .current_dir(cwd)
-        .arg("-O")
-        .arg("--ignore-missing-info")
-        .arg(binary)
-        .output()
-        .context("spawning dpkg-shlibdeps")?;
-    if !output.status.success() {
-        bail!(
-            "dpkg-shlibdeps exited with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    text.lines()
-        .find_map(|line| line.strip_prefix("shlibs:Depends="))
-        .map(|deps| deps.trim().to_string())
-        .filter(|deps| !deps.is_empty())
-        .context("dpkg-shlibdeps produced no shlibs:Depends line")
-}
-
-/// The package's own control file.
-///
-/// `Provides: x-terminal-emulator` is the Debian tag for "this is a terminal";
-/// the matching `update-alternatives` registration wants maintainer scripts,
-/// which a package this simple does not carry, so the tag is claimed and the
-/// alternative is not.
-fn control(version: &str, arch: &str, depends: &str, installed_size: u64) -> String {
-    format!(
-        "Package: {NAME}\n\
-         Version: {version}\n\
-         Architecture: {arch}\n\
-         Section: x11\n\
-         Priority: optional\n\
-         Installed-Size: {installed_size}\n\
-         Maintainer: {}\n\
-         Depends: {depends}\n\
-         Provides: x-terminal-emulator\n\
-         Description: terminal emulator which mimics old screens\n\
-        \x20RobCo Terminal is a terminal emulator which mimics the look and feel\n\
-        \x20of the old cathode tube screens. It has been designed to be eye-candy,\n\
-        \x20customizable, and reasonably lightweight.\n",
-        maintainer()
-    )
-}
-
-/// `Maintainer` is a required Debian field. The person comes from
-/// `DEBFULLNAME`/`DEBEMAIL`, the same environment `dch` and the other
-/// Debian tools read, so no name lives in this source; without them the
-/// placeholder stands, and lintian's `bogus-mail-host` will say so.
-fn maintainer() -> String {
-    match (std::env::var("DEBFULLNAME"), std::env::var("DEBEMAIL")) {
-        (Ok(name), Ok(email)) if !name.is_empty() && !email.is_empty() => {
-            format!("{name} <{email}>")
-        }
-        _ => "RobCo Terminal maintainers <robco-term@localhost>".to_string(),
-    }
-}
-
-/// `command -v`, without a shell.
-fn which(tool: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(tool))
-        .find(|candidate| candidate.is_file())
 }
 
 #[cfg(test)]
@@ -1029,33 +788,6 @@ mod tests {
         assert!(point_root_at("#!/usr/bin/env tclsh9.0\n", "/usr/share/x").is_err());
     }
 
-    /// The control file is a single RFC822 stanza with the fields dpkg
-    /// requires, and its Description continuation lines are space-prefixed.
-    #[test]
-    fn the_control_stanza_has_the_required_fields() {
-        let text = control("1.2.3", "amd64", "libc6 (>= 2.39)", 42);
-        for field in [
-            "Package: robco-term",
-            "Version: 1.2.3",
-            "Architecture: amd64",
-            "Installed-Size: 42",
-            "Depends: libc6 (>= 2.39)",
-            "Maintainer: ",
-            "Description: ",
-        ] {
-            assert!(
-                text.contains(field),
-                "control is missing {field:?}:\n{text}"
-            );
-        }
-        let description = text.split("Description: ").nth(1).unwrap();
-        for line in description.lines().skip(1).filter(|l| !l.is_empty()) {
-            assert!(
-                line.starts_with(' '),
-                "continuation line is not folded: {line:?}"
-            );
-        }
-    }
 
     /// The timestamp `dist` stamps into the archive is a real commit time
     /// off git, not `0` from a parse that silently failed.

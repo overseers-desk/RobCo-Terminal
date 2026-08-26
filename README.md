@@ -142,16 +142,20 @@ wherever you like and run `bin/robco-term`.
 **As a Debian package:**
 
 ```console
-$ cargo run -p xtask -- deb --out-dir dist
-wrote dist/robco-term_0.1.0_amd64.deb
-  Depends: libc6 (>= 2.39), libgcc-s1 (>= 4.2), libstdc++6 (>= 13.1), ...
+$ dpkg-buildpackage -us -uc -b
+dpkg-deb: building package 'robco-term' in '../robco-term_0.1.0_amd64.deb'.
 ```
 
-Then `sudo dpkg -i dist/robco-term_0.1.0_amd64.deb`. It builds without root,
-and its dependencies are read out of the binary rather than maintained by
-hand. One caveat worth stating: those versions are the ones on the machine
-that built the package, so a package built on a newer distribution declares
-bounds an older one cannot satisfy. Build it where you will install it.
+Then `sudo dpkg -i ../robco-term_0.1.0_amd64.deb`; the artifacts land in the
+parent directory, which is dpkg-buildpackage's convention. It builds without
+root, the installed binary is stripped, and a `robco-term-dbgsym` package
+rides beside it carrying the symbols a crash log's frames resolve against.
+The settings window ships as Tcl sources running on the distribution's own
+`tcl9.0`/`tk9.0`, declared as dependencies; the C dependencies are read out
+of the binary rather than maintained by hand. One caveat worth stating:
+those versions are the ones on the machine that built the package, so a
+package built on a newer distribution declares bounds an older one cannot
+satisfy. Build it where you will install it.
 
 To check the install on a machine with no desktop session:
 

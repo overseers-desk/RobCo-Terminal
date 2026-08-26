@@ -151,15 +151,16 @@ enum Command {
         #[arg(long)]
         settings_binary: Option<PathBuf>,
     },
-    /// Build a binary `.deb` from the install layout, without root. The
-    /// settings window rides as Tcl sources with `tcl9.0`/`tk9.0` in
-    /// `Depends`: on Debian the interpreter is the distribution's to
-    /// provide, so no self-contained image is involved.
-    Deb {
-        /// Where the package is written.
-        #[arg(long, default_value = "dist")]
-        out_dir: PathBuf,
-        /// Package this binary instead of building a fresh release one.
+    /// Stage the install layout for the Debian package: what
+    /// `debian/rules` calls from `override_dh_auto_install`. The settings
+    /// window rides as Tcl sources with `tcl9.0`/`tk9.0` declared in
+    /// `debian/control`; build the package itself with
+    /// `dpkg-buildpackage -us -uc -b`.
+    StageDeb {
+        /// The staging root, `debian/<package>/usr` when debhelper calls.
+        #[arg(long)]
+        root: PathBuf,
+        /// Stage this binary instead of building a fresh release one.
         #[arg(long)]
         binary: Option<PathBuf>,
     },
@@ -250,6 +251,8 @@ fn main() -> anyhow::Result<()> {
             binary,
             settings_binary,
         }),
-        Command::Deb { out_dir, binary } => install::deb(install::DebArgs { out_dir, binary }),
+        Command::StageDeb { root, binary } => {
+            install::stage_deb(install::StageDebArgs { root, binary })
+        }
     }
 }

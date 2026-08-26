@@ -1,0 +1,6 @@
+robco-term (0.1.0) unstable; urgency=medium
+
+  * First Debian packaging: the terminal, its desktop entry and icon, and
+    the Tcl/Tk settings window running on the distribution's tcl9.0/tk9.0.
+
+ -- Weiwu Zhang <a@colourful.land>  Wed, 26 Aug 2026 16:14:02 +0000

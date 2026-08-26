@@ -1,0 +1,21 @@
+Source: robco-term
+Section: x11
+Priority: optional
+Maintainer: Weiwu Zhang <a@colourful.land>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/overseers-desk/RobCo-Terminal
+Rules-Requires-Root: no
+
+Package: robco-term
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ tcl9.0,
+ tk9.0,
+Provides: x-terminal-emulator
+Description: terminal emulator which mimics old screens
+ RobCo Terminal is a terminal emulator which mimics the look and feel
+ of the old cathode tube screens. It has been designed to be eye-candy,
+ customizable, and reasonably lightweight.

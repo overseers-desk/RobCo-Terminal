@@ -1,0 +1,22 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release
+
+# The workspace's tests run in CI and on the developer's machine; a
+# package build is not the place to run them again.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	cargo run -p xtask -- stage-deb --root debian/robco-term/usr
+
+# cargo's target directory is shared machine-wide on the build hosts;
+# a package build must not empty it.
+override_dh_auto_clean:
+
+# dwz does not understand the DWARF rustc emits at this scale; dh_strip
+# still strips and splits the dbgsym package without it.
+override_dh_dwz:
