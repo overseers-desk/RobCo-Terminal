@@ -26,6 +26,7 @@
 //! file, because the file is the source of truth here and a roster inside a
 //! value would be a second store with its own rules.
 
+pub mod dump;
 pub mod presets;
 pub mod profile;
 pub mod schema;

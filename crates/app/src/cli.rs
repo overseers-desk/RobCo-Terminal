@@ -23,13 +23,16 @@
 //! -v, --version        print version
 //! ```
 //!
-//! Two flags beyond that list are this rebuild's own, and neither changes
+//! Three flags beyond that list are this rebuild's own, and none changes
 //! what `xtask verify`'s flag-presence check expects of the documented
 //! contract items above. `--frame-stats` is the live-preview throughput
 //! instrument's CLI switch: it logs a p50/p99 line periodically and does
 //! nothing when absent. `--ssh [user@]host[:port]` opens the first channel
 //! on an SSH connection this program owns (#14) instead of a shell; the
 //! spelling is validated here, so a bad one fails before a window exists.
+//! `--dump-settings` prints the settings dump (defaults, presets, font
+//! catalogue, enum value lists; see `config::dump`) on stdout and exits,
+//! the query external settings tools build their view from.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -66,6 +69,9 @@ pub struct Options {
     /// the CLI's beaten path (see the module doc). Logs p50/p99 GPU pass
     /// timings and the present interval every few seconds.
     pub frame_stats: bool,
+    /// `--dump-settings`: print the settings dump on stdout and exit
+    /// without opening a window (see the module doc).
+    pub dump_settings: bool,
 }
 
 /// An `-e` command: the program and the arguments after it.
@@ -100,7 +106,8 @@ pub fn help(program_name: &str) -> String {
 \x20 -p|--profile <prof> Run {program_name} with the given profile.\n\
 \x20 -h|--help           Print this help.\n\
 \x20 --verbose           Print additional information such as profiles and settings.\n\
-\x20 --frame-stats       Log GPU frame-timing p50/p99 periodically (this rebuild only).\n"
+\x20 --frame-stats       Log GPU frame-timing p50/p99 periodically (this rebuild only).\n\
+\x20 --dump-settings     Print defaults, presets, fonts and value lists as TOML, then exit.\n"
     )
 }
 
@@ -131,6 +138,7 @@ where
             "--fullscreen" => opts.fullscreen = true,
             "--verbose" => opts.verbose = true,
             "--frame-stats" => opts.frame_stats = true,
+            "--dump-settings" => opts.dump_settings = true,
             "-p" | "--profile" => match args.get(i + 1) {
                 Some(v) => {
                     opts.profile = Some(v.to_string_lossy().into_owned());
@@ -223,6 +231,12 @@ mod tests {
     fn frame_stats_flag_parses_and_defaults_off() {
         assert!(!run(&[]).frame_stats);
         assert!(run(&["--frame-stats"]).frame_stats);
+    }
+
+    #[test]
+    fn dump_settings_flag_parses_and_defaults_off() {
+        assert!(!run(&[]).dump_settings);
+        assert!(run(&["--dump-settings"]).dump_settings);
     }
 
     #[test]

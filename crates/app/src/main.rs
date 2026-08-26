@@ -41,6 +41,21 @@ fn main() -> ExitCode {
         }
     };
 
+    // The settings dump is pure output: no window, no instance lock, no
+    // config file touched. Handled before anything else starts so external
+    // tools can call it while a terminal is running.
+    if options.dump_settings {
+        let fonts = term::fonts()
+            .iter()
+            .map(|f| config::dump::FontListing {
+                name: f.name.to_string(),
+                text: f.text.to_string(),
+            })
+            .collect();
+        print!("{}", config::dump::dump(fonts));
+        return ExitCode::SUCCESS;
+    }
+
     let mut builder = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("robco_app=info,app=info"),
     );
