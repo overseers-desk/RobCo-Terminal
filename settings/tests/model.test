@@ -1,0 +1,266 @@
+# The model: resolution (pinned, then the named preset, then the shipped
+# default) and the four edits, each held to the machine-write contract's
+# bar that one changed key is one changed line.
+
+package require tcltest 2.5
+namespace import ::tcltest::*
+
+source [file join [file dirname [info script]] helpers.tcl]
+source [file join $::libdir model.tcl]
+
+set ::data [::rcsettings::dump::load_text $::dumptext fixture]
+set ::configdir [file join [temporaryDirectory] model-[pid]]
+set ::configpath [file join $::configdir config.toml]
+
+# Put $text on disk and point the model at it. Returns the text, so a
+# test can compare the file's bytes before and after an edit.
+proc with_config {text} {
+    file mkdir $::configdir
+    ::rcsettings::toml::atomic_write $::configpath $text
+    ::rcsettings::model::init $::data $::configpath
+    return $text
+}
+
+proc without_config {} {
+    file delete -force $::configdir
+    ::rcsettings::model::init $::data $::configpath
+}
+
+proc on_disk {} {
+    return [::rcsettings::toml::read_file $::configpath]
+}
+
+# Every screen key the dump knows, as the user currently sees it. What
+# pin_overrides must leave unchanged.
+proc screen_look {} {
+    set out {}
+    foreach key [::rcsettings::dump::table_keys $::data screen] {
+        if {$key eq "name"} { continue }
+        lappend out $key [::rcsettings::model::effective screen $key]
+    }
+    return $out
+}
+
+# A robco-term old enough to have no --dump-settings can sit on PATH, so
+# the constraint is that the dump works, not that a binary is there.
+testConstraint realBinary [expr {![catch {::rcsettings::dump::load} ::realdump]}]
+
+test dump-1.1 {defaults come out as raw TOML, presets in dump order} -body {
+    list [::rcsettings::dump::default $::data screen bloom] \
+        [::rcsettings::dump::preset_names $::data screen] \
+        [::rcsettings::dump::preset_names $::data chassis]
+} -result {0.6 {{Default Amber} {Deep Blue} E-Ink} {Annunciator Switchboard}}
+
+test dump-1.2 {fonts are catalogue key and display name} -body {
+    lindex [::rcsettings::dump::fonts $::data] 1
+} -result {COZETTE_SCALED Cozette}
+
+test dump-1.3 {a multi-line value list becomes a Tcl list} -body {
+    list [::rcsettings::dump::enum $::data shell] \
+        [::rcsettings::dump::enum $::data channel_display]
+} -result {{annunciator slide-rule switchboard} {led tape}}
+
+test dump-1.4 {an unknown table or preset is an error, never a guess} -body {
+    list [catch {::rcsettings::dump::preset $::data screen Vintage}] \
+        [catch {::rcsettings::dump::default $::data screen no_such_key}]
+} -result {1 1}
+
+test dump-1.5 {the error names what was looked for and where} -body {
+    set ::env(ROBCO_TERM) [file join [temporaryDirectory] not-a-binary]
+    set msg [::rcsettings::dump::describe_search]
+    unset ::env(ROBCO_TERM)
+    expr {[string match "*ROBCO_TERM*not-a-binary*" $msg]
+          && [string match "*robco-term*PATH*" $msg]}
+} -result 1
+
+test dump-1.6 {the real binary's dump parses} -constraints realBinary -body {
+    set real $::realdump
+    list [expr {[llength [::rcsettings::dump::preset_names $real screen]] > 0}] \
+        [expr {[llength [::rcsettings::dump::fonts $real]] > 0}] \
+        [::rcsettings::toml::type_of [::rcsettings::dump::default $real screen bloom]] \
+        [expr {"no_rasterization" in [::rcsettings::dump::enum $real rasterization]}]
+} -result {1 1 float 1}
+
+test effective-2.1 {pinned, then the named preset, then the default} -setup {
+    with_config $::fixture
+} -body {
+    list [::rcsettings::model::effective screen bloom] \
+        [::rcsettings::model::effective screen font_color] \
+        [::rcsettings::model::effective general led_characters]
+} -result {0.9 #5c9dff 12}
+
+test effective-2.2 {the base of an unpinned key is the preset's value} -setup {
+    with_config $::fixture
+} -body {
+    list [::rcsettings::model::base screen bloom] \
+        [::rcsettings::model::pinned screen bloom] \
+        [::rcsettings::model::pinned screen font_color] \
+        [::rcsettings::model::preset_name screen]
+} -result {0.5 1 0 {Deep Blue}}
+
+test effective-2.3 {a name matching no built-in falls back to the default} -setup {
+    with_config "\[screen\]\nname = \"my workshop\"\n"
+} -body {
+    list [::rcsettings::model::effective screen bloom] \
+        [::rcsettings::model::effective screen font_name]
+} -result {0.6 TERMINESS_SCALED}
+
+test effective-2.4 {an unnamed table resolves against the shipped default} -setup {
+    without_config
+} -body {
+    list [::rcsettings::model::preset_name screen] \
+        [::rcsettings::model::effective screen bloom] \
+        [::rcsettings::model::effective chassis shell]
+} -result {{Default Amber} 0.6 annunciator}
+
+test set-3.1 {an edit changes one line and no other byte} -setup {
+    set before [with_config $::fixture]
+} -body {
+    ::rcsettings::model::set_value screen bloom 0.4
+    list [surgery $before [on_disk]] [::rcsettings::model::effective screen bloom]
+} -result {{{{bloom = 0.9}} {{bloom = 0.4}}} 0.4}
+
+test set-3.2 {a value equal to the base is written by removing the key} -setup {
+    set before [with_config $::fixture]
+} -body {
+    ::rcsettings::model::set_value screen bloom 0.5
+    list [surgery $before [on_disk]] \
+        [::rcsettings::model::pinned screen bloom] \
+        [::rcsettings::model::effective screen bloom]
+} -result {{{{bloom = 0.9}} {}} 0 0.5}
+
+test set-3.3 {the base is the preset's value, not the shipped default} -setup {
+    with_config $::fixture
+} -body {
+    ::rcsettings::model::set_value screen bloom 0.6
+    list [::rcsettings::model::pinned screen bloom] \
+        [::rcsettings::toml::get_key [on_disk] screen bloom]
+} -result {1 0.6}
+
+test set-3.4 {a key the file does not have yet costs one added line} -setup {
+    set before [with_config $::fixture]
+} -body {
+    ::rcsettings::model::set_value screen font_name IOSEVKA
+    surgery $before [on_disk]
+} -result {{} {{font_name = "IOSEVKA"}}}
+
+test set-3.5 {a value is formatted after the type of its default} -setup {
+    with_config $::fixture
+} -body {
+    ::rcsettings::model::set_value screen font_name IOSEVKA
+    ::rcsettings::model::set_value general led_characters 20
+    ::rcsettings::model::set_value screen blinking_cursor 1
+    ::rcsettings::model::set_value general font_scaling 2
+    set text [on_disk]
+    lmap {table key} {screen font_name general led_characters
+                      screen blinking_cursor general font_scaling} {
+        ::rcsettings::toml::get_key $text $table $key
+    }
+} -result {{"IOSEVKA"} 20 true 2.0}
+
+test set-3.6 {an absent file is an empty document to edit} -setup {
+    without_config
+} -body {
+    ::rcsettings::model::set_value chassis frame_size 0.6
+    on_disk
+} -result "\[chassis\]\nframe_size = 0.6\n"
+
+test set-3.7 {the file is re-read before each write} -setup {
+    with_config $::fixture
+} -body {
+    # Another writer lands between the model's load and its next edit.
+    ::rcsettings::toml::atomic_write $::configpath \
+        [::rcsettings::toml::set_key $::fixture general led_characters 20]
+    ::rcsettings::model::set_value screen bloom 0.4
+    list [::rcsettings::toml::get_key [on_disk] general led_characters] \
+        [::rcsettings::toml::get_key [on_disk] screen bloom]
+} -result {20 0.4}
+
+test reset-4.1 {reset unpins, leaving the preset's value showing} -setup {
+    set before [with_config $::fixture]
+} -body {
+    ::rcsettings::model::reset screen bloom
+    list [surgery $before [on_disk]] [::rcsettings::model::effective screen bloom]
+} -result {{{{bloom = 0.9}} {}} 0.5}
+
+test switch-5.1 {switching presets drops this table's overrides only} -setup {
+    with_config $::fixture
+} -body {
+    ::rcsettings::model::switch_preset screen E-Ink
+    list [on_disk] [::rcsettings::model::effective screen bloom]
+} -result "{# The workshop terminal.
+# Do not let the bloom get away from you again.
+
+\[general\]
+font_scaling   =   1.2\t# bigger type, fewer rows
+effects_frame_skip = 2
+
+
+# the look
+\[screen\]
+name = \"E-Ink\"
+mystery_key = \"kept\"
+
+\[dotfiles_tool\]
+generated_at = \"2026-08-01\"
+} 0.0"
+
+test switch-5.2 {naming the shipped preset removes the name key} -setup {
+    with_config $::fixture
+} -body {
+    ::rcsettings::model::switch_preset screen {Default Amber}
+    list [::rcsettings::model::pinned screen name] \
+        [::rcsettings::model::preset_name screen] \
+        [::rcsettings::model::effective screen bloom] \
+        [::rcsettings::toml::get_key [on_disk] screen mystery_key]
+} -result {0 {Default Amber} 0.6 {"kept"}}
+
+test switch-5.3 {switching a table the file has no header for} -setup {
+    without_config
+} -body {
+    ::rcsettings::model::switch_preset chassis Switchboard
+    list [on_disk] [::rcsettings::model::effective chassis channel_display]
+} -result "{\[chassis\]\nname = \"Switchboard\"\n} tape"
+
+test pin-6.1 {pinning overrides keeps every visible value where it was} -setup {
+    with_config $::fixture
+} -body {
+    set was [screen_look]
+    ::rcsettings::model::pin_overrides screen E-Ink
+    list [::rcsettings::model::preset_name screen] \
+        [string equal $was [screen_look]] \
+        [::rcsettings::model::pinned screen font_color]
+} -result {E-Ink 1 1}
+
+test pin-6.2 {a pinned key the new base already gives is unpinned} -setup {
+    with_config "\[screen\]\nname = \"Deep Blue\"\njitter = 0.2\nbloom = 0.9\n"
+} -body {
+    set was [screen_look]
+    ::rcsettings::model::pin_overrides screen {Default Amber}
+    list [string equal $was [screen_look]] \
+        [::rcsettings::model::pinned screen jitter] \
+        [::rcsettings::model::pinned screen bloom] \
+        [::rcsettings::model::pinned screen name]
+} -result {1 0 1 0}
+
+test pin-6.3 {pinning against a name no preset answers to} -setup {
+    with_config $::fixture
+} -body {
+    set was [screen_look]
+    ::rcsettings::model::pin_overrides screen {my workshop}
+    list [::rcsettings::model::preset_name screen] [string equal $was [screen_look]]
+} -result {{my workshop} 1}
+
+test path-7.1 {the platform's default config path} -body {
+    set saved [array get ::env XDG_CONFIG_HOME]
+    set ::env(XDG_CONFIG_HOME) [file join / xdg]
+    set p [::rcsettings::model::default_config_path]
+    unset ::env(XDG_CONFIG_HOME)
+    array set ::env $saved
+    expr {$::tcl_platform(platform) eq "unix" && $::tcl_platform(os) ne "Darwin"
+          ? $p eq [file join / xdg robco-term config.toml]
+          : 1}
+} -result 1
+
+file delete -force $::configdir
+::tcltest::cleanupTests

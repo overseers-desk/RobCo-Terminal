@@ -1,0 +1,31 @@
+#!/usr/bin/env tclsh9.0
+# robco-settings: the settings window for RobCo Terminal.
+#
+# A separate executable rather than a mode of the terminal, so the terminal
+# needs no GUI toolkit of its own: the terminal spawns this on right-click,
+# every change lands in config.toml through the machine-write contract
+# (docs/config-format.md), and the terminal's own file watch carries it to
+# the glass. There is no IPC.
+#
+# Boot shape follows questlog: Tcl-only libraries first, Tk enters the
+# process with the first ui/ source, never here.
+
+package require Tcl 9
+
+set ROBCO_SETTINGS_VERSION 0.1.0
+set ROOT [file dirname [file normalize [info script]]]
+
+foreach lib {toml.tcl dump.tcl model.tcl} {
+    source [file join $ROOT lib $lib]
+}
+
+if {[lsearch -exact $argv --version] >= 0 || [lsearch -exact $argv -v] >= 0} {
+    puts "robco-settings $ROBCO_SETTINGS_VERSION"
+    exit 0
+}
+
+foreach ui {theme.tcl form.tcl preset_dialog.tcl app.tcl} {
+    source [file join $ROOT ui $ui]
+}
+
+::rcsettings::ui::app::start
