@@ -211,8 +211,9 @@ Bundled `font_name` keys: `TERMINESS_SCALED`, `BIGBLUE_TERMINAL_SCALED`,
 `ATARI_400_SCALED`, `COMMODORE_64_SCALED`, `IBM_EGA_8x8`, `IBM_VGA_8x16`,
 `TERMINESS`, `HACK`, `FIRA_CODE`, `IOSEVKA`, `JETBRAINS_MONO`, `IBM_3278`,
 `SOURCE_CODE_PRO`, `DEPARTURE_MONO_SCALED`, `OPENDYSLEXIC`. The `_SCALED`
-ones are the low-resolution faces, drawn from their embedded bitmap strikes
-at integer scale; the rest are outline faces.
+ones, with `IBM_EGA_8x8` and `IBM_VGA_8x16`, are the low-resolution faces,
+drawn from their embedded bitmap strikes at integer scale; the rest are
+outline faces.
 
 ### `[chassis]`
 
