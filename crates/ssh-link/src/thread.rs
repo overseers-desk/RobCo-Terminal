@@ -1,5 +1,8 @@
 //! The connection's own thread: a current-thread runtime driving russh,
-//! feeding the loop-side endpoints in `channel`.
+//! feeding the loop-side endpoints in `channel`. The comments here and in
+//! `channel` call this thread's [`run`] loop the supervisor: it connects,
+//! authenticates, opens channels, and outlives every channel task it
+//! spawns.
 //!
 //! One thread per connection, named after the host the way the
 //! single-instance listener is named for its job. The thread ends when the

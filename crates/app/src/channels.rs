@@ -2,10 +2,12 @@
 //! the air, and what the tube does when that changes.
 //!
 //! A bank is a visual collection of rows of names: a window name under tmux, a
-//! shell's title otherwise. A bank is managed either by this program itself or
-//! by one `tmux -CC` attachment -- its gateway, the channel carrying the
-//! control stream, standing at slot 1 -- and that one attachment controls
-//! every channel of its bank. Each tmux session gets a bank of its own. Within
+//! shell's title otherwise. A bank is managed by this program itself, by one
+//! `tmux -CC` attachment -- its gateway, the channel carrying the control
+//! stream, standing at slot 1, controlling every channel of its bank -- or by
+//! one SSH connection this program owns, whose channels multiplex over the
+//! one wire with no gateway row. Each tmux session gets a bank of its own,
+//! and so does each SSH connection. Within
 //! a bank a slot whose session has exited goes dark and stays dark: no
 //! renumbering, and a new channel takes the lowest free slot. Rows beyond what
 //! the theme shows keep the pager behaviour (`crate::bank`).
@@ -38,13 +40,13 @@ use tmux_cc::{PaneId, SessionId, WindowId};
 pub const CHANNEL_CAP: u32 = 99;
 
 /// A bank's id. Bank 0 is the one this program manages and never leaves; tmux
-/// attachments take 1, 2, ... in attach order, and ids only ever grow, so
-/// sorting rows by `(bank, channel)` puts the home bank first and the
-/// attachments behind it in the order they arrived.
+/// attachments and SSH connections take 1, 2, ... in the order they arrive,
+/// and ids only ever grow, so sorting rows by `(bank, channel)` puts the home
+/// bank first and the rest behind it in arrival order.
 pub type BankId = u32;
 
-/// Who manages a bank, and everything true only of the one that a tmux
-/// attachment manages.
+/// Who manages a bank, and everything true only under one manager: the
+/// attachment state under tmux, the destination under SSH.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Manager {
     /// This program, which spawns the shells itself.
