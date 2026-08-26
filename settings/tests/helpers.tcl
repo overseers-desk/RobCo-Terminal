@@ -44,9 +44,37 @@ mystery_key = "kept"
 generated_at = "2026-08-01"
 }
 
-# A canned --dump-settings document: the shape of the real one (three
-# fully-resolved default tables, both preset axes, the font catalogue,
-# the enumerated value lists) cut down to what the model tests exercise.
+# A config file whose `[[ssh.host]]` rows carry everything a row writer
+# must not disturb: a comment block introducing a row, odd spacing, a
+# trailing same-line comment, an unknown key inside a row, an unknown key
+# in the `[ssh]` table itself, and a table after the last row.
+set ::sshfixture {# Servers.
+
+[ssh]
+default = "vault"
+odd_key = "kept"
+
+# the vault, behind the door
+[[ssh.host]]
+host = "vault"
+user   =   "overseer"	# the account, not the person
+note = "unknown to this tool"
+
+[[ssh.host]]
+host = "relay"
+port = 2222
+
+[[ssh.host]]
+host = "spare"
+
+[dotfiles_tool]
+generated_at = "2026-08-01"
+}
+
+# A canned --dump-settings document: the shape of the real one (the
+# fully-resolved default tables, the ssh row defaults, both preset axes,
+# the font catalogue, the enumerated value lists) cut down to what the
+# model tests exercise.
 set ::dumptext {[general]
 effects_frame_skip = 3
 window_scaling = 1.0
@@ -74,6 +102,16 @@ channel_indicator = "glow"
 channel_display = "led"
 frame_size = 0.45
 bank_font_name = "COZETTE_SCALED"
+
+[ssh]
+default = ""
+host = []
+
+[ssh_host_defaults]
+host = ""
+user = ""
+port = 22
+key = ""
 
 [[screen_presets]]
 name = "Default Amber"

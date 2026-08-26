@@ -2,10 +2,23 @@
 
 Right-clicking the glass opens `robco-settings`, a separate program shipped
 in every official package beside `robco-term`. It is the graphical face of
-[the config file](config.md): three tabs (General, Screen, Chassis), a
+[the config file](config.md): four tabs (General, Screen, Chassis, SSH), a
 preset picker at the head of each look axis, sliders and pickers for every
 key the build reads, a marker on each value the file pins away from its
 preset, and a per-row reset that unpins one.
+
+The **SSH** tab is a list rather than a form, `[[ssh.host]]` being a table
+per server. The checked radio is where a new session starts: localhost at
+the top, then one row per server with its host, user, port and key beside
+it, `+` to add a row and `✕` to take one away. Checking a row writes its
+host into `ssh.default`; renaming the checked row rewrites `ssh.default` in
+the same edit, because that key names a row by its host string and would
+otherwise be left pointing at a name nothing answers to. A field left at
+its default (an empty user, port 22) is not written out, the same
+diff-against-defaults rule the other tabs follow, while the host is written
+whatever it holds, being what the row is identified by. The terminal reads
+the table when it launches, so a change here reaches the next session
+started rather than the ones already running.
 
 ## How it behaves
 

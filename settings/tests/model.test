@@ -1,6 +1,8 @@
 # The model: resolution (pinned, then the named preset, then the shipped
-# default) and the four edits, each held to the machine-write contract's
-# bar that one changed key is one changed line.
+# default), the four edits of a flat table, and the ssh rows, each held to
+# the machine-write contract's bar that one changed key is one changed
+# line. A row that is added or removed is one added or removed block, and
+# every byte around it stands.
 
 package require tcltest 2.5
 namespace import ::tcltest::*
@@ -250,6 +252,161 @@ test pin-6.3 {pinning against a name no preset answers to} -setup {
     ::rcsettings::model::pin_overrides screen {my workshop}
     list [::rcsettings::model::preset_name screen] [string equal $was [screen_look]]
 } -result {{my workshop} 1}
+
+# The rows as the tab draws them: the host of each, and which one the
+# file's `default` puts the check on.
+proc ssh_view {} {
+    set out {}
+    foreach row [::rcsettings::model::ssh_hosts] { lappend out [dict get $row host] }
+    return [list $out [::rcsettings::model::ssh_default]]
+}
+
+test ssh-8.1 {rows resolve their fields against the row defaults} -setup {
+    with_config $::sshfixture
+} -body {
+    list [ssh_view] [lindex [::rcsettings::model::ssh_hosts] 1]
+} -result {{{vault relay spare} vault} {host relay user {} port 2222 key {}}}
+
+test ssh-8.2 {a file with no rows has none, and starts on localhost} -setup {
+    with_config $::fixture
+} -body {
+    ssh_view
+} -result {{} {}}
+
+test ssh-8.3 {a default naming no row is what it is; the tab reads it} -setup {
+    with_config "\[ssh\]\ndefault = \"gone\"\n"
+} -body {
+    ssh_view
+} -result {{} gone}
+
+test ssh-9.1 {a field equal to the row default is written by removing it} -setup {
+    set before [with_config $::sshfixture]
+} -body {
+    ::rcsettings::model::set_ssh_host 1 port 22
+    list [surgery $before [on_disk]] \
+        [dict get [lindex [::rcsettings::model::ssh_hosts] 1] port]
+} -result {{{{port = 2222}} {}} 22}
+
+test ssh-9.2 {a field away from its default is one changed line} -setup {
+    set before [with_config $::sshfixture]
+} -body {
+    ::rcsettings::model::set_ssh_host 2 port 2022
+    list [surgery $before [on_disk]] \
+        [lmap row [::rcsettings::model::ssh_hosts] {dict get $row port}]
+} -result {{{} {{port = 2022}}} {22 2222 2022}}
+
+test ssh-9.3 {host is written even when it is the row default's own value} -setup {
+    with_config $::sshfixture
+} -body {
+    ::rcsettings::model::set_ssh_host 2 host ""
+    list [::rcsettings::toml::array_spans [on_disk] ssh.host] \
+        [lmap row [::rcsettings::model::ssh_hosts] {dict get $row host}]
+} -result {{{7 12} {12 16} {16 19}} {vault relay {}}}
+
+test ssh-9.4 {a field is formatted after the type of its row default} -setup {
+    with_config $::sshfixture
+} -body {
+    ::rcsettings::model::set_ssh_host 0 port 2222
+    ::rcsettings::model::set_ssh_host 0 key {~/.ssh/id_ed25519}
+    set entry [lindex [dict get [::rcsettings::toml::parse [on_disk]] \
+        arrays ssh.host] 0]
+    list [dict get $entry port] [dict get $entry key]
+} -result {2222 {"~/.ssh/id_ed25519"}}
+
+test ssh-9.5 {an unknown key inside a row is round-tripped} -setup {
+    with_config $::sshfixture
+} -body {
+    ::rcsettings::model::set_ssh_host 0 user "someone"
+    ::rcsettings::toml::plain [dict get [lindex [dict get \
+        [::rcsettings::toml::parse [on_disk]] arrays ssh.host] 0] note]
+} -result {unknown to this tool}
+
+test ssh-10.1 {renaming the checked row takes the check with it} -setup {
+    set before [with_config $::sshfixture]
+} -body {
+    ::rcsettings::model::set_ssh_host 0 host "vault.example.com"
+    list [surgery $before [on_disk]] [ssh_view]
+} -result {{{{default = "vault"} {odd_key = "kept"} {} {# the vault, behind the door} {[[ssh.host]]} {host = "vault"}} {{default = "vault.example.com"} {odd_key = "kept"} {} {# the vault, behind the door} {[[ssh.host]]} {host = "vault.example.com"}}} {{vault.example.com relay spare} vault.example.com}}
+
+test ssh-10.2 {renaming a row the check is not on leaves the check} -setup {
+    with_config $::sshfixture
+} -body {
+    ::rcsettings::model::set_ssh_host 1 host "relay.example.com"
+    ssh_view
+} -result {{vault relay.example.com spare} vault}
+
+test ssh-11.1 {checking a row writes its host as the default} -setup {
+    set before [with_config $::sshfixture]
+} -body {
+    ::rcsettings::model::set_ssh_default "spare"
+    list [surgery $before [on_disk]] [::rcsettings::model::ssh_default]
+} -result {{{{default = "vault"}} {{default = "spare"}}} spare}
+
+test ssh-11.2 {checking localhost removes the key rather than emptying it} -setup {
+    set before [with_config $::sshfixture]
+} -body {
+    ::rcsettings::model::set_ssh_default ""
+    list [surgery $before [on_disk]] \
+        [dict exists [::rcsettings::toml::parse [on_disk]] tables ssh default] \
+        [::rcsettings::model::ssh_default]
+} -result {{{{default = "vault"}} {}} 0 {}}
+
+test ssh-11.3 {a default for rows that have no table above them} -setup {
+    with_config "\[\[ssh.host\]\]\nhost = \"a\"\n"
+} -body {
+    # An explicit `[ssh]` after its own rows is not a document the
+    # terminal's parser reads back, so the table goes above them.
+    ::rcsettings::model::set_ssh_default "a"
+    on_disk
+} -result "\[ssh\]\ndefault = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\n"
+
+test ssh-12.1 {a new row carries its host and nothing else} -setup {
+    set before [with_config $::sshfixture]
+} -body {
+    ::rcsettings::model::add_ssh_host
+    list [surgery $before [on_disk]] [lindex [::rcsettings::model::ssh_hosts] 3]
+} -result {{{} {{[[ssh.host]]} {host = ""} {}}} {host {} user {} port 22 key {}}}
+
+test ssh-12.2 {the first row of a file that has none} -setup {
+    without_config
+} -body {
+    ::rcsettings::model::add_ssh_host
+    ::rcsettings::model::set_ssh_host 0 host "vault"
+    ::rcsettings::model::set_ssh_default "vault"
+    on_disk
+} -result "\[ssh\]\ndefault = \"vault\"\n\n\[\[ssh.host\]\]\nhost = \"vault\"\n"
+
+test ssh-13.1 {removing a row leaves every other row's bytes} -setup {
+    set before [with_config $::sshfixture]
+} -body {
+    ::rcsettings::model::remove_ssh_host 1
+    list [surgery $before [on_disk]] [ssh_view]
+} -result {{{{host = "relay"} {port = 2222} {} {[[ssh.host]]}} {}} {{vault spare} vault}}
+
+test ssh-13.2 {removing the checked row unchecks it} -setup {
+    with_config $::sshfixture
+} -body {
+    ::rcsettings::model::remove_ssh_host 0
+    list [ssh_view] \
+        [dict exists [::rcsettings::toml::parse [on_disk]] tables ssh default]
+} -result {{{relay spare} {}} 0}
+
+test ssh-13.3 {a row of the same name still answering keeps the check} -setup {
+    with_config "\[ssh\]\ndefault = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\nport = 2222\n"
+} -body {
+    ::rcsettings::model::remove_ssh_host 0
+    ssh_view
+} -result {a a}
+
+test ssh-14.1 {the file is re-read before an ssh write too} -setup {
+    with_config $::sshfixture
+} -body {
+    ::rcsettings::toml::atomic_write $::configpath \
+        [::rcsettings::toml::set_key $::sshfixture general led_characters 20]
+    ::rcsettings::model::set_ssh_host 1 port 2200
+    list [::rcsettings::toml::get_key [on_disk] general led_characters] \
+        [lindex [::rcsettings::model::ssh_hosts] 1]
+} -result {20 {host relay user {} port 2200 key {}}}
 
 test path-7.1 {the platform's default config path} -body {
     set saved [array get ::env XDG_CONFIG_HOME]

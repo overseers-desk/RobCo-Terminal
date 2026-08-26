@@ -16,7 +16,9 @@ source [file join [file dirname [info script]] dump.tcl]
 namespace eval ::rcsettings::model {
     namespace export init load path set_path text dump reload \
         effective effective_raw base base_raw pinned preset_name \
-        set_value reset switch_preset pin_overrides default_config_path
+        set_value reset switch_preset pin_overrides default_config_path \
+        ssh_default ssh_hosts set_ssh_default add_ssh_host remove_ssh_host \
+        set_ssh_host
 
     # The whole model is one document and one dump: the GUI edits a single
     # config file, so there is nothing to instantiate.
@@ -27,6 +29,13 @@ namespace eval ::rcsettings::model {
     # Tables whose `name` key selects a preset base rather than labelling
     # the table. The axis name and the table name are the same word.
     variable Axes {screen chassis}
+
+    # The ssh rows are an array of tables, `[[ssh.host]]`, and each row is
+    # a diff against `[ssh_host_defaults]` the way a flat table is a diff
+    # against its preset. These two names are written out often enough
+    # below to be worth naming once.
+    variable SshRows ssh.host
+    variable SshFields {host user port key}
 
     proc default_config_path {} {
         global env tcl_platform
@@ -259,6 +268,140 @@ namespace eval ::rcsettings::model {
         }
         return [::rcsettings::toml::set_key $text $table name \
             [::rcsettings::toml::format_value string $presetname]]
+    }
+
+    # ------------------------------------------------------ the ssh rows --
+    #
+    # Same discipline as the flat tables: read through the file with the
+    # dump behind it, write by re-reading and editing the one row's bytes.
+    # What differs is that a row can be created and destroyed, and that the
+    # `default` key names a row by its `host` string rather than by
+    # position, so the two move together or the check detaches.
+
+    proc default_in {text} {
+        variable Dump
+        set raw [raw_in $text ssh default]
+        if {$raw eq ""} {
+            set raw [::rcsettings::dump::default $Dump ssh default]
+        }
+        return [::rcsettings::toml::plain $raw]
+    }
+
+    # The `host` of the row a new session starts on, empty for localhost.
+    proc ssh_default {} {
+        variable Text
+        return [default_in $Text]
+    }
+
+    proc ssh_field_default {key} {
+        variable Dump
+        return [::rcsettings::dump::default $Dump ssh_host_defaults $key]
+    }
+
+    proc hosts_in {text} {
+        variable SshRows
+        variable SshFields
+        set arrays [dict get [::rcsettings::toml::parse $text] arrays]
+        if {![dict exists $arrays $SshRows]} { return {} }
+        set rows {}
+        foreach entry [dict get $arrays $SshRows] {
+            set row [dict create]
+            foreach key $SshFields {
+                # A field the row does not carry is not a hole: it is what
+                # `[ssh_host_defaults]` gives it, the file being a diff.
+                set raw [expr {[dict exists $entry $key]
+                    ? [dict get $entry $key] : [ssh_field_default $key]}]
+                dict set row $key [::rcsettings::toml::plain $raw]
+            }
+            lappend rows $row
+        }
+        return $rows
+    }
+
+    # Every row in file order, each field resolved. The list's positions
+    # are the indices every ssh write below takes.
+    proc ssh_hosts {} {
+        variable Text
+        return [hosts_in $Text]
+    }
+
+    # Empty means localhost, and the minimal edit for it is to remove the
+    # key rather than to write the empty string the key already defaults to.
+    proc write_ssh_default {text value} {
+        variable SshRows
+        if {$value eq ""} {
+            return [::rcsettings::toml::unset_key $text ssh default]
+        }
+        set text [::rcsettings::toml::ensure_table $text ssh $SshRows]
+        return [::rcsettings::toml::set_key $text ssh default \
+            [::rcsettings::toml::format_value string $value]]
+    }
+
+    proc set_ssh_default {value} {
+        return [commit [write_ssh_default [reload] $value]]
+    }
+
+    # A new row is written with its `host` alone. Every other field is what
+    # `[ssh_host_defaults]` gives it, and a writer does not fill in keys at
+    # their default.
+    proc add_ssh_host {} {
+        variable SshRows
+        set text [::rcsettings::toml::append_array_row [reload] $SshRows \
+            [list host [::rcsettings::toml::format_value string ""]]]
+        return [commit $text]
+    }
+
+    # The row goes, and the check goes with it when nothing left answers to
+    # its name: a `default` naming no row reads as localhost anyway, and
+    # leaving it would put the check back on a row the user deleted the
+    # moment another row took that name.
+    proc remove_ssh_host {index} {
+        variable SshRows
+        set text [reload]
+        set gone [lindex [hosts_in $text] $index]
+        set text [::rcsettings::toml::remove_array_row $text $SshRows $index]
+        set host [expr {$gone eq "" ? "" : [dict get $gone host]}]
+        if {$host ne "" && $host eq [default_in $text]} {
+            set survives 0
+            foreach row [hosts_in $text] {
+                if {[dict get $row host] eq $host} { set survives 1 }
+            }
+            if {!$survives} { set text [write_ssh_default $text ""] }
+        }
+        return [commit $text]
+    }
+
+    # One field of one row. $value is a plain Tcl value, formatted after
+    # the type `[ssh_host_defaults]` gives the key.
+    proc set_ssh_host {index key value} {
+        variable SshRows
+        set text [reload]
+        set rows [hosts_in $text]
+        if {![string is integer -strict $index] || $index < 0
+            || $index >= [llength $rows]} {
+            error "no ssh host row at index $index"
+        }
+        set was [dict get [lindex $rows $index] host]
+        set fallback [ssh_field_default $key]
+        set type [::rcsettings::toml::type_of $fallback]
+        set raw [::rcsettings::toml::format_value $type $value]
+        # `host` is the row's identity and the string `default` names, so
+        # it is written even when it holds the default's own empty value.
+        # Every other field equal to the default is removed instead, which
+        # is the minimal edit for it.
+        if {$key ne "host" && [same_value $type $raw $fallback]} {
+            set text [::rcsettings::toml::unset_array_key $text $SshRows \
+                $index $key]
+        } else {
+            set text [::rcsettings::toml::set_array_key $text $SshRows \
+                $index $key $raw]
+        }
+        # Renaming the checked row moves the check in the same act. A
+        # `default` left naming the old string would silently detach.
+        if {$key eq "host" && $was ne "" && $was eq [default_in $text]} {
+            set text [write_ssh_default $text $value]
+        }
+        return [commit $text]
     }
 
     proc commit {text} {

@@ -3,6 +3,9 @@
 # only that key's bytes. Everything here therefore works on the file's raw
 # lines, never through a parse-and-reserialize round trip. The file's
 # values are all flat scalars, which is what makes line surgery adequate.
+# The one nested shape is `[[ssh.host]]`, an array of tables whose rows are
+# themselves flat, so a row is a span of lines and a row's key is a scalar
+# inside that span.
 #
 # Text in and text out: every edit takes the whole document as a string and
 # returns the edited whole. Nothing here touches the filesystem except
@@ -10,7 +13,8 @@
 
 namespace eval ::rcsettings::toml {
     namespace export parse get_key set_key unset_key type_of format_value \
-        read_file atomic_write
+        read_file atomic_write array_spans set_array_key unset_array_key \
+        append_array_row remove_array_row ensure_table
 
     # Split into lines, remembering whether the text ended with a newline so
     # joining reproduces the original bytes.
@@ -210,14 +214,21 @@ namespace eval ::rcsettings::toml {
         for {set i $start} {$i < $end} {incr i} {
             set line [lindex $all $i]
             if {[key_of $line] ne $key} { continue }
-            regexp {^(\s*[A-Za-z0-9_.-]+\s*=\s*)} $line -> prefix
-            set rest [string range $line [string length $prefix] end]
-            set suffix [string range $rest [string length [value_of $line]] end]
-            set all [lreplace $all $i $i "$prefix$value$suffix"]
+            set all [lreplace $all $i $i [revalue $line $value]]
             return [join_lines $all $trailing]
         }
         set all [linsert $all [append_at $all $start $end] "$key = $value"]
         return [join_lines $all $trailing]
+    }
+
+    # The same key line carrying a new value: its leading whitespace, its
+    # `key = ` spelling and everything trailing the old value, a same-line
+    # comment included, are the user's and are kept.
+    proc revalue {line value} {
+        regexp {^(\s*[A-Za-z0-9_.-]+\s*=\s*)} $line -> prefix
+        set rest [string range $line [string length $prefix] end]
+        set suffix [string range $rest [string length [value_of $line]] end]
+        return "$prefix$value$suffix"
     }
 
     # Where a new key goes at the end of a table's span: above the blank
@@ -252,6 +263,173 @@ namespace eval ::rcsettings::toml {
             }
         }
         return $text
+    }
+
+    # ------------------------------------------------- arrays of tables --
+    #
+    # `[[ssh.host]]` is the file's one repeating shape, and the tab that
+    # edits it adds and removes rows rather than only moving values. A row
+    # is one span of lines: its own header through to the next header of
+    # either shape, or EOF. The span carries the header because a row is
+    # removed as a block, and a key edit works inside it.
+
+    # The [start, end) spans of $name's rows, in declaration order.
+    proc array_spans {text name} {
+        lassign [lines $text] all trailing
+        return [spans_in $all $name]
+    }
+
+    proc spans_in {all name} {
+        set spans {}
+        set start -1
+        for {set i 0} {$i < [llength $all]} {incr i} {
+            set h [header_of [lindex $all $i]]
+            if {$h eq {}} { continue }
+            if {$start >= 0} {
+                lappend spans [list $start $i]
+                set start -1
+            }
+            if {[lindex $h 0] eq "array" && [lindex $h 1] eq $name} {
+                set start $i
+            }
+        }
+        if {$start >= 0} { lappend spans [list $start [llength $all]] }
+        return $spans
+    }
+
+    # A row index that names no row is a caller's bug, not a document to
+    # round-trip, so it is an error rather than a silent no-op.
+    proc row_span {all name index} {
+        set spans [spans_in $all $name]
+        if {![string is integer -strict $index] || $index < 0
+            || $index >= [llength $spans]} {
+            error "no \[\[$name\]\] row at index $index"
+        }
+        return [lindex $spans $index]
+    }
+
+    # Set the pre-formatted value of $key inside row $index of $name. Every
+    # byte outside that row is identical, and inside it only the key's own
+    # line moves. An absent key is added at the end of the row's body.
+    proc set_array_key {text name index key value} {
+        lassign [lines $text] all trailing
+        lassign [row_span $all $name $index] start end
+        set body [expr {$start + 1}]
+        for {set i $body} {$i < $end} {incr i} {
+            set line [lindex $all $i]
+            if {[key_of $line] ne $key} { continue }
+            set all [lreplace $all $i $i [revalue $line $value]]
+            return [join_lines $all $trailing]
+        }
+        set all [linsert $all [append_at $all $body $end] "$key = $value"]
+        return [join_lines $all $trailing]
+    }
+
+    # Remove $key's line from row $index. An absent key is a no-op, byte
+    # for byte, as it is for a flat table.
+    proc unset_array_key {text name index key} {
+        lassign [lines $text] all trailing
+        lassign [row_span $all $name $index] start end
+        for {set i [expr {$start + 1}]} {$i < $end} {incr i} {
+            if {[key_of [lindex $all $i]] ne $key} { continue }
+            set all [lreplace $all $i $i]
+            return [join_lines $all $trailing]
+        }
+        return $text
+    }
+
+    # A new `[[$name]]` block carrying $kvlist, a flat list of keys and
+    # pre-formatted values. It goes after the last row there is, or after
+    # the parent table's span when there are no rows yet, or at the end of
+    # the document when there is neither. One blank line separates it from
+    # whatever it follows, so a file of rows reads as a list.
+    proc append_array_row {text name kvlist} {
+        lassign [lines $text] all trailing
+        if {[llength $all] == 1 && [lindex $all 0] eq ""} { set all {} }
+        set spans [spans_in $all $name]
+        if {[llength $spans] > 0} {
+            lassign [lindex $spans end] start end
+            set at [append_at $all [expr {$start + 1}] $end]
+        } else {
+            set parent [parent_of $name]
+            set span [expr {$parent eq "" ? {} : [table_span $all $parent]}]
+            if {$span ne {}} {
+                lassign $span start end
+                set at [append_at $all $start $end]
+            } else {
+                set at [llength $all]
+            }
+        }
+        # A block landing at the end of the document ends it with a
+        # newline, the shape every other writer here leaves behind.
+        if {$at >= [llength $all]} { set trailing 1 }
+        set block {}
+        if {$at > 0 && [string trim [lindex $all [expr {$at - 1}]]] ne ""} {
+            lappend block ""
+        }
+        lappend block "\[\[$name\]\]"
+        foreach {key value} $kvlist { lappend block "$key = $value" }
+        set all [linsert $all $at {*}$block]
+        return [join_lines $all $trailing]
+    }
+
+    # The table a dotted array name hangs under: `ssh.host` is a row of the
+    # `[ssh]` table. A name with no dot has no parent.
+    proc parent_of {name} {
+        set dot [string last "." $name]
+        if {$dot < 0} { return "" }
+        return [string range $name 0 [expr {$dot - 1}]]
+    }
+
+    # Row $index's header and body go; the bytes around them stay. Two
+    # things are not this row's to take with it: a comment block sitting
+    # directly on the next header, which introduces that header, and the
+    # blank line above the row, which is only removed when the row was the
+    # last thing in the document and the blank would be left dangling.
+    proc remove_array_row {text name index} {
+        lassign [lines $text] all trailing
+        lassign [row_span $all $name $index] start end
+        while {$end > $start + 1 && [string match "#*" \
+                [string trim [lindex $all [expr {$end - 1}]]]]} {
+            incr end -1
+        }
+        set all [lreplace $all $start [expr {$end - 1}]]
+        if {$start >= [llength $all] && $start > 0
+            && [string trim [lindex $all [expr {$start - 1}]]] eq ""} {
+            set all [lreplace $all [expr {$start - 1}] [expr {$start - 1}]]
+        }
+        return [join_lines $all $trailing]
+    }
+
+    # Give $table a header if it has none, and answer with the document
+    # either way. $above names an array of tables whose rows $table heads:
+    # `[ssh]` written after the `[[ssh.host]]` rows below it is not a
+    # document this parser pair reads back, so when rows exist the header
+    # goes above the first of them, taking the comment block that
+    # introduces that row with it.
+    proc ensure_table {text table {above ""}} {
+        lassign [lines $text] all trailing
+        if {[table_span $all $table] ne {}} { return $text }
+        if {[llength $all] == 1 && [lindex $all 0] eq ""} { set all {} }
+        set spans [expr {$above eq "" ? {} : [spans_in $all $above]}]
+        if {[llength $spans] == 0} {
+            set at [llength $all]
+        } else {
+            set at [lindex [lindex $spans 0] 0]
+            while {$at > 0 && [string match "#*" \
+                    [string trim [lindex $all [expr {$at - 1}]]]]} {
+                incr at -1
+            }
+        }
+        if {$at >= [llength $all]} { set trailing 1 }
+        set block {}
+        if {$at > 0 && [string trim [lindex $all [expr {$at - 1}]]] ne ""} {
+            lappend block ""
+        }
+        lappend block "\[$table\]"
+        if {$at < [llength $all]} { lappend block "" }
+        set all [linsert $all $at {*}$block]
+        return [join_lines $all $trailing]
     }
 
     # What kind of scalar a raw TOML value is: string, bool, int or float.

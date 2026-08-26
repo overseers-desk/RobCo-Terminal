@@ -98,6 +98,117 @@ test unset-3.4 {a key of another table with the same name is not touched} -body 
     ::rcsettings::toml::unset_key $text b k
 } -result "\[a\]\nk = 1\n\n\[b\]\n"
 
+test rows-8.1 {a row's span runs from its header to the next one} -body {
+    ::rcsettings::toml::array_spans $::sshfixture ssh.host
+} -result {{7 12} {12 16} {16 19}}
+
+test rows-8.2 {no rows, and rows of another name, are no rows} -body {
+    list [::rcsettings::toml::array_spans $::fixture ssh.host] \
+        [::rcsettings::toml::array_spans $::sshfixture ssh.other]
+} -result {{} {}}
+
+test rows-8.3 {setting a row key touches that line only} -body {
+    surgery $::sshfixture \
+        [::rcsettings::toml::set_array_key $::sshfixture ssh.host 1 port 2200]
+} -result {{{port = 2222}} {{port = 2200}}}
+
+test rows-8.4 {a row key's spacing and trailing comment survive} -body {
+    surgery $::sshfixture [::rcsettings::toml::set_array_key \
+        $::sshfixture ssh.host 0 user {"vault-admin"}]
+} -result "{{user   =   \"overseer\"\t# the account, not the person}} {{user   =   \"vault-admin\"\t# the account, not the person}}"
+
+test rows-8.5 {a key absent from a row is added inside it} -body {
+    set out [::rcsettings::toml::set_array_key $::sshfixture ssh.host 2 key \
+        {"~/.ssh/spare"}]
+    list [surgery $::sshfixture $out] \
+        [dict get [lindex [dict get [::rcsettings::toml::parse $out] \
+            arrays ssh.host] 2] key]
+} -result {{{} {{key = "~/.ssh/spare"}}} {"~/.ssh/spare"}}
+
+test rows-8.6 {the same key in another row is not the one edited} -body {
+    set out [::rcsettings::toml::set_array_key $::sshfixture ssh.host 2 host \
+        {"relay"}]
+    lmap entry [dict get [::rcsettings::toml::parse $out] arrays ssh.host] {
+        dict get $entry host
+    }
+} -result {{"vault"} {"relay"} {"relay"}}
+
+test rows-8.7 {unsetting a row key removes one line and nothing else} -body {
+    surgery $::sshfixture \
+        [::rcsettings::toml::unset_array_key $::sshfixture ssh.host 1 port]
+} -result {{{port = 2222}} {}}
+
+test rows-8.8 {a row key that is not there is a no-op, byte for byte} -body {
+    string equal $::sshfixture \
+        [::rcsettings::toml::unset_array_key $::sshfixture ssh.host 0 key]
+} -result 1
+
+test rows-8.9 {a row index naming no row is an error, not a guess} -body {
+    list [catch {::rcsettings::toml::set_array_key $::sshfixture ssh.host 3 host {"x"}}] \
+        [catch {::rcsettings::toml::remove_array_row $::sshfixture ssh.host -1}] \
+        [catch {::rcsettings::toml::unset_array_key $::fixture ssh.host 0 host}]
+} -result {1 1 1}
+
+test rows-9.1 {a new row lands after the last one, the rest untouched} -body {
+    surgery $::sshfixture [::rcsettings::toml::append_array_row \
+        $::sshfixture ssh.host {host {"cache"} port 2200}]
+} -result {{} {{[[ssh.host]]} {host = "cache"} {port = 2200} {}}}
+
+test rows-9.2 {the first row lands after the table that heads it} -body {
+    set text "\[general\]\nk = 1\n\n\[ssh\]\ndefault = \"a\"\n"
+    ::rcsettings::toml::append_array_row $text ssh.host {host {"a"}}
+} -result "\[general\]\nk = 1\n\n\[ssh\]\ndefault = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\n"
+
+test rows-9.3 {a row in a document with neither table nor rows} -body {
+    ::rcsettings::toml::append_array_row "" ssh.host {host {"a"}}
+} -result "\[\[ssh.host\]\]\nhost = \"a\"\n"
+
+test rows-9.4 {a new row does not come between a comment and its table} -body {
+    set text "\[ssh\]\ndefault = \"a\"\n\n# the dotfiles tool wrote this\n\[dotfiles_tool\]\ngenerated_at = \"2026-08-01\"\n"
+    surgery $text [::rcsettings::toml::append_array_row $text ssh.host {host {"a"}}]
+} -result {{} {{[[ssh.host]]} {host = "a"} {}}}
+
+test rows-10.1 {removing a middle row leaves its neighbours' bytes} -body {
+    surgery $::sshfixture \
+        [::rcsettings::toml::remove_array_row $::sshfixture ssh.host 1]
+} -result {{{host = "relay"} {port = 2222} {} {[[ssh.host]]}} {}}
+
+test rows-10.2 {removing a row leaves the comment that heads the next} -body {
+    set text "\[\[ssh.host\]\]\nhost = \"a\"\n\n# the vault\n\[\[ssh.host\]\]\nhost = \"b\"\n"
+    ::rcsettings::toml::remove_array_row $text ssh.host 0
+} -result "# the vault\n\[\[ssh.host\]\]\nhost = \"b\"\n"
+
+test rows-10.3 {removing the last row leaves no doubled blank line} -body {
+    set out [::rcsettings::toml::remove_array_row $::sshfixture ssh.host 2]
+    list [surgery $::sshfixture $out] [string first "\n\n\n" $out]
+} -result {{{{[[ssh.host]]} {host = "spare"} {}} {}} -1}
+
+test rows-10.4 {a row at the end of the file takes its blank line with it} -body {
+    set text "\[ssh\]\ndefault = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\n"
+    ::rcsettings::toml::remove_array_row $text ssh.host 0
+} -result "\[ssh\]\ndefault = \"a\"\n"
+
+test rows-11.1 {an absent table is created above the rows it heads} -body {
+    set text "\[\[ssh.host\]\]\nhost = \"a\"\n"
+    set out [::rcsettings::toml::ensure_table $text ssh ssh.host]
+    list $out [::rcsettings::toml::set_key $out ssh default {"a"}]
+} -result [list "\[ssh\]\n\n\[\[ssh.host\]\]\nhost = \"a\"\n" \
+    "\[ssh\]\ndefault = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\n"]
+
+test rows-11.2 {the table goes above the comment introducing the first row} -body {
+    set text "\[general\]\nk = 1\n\n# the vault\n\[\[ssh.host\]\]\nhost = \"a\"\n"
+    surgery $text [::rcsettings::toml::ensure_table $text ssh ssh.host]
+} -result {{} {{[ssh]} {}}}
+
+test rows-11.3 {a table that is there already is left alone, byte for byte} -body {
+    string equal $::sshfixture \
+        [::rcsettings::toml::ensure_table $::sshfixture ssh ssh.host]
+} -result 1
+
+test rows-11.4 {with no rows to sit above, the table is appended} -body {
+    ::rcsettings::toml::ensure_table "\[general\]\nk = 1\n" ssh ssh.host
+} -result "\[general\]\nk = 1\n\n\[ssh\]\n"
+
 test type-4.1 {scalar types come from the raw spelling} -body {
     lmap raw {{"x"} true false 12 -3 1.0 0.45 1.0e3 no_rasterization} {
         ::rcsettings::toml::type_of $raw

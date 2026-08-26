@@ -85,7 +85,10 @@ namespace eval ::rcsettings::dump {
         set tables [dict get $parsed tables]
         set arrays [dict get $parsed arrays]
         set data [dict create]
-        foreach table {general screen chassis} {
+        # `[ssh_host_defaults]` is not a table of the config file: it is
+        # what one `[[ssh.host]]` row's fields fall back to, which the dump
+        # states here because a row has no preset axis to resolve against.
+        foreach table {general screen chassis ssh ssh_host_defaults} {
             if {![dict exists $tables $table] || [dict size [dict get $tables $table]] == 0} {
                 error "$origin has no \[$table\] table"
             }

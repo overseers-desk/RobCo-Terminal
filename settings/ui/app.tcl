@@ -96,11 +96,16 @@ proc ::rcsettings::ui::app::build {} {
 
     ::rcsettings::ui::form::init \
         [list ::rcsettings::ui::app::say] [list ::rcsettings::ui::app::wrote]
+    ::rcsettings::ui::ssh_page::init \
+        [list ::rcsettings::ui::app::say] [list ::rcsettings::ui::app::wrote]
 
     ttk::notebook .nb -padding {8 8 8 0}
     foreach {table title} {general General screen Screen chassis Chassis} {
         .nb add [::rcsettings::ui::form::page .nb $table] -text $title
     }
+    # The SSH tab is a list of rows rather than a page of keys, so it is its
+    # own page rather than a fourth entry in the form's layout.
+    .nb add [::rcsettings::ui::ssh_page::page .nb] -text "SSH"
 
     grid .nb      -row 0 -column 0 -sticky nsew
     grid .sep     -row 1 -column 0 -sticky ew
@@ -173,6 +178,7 @@ proc ::rcsettings::ui::app::on_focus {w} {
         return
     }
     ::rcsettings::ui::form::refresh_all
+    ::rcsettings::ui::ssh_page::refresh
     say "reloaded: the file changed outside this window"
 }
 
