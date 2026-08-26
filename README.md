@@ -70,12 +70,14 @@ the whole contract, including what it does not read (`~/.ssh/config`).
 **Linux, today.** X11 is what is wired and measured; on Wayland the window
 runs.
 
-**macOS and Windows are planned, not built.** The stack was chosen for them
-(the terminal core speaks ConPTY, the GPU layer covers Metal and D3D from the
-same shader source), and the config paths for both are already implemented.
-But neither has been built or run, and neither can be cross-compiled from
-Linux, because the terminal core drags a C++ dependency that needs a native
-toolchain. Treat them as intended, not available.
+**Windows compiles, and has not yet been run.** The stack was chosen for
+all three desktop markets (the terminal core speaks ConPTY, the GPU layer
+covers Metal and D3D from the same shader source), and the config paths
+are implemented throughout. The terminal cannot be cross-compiled from
+Linux, because its C++ dependency needs a native toolchain, so CI proves
+the Windows build on every push instead. Nobody has launched the binary
+on real Windows hardware yet: treat it as compiled, not shipped. macOS
+has not been attempted.
 
 You need a GPU the graphics layer can reach. It picks a backend on its own,
 and reports which one it chose in the first lines of its log. `WGPU_BACKEND`
