@@ -1,14 +1,17 @@
 # Configuring RobCo Terminal
 
-There is no settings window. The terminal reads one TOML file, watches it,
-and reloads the moment you save. Editing that file *is* the settings UI:
-open it in whatever you write text in, change a number, and watch the glass
-change while the editor is still open.
+The terminal reads one TOML file, watches it, and reloads the moment it is
+saved. Everything below is about that file. Two hands write it: the
+settings window that right-clicking the glass opens (`robco-settings`,
+shipped beside the terminal; see [`settings-gui.md`](settings-gui.md)), and
+whatever you write text in, because editing the file directly is just as
+supported: change a number, save, and watch the glass change while the
+editor is still open.
 
-This document is for the person doing that. If instead you are writing a
-program that edits the file on a user's behalf (a dotfiles script, a
-settings GUI, a linter), the rules your writer has to obey are in
-[`config-format.md`](config-format.md).
+This document is for the person doing either. If instead you are writing a
+program of your own that edits the file on a user's behalf (a dotfiles
+script, another settings GUI, a linter), the rules your writer has to obey
+are in [`config-format.md`](config-format.md).
 
 ## Where the file is
 

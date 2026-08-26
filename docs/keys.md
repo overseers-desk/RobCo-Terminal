@@ -54,7 +54,9 @@ it again, which is what you want after something else has taken the
 clipboard. Middle-click pastes, as `Ctrl`+`Shift`+`V` does; holding `Ctrl`
 while you middle-click forces bracketed paste onto a program that did not
 ask for it. Hold `Ctrl`+`Alt` while you drag to select a rectangle instead
-of a run of lines.
+of a run of lines. Right-click opens the settings window
+([docs/settings-gui.md](settings-gui.md)); a program tracking the mouse
+(vim, htop) receives the button instead, as it does the others.
 
 ## Scrollback
 

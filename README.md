@@ -177,10 +177,13 @@ window goes to your real desktop instead of the virtual display.
 Just run `robco-term`. There is no configuration to do first, and no config
 file exists until you write one.
 
-When you do want to change something, there is no settings window: the
-terminal reads one TOML file, watches it, and reloads the moment you save.
-Editing the file is the settings UI. Open it in your editor, change a
-number, save, and the glass changes under you while the editor is still
+When you do want to change something, right-click the glass. That opens
+the settings window, a small companion program shipped in every binary
+package, with the presets, sliders and pickers for everything the glass
+and the cabinet do; each change lands the moment you make it, and Cancel
+puts everything back. Underneath, all it does is edit one TOML file the
+terminal watches, so the editor path is just as good: open the file, change
+a number, save, and the glass changes under you while the editor is still
 open. A file that does not parse costs you the edit and not the session,
 because the terminal keeps the settings it already had and logs the error.
 
@@ -239,8 +242,10 @@ it also says which keys this terminal leaves alone.
 it: `-e <cmd>` runs a command instead of your shell and swallows every
 argument after itself, so put it last; `--program` does the same for a plain
 program with no arguments; `--workdir` sets the starting directory;
-`--fullscreen` and `--profile` do what they say; and `--default-settings`
-starts from the built-in defaults without reading your config file.
+`--fullscreen` and `--profile` do what they say; `--default-settings`
+starts from the built-in defaults without reading your config file; and
+`--dump-settings` prints the defaults, presets, fonts and value lists as
+TOML for external tools, the settings window among them.
 
 A second `robco-term` does not start a second application. It hands its
 request to the one already running, which opens another window and exits.
