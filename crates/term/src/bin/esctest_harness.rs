@@ -26,29 +26,43 @@
 //!
 //! Exit code is the child's, so a wrapper script can gate on it.
 
+#[cfg(unix)]
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
 
+#[cfg(unix)]
 use rio_vt::ansi::CursorShape;
+#[cfg(unix)]
 use rio_vt::crosswords::grid::Dimensions;
+#[cfg(unix)]
 use rio_vt::crosswords::Crosswords;
+#[cfg(unix)]
 use rio_vt::event::{EventListener, RioEvent, WindowId, WindowSize};
+#[cfg(unix)]
 use rio_vt::performer::handler::Processor;
+#[cfg(unix)]
 use rio_vt::performer::parser::{Params, Parser, Perform};
+#[cfg(unix)]
 use rio_vt::teletypewriter::{create_pty_with_spawn, ProcessReadWrite};
 
 /// Cell size in pixels. Only pixel-unit reports (`CSI 14 t`, `CSI 16 t`) can
 /// see it; it is the metric a real window would take from `CellMetrics`.
+#[cfg(unix)]
 const CELL_W: u16 = 8;
+#[cfg(unix)]
 const CELL_H: u16 = 16;
+#[cfg(unix)]
 const SCROLLBACK: usize = 1000;
 
 #[derive(Clone, Copy)]
+#[cfg(unix)]
 struct Size {
     cols: usize,
     rows: usize,
 }
 
+#[cfg(unix)]
 impl Dimensions for Size {
     fn total_lines(&self) -> usize {
         self.rows
@@ -67,11 +81,13 @@ impl Dimensions for Size {
 /// (`RioEvent::PtyWrite` for the ordinary CSI replies, and one callback
 /// variant for the pixel-size report, which only the window layer can answer).
 #[derive(Clone, Default)]
+#[cfg(unix)]
 struct Replies {
     out: Arc<Mutex<Vec<u8>>>,
     size: Arc<Mutex<WindowSize>>,
 }
 
+#[cfg(unix)]
 impl Replies {
     fn take(&self) -> Vec<u8> {
         std::mem::take(&mut *self.out.lock().unwrap())
@@ -86,6 +102,7 @@ impl Replies {
     }
 }
 
+#[cfg(unix)]
 impl EventListener for Replies {
     fn send_event(&self, event: RioEvent, _id: WindowId) {
         match event {
@@ -99,6 +116,7 @@ impl EventListener for Replies {
     }
 }
 
+#[cfg(unix)]
 fn window_size(cols: usize, rows: usize) -> WindowSize {
     WindowSize {
         rows: rows as u16,
@@ -114,6 +132,7 @@ fn window_size(cols: usize, rows: usize) -> WindowSize {
 /// than its VT core: resize by characters, and the position/state reports that
 /// would otherwise leave a query unanswered and a test hanging on its read.
 #[derive(Default)]
+#[cfg(unix)]
 struct WinOps {
     resize: Option<(usize, usize)>,
     replies: Vec<String>,
@@ -122,6 +141,7 @@ struct WinOps {
     checksum: Option<(u16, [usize; 4])>,
 }
 
+#[cfg(unix)]
 impl Perform for WinOps {
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, action: char) {
         // DECRQCRA: report a checksum over a rectangle of the screen. This is
@@ -161,6 +181,7 @@ impl Perform for WinOps {
     }
 }
 
+#[cfg(unix)]
 fn main() {
     let mut args = std::env::args().skip(1);
     let mut cols = 80usize;
@@ -294,6 +315,7 @@ fn main() {
 /// the same normalisation the renderer does at the grid boundary and the
 /// reason esctest sees a blank screen as blank rather than as eighty NULs per
 /// line.
+#[cfg(unix)]
 fn checksum_report<L: EventListener>(term: &Crosswords<L>, pid: u16, rect: [usize; 4]) -> String {
     use rio_vt::crosswords::pos::{Column, Line};
 
@@ -327,6 +349,7 @@ fn checksum_report<L: EventListener>(term: &Crosswords<L>, pid: u16, rect: [usiz
     )
 }
 
+#[cfg(unix)]
 fn wait_for_child(pty: &rio_vt::teletypewriter::Pty) -> i32 {
     // The child has closed its end; give it a moment to be reaped so the exit
     // status is the suite's own rather than a guess.
@@ -338,4 +361,11 @@ fn wait_for_child(pty: &rio_vt::teletypewriter::Pty) -> i32 {
         }
     }
     0
+}
+
+/// The harness drives esctest as the child of a real pty, the shape the
+/// suite itself assumes; conformance runs live on Unix boxes.
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("esctest-harness: the conformance suite runs against a Unix pty; run it there");
 }
