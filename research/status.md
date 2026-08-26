@@ -2,7 +2,7 @@
 
 The single record of what RobCo Terminal does, and the only file in `research/` written from the code rather than from the field. The sibling files describe the market: the pain taxonomy in `use-case-survey.md`, the verbatim quotes in `voices.md`, the terminals that ship a look and what the wider field supplies in `competitive-landscape.md`, the discussion dynamics in `discussion-drivers.md`. This file says which of those pains RobCo Terminal covers, how, and where in the code; then how rare each covered capability is in the field; then what position follows. Update it when the code changes; update the siblings when the field changes. Pain numbers (P1-P13) are defined in `use-case-survey.md`.
 
-Snapshot August 2026, read at commit `2e4cace`.
+Snapshot August 2026, the coverage and rarity tables read at commit `2e4cace`. The doc-accuracy list below tracks the tip, since a wrong doc is fixed where it sits.
 
 ## Coverage
 
@@ -62,23 +62,19 @@ Architectural limits, given the design (a GPU-only librashader chain over a rio-
 
 Not built, but feasible within the architecture:
 
-- A growable glyph atlas with a fallback chain (the sizing module's `fallback_chain` exists with no caller), which is the gap between the code and "a daily terminal on Linux".
-- Drawing the selection; wiring the built scrollback search, URL hotspots, triple-click, save-as-profile, JSON profile import/export, and the pager rocker's click.
+- A growable glyph atlas with a fallback chain (the sizing module's `fallback_chain` exists with no caller), which is the gap between the code and "a daily terminal on Linux" (#11).
+- Drawing the selection (#12); wiring the built scrollback search, URL hotspots, triple-click, save-as-profile, JSON profile import/export, and the pager rocker's click.
 - A listener for rio-vt replies (CPR, DA, DECRQSS, OSC 52).
 - An analytic inverse for the curvature mapping, so clicks land at the high-curvature presets.
 - tmux panes as channels; a debounced config watcher; a blinking cursor; X11 PRIMARY.
-- A keystroke-to-glyph latency measurement under each preset, published.
-- A LICENSE file, an icon, a maintainer, a package.
+- A keystroke-to-glyph latency measurement under each preset, published (#13).
+- A LICENSE file (#9), an icon, a maintainer, a package.
 
 ## Known issues a reader of the code meets
 
-- `crates/term/src/lib.rs:103` says the atlas grows on demand; it does not (ASCII only).
-- `crates/chassis/src/furniture.rs:30-35` says the switchboard lever is unpainted; it is painted at rest (the throw is unbuilt).
-- `docs/config.md:193` describes `screen.font_source` as functional; nothing reads it.
 - `crates/term/src/pointer.rs` `PastePrimary` pastes CLIPBOARD.
 - `crates/app/src/crashlog.rs` installs no altstack, so a stack-overflow SIGSEGV cannot run it.
 - `crates/chassis/src/shells/switchboard.rs:4` cites an untracked `Deep-Blue.png` as its measurement source.
-- The README's "two known feature gaps", "holds its frame budget with room to spare", and "nothing is looked up at run time" are unsupported by the tree (`known-gaps.txt` holds four entries all expected to fail on xterm too; no committed frame measurement; the preset cache is written at startup).
 - The workspace has no TODO/FIXME markers; deferred work is prose at the code that owns it, so a marker sweep reports the tree clean.
 
 ## Positioning
