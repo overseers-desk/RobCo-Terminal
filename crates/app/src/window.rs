@@ -382,6 +382,17 @@ struct Glass {
 /// is the X11/GTK desktop default an application would otherwise be handed.
 const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
+/// The companion settings application, a separate executable shipped beside
+/// the terminal's own. The name is fixed rather than taken from
+/// [`crate::identity`]: a renamed copy of the terminal binary is a second
+/// identity for the terminal, and it still edits its settings with the one
+/// settings application the install carries.
+const SETTINGS_BINARY: &str = if cfg!(windows) {
+    "robco-settings.exe"
+} else {
+    "robco-settings"
+};
+
 /// The surface the binary runs behind the
 /// [`crate::shell::Surface`] seam: the shell owns the event loop and the
 /// window, this owns what is inside it.
@@ -570,6 +581,14 @@ pub struct TerminalSurface {
     /// exactly "something the user typed was thrown away since we last looked",
     /// which is what [`Self::notice`] then says out loud.
     sheds_seen: (u64, u64, u64),
+    /// The settings application this window started, while it is still
+    /// running. Held for two reasons at once: it is what makes the right
+    /// press single-instance, since a child that has not exited means the
+    /// window is already open, and holding it is what lets the next press
+    /// reap it. A `Child` dropped without a wait leaves a zombie until the
+    /// terminal itself exits, and the terminal is a process that can stay up
+    /// for weeks.
+    settings_app: Option<std::process::Child>,
 }
 
 impl Glass {
@@ -832,6 +851,7 @@ impl TerminalSurface {
             ime_area: None,
             notice: crate::overlay::Notice::default(),
             sheds_seen: (0, 0, 0),
+            settings_app: None,
         }
     }
 
@@ -2962,6 +2982,62 @@ impl TerminalSurface {
             Err(e) => log::debug!("could not paste: {e}"),
         }
     }
+
+    /// Start the companion settings application, one at a time.
+    ///
+    /// The held child is asked first, and that question doubles as the reaping:
+    /// a `try_wait` that answers `Some` has collected the exit status, so a
+    /// settings window that has been opened and closed a hundred times leaves
+    /// no line in the process table behind it.
+    ///
+    /// A missing binary is not an error worth a notice on the glass. The
+    /// terminal is usable without its settings application, and a build from
+    /// source that ran `cargo build -p robco-app` and nothing else legitimately
+    /// has no `robco-settings` to run, so this says so once in the log and
+    /// leaves the screen alone.
+    fn open_settings_app(&mut self) {
+        if let Some(child) = self.settings_app.as_mut() {
+            match child.try_wait() {
+                Ok(None) => {
+                    log::debug!("the settings application is already up");
+                    return;
+                }
+                Ok(Some(_)) => self.settings_app = None,
+                // The status cannot be read, so whether it is still running is
+                // unknown. Forgetting the handle and starting another one is
+                // the wrong half of that guess to take: a second window is
+                // worse than a right press that did nothing.
+                Err(e) => {
+                    log::debug!("could not ask after the settings application: {e}");
+                    return;
+                }
+            }
+        }
+
+        // Beside this binary first, so an install that is a directory of files
+        // runs its own settings application rather than whichever one happens
+        // to be earlier on the PATH. The bare name is the fallback for a
+        // packaged install that puts the two in different directories.
+        let beside = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join(SETTINGS_BINARY)))
+            .filter(|path| path.is_file());
+        let program = beside.unwrap_or_else(|| std::path::PathBuf::from(SETTINGS_BINARY));
+
+        // Detached from this terminal's own stdio: the settings application is
+        // a window and not a job of the shell running here, and a child that
+        // inherited stdin would be reading the keystrokes meant for the
+        // terminal's own child.
+        match std::process::Command::new(&program)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(child) => self.settings_app = Some(child),
+            Err(e) => log::warn!("could not start {}: {e}", program.display()),
+        }
+    }
 }
 
 /// The text a key press produced, with **every** modifier applied.
@@ -3119,6 +3195,7 @@ impl Surface for TerminalSurface {
                 self.report_mouse(report_button(button), cell, mods, true)
             }
             PointerAction::PastePrimary { bracketed } => self.paste(bracketed),
+            PointerAction::OpenSettings => self.open_settings_app(),
             PointerAction::Ignore => {}
         }
     }

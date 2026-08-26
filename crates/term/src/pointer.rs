@@ -102,6 +102,10 @@ pub enum PointerAction {
     /// first and the hotspot check follows it, so a press on a link that turns
     /// into a drag selects the link text instead of following it.
     MarkAndActivateHotSpot,
+    /// Open the companion settings application. A right press on plain glass
+    /// is the only way in from the window, so the app runs the settings
+    /// binary that ships beside it rather than doing anything to the screen.
+    OpenSettings,
     /// Swallow it. Middle click on frozen glass: a paste is inert on an
     /// anchor, so the event never reaches the core.
     Ignore,
@@ -112,6 +116,12 @@ pub enum PointerAction {
 /// `over_hot_spot` reports whether a link lies under the cell; a left press
 /// that marks and lands on one activates it, which is why a plain click opens
 /// a URL without a modifier.
+///
+/// The three buttons divide as: left marks or reports, middle pastes the
+/// primary selection or reports, and right opens the settings application or
+/// reports. Whichever half of each pair applies is decided by the one rule at
+/// the top of the module, so a program that owns the mouse still receives
+/// every button.
 pub fn on_press(
     ctx: PointerContext,
     button: Button,
@@ -123,9 +133,15 @@ pub fn on_press(
         return PointerAction::Ignore;
     }
     let marking = ctx.marking(modifiers);
-    // A right press while marking (or with Shift held) is deliberately inert:
-    // it neither marks nor reaches the program.
-    if (ctx.marks_selection() || modifiers.shift) && button == Button::Right {
+    // A right press with Shift held is deliberately inert: Shift is the
+    // override that takes the pointer back from the program, and a press that
+    // was made to reach the emulation should not open a window over the glass
+    // in the middle of a drag the user is holding Shift for. The unmodified
+    // right press falls through to the table, where marking glass opens the
+    // settings application. `modifiers` and not `marking` is read here on
+    // purpose: frozen glass holds Shift down for the user, and that borrowed
+    // Shift is about selection, not about suppressing the menu.
+    if modifiers.shift && button == Button::Right {
         return PointerAction::Ignore;
     }
 
@@ -153,7 +169,7 @@ pub fn on_press(
         }
         Button::Right => {
             if marks {
-                PointerAction::Ignore
+                PointerAction::OpenSettings
             } else {
                 PointerAction::ReportToProgram
             }

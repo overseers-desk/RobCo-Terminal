@@ -300,8 +300,40 @@ fn frozen_glass_holds_shift_down_for_the_user() {
     );
     assert_eq!(
         on_press(ctx, Button::Right, Modifiers::NONE, false),
+        PointerAction::OpenSettings,
+        "an anchor is still glass the user is looking at, so the right press \
+         reaches the settings application rather than the program"
+    );
+}
+
+#[test]
+fn a_right_press_on_plain_glass_opens_the_settings_application() {
+    let ctx = PointerContext {
+        terminal_uses_mouse: false,
+        frozen_glass: false,
+    };
+    assert_eq!(
+        on_press(ctx, Button::Right, Modifiers::NONE, false),
+        PointerAction::OpenSettings
+    );
+    assert_eq!(
+        on_press(ctx, Button::Right, Modifiers::NONE.with_shift(), false),
         PointerAction::Ignore,
-        "a right press on an anchor neither marks nor reaches the program"
+        "Shift is the chord a marking drag is held with, and it keeps the \
+         right press inert so no window opens over the drag"
+    );
+}
+
+#[test]
+fn a_program_tracking_the_mouse_still_gets_the_right_button() {
+    let ctx = PointerContext {
+        terminal_uses_mouse: true,
+        frozen_glass: false,
+    };
+    assert_eq!(
+        on_press(ctx, Button::Right, Modifiers::NONE, false),
+        PointerAction::ReportToProgram,
+        "vim asked for the mouse, so its own menu wins over the appliance's"
     );
 }
 
