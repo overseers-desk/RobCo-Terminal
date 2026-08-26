@@ -57,8 +57,17 @@ namespace eval ::rcsettings::toml {
         }
         set rest [string trim $rest]
         if {[string index $rest 0] eq "\""} {
-            # Quoted string: take through the closing quote, honouring \".
+            # Basic string: take through the closing quote, honouring \".
             if {[regexp {^"(?:[^"\\]|\\.)*"} $rest match]} {
+                return $match
+            }
+            return $rest
+        }
+        if {[string index $rest 0] eq "'"} {
+            # Literal string: no escapes, so through the next quote. The
+            # dump uses this form for a system font family whose name
+            # itself carries double quotes.
+            if {[regexp {^'[^']*'} $rest match]} {
                 return $match
             }
             return $rest
@@ -247,7 +256,7 @@ namespace eval ::rcsettings::toml {
 
     # What kind of scalar a raw TOML value is: string, bool, int or float.
     proc type_of {raw} {
-        if {[string index $raw 0] eq "\""} { return string }
+        if {[string index $raw 0] in {\" '}} { return string }
         if {$raw in {true false}} { return bool }
         if {[regexp {^[+-]?\d+$} $raw]} { return int }
         if {[regexp {^[+-]?\d+\.\d+(?:[eE][+-]?\d+)?$} $raw]} { return float }
@@ -274,8 +283,12 @@ namespace eval ::rcsettings::toml {
         }
     }
 
-    # The unquoted Tcl value of a raw TOML scalar.
+    # The unquoted Tcl value of a raw TOML scalar. A literal string keeps
+    # its bytes; only a basic string carries escapes to undo.
     proc plain {raw} {
+        if {[string index $raw 0] eq "'"} {
+            return [string range $raw 1 end-1]
+        }
         if {[string index $raw 0] ne "\""} { return $raw }
         set body [string range $raw 1 end-1]
         return [string map {\\\" \" \\\\ \\ \\n \n \\t \t} $body]

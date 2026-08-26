@@ -136,6 +136,13 @@ test io-6.2 {atomic_write then read_file round-trips the bytes} -setup {
     file delete -force [file dirname $path]
 } -result 1
 
+test val-7.1 {a literal string parses, types and unquotes without escapes} -body {
+    set text "\[fonts\]\nname = '\"Atari800\"'\n"
+    set raw [::rcsettings::toml::get_key $text fonts name]
+    list [string equal $raw {'"Atari800"'}] [::rcsettings::toml::type_of $raw] \
+        [string equal [::rcsettings::toml::plain $raw] {"Atari800"}]
+} -result {1 string 1}
+
 test io-6.3 {the write lands by rename in the config file's own directory} -setup {
     set path [file join [temporaryDirectory] rt2 config.toml]
 } -body {
