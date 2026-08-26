@@ -102,7 +102,7 @@ pub fn help(program_name: &str) -> String {
 \x20 -e <cmd>            Command to execute. This option will catch all following arguments, so use it as the last option.\n\
 \x20 --program <prog>    Program to run instead of the user's shell.\n\
 \x20 --fullscreen        Run {program_name} in fullscreen.\n\
-\x20 --ssh [user@]host[:port]  Open the first channel on an SSH connection to 'host'.\n\
+\x20 --ssh [user@]host[:port]  Open the first channel on an SSH connection to 'host' (outranks the config's [ssh] default).\n\
 \x20 -p|--profile <prof> Run {program_name} with the given profile.\n\
 \x20 -h|--help           Print this help.\n\
 \x20 --verbose           Print additional information such as profiles and settings.\n\

@@ -75,11 +75,9 @@ impl SshRequest {
     }
 }
 
-/// The `[ssh]` table's answer to where a new session starts: the
-/// configured default row as a connection request, or `None` for
-/// localhost. A default naming no row, or a bare row with `$USER` unset,
-/// is logged and behaves as empty, so a stale config costs a log line and
-/// a local shell, never a window.
+/// The `[ssh]` table's default connection, or `None` for localhost. A
+/// default naming no row, or a bare row with `$USER` unset, is logged and
+/// treated as `None`: never an error, and never a blocked window.
 pub fn default_request(cfg: &config::Config) -> Option<SshRequest> {
     if cfg.ssh.default.is_empty() {
         return None;

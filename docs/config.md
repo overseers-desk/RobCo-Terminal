@@ -243,10 +243,11 @@ legitimate config, just not a combination anything shipped.
 ### `[ssh]`
 
 Where a new session starts: on a local shell, or on one of the
-pre-configured servers below. The settings window lists these as the SSH
-tab's radios, localhost first; the terminal reads the table at launch, so a
-change applies to the next session started, and a channel under `tmux -CC`
-control is never affected (its windows come from tmux, not from spawning).
+pre-configured servers below. The settings window is to list these as its
+SSH tab's radios, localhost first; the terminal reads the table at launch,
+so a change applies to the next session started, and a channel under
+`tmux -CC` control is never affected (its windows come from tmux, not from
+spawning).
 `docs/ssh.md` carries the connection contract these rows feed.
 
 | Key | Default | What it does |

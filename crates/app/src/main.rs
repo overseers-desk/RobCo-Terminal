@@ -274,8 +274,8 @@ fn main() -> ExitCode {
 
     let mut shell_config = ShellConfig::empty(&identity);
     shell_config.fullscreen = options.fullscreen;
-    // The flag outranks the config's default connection; either way every
-    // window this process opens follows the same answer.
+    // The flag outranks the config's default connection; both feed the
+    // same field every window this process opens reads.
     shell_config.ssh = options.ssh.clone().or_else(|| {
         app::ssh::default_request(&initial_config)
             .map(|r| format!("{}@{}:{}", r.user, r.host, r.port))
