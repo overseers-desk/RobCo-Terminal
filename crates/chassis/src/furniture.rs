@@ -27,12 +27,12 @@
 //! keeps the composition order fixed across the join, and it is the reason
 //! the two kinds are one list rather than two.
 //!
-//! The one piece of furniture deliberately left unpainted is the
-//! switchboard's lever assembly: a canvas-painted cap on a rotating item with
-//! its own throw animation. It is named here rather than left to be
-//! discovered, and the switchboard's row is otherwise complete (riveted
-//! plate, stamped numeral, well, glow, bevel), so that shell's bank reads as
-//! a switchboard with its levers off.
+//! The one piece deliberately left out of the switchboard's row is the
+//! lever's throw: the swing from rest to thrown, with its own easing
+//! overshoot. The cap itself is painted: drop shadow, front face, chamfer
+//! and lit top sliver over the well's left, alongside the riveted plate,
+//! stamped numeral, well, glow and bevel. It is named here rather than left
+//! to be discovered, because a swing is a mechanism, not a moulding.
 //!
 //! # The channel seam
 //!

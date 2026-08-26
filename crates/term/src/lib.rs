@@ -99,8 +99,8 @@ pub use rio_vt;
 /// unless a caller says otherwise: coverage at or above half is ink.
 pub const DEFAULT_THRESHOLD: u8 = 128;
 
-/// Printable ASCII. What a terminal atlas holds before anything exotic
-/// arrives; the atlas grows on demand for the rest.
+/// Printable ASCII: all a terminal atlas holds. A character outside it has
+/// no slot, and draws as an empty cell with no tofu box and no log line.
 pub fn ascii_charset() -> String {
     (0x20u8..0x7f).map(|b| b as char).collect()
 }
