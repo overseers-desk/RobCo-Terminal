@@ -18,6 +18,9 @@ mod seam_drag;
 mod settings_live_reload;
 mod shed_notice;
 mod size_badge;
+// The far side's agent serves on a Unix socket; until a named-pipe test
+// agent exists, the SSH flow suite compiles on Unix alone.
+#[cfg(unix)]
 mod ssh_flow;
 mod structure_subset;
 mod tmux_flow;
