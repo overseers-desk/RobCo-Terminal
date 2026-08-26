@@ -1,0 +1,164 @@
+# The form's layout against the schema the binary prints.
+#
+# The rest of the suite can work from the canned dump in helpers.tcl, because
+# what it tests is how a value is resolved and written. This file tests the
+# one thing a cut-down fixture cannot answer: whether the window shows every
+# key the terminal has. A key added to the schema and never given a row is
+# invisible in the settings window and unreachable except by hand-editing, and
+# nothing else in this repository would notice.
+#
+# So these tests need the real --dump-settings, and skip without it, exactly
+# as the one dump test in model.test does. They also need Tk, ui/form.tcl
+# requiring it at source time; the toplevel is withdrawn on the way past so a
+# suite run on a live display flashes nothing.
+
+package require tcltest 2.5
+namespace import ::tcltest::*
+
+source [file join [file dirname [info script]] helpers.tcl]
+source [file join $::libdir dump.tcl]
+
+set ::uidir [file normalize [file join [file dirname [info script]] .. ui]]
+
+testConstraint tk [expr {![catch {package require Tk}]}]
+if {[testConstraint tk]} {
+    wm withdraw .
+    source [file join $::uidir form.tcl]
+}
+testConstraint schema [expr {
+    [testConstraint tk] && ![catch {::rcsettings::dump::load} ::dumpdata]}]
+
+# The keys the form deliberately does not show, and why. The first five are
+# what docs/config.md marks as read by nothing in this build; `name` is the
+# preset picker at the head of the page rather than a row of its own.
+set ::unshown {
+    general {show_menubar use_custom_command custom_command}
+    screen  {font_source blinking_cursor name}
+    chassis {name}
+}
+
+proc layout_keys {table} {
+    set out {}
+    foreach {title rows} [dict get $::rcsettings::ui::form::Layout $table] {
+        foreach {key kind label arg} $rows { lappend out $key }
+    }
+    return $out
+}
+
+proc layout_rows {} {
+    set out {}
+    foreach table {general screen chassis} {
+        foreach {title rows} [dict get $::rcsettings::ui::form::Layout $table] {
+            foreach {key kind label arg} $rows { lappend out [list $table $key $kind] }
+        }
+    }
+    return $out
+}
+
+test layout-1.1 {every key the dump carries is either a row or a named omission} -constraints {
+    schema
+} -body {
+    set missing {}
+    foreach table {general screen chassis} {
+        set shown [layout_keys $table]
+        foreach key [::rcsettings::dump::table_keys $::dumpdata $table] {
+            if {$key in $shown} { continue }
+            if {$key in [dict get $::unshown $table]} { continue }
+            lappend missing $table.$key
+        }
+    }
+    set missing
+} -result {}
+
+test layout-1.2 {no row names a key the dump does not have} -constraints {
+    schema
+} -body {
+    set unknown {}
+    foreach row [layout_rows] {
+        lassign $row table key
+        if {![::rcsettings::dump::has_default $::dumpdata $table $key]} {
+            lappend unknown $table.$key
+        }
+    }
+    set unknown
+} -result {}
+
+test layout-1.3 {a row that is omitted is omitted on purpose} -constraints {
+    schema
+} -body {
+    # The other direction of 1.1: an omission that no longer names a real key
+    # is a stale exemption, and would hide the next key to take that name.
+    set stale {}
+    dict for {table keys} $::unshown {
+        foreach key $keys {
+            if {![::rcsettings::dump::has_default $::dumpdata $table $key]} {
+                lappend stale $table.$key
+            }
+        }
+    }
+    set stale
+} -result {}
+
+test layout-2.1 {each row's widget matches the type of the key it writes} -constraints {
+    schema
+} -body {
+    # The model formats an edited value after the type of the dump's default,
+    # so a checkbutton on a float key would write 1 into a key the terminal
+    # reads as a fraction. The kinds and the TOML types have to agree.
+    set want {frac float scale float int int bool bool color string enum string font string}
+    set wrong {}
+    foreach row [layout_rows] {
+        lassign $row table key kind
+        set type [::rcsettings::toml::type_of \
+            [::rcsettings::dump::default $::dumpdata $table $key]]
+        if {$type ne [dict get $want $kind]} {
+            lappend wrong "$table.$key is $type, drawn as $kind"
+        }
+    }
+    set wrong
+} -result {}
+
+test layout-2.2 {every enum row has a value list, every colour row a colour} -constraints {
+    schema
+} -body {
+    set wrong {}
+    foreach row [layout_rows] {
+        lassign $row table key kind
+        set value [::rcsettings::toml::plain \
+            [::rcsettings::dump::default $::dumpdata $table $key]]
+        switch -exact -- $kind {
+            enum {
+                if {$key ni [::rcsettings::dump::enum_names $::dumpdata]} {
+                    lappend wrong "$table.$key has no \[values\] list"
+                } elseif {$value ni [::rcsettings::dump::enum $::dumpdata $key]} {
+                    lappend wrong "$table.$key defaults outside its own list"
+                }
+            }
+            color {
+                if {![regexp {^#[0-9a-fA-F]{6}$} $value]} {
+                    lappend wrong "$table.$key defaults to $value"
+                }
+            }
+            font {
+                set catalogue [lmap f [::rcsettings::dump::fonts $::dumpdata] \
+                    {lindex $f 0}]
+                if {$value ni $catalogue} {
+                    lappend wrong "$table.$key defaults to an uncatalogued face"
+                }
+            }
+        }
+    }
+    set wrong
+} -result {}
+
+test colour-1.1 {a colour is narrowed to the file's three bytes} -constraints {
+    tk
+} -body {
+    # tk_chooseColor answers in the display's own width, which is 16 bits a
+    # channel on X11. What goes in the file is what the file's colours are.
+    join [list [::rcsettings::ui::form::hex "#33ff66"] \
+        [::rcsettings::ui::form::hex "#3333ffff6666"] \
+        [::rcsettings::ui::form::hex "#000"]] " "
+} -result {#33ff66 #33ff66 #000000}
+
+cleanupTests
