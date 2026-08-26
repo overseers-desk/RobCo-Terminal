@@ -75,7 +75,10 @@ fn gpu() -> Option<(Gpu, GpuLock)> {
     }
 }
 
-fn renderer(gpu: &Gpu, scheme: &Scheme) -> GridRenderer {
+/// The renderer and the shaping context that fed its atlas. A test drives a
+/// frame through `sync`, which resolves any character the atlas lacks against
+/// this context, so the two travel together the way they do in the app.
+fn renderer(gpu: &Gpu, scheme: &Scheme) -> (GridRenderer, FontContext) {
     let terminess = font_by_name("TERMINESS_SCALED").expect("TERMINESS_SCALED in the catalogue");
     let resolved = sizing::resolve(terminess, &SizingRequest::default(), ScalePolicy::Floor);
     let mut font = FontContext::new(terminess);
@@ -88,14 +91,15 @@ fn renderer(gpu: &Gpu, scheme: &Scheme) -> GridRenderer {
             threshold: DEFAULT_THRESHOLD,
         },
     );
-    GridRenderer::new(&gpu.device, &gpu.queue, atlas, COLS, ROWS, scheme.clone())
+    let renderer = GridRenderer::new(&gpu.device, &gpu.queue, atlas, COLS, ROWS, scheme.clone());
+    (renderer, font)
 }
 
 #[test]
 fn scrollback_viewport_follows_history() {
     let Some((gpu, _lock)) = gpu() else { return };
     let scheme = Scheme::monochrome([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]);
-    let mut renderer = renderer(&gpu, &scheme);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
     let mut viewport = ScrollPosition::default();
 
     let mut term = Crosswords::new(
@@ -112,7 +116,7 @@ fn scrollback_viewport_follows_history() {
     for i in 0..20 {
         processor.advance(&mut term, format!("LINE-{i:03}\r\n").as_bytes());
     }
-    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut viewport);
+    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut viewport);
     assert!(stats.rows_updated > 0, "output produced no damage at all");
     assert_eq!(
         viewport.offset(),
@@ -127,7 +131,7 @@ fn scrollback_viewport_follows_history() {
     viewport.scroll(&mut term, 5);
     assert_eq!(viewport.offset(), 5);
     assert!(!viewport.is_following());
-    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut viewport);
+    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut viewport);
     assert!(
         stats.full,
         "a viewport move has to rebuild every row: rio-vt's damage is in \
@@ -138,7 +142,7 @@ fn scrollback_viewport_follows_history() {
 
     // Back to the bottom.
     viewport.to_bottom(&mut term);
-    renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut viewport);
+    renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut viewport);
     assert_eq!(viewport.offset(), 0);
     assert!(viewport.is_following());
     assert_eq!(renderer.grid().row_text(4).trim_end(), "LINE-019");
@@ -156,7 +160,7 @@ fn scrollback_viewport_follows_history() {
 fn ordinary_output_does_not_force_a_full_rebuild() {
     let Some((gpu, _lock)) = gpu() else { return };
     let scheme = Scheme::monochrome([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]);
-    let mut renderer = renderer(&gpu, &scheme);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
     let mut viewport = ScrollPosition::default();
 
     let mut term = Crosswords::new(
@@ -171,12 +175,12 @@ fn ordinary_output_does_not_force_a_full_rebuild() {
 
     // Settle: the first sync after construction is allowed to be full.
     processor.advance(&mut term, b"first\r\n");
-    renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut viewport);
+    renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut viewport);
 
     // One line of output on a screen with room to spare. Two rows can
     // legitimately need rewriting (the text, and the row the cursor left).
     processor.advance(&mut term, b"second\r\n");
-    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut viewport);
+    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut viewport);
     assert!(
         !stats.full,
         "one line of output should not repaint the screen"
@@ -189,7 +193,7 @@ fn ordinary_output_does_not_force_a_full_rebuild() {
     assert_eq!(renderer.grid().row_text(1).trim_end(), "second");
 
     // Nothing at all: nothing to do.
-    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut viewport);
+    let stats = renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut viewport);
     assert!(!stats.full);
     assert_eq!(stats.rows_updated, 0, "an idle frame rewrote rows");
 }
@@ -198,7 +202,7 @@ fn ordinary_output_does_not_force_a_full_rebuild() {
 fn untouched_cells_read_as_blanks_not_nuls() {
     let Some((gpu, _lock)) = gpu() else { return };
     let scheme = Scheme::monochrome([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]);
-    let mut renderer = renderer(&gpu, &scheme);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
     let mut viewport = ScrollPosition::default();
 
     let mut term = Crosswords::new(
@@ -211,7 +215,7 @@ fn untouched_cells_read_as_blanks_not_nuls() {
     );
     let mut processor = Processor::default();
     processor.advance(&mut term, b"AB");
-    renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut viewport);
+    renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut viewport);
 
     // The trap: an untouched `Square` reads `'\0'`, not `' '`. If the
     // normalisation is ever dropped, this row becomes two characters followed
@@ -376,7 +380,7 @@ fn history_growing_under_a_scrolled_view_carries_the_position() {
 fn a_shifted_view_draws_the_grid_higher_with_the_next_line_filling_the_gap() {
     let Some((gpu, _lock)) = gpu() else { return };
     let scheme = Scheme::monochrome([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]);
-    let mut renderer = renderer(&gpu, &scheme);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
     let mut view = ScrollPosition::default();
     let mut term = twenty_lines();
 
@@ -385,7 +389,7 @@ fn a_shifted_view_draws_the_grid_higher_with_the_next_line_filling_the_gap() {
     view.scroll_pixels(&mut term, 1.5 * cell_h as f32, cell_h as f32);
     assert_eq!(view.offset(), 2);
     assert_eq!(view.shift(), 0.5);
-    renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut view);
+    renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut view);
     assert_eq!(renderer.grid().row_text(0).trim_end(), "LINE-013");
     assert_eq!(renderer.grid().row_text(5).trim_end(), "LINE-018");
     assert_eq!(
@@ -436,7 +440,7 @@ fn a_shifted_view_draws_the_grid_higher_with_the_next_line_filling_the_gap() {
 
     // At the bottom, drawn flat, the spare row is not on the glass.
     view.to_bottom(&mut term);
-    renderer.sync(&gpu.device, &gpu.queue, &mut term, &mut view);
+    renderer.sync(&gpu.device, &gpu.queue, &mut font, &mut term, &mut view);
     renderer.set_origin(pad as i32, pad as i32, 0);
     let bottom = renderer.render_to_image_sized(&gpu, clear, w, h);
     for y in pad + grid_h..h {

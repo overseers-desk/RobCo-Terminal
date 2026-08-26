@@ -353,6 +353,11 @@ fn logical_cell(cell: term::CellMetrics, resolved: &ResolvedFont, scale_factor: 
 /// where the channel state machines are tested -- has no `Glass` at all.
 struct Glass {
     renderer: GridRenderer,
+    /// The shaping side of the face on screen. It is kept rather than dropped
+    /// after the atlas is built because a character the bundled face has no
+    /// glyph for is resolved against the machine's own fonts on the frame it
+    /// first appears, and that resolution needs this context.
+    font: FontContext,
     /// What the atlas was built for. A settings edit that moves any of it
     /// means the atlas is the wrong size and has to be rebuilt, which is also
     /// one of the two events `crt-burnin`'s mount contract calls a
@@ -613,7 +618,7 @@ impl Glass {
     fn new(gpu: &Gpu, cfg: &Config, viewport: &Viewport, identity: &str) -> Option<Self> {
         let entry = font_entry(cfg);
         let request = sizing_request(cfg, viewport.scale_factor);
-        let (resolved, _font, atlas) =
+        let (resolved, font, atlas) =
             term::build_font(&gpu.device, &gpu.queue, entry, &request, ScalePolicy::Floor);
 
         let size = viewport.term_size();
@@ -656,6 +661,7 @@ impl Glass {
 
         Some(Self {
             renderer,
+            font,
             font_name: entry.name.to_string(),
             resolved,
             target,
@@ -2457,10 +2463,11 @@ impl TerminalSurface {
             self.viewport.scale_factor,
         );
         if let (Some(gpu), Some(glass)) = (self.gpu.as_ref(), self.glass.as_mut()) {
-            let (_, _, atlas) =
+            let (_, font, atlas) =
                 term::build_font(&gpu.device, &gpu.queue, entry, &request, ScalePolicy::Floor);
             glass.renderer.set_scale(resolved.integer_scale);
             glass.renderer.set_atlas(&gpu.device, &gpu.queue, atlas);
+            glass.font = font;
             glass.font_name = entry.name.to_string();
             glass.resolved = resolved;
             log::info!(
@@ -2518,6 +2525,7 @@ impl TerminalSurface {
         glass.renderer.sync(
             &gpu.device,
             &gpu.queue,
+            &mut glass.font,
             session.term_mut(),
             &mut self.scroll,
         );

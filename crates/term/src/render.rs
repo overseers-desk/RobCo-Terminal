@@ -392,6 +392,28 @@ impl GridRenderer {
         drawn
     }
 
+    /// Put every character a row carries into the atlas, so the instances
+    /// built from that row have a slot to point at. A row passes through here
+    /// before it is copied into the grid, because a glyph the atlas gained may
+    /// have moved the texture, and the pipeline is rebound once for the row
+    /// rather than once for each instance in it.
+    ///
+    /// Cheap on the ordinary path. [`GlyphAtlas::glyph`] answers from its slot
+    /// table for a character the atlas holds, and from its blank set for one
+    /// no loaded face covers, so a character reaches the rasteriser once over
+    /// the life of an atlas rather than once a frame.
+    pub fn admit_row(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        font: &mut FontContext,
+        cells: &[Cell],
+    ) {
+        for cell in cells {
+            self.admit_glyph(device, queue, font, cell.c);
+        }
+    }
+
     fn rebind(&mut self, device: &wgpu::Device) {
         self.bind_group = Self::make_bind_group(
             device,
@@ -868,6 +890,7 @@ pub mod vt {
             &mut self,
             device: &wgpu::Device,
             queue: &wgpu::Queue,
+            font: &mut FontContext,
             term: &mut Crosswords<L>,
             viewport: &mut ScrollPosition,
         ) -> SyncStats {
@@ -907,9 +930,11 @@ pub mod vt {
             if stats.full {
                 for row in 0..self.rows {
                     fill_row(term, row, &self.scheme, &mut scratch);
+                    self.admit_row(device, queue, font, &scratch);
                     self.grid.row_mut(row).copy_from_slice(&scratch);
                 }
                 self.fill_spare_row(term, spare_shown, &mut scratch);
+                self.admit_row(device, queue, font, &scratch);
                 self.cursor = cursor;
                 self.upload_all(queue);
                 stats.rows_updated = self.rows;
@@ -934,6 +959,7 @@ pub mod vt {
             let limit = self.rows;
             for row in rows_to_update.iter().copied().filter(|r| *r < limit) {
                 fill_row(term, row, &self.scheme, &mut scratch);
+                self.admit_row(device, queue, font, &scratch);
                 self.grid.row_mut(row).copy_from_slice(&scratch);
                 self.build_row(row);
                 self.upload_row(queue, row);
@@ -943,6 +969,7 @@ pub mod vt {
             // changed under a scrolled view may have changed that line.
             if spare_shown && !rows_to_update.is_empty() {
                 self.fill_spare_row(term, true, &mut scratch);
+                self.admit_row(device, queue, font, &scratch);
                 self.build_row(self.rows);
                 self.upload_row(queue, self.rows);
             }
