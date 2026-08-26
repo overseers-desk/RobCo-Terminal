@@ -9,6 +9,12 @@
 //! the file itself can silently go dead the first time it is edited.
 //! Watching the parent directory and filtering events by file name survives
 //! the rename-replace pattern unconditionally.
+//!
+//! An event whose reload parses to the value already held fires nothing:
+//! the backend delivers one rename-replace as more than one qualifying
+//! event, and a writer may touch the file without changing it, so `on_reload`
+//! (and whatever logging a caller hangs on it) means "the value changed",
+//! never "the file was touched".
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -39,7 +45,7 @@ type Loader<T> = Arc<dyn Fn(&Path) -> Result<T, toml::ConfigError> + Send + Sync
 
 impl<T> ConfigWatcher<T>
 where
-    T: DeserializeOwned + Clone + Send + Sync + 'static,
+    T: DeserializeOwned + Clone + PartialEq + Send + Sync + 'static,
 {
     /// Start watching `path`. `initial` seeds the in-memory value; it is
     /// used as-is until the first reload fires; if you want the file's
@@ -170,7 +176,8 @@ fn event_touches(event: &Event, path: &Path) -> bool {
 
 /// Re-read and re-parse `path`, updating `state` on success and logging
 /// loudly (never silently) on failure, per the keep-last-good contract.
-fn reload_into<T: Clone>(
+/// A parse equal to the held value is dropped whole (see the module doc).
+fn reload_into<T: Clone + PartialEq>(
     path: &Path,
     state: &Mutex<T>,
     loader: &(dyn Fn(&Path) -> Result<T, toml::ConfigError> + Send + Sync),
@@ -180,6 +187,9 @@ fn reload_into<T: Clone>(
         Ok(value) => {
             {
                 let mut guard = state.lock().expect("config state poisoned");
+                if *guard == value {
+                    return;
+                }
                 *guard = value.clone();
             }
             on_reload(&value);
@@ -247,6 +257,12 @@ mod tests {
         }
     }
 
+    impl PartialEq for Counted {
+        fn eq(&self, other: &Self) -> bool {
+            self.bloom == other.bloom
+        }
+    }
+
     /// `current` copies the whole value; `with` copies none of it.
     ///
     /// The distinction is worth a test rather than a comment because the
@@ -310,6 +326,39 @@ mod tests {
             "watcher did not observe the rename-replace within the timeout"
         );
         assert_eq!(watcher.current().bloom, 0.9);
+    }
+
+    /// One atomic save is delivered by the backend as more than one
+    /// qualifying event, and each used to reload and fire; the equality
+    /// gate in `reload_into` is what holds this at exactly one.
+    #[test]
+    fn one_save_fires_one_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "bloom = 0.1\n").unwrap();
+
+        let (tx, rx) = mpsc::channel();
+        let initial = toml::load::<Settings>(&path).unwrap();
+        let _watcher = ConfigWatcher::spawn_with(&path, initial, move |value: &Settings| {
+            let _ = tx.send(value.clone());
+        })
+        .expect("watcher should start");
+
+        let tmp_path = dir.path().join(".config.toml.tmp");
+        fs::write(&tmp_path, "bloom = 0.9\n").unwrap();
+        fs::rename(&tmp_path, &path).unwrap();
+
+        assert!(
+            wait_for(&rx, |v| v.bloom == 0.9),
+            "the save did not reload at all"
+        );
+        // Give any sibling event of the same save time to arrive; a second
+        // callback means the file was touched, not that the value changed.
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(
+            rx.try_recv().is_err(),
+            "one save fired more than one reload"
+        );
     }
 
     #[test]
