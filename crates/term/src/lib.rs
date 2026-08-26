@@ -58,6 +58,7 @@ pub mod search;
 pub mod selection;
 pub mod session;
 pub mod size;
+pub mod ssh_channel;
 pub mod tmux_cc;
 pub mod tmux_pane;
 pub mod viewport;
@@ -86,6 +87,7 @@ pub use search::{search, SearchHit};
 // worth the collision at the root.
 pub use selection::{Selection, SelectionController, TripleClickMode};
 pub use session::{Pumped, Session, SessionConfig, Term, INPUT_CAP};
+pub use ssh_channel::{SshChannel, SshEvent, SshWire};
 pub use size::{CellSize, TermSize, Viewport, FLOOR_COLS, FLOOR_ROWS};
 pub use tmux_cc::ControlModeTap;
 pub use tmux_pane::{ChannelSession, TmuxPane};

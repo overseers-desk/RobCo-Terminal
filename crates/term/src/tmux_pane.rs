@@ -31,6 +31,7 @@ use rio_vt::performer::handler::Processor;
 use crate::dcs::DcsTap;
 use crate::session::{Pumped, Session, Term};
 use crate::size::TermSize;
+use crate::ssh_channel::SshChannel;
 
 /// A channel fed by a tmux pane rather than a PTY.
 pub struct TmuxPane {
@@ -106,26 +107,33 @@ impl TmuxPane {
     }
 }
 
-/// What a channel slot holds: a PTY, or a tmux pane.
+/// What a channel slot holds: a PTY, a tmux pane, or an SSH channel.
 ///
 /// The methods are the surface `app::window` already drove when every slot
 /// was a [`Session`]; each match arm says what the operation means on the
-/// side that has no native one.
+/// side that has no native one. The SSH variant sits with the PTY on every
+/// arm the pane differs on: its bytes, its writer, its resize's far half
+/// and its end are all its own (`crate::ssh_channel`'s module doc walks
+/// the four).
 pub enum ChannelSession<T: DcsTap> {
     /// A PTY-backed session: a shell this program spawned, or the gateway
     /// channel whose PTY carries the control stream.
     Pty(Session<T>),
     /// A tmux pane's screen, fed by the gateway.
     TmuxPane(TmuxPane),
+    /// A remote shell on an SSH channel this program owns.
+    Ssh(SshChannel<T>),
 }
 
 impl<T: DcsTap> ChannelSession<T> {
-    /// Drain the PTY. A tmux pane has none; its bytes arrive through
-    /// [`TmuxPane::feed`] on the gateway's pump, so this is idle.
+    /// Drain the slot's own source. A tmux pane has none; its bytes arrive
+    /// through [`TmuxPane::feed`] on the gateway's pump, so its arm is idle.
+    /// An SSH channel's source is the connection thread's queue.
     pub fn pump(&mut self) -> Pumped {
         match self {
             ChannelSession::Pty(s) => s.pump(),
             ChannelSession::TmuxPane(_) => Pumped::default(),
+            ChannelSession::Ssh(s) => s.pump(),
         }
     }
 
@@ -135,6 +143,10 @@ impl<T: DcsTap> ChannelSession<T> {
         match self {
             ChannelSession::Pty(s) => s.write(bytes),
             ChannelSession::TmuxPane(s) => {
+                s.write(bytes);
+                Ok(())
+            }
+            ChannelSession::Ssh(s) => {
                 s.write(bytes);
                 Ok(())
             }
@@ -148,6 +160,10 @@ impl<T: DcsTap> ChannelSession<T> {
                 s.resize(size);
                 Ok(())
             }
+            ChannelSession::Ssh(s) => {
+                s.resize(size);
+                Ok(())
+            }
         }
     }
 
@@ -155,6 +171,7 @@ impl<T: DcsTap> ChannelSession<T> {
         match self {
             ChannelSession::Pty(s) => s.term(),
             ChannelSession::TmuxPane(s) => s.term(),
+            ChannelSession::Ssh(s) => s.term(),
         }
     }
 
@@ -162,16 +179,18 @@ impl<T: DcsTap> ChannelSession<T> {
         match self {
             ChannelSession::Pty(s) => s.term_mut(),
             ChannelSession::TmuxPane(s) => s.term_mut(),
+            ChannelSession::Ssh(s) => s.term_mut(),
         }
     }
 
-    /// When the pending synchronized update expires. Only a PTY session
-    /// holds one: a pane's BSU/ESU pass through tmux, which runs its own
-    /// timeout server-side.
+    /// When the pending synchronized update expires. A PTY session and an
+    /// SSH channel each hold one, because each owns its parser; a pane's
+    /// BSU/ESU pass through tmux, which runs its own timeout server-side.
     pub fn sync_deadline(&self) -> Option<Instant> {
         match self {
             ChannelSession::Pty(s) => s.sync_deadline(),
             ChannelSession::TmuxPane(_) => None,
+            ChannelSession::Ssh(s) => s.sync_deadline(),
         }
     }
 
@@ -187,20 +206,28 @@ impl<T: DcsTap> ChannelSession<T> {
         match self {
             ChannelSession::Pty(s) => s.sheds(),
             ChannelSession::TmuxPane(_) => 0,
+            ChannelSession::Ssh(s) => s.sheds(),
         }
     }
 
     pub fn pty_mut(&mut self) -> Option<&mut Session<T>> {
         match self {
             ChannelSession::Pty(s) => Some(s),
-            ChannelSession::TmuxPane(_) => None,
+            _ => None,
         }
     }
 
     pub fn tmux_pane_mut(&mut self) -> Option<&mut TmuxPane> {
         match self {
-            ChannelSession::Pty(_) => None,
             ChannelSession::TmuxPane(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn ssh_mut(&mut self) -> Option<&mut SshChannel<T>> {
+        match self {
+            ChannelSession::Ssh(s) => Some(s),
+            _ => None,
         }
     }
 }
