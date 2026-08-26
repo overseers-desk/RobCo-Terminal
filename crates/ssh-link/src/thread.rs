@@ -20,6 +20,12 @@ use tokio::sync::mpsc;
 use crate::channel::{ChannelCmd, WireEvent, EVENT_QUEUE};
 use crate::{ChannelHandle, HostPolicy, SshTarget};
 
+/// Commands from the loop side to the connection itself.
+pub(crate) enum LinkCmd {
+    /// Another channel on this connection: shell it, then drive its wire.
+    Open { wire: ChannelWire, size: (u16, u16, u16, u16) },
+}
+
 /// The supervisor's grip on one channel's loop-side endpoints.
 pub(crate) struct ChannelWire {
     pub events: mpsc::Sender<WireEvent>,
@@ -44,6 +50,7 @@ pub(crate) fn spawn(
     target: SshTarget,
     policy: Box<dyn HostPolicy>,
     wire: ChannelWire,
+    link_cmd: mpsc::UnboundedReceiver<LinkCmd>,
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name(format!("ssh-{}", target.host))
@@ -64,7 +71,7 @@ pub(crate) fn spawn(
                     return;
                 }
             };
-            rt.block_on(run(target, policy, wire));
+            rt.block_on(run(target, policy, wire, link_cmd));
         })
 }
 
@@ -102,7 +109,12 @@ async fn notice(wire: &ChannelWire, text: impl Into<String>) {
     let _ = wire.events.send(WireEvent::Notice(text.into())).await;
 }
 
-async fn run(target: SshTarget, mut policy: Box<dyn HostPolicy>, mut wire: ChannelWire) {
+async fn run(
+    target: SshTarget,
+    mut policy: Box<dyn HostPolicy>,
+    wire: ChannelWire,
+    mut link_cmd: mpsc::UnboundedReceiver<LinkCmd>,
+) {
     let verdicts = Arc::new(Verdicts { refusal: Mutex::new(None) });
 
     notice(&wire, format!("connecting to {}:{}", target.host, target.port)).await;
@@ -155,7 +167,30 @@ async fn run(target: SshTarget, mut policy: Box<dyn HostPolicy>, mut wire: Chann
         return;
     }
 
-    let mut channel = match handle.channel_open_session().await {
+    // The first channel, then any the loop side asks for: opened here (the
+    // handle is the supervisor's alone), each then driven on a task of its
+    // own -- this runtime is one thread, so a task is concurrency, not
+    // parallelism. The supervisor ends when the loop side drops the Link,
+    // and the disconnect then ends every channel task through its Eof.
+    raise(&handle, &target.term, target.size, wire).await;
+    while let Some(LinkCmd::Open { wire, size }) = link_cmd.recv().await {
+        raise(&handle, &target.term, size, wire).await;
+    }
+    let _ = handle
+        .disconnect(russh::Disconnect::ByApplication, "", "en")
+        .await;
+}
+
+/// Open a session channel with a pty and shell on it, and put its pump on
+/// a task. A refusal at any step lands on the wire and ends with `Eof`, so
+/// the row asking hears why.
+async fn raise(
+    handle: &client::Handle<Handler>,
+    term: &str,
+    size: (u16, u16, u16, u16),
+    wire: ChannelWire,
+) {
+    let channel = match handle.channel_open_session().await {
         Ok(c) => c,
         Err(e) => {
             notice(&wire, format!("channel refused: {e}")).await;
@@ -163,11 +198,11 @@ async fn run(target: SshTarget, mut policy: Box<dyn HostPolicy>, mut wire: Chann
             return;
         }
     };
-    let (cols, rows, pix_w, pix_h) = target.size;
+    let (cols, rows, pix_w, pix_h) = size;
     let pty = channel
         .request_pty(
             true,
-            &target.term,
+            term,
             u32::from(cols),
             u32::from(rows),
             u32::from(pix_w),
@@ -184,7 +219,12 @@ async fn run(target: SshTarget, mut policy: Box<dyn HostPolicy>, mut wire: Chann
         let _ = wire.events.send(WireEvent::Eof).await;
         return;
     }
+    tokio::spawn(drive(channel, wire));
+}
 
+/// Pump one raised channel against its wire until either side ends it.
+async fn drive(channel: russh::Channel<client::Msg>, mut wire: ChannelWire) {
+    let mut channel = channel;
     loop {
         tokio::select! {
             cmd = wire.cmd.recv() => match cmd {
@@ -206,9 +246,8 @@ async fn run(target: SshTarget, mut policy: Box<dyn HostPolicy>, mut wire: Chann
                         )
                         .await;
                 }
-                // Close, or the loop side dropped every sender: either way
-                // the channel is done and the connection with it (stage 1:
-                // one channel is the connection).
+                // Close, or the loop side dropped the handle: this channel
+                // is done, and the connection's own end is the Link's.
                 Some(ChannelCmd::Close) | None => break,
             },
             msg = channel.wait() => match msg {
@@ -234,10 +273,8 @@ async fn run(target: SshTarget, mut policy: Box<dyn HostPolicy>, mut wire: Chann
         }
     }
 
+    let _ = channel.eof().await;
     let _ = wire.events.send(WireEvent::Eof).await;
-    let _ = handle
-        .disconnect(russh::Disconnect::ByApplication, "", "en")
-        .await;
 }
 
 /// Agent-backed publickey auth, the one method this build speaks. Returns

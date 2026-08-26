@@ -107,7 +107,7 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     std::env::set_var("SSH_AUTH_SOCK", &sock);
     let saw = Arc::new(Mutex::new(None));
     let policy = Scripted { verdict: Ok(()), order: None, saw: saw.clone() };
-    let (_link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
+    let (link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
     let seen_far = seen.clone();
     let log = tokio::task::spawn_blocking(move || {
         let mut log = wait_for(&mut handle, |e| {
@@ -123,6 +123,22 @@ async fn a_connection_lives_and_dies_on_the_glass() {
             assert!(std::time::Instant::now() < resized, "no resize reached the server");
             std::thread::sleep(Duration::from_millis(5));
         }
+        // A second channel multiplexes over the same connection, lives
+        // its own life, and its close leaves the first standing.
+        let mut second = link.open_channel((80, 24, 720, 432)).expect("open");
+        wait_for(&mut second, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+        });
+        second.send(b"twin");
+        wait_for(&mut second, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(4).any(|w| w == b"twin"))
+        });
+        drop(second);
+        handle.send(b"still here");
+        log.extend(wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(10).any(|w| w == b"still here"))
+        }));
+
         handle.send(b"\x04");
         log.extend(wait_for(&mut handle, |e| matches!(e, WireEvent::Eof)));
         log

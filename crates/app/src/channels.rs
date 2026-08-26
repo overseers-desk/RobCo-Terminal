@@ -868,6 +868,27 @@ impl<S> Channels<S> {
         Some(id)
     }
 
+    /// Another channel on an SSH bank: the connection's next multiplexed
+    /// channel, on the lowest free slot, taking the air the way the asked
+    /// window of a tmux bank does. False when the bank is not an SSH one
+    /// or is full to the cap.
+    pub fn open_ssh_channel(&mut self, bank: BankId, make: impl FnOnce() -> Option<S>) -> bool {
+        let Some(Manager::Ssh { host, user, .. }) = self.manager_of(bank) else {
+            return false;
+        };
+        let title = format!("{user}@{host}");
+        let channel = self.first_free(bank);
+        if channel < 1 {
+            return false;
+        }
+        let Some(session) = make() else {
+            return false;
+        };
+        self.insert_row(Row { bank, channel, title, tmux: None, session });
+        self.set_current(bank, channel);
+        true
+    }
+
     /// A new bank under a tmux attachment; its gateway row is the caller's to place.
     fn push_bank(
         &mut self,

@@ -61,7 +61,9 @@ pub trait HostPolicy: Send + 'static {
 }
 
 /// One SSH connection: the thread's lifetime, held per bank by the surface.
+/// Dropping it is the disconnect.
 pub struct Link {
+    cmd: tokio::sync::mpsc::UnboundedSender<thread::LinkCmd>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -77,8 +79,24 @@ impl Link {
         policy: Box<dyn HostPolicy>,
     ) -> std::io::Result<(Link, ChannelHandle)> {
         let (handle, wire) = thread::endpoints();
-        let thread = thread::spawn(target, policy, wire)?;
-        Ok((Link { thread: Some(thread) }, handle))
+        let (cmd, link_cmd) = tokio::sync::mpsc::unbounded_channel();
+        let thread = thread::spawn(target, policy, wire, link_cmd)?;
+        Ok((Link { cmd, thread: Some(thread) }, handle))
+    }
+
+    /// Another channel on this connection, with its own remote pty of the
+    /// given geometry. The endpoints come back at once; the shell's
+    /// greeting, or the refusal, arrives through them. `Err` means the
+    /// connection is already over.
+    pub fn open_channel(
+        &self,
+        size: (u16, u16, u16, u16),
+    ) -> Result<ChannelHandle, &'static str> {
+        let (handle, wire) = thread::endpoints();
+        self.cmd
+            .send(thread::LinkCmd::Open { wire, size })
+            .map_err(|_| "the connection is over")?;
+        Ok(handle)
     }
 }
 

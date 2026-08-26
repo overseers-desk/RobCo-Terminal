@@ -921,6 +921,34 @@ impl TerminalSurface {
         self.connect_ssh_with(req, Box::new(KnownHosts::new()));
     }
 
+    /// Another channel on an SSH bank's connection, from its own link.
+    fn open_ssh_channel(&mut self, bank: BankId) {
+        let Some(link) = self.ssh_links.get(&bank) else {
+            log::warn!("bank {bank} asked for an ssh channel with no link standing");
+            return;
+        };
+        let size = self.viewport.term_size();
+        let (pix_w, pix_h) = size.pixel_size();
+        let handle = match link.open_channel((size.cols() as u16, size.rows() as u16, pix_w, pix_h))
+        {
+            Ok(handle) => handle,
+            Err(over) => {
+                log::warn!("bank {bank}: {over}");
+                return;
+            }
+        };
+        let scrollback = self.session_config.scrollback;
+        let wire = WireAdapter::new(handle);
+        self.channels.open_ssh_channel(bank, move || {
+            Some(ChannelSession::Ssh(SshChannel::new(
+                size,
+                scrollback,
+                ControlModeTap::default(),
+                Box::new(wire),
+            )))
+        });
+    }
+
     /// The same, under a caller's trust policy: what a test with fixture
     /// files drives.
     pub fn connect_ssh_with(&mut self, req: &SshRequest, policy: Box<dyn ssh_link::HostPolicy>) {
@@ -1740,6 +1768,16 @@ impl TerminalSurface {
     /// lowest free slot with a shell in it, on an attachment another window of
     /// that session, which is its gateway's to give.
     pub fn new_channel(&mut self) {
+        // On an SSH bank, another of what you are looking at is another
+        // channel of that connection, resolved locally: channel numbering
+        // is the client's, so unlike a tmux window there is no round trip
+        // to wait on.
+        let view = self.channels.bank_on_view();
+        if self.channels.manager_of(view).is_some_and(Manager::is_ssh) {
+            self.open_ssh_channel(view);
+            self.channel_changed();
+            return;
+        }
         let (config, size) = (self.session_config.clone(), self.viewport.term_size());
         if let Some(bank) = self.channels.new_channel(|| spawn(&config, size)) {
             // The model set the bank's `new_window_pending` flag; the window

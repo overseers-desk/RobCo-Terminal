@@ -64,8 +64,14 @@ pub struct ChannelHandle {
 
 impl ChannelHandle {
     /// The next event, if one is waiting. Called from the surface's pump.
+    /// A sender that vanished without its `Eof` (a task cancelled by the
+    /// runtime going down) reads as `Eof`, so no row outlives its wire.
     pub fn try_event(&mut self) -> Option<WireEvent> {
-        self.events.try_recv().ok()
+        match self.events.try_recv() {
+            Ok(event) => Some(event),
+            Err(mpsc::error::TryRecvError::Empty) => None,
+            Err(mpsc::error::TryRecvError::Disconnected) => Some(WireEvent::Eof),
+        }
     }
 
     /// Queue keystrokes for the wire, whole or not at all.

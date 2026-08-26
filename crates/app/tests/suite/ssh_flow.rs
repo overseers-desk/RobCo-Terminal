@@ -121,6 +121,22 @@ fn an_ssh_bank_lives_types_and_dies_on_the_glass() {
     s.write(b"wasteland");
     pump_until(&mut s, "the echo of what was typed", |s| glass_contains(s, "wasteland"));
 
+    // Another of what you are looking at: `new_channel` on this bank is a
+    // second multiplexed channel of the same connection, on slot 2, and
+    // its close leaves the first standing.
+    s.new_channel();
+    assert_eq!(
+        (s.channels().current_bank(), s.channels().current_channel()),
+        (bank, 2),
+        "rows: {:?}",
+        s.channels().rows().iter().map(|r| (r.bank, r.channel)).collect::<Vec<_>>()
+    );
+    pump_until(&mut s, "the second channel's greeting", |s| glass_contains(s, "ready"));
+    s.write(b"twin");
+    pump_until(&mut s, "the second channel's echo", |s| glass_contains(s, "twin"));
+    s.close_channel();
+    assert!(s.channels().rows().iter().any(|r| (r.bank, r.channel) == (bank, 1)));
+
     // The remote end exits: the row dies the way a shell's does, the bank
     // goes with it, and the air falls home.
     s.write(b"\x04");
