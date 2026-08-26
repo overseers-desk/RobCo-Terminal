@@ -100,7 +100,10 @@ itself, so you do not need to keep one.
 
 ## Installing
 
-There are no published packages yet. Every route starts from a checkout.
+The [releases page](https://github.com/overseers-desk/RobCo-Terminal/releases)
+carries a `.deb` for Debian and Ubuntu (with a `-dbgsym` package beside it)
+and a self-contained tarball. Every route below builds the same artifacts
+from a checkout.
 
 ```console
 $ git clone https://github.com/overseers-desk/RobCo-Terminal
