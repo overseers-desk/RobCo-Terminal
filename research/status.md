@@ -49,7 +49,7 @@ For each shipped capability, how rare the same thing is in the field, read from 
 - Config as a diff against a named preset, with live reload and last-good-on-error: the live reload is common; the diff-against-preset form is claimed by none of the surveyed products.
 - Window chrome of its own, no toolkit header bar: rare on Linux (Qt and GTK terminals pay the desktop-fit complaint; Rust terminals mostly draw no chrome at all).
 - Native, single binary, no accounts: common among the Rust, C and Zig terminals; the differentiation is against Electron and Warp only.
-- A terminal that owns its SSH connection: in the surveyed field only Warp (its own SSH extension) and Wave (durable ssh blocks) do, both in the accounts-and-Electron family; none of the native terminals, and none of the four that ship a look. The corpus never surveyed the Windows market this capability serves (PuTTY is absent from it), so its rarity there is unmeasured.
+- A terminal that owns its SSH connection: in the surveyed field only Warp (its own SSH extension) and Wave (durable ssh blocks) do, both in the accounts-and-Electron family; none of the native terminals, and none of the terminals that ship a look. The corpus never surveyed the Windows market this capability serves (PuTTY is absent from it), so its rarity there is unmeasured.
 - Output governor and frame-stats instrument: implementation details no tool markets; the latency figure that would make them a claim is not recorded.
 
 ## Gaps

@@ -19,7 +19,7 @@ Four products present a retro picture without the user supplying a shader. Cells
 | Hyper + `cool-retro-hyper` | Electron (React) | none | none | Yes via the plugin: bloom, burn-in, jitter, curvature, scanlines; an optional monitor frame | unconfirmed | Tabs; splits via plugins | Declined (#2978, "no public spec"); own headless mux | No | `~/.hyper.js` + GUI; hot reload | deb, rpm, AppImage, Snap | Partial | Electron; last release Jul 2024 |
 | Windows Terminal | Win32/WinUI, Windows only | "fast and efficient" | Direct3D | Yes: `experimental.retroTerminalEffect` (glow, scanlines); custom HLSL on top | DirectWrite outline | Tabs, splits, palette, jump-to-tab-N | #3656, #5612 open | App-state tabs | GUI + `settings.json`; live reload | N/A | Yes | ~104.7k stars |
 
-Two of the four are one-platform products this project cannot be installed beside (Cathode on macOS, discontinued; Windows Terminal on Windows). On Linux the set is cool-retro-term and an Electron plugin.
+Cathode (macOS, discontinued) and Windows Terminal (Windows) are one-platform products this project cannot be installed beside. On Linux the set is cool-retro-term and an Electron plugin.
 
 Links: github.com/Swordfish90/cool-retro-term; hyper.is with github.com/jonathanbell/cool-retro-hyper; github.com/microsoft/terminal.
 
@@ -65,9 +65,9 @@ How much of the surveyed category serves each pain, and how. The absences are st
 
 **P4, fonts.** foot is the one product whose docs promise bitmap strikes; WezTerm loads them by default; kitty refuses them by design; Ghostty, Alacritty and Rio carry open or contested issues. Blur at fractional scaling is open across the field (Ghostty #1938 closed after long debugging, kitty #7513 disputed, WezTerm #5149 open). A bitmap face drawn from its embedded strike at an integer multiple, never re-rasterised, is documented in none of the surveyed products. Ligatures are served by kitty, WezTerm, Ghostty; refused by Alacritty and foot.
 
-**P5, many sessions.** Tabs are universal outside Alacritty and foot. Numbered-slot chords are default-bound in tmux, Zellij, Ghostty and Windows Terminal; a tab overview exists in WezTerm, Ptyxis and Windows Terminal's palette. A persistent numbered strip visible without a tab bar, with digit chords to jump and to move, is tmux's model; no surveyed GUI terminal draws one as chrome outside the text area. Among the four that ship a look, cool-retro-term has neither tabs nor splits.
+**P5, many sessions.** Tabs are universal outside Alacritty and foot. Numbered-slot chords are default-bound in tmux, Zellij, Ghostty and Windows Terminal; a tab overview exists in WezTerm, Ptyxis and Windows Terminal's palette. A persistent numbered strip visible without a tab bar, with digit chords to jump and to move, is tmux's model; no surveyed GUI terminal draws one as chrome outside the text area. Among the terminals that ship a look, cool-retro-term has neither tabs nor splits.
 
-**P6, tmux control mode.** iTerm2 is the reference and, on macOS, the only complete one. WezTerm ships control mode in nightlies (March 2025 onward) with an open ssh-latency bug and windows landing in the same tab row. Ghostty's #1935 is open at 731 reactions with a parser begun. Alacritty, kitty and Hyper declined; Tabby, Windows Terminal, Konsole and Zellij carry open requests. On Linux, the surveyed field offers one partial native implementation (WezTerm nightly), and none of the four that ship a look offers any.
+**P6, tmux control mode.** iTerm2 is the reference and, on macOS, the only complete one. WezTerm ships control mode in nightlies (March 2025 onward) with an open ssh-latency bug and windows landing in the same tab row. Ghostty's #1935 is open at 731 reactions with a parser begun. Alacritty, kitty and Hyper declined; Tabby, Windows Terminal, Konsole and Zellij carry open requests. On Linux, the surveyed field offers one partial native implementation (WezTerm nightly), and none of the terminals that ship a look offers any.
 
 **P7, survival.** tmux and Zellij (resurrection across reboot) are the reference; WezTerm's mux server and Contour's daemon are the independent mechanisms. No surveyed GUI terminal recovers a session's windows and screens from a tmux server after the terminal itself dies, without a daemon of its own, except through iTerm2's control mode on macOS.
 
@@ -75,12 +75,12 @@ How much of the surveyed category serves each pain, and how. The absences are st
 
 **P9, Linux fit.** The GTK4 terminals pay the desktop-consistency cost on KDE and Xfce; the Qt and Rust ones less. Wayland-only (foot) and X11-only (cool-retro-term) both draw complaints. cool-retro-term has had an open distro-packaging request since 2014.
 
-**P10, table stakes.** The incumbents (iTerm2, Konsole, GNOME Terminal) have them; new GPU terminals ship without scrollback search, scrollbars, or URL hints and add them later under complaint. Of the four that ship a look, only Windows Terminal has the full set.
+**P10, table stakes.** The incumbents (iTerm2, Konsole, GNOME Terminal) have them; new GPU terminals ship without scrollback search, scrollbars, or URL hints and add them later under complaint. Of the terminals that ship a look, only Windows Terminal has the full set.
 
-**P11, weight.** Native Rust, C and Zig terminals escape it; the Electron trio, Warp's AI and accounts, and iTerm2's memory and AI features carry it. Two of the four that ship a look are the heavy ones (Qt with 121 dependencies, Electron).
+**P11, weight.** Native Rust, C and Zig terminals escape it; the Electron trio, Warp's AI and accounts, and iTerm2's memory and AI features carry it. cool-retro-term (Qt, 121 dependencies) and Hyper (Electron) are the heavy ones among the terminals that ship a look.
 
 ## What the pairing costs the field
 
-The four products that ship a look are weak on exactly the functional pains, and the strong functional terminals ship no look. cool-retro-term has no tabs, no splits, an open X11-only complaint and an unbearable-latency reputation. Hyper is Electron and last released in July 2024. Windows Terminal is functional and Windows-only. Nothing in the surveyed set is both.
+The products that ship a look are weak on exactly the functional pains, and the strong functional terminals ship no look. cool-retro-term has no tabs, no splits, an open X11-only complaint and an unbearable-latency reputation. Hyper is Electron and last released in July 2024. Windows Terminal is functional and Windows-only. Nothing in the surveyed set is both.
 
 No surveyed product is built on a hardware metaphor beyond the glass. The CRT effect in every one of them is a flat post-process over the text area; none maps the pointer back through the curvature, draws a cabinet, or degausses on a switch.

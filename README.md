@@ -106,7 +106,7 @@ $ git clone https://github.com/overseers-desk/RobCo-Terminal
 $ cd RobCo-Terminal
 ```
 
-Each of the three commands below builds a release binary first if you have
+Each install command below builds a release binary first if you have
 not already, which is the slow part on a cold checkout. Each then runs the
 copy it just installed in a scrubbed environment and checks it starts, so a
 command that prints a path has already proved that path works.
@@ -123,7 +123,7 @@ installed robco-term 0.1.0 to /home/you/.local
   checked: robco-term 0.1.0 runs from the prefix with a clean HOME
 ```
 
-Three files, and that is the whole installation. Fonts, shaders, presets and
+Binary, desktop entry and icon: that is the whole installation. Fonts, shaders, presets and
 the noise texture are compiled in, and the binary unpacks its shader preset
 under `~/.cache` at startup and runs from wherever you put it. `--destdir`
 stages under another root if you are packaging. The command warns you if the
