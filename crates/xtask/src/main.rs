@@ -127,6 +127,12 @@ enum Command {
         /// Package this binary instead of building a fresh release one.
         #[arg(long)]
         binary: Option<PathBuf>,
+        /// The robco-settings single-file image to install as
+        /// `bin/robco-settings`, built by
+        /// `settings/zipfs/build-selfcontained.sh`. Omit for a developer
+        /// install with no settings window.
+        #[arg(long)]
+        settings_binary: Option<PathBuf>,
     },
     /// Build a versioned `tar.gz` of the install layout. The version is read
     /// from the workspace manifest; nothing is bumped and nothing is
@@ -138,6 +144,12 @@ enum Command {
         /// Package this binary instead of building a fresh release one.
         #[arg(long)]
         binary: Option<PathBuf>,
+        /// The robco-settings single-file image to install as
+        /// `bin/robco-settings`, built by
+        /// `settings/zipfs/build-selfcontained.sh`. Required: an official
+        /// dist tarball always carries the settings window.
+        #[arg(long)]
+        settings_binary: Option<PathBuf>,
     },
     /// Build a binary `.deb` from the install layout, without root.
     Deb {
@@ -147,6 +159,12 @@ enum Command {
         /// Package this binary instead of building a fresh release one.
         #[arg(long)]
         binary: Option<PathBuf>,
+        /// The robco-settings single-file image to install as
+        /// `bin/robco-settings`, built by
+        /// `settings/zipfs/build-selfcontained.sh`. Required: an official
+        /// `.deb` always carries the settings window.
+        #[arg(long)]
+        settings_binary: Option<PathBuf>,
     },
 }
 
@@ -219,12 +237,30 @@ fn main() -> anyhow::Result<()> {
             prefix,
             destdir,
             binary,
+            settings_binary,
         } => install::install(install::InstallArgs {
             prefix,
             destdir,
             binary,
+            settings_binary,
         }),
-        Command::Dist { out_dir, binary } => install::dist(install::DistArgs { out_dir, binary }),
-        Command::Deb { out_dir, binary } => install::deb(install::DebArgs { out_dir, binary }),
+        Command::Dist {
+            out_dir,
+            binary,
+            settings_binary,
+        } => install::dist(install::DistArgs {
+            out_dir,
+            binary,
+            settings_binary,
+        }),
+        Command::Deb {
+            out_dir,
+            binary,
+            settings_binary,
+        } => install::deb(install::DebArgs {
+            out_dir,
+            binary,
+            settings_binary,
+        }),
     }
 }

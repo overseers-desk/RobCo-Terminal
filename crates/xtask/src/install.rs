@@ -9,13 +9,22 @@
 //!
 //! # What is embedded and what is installed
 //!
-//! **Installed**: the entire on-disk footprint, three files:
+//! **Installed**: the entire on-disk footprint, three files plus one more
+//! when a settings binary is supplied:
 //!
 //! | Path under the prefix | What it is |
 //! |---|---|
 //! | `bin/robco-term` | the binary |
 //! | `share/applications/robco-term.desktop` | the desktop entry, `packaging/robco-term.desktop` verbatim |
 //! | `share/icons/hicolor/256x256/apps/robco-term.png` | the icon, `packaging/icons/robco-term.png` verbatim |
+//! | `bin/robco-settings` | the settings window, when `--settings-binary` names one |
+//!
+//! `robco-settings` is not built by this workspace's own `cargo build`: it is
+//! a Tcl/Tk application packaged separately by
+//! `settings/zipfs/build-selfcontained.sh`, and the resulting single-file
+//! image is what `--settings-binary` names. `install` accepts running
+//! without one (a developer install, GUI-less); `dist` and `deb`, which are
+//! what a user downloads, refuse to produce a package that lacks it.
 //!
 //! **Embedded**: compiled into the binary, so none of it is installed, none
 //! of it is looked up at run time, and the binary does not care where it sits
@@ -98,6 +107,13 @@ const WORKSPACE_MANIFEST: &str = include_str!("../../../Cargo.toml");
 /// presents and the Debian package's name. One string, per `app::identity`.
 pub const NAME: &str = "robco-term";
 
+/// The settings window's basename, installed as `bin/robco-settings`
+/// alongside `bin/robco-term` when a `--settings-binary` is supplied. It is
+/// the launcher name the Tcl/Tk app carries (`settings/robco-settings`), and
+/// the name `settings/zipfs/build-selfcontained.sh`'s image reports for
+/// `--version`.
+pub const SETTINGS_NAME: &str = "robco-settings";
+
 /// The product's version, from `[workspace.package]` in the workspace
 /// manifest. Read, never written: bumping it is a release decision that
 /// happens in the manifest, and packaging only ever stamps what it finds.
@@ -126,9 +142,11 @@ fn artifact_stem(version: &str) -> String {
 /// `<destdir><prefix>`. Answers the installed paths, in the order written.
 ///
 /// This is the whole definition of "an installation": one executable and two
-/// XDG data files. Everything else the app needs is inside the executable
-/// (see the module doc).
-fn lay_out(root: &Path, binary: &Path) -> Result<Vec<PathBuf>> {
+/// XDG data files, plus `bin/robco-settings` when `settings_binary` is given.
+/// Everything else `robco-term` needs is inside its executable (see the
+/// module doc); `robco-settings` is a separate Tcl/Tk image and is only
+/// copied into place, never built here.
+fn lay_out(root: &Path, binary: &Path, settings_binary: Option<&Path>) -> Result<Vec<PathBuf>> {
     let mut written = Vec::new();
 
     let bin_dir = root.join("bin");
@@ -163,6 +181,21 @@ fn lay_out(root: &Path, binary: &Path) -> Result<Vec<PathBuf>> {
         std::fs::write(&icon, bytes).with_context(|| format!("writing {}", icon.display()))?;
         set_mode(&icon, 0o644)?;
         written.push(icon);
+    }
+
+    if let Some(settings_binary) = settings_binary {
+        let installed_settings = bin_dir.join(SETTINGS_NAME);
+        // Same ETXTBSY reasoning as the main binary above.
+        let _ = std::fs::remove_file(&installed_settings);
+        std::fs::copy(settings_binary, &installed_settings).with_context(|| {
+            format!(
+                "copying {} to {}",
+                settings_binary.display(),
+                installed_settings.display()
+            )
+        })?;
+        set_mode(&installed_settings, 0o755)?;
+        written.push(installed_settings);
     }
 
     Ok(written)
@@ -343,6 +376,7 @@ pub struct InstallArgs {
     pub prefix: PathBuf,
     pub destdir: Option<PathBuf>,
     pub binary: Option<PathBuf>,
+    pub settings_binary: Option<PathBuf>,
 }
 
 pub fn install(args: InstallArgs) -> Result<()> {
@@ -350,7 +384,13 @@ pub fn install(args: InstallArgs) -> Result<()> {
     let binary = resolve_binary(args.binary)?;
     let root = staged_root(&args.prefix, args.destdir.as_deref());
 
-    let written = lay_out(&root, &binary)?;
+    if args.settings_binary.is_none() {
+        println!(
+            "note: no --settings-binary given; installing {NAME} without {SETTINGS_NAME} (the settings window). Build one with settings/zipfs/build-selfcontained.sh and re-run with --settings-binary <path> to include it."
+        );
+    }
+
+    let written = lay_out(&root, &binary, args.settings_binary.as_deref())?;
     println!("installed {} {version} to {}", NAME, root.display());
     for path in &written {
         println!("  {}", path.display());
@@ -387,6 +427,7 @@ fn staged_root(prefix: &Path, destdir: Option<&Path>) -> PathBuf {
 pub struct DistArgs {
     pub out_dir: PathBuf,
     pub binary: Option<PathBuf>,
+    pub settings_binary: Option<PathBuf>,
 }
 
 /// `xtask dist`: the install layout, rolled into a versioned `tar.gz`.
@@ -395,7 +436,17 @@ pub struct DistArgs {
 /// unpacks into one named directory rather than over the current one, and its
 /// contents are exactly what `install` writes: relocatable, because the
 /// module doc's embedded/installed split leaves nothing to relocate.
+///
+/// `--settings-binary` is required here, not optional as it is for `install`:
+/// this is what a user downloads, and an official package with no settings
+/// window is a bug, not a smaller install.
 pub fn dist(args: DistArgs) -> Result<()> {
+    let Some(settings_binary) = args.settings_binary else {
+        bail!(
+            "official {NAME} packages always carry {SETTINGS_NAME}; pass --settings-binary <path>. Build one with settings/zipfs/build-selfcontained.sh."
+        );
+    };
+
     let version = version()?;
     let mtime = released_commit_timestamp()?;
     let binary = resolve_binary(args.binary)?;
@@ -406,7 +457,7 @@ pub fn dist(args: DistArgs) -> Result<()> {
         .tempdir()
         .context("creating the dist staging directory")?;
     let root = staging.path().join(&stem);
-    lay_out(&root, &binary)?;
+    lay_out(&root, &binary, Some(&settings_binary))?;
     check_installed(&root.join("bin").join(NAME), &version)?;
 
     let tarball = archive(staging.path(), &stem, &args.out_dir, mtime)?;
@@ -461,6 +512,7 @@ fn archive(staging: &Path, stem: &str, out_dir: &Path, mtime: i64) -> Result<Pat
 pub struct DebArgs {
     pub out_dir: PathBuf,
     pub binary: Option<PathBuf>,
+    pub settings_binary: Option<PathBuf>,
 }
 
 /// `xtask deb`: a binary Debian package, built without root.
@@ -488,6 +540,13 @@ pub fn deb(args: DebArgs) -> Result<()> {
             bail!("`{tool}` is not on PATH; `xtask deb` needs dpkg-dev and dpkg");
         }
     }
+    // Same requirement as `dist`, for the same reason: this is a package a
+    // user installs, not a developer's local build.
+    let Some(settings_binary) = args.settings_binary else {
+        bail!(
+            "official {NAME} packages always carry {SETTINGS_NAME}; pass --settings-binary <path>. Build one with settings/zipfs/build-selfcontained.sh."
+        );
+    };
 
     let version = version()?;
     let binary = resolve_binary(args.binary)?;
@@ -510,14 +569,15 @@ pub fn deb(args: DebArgs) -> Result<()> {
     .context("writing the scratch debian/control")?;
 
     let package_root = debian.join(NAME);
-    let written = lay_out(&package_root.join("usr"), &binary)?;
+    let written = lay_out(&package_root.join("usr"), &binary, Some(&settings_binary))?;
     let installed_binary = package_root.join("usr/bin").join(NAME);
     check_installed(&installed_binary, &version)?;
 
     let depends = shlibdeps(scratch.path(), &installed_binary)?;
 
     // Installed-Size is in KiB, and is the size of the installed files, which
-    // for this package is the binary plus two small data files.
+    // for this package is robco-term plus two small data files plus the
+    // robco-settings image.
     let installed_size: u64 = written
         .iter()
         .filter_map(|path| std::fs::metadata(path).ok())
@@ -639,8 +699,9 @@ mod tests {
         );
     }
 
-    /// The layout is the XDG one, and it is exactly three files: a change to
-    /// either is a packaging decision, not an accident.
+    /// The layout is the XDG one, and it is exactly three files with no
+    /// settings binary given: a change to either is a packaging decision,
+    /// not an accident.
     #[test]
     fn lay_out_writes_the_xdg_file_set() {
         let root = tempfile::tempdir().unwrap();
@@ -648,7 +709,7 @@ mod tests {
         std::fs::write(&fake_binary, b"#!/bin/true\n").unwrap();
 
         let prefix = root.path().join("prefix");
-        let written = lay_out(&prefix, &fake_binary).unwrap();
+        let written = lay_out(&prefix, &fake_binary, None).unwrap();
 
         let relative: Vec<String> = written
             .iter()
@@ -667,8 +728,40 @@ mod tests {
         }
     }
 
+    /// Given a settings binary, it lands as a fourth file, `bin/robco-settings`,
+    /// appended after the three XDG files rather than displacing any of them.
+    #[test]
+    fn lay_out_adds_the_settings_binary_when_given() {
+        let root = tempfile::tempdir().unwrap();
+        let fake_binary = root.path().join("fake-binary");
+        std::fs::write(&fake_binary, b"#!/bin/true\n").unwrap();
+        let fake_settings = root.path().join("fake-settings");
+        std::fs::write(&fake_settings, b"#!/bin/true\n").unwrap();
+
+        let prefix = root.path().join("prefix");
+        let written = lay_out(&prefix, &fake_binary, Some(&fake_settings)).unwrap();
+
+        let relative: Vec<String> = written
+            .iter()
+            .map(|p| p.strip_prefix(&prefix).unwrap().display().to_string())
+            .collect();
+        assert_eq!(
+            relative,
+            vec![
+                "bin/robco-term".to_string(),
+                "share/applications/robco-term.desktop".to_string(),
+                "share/icons/hicolor/256x256/apps/robco-term.png".to_string(),
+                "bin/robco-settings".to_string(),
+            ]
+        );
+        for path in &written {
+            assert!(path.is_file(), "{} was not written", path.display());
+        }
+    }
+
     /// The binary is installed executable and the data files are not: a
     /// desktop entry with the execute bit set is a lint failure downstream.
+    /// The settings binary, when given, is executable too.
     #[cfg(unix)]
     #[test]
     fn lay_out_sets_the_modes_a_package_needs() {
@@ -676,12 +769,15 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let fake_binary = root.path().join("fake-binary");
         std::fs::write(&fake_binary, b"#!/bin/true\n").unwrap();
+        let fake_settings = root.path().join("fake-settings");
+        std::fs::write(&fake_settings, b"#!/bin/true\n").unwrap();
         let prefix = root.path().join("prefix");
-        let written = lay_out(&prefix, &fake_binary).unwrap();
+        let written = lay_out(&prefix, &fake_binary, Some(&fake_settings)).unwrap();
 
         let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&written[0]), 0o755, "the binary");
-        for data in &written[1..] {
+        assert_eq!(mode(&written[3]), 0o755, "the settings binary");
+        for data in &written[1..3] {
             assert_eq!(mode(data), 0o644, "{}", data.display());
         }
     }
@@ -805,7 +901,7 @@ mod tests {
         let fixed_mtime = 1_700_000_000;
 
         let staging_a = root.path().join("staging-a");
-        lay_out(&staging_a.join(stem), &fake_binary).unwrap();
+        lay_out(&staging_a.join(stem), &fake_binary, None).unwrap();
         let out_a = root.path().join("out-a");
         let tarball_a = archive(&staging_a, stem, &out_a, fixed_mtime).unwrap();
 
@@ -817,7 +913,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(1100));
 
         let staging_b = root.path().join("staging-b");
-        lay_out(&staging_b.join(stem), &fake_binary).unwrap();
+        lay_out(&staging_b.join(stem), &fake_binary, None).unwrap();
         let out_b = root.path().join("out-b");
         let tarball_b = archive(&staging_b, stem, &out_b, fixed_mtime).unwrap();
 
