@@ -5,9 +5,9 @@
 //! running one and exits 0. If no primary answers, it warns and runs
 //! standalone.
 //!
-//! ## Mechanism
+//! ## Mechanism, per platform
 //!
-//! A **Unix domain socket in `$XDG_RUNTIME_DIR`, guarded by an `flock`ed
+//! On Unix, a **domain socket in `$XDG_RUNTIME_DIR`, guarded by an `flock`ed
 //! lock file next to it**. That is the mechanism the XDG base-directory spec
 //! exists to serve: the directory is per-user, mode 0700, and cleared at
 //! logout, so a stale socket cannot outlive the session that made it. D-Bus
@@ -41,11 +41,22 @@
 //! then `/tmp`) and carries the uid, so two users on one machine, and two
 //! scratch runs under different `XDG_RUNTIME_DIR`s, never collide --
 //! contract item 5.
+//!
+//! On Windows the arbitration arm is unbuilt: `acquire` says so on stderr
+//! and answers [`Role::Independent`], so every launch is its own window.
+//! The intended mechanism there is the same shape under the platform's own
+//! names, a named pipe guarded by a named mutex.
 
+#[cfg(unix)]
 use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::time::Duration;
 
 /// The request a second launch sends to the running one.
@@ -107,6 +118,7 @@ pub enum Role {
 
 /// The primary instance's server side. Dropping it releases the lock and
 /// removes the socket.
+#[cfg(unix)]
 pub struct Primary {
     listener: Option<UnixListener>,
     socket_path: PathBuf,
@@ -116,6 +128,7 @@ pub struct Primary {
 
 /// Where this identity's runtime files live: `$XDG_RUNTIME_DIR`, else
 /// `$TMPDIR`, else `/tmp`.
+#[cfg(unix)]
 fn runtime_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
         return PathBuf::from(dir);
@@ -127,6 +140,7 @@ fn runtime_dir() -> PathBuf {
 }
 
 /// The socket and lock paths for an identity (the binary's basename).
+#[cfg(unix)]
 pub fn paths(identity: &str) -> (PathBuf, PathBuf) {
     let dir = runtime_dir();
     let uid = unsafe { libc::getuid() };
@@ -141,6 +155,7 @@ pub fn paths(identity: &str) -> (PathBuf, PathBuf) {
 /// Never fails the process: every error path degrades to
 /// [`Role::Independent`], because a terminal that will not start because
 /// its runtime directory is odd is worse than one that starts twice.
+#[cfg(unix)]
 pub fn acquire(identity: &str, message: NewWindow) -> Role {
     let (socket_path, lock_path) = paths(identity);
 
@@ -202,11 +217,13 @@ pub fn acquire(identity: &str, message: NewWindow) -> Role {
 
 /// 0600 on the socket: nothing outside this uid opens windows in our
 /// process. (`$XDG_RUNTIME_DIR` is already 0700, but `$TMPDIR` may not be.)
+#[cfg(unix)]
 fn restrict(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
 }
 
+#[cfg(unix)]
 impl Primary {
     /// The socket this instance is listening on.
     pub fn socket_path(&self) -> &Path {
@@ -247,6 +264,7 @@ impl Primary {
 /// Reads one request line and acknowledges it. The ack is written *before*
 /// the handler runs on the main thread: it means "taken", not "window is
 /// up".
+#[cfg(unix)]
 fn read_request(stream: UnixStream) -> Option<NewWindow> {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let mut reader = BufReader::new(stream);
@@ -262,6 +280,7 @@ fn read_request(stream: UnixStream) -> Option<NewWindow> {
 }
 
 /// Client side: hand `message` to whoever is listening on `socket_path`.
+#[cfg(unix)]
 fn send(socket_path: &Path, message: NewWindow) -> std::io::Result<()> {
     let mut stream = UnixStream::connect(socket_path)?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
@@ -283,6 +302,37 @@ fn send(socket_path: &Path, message: NewWindow) -> std::io::Result<()> {
     }
 }
 
+/// The unbuilt arbitration arm: say so and run independent, the same
+/// never-fail-the-process contract the Unix arm's error paths keep.
+#[cfg(not(unix))]
+pub fn acquire(_identity: &str, _message: NewWindow) -> Role {
+    eprintln!(
+        "single-instance: arbitration is not built on this platform; \
+         running as an independent instance."
+    );
+    Role::Independent
+}
+
+/// The type [`Role::Primary`] names, kept so callers stay platform-blind.
+/// Nothing constructs it on this platform until the named-pipe arm is
+/// built, so its methods are inert.
+#[cfg(not(unix))]
+pub struct Primary {}
+
+#[cfg(not(unix))]
+impl Primary {
+    pub fn socket_path(&self) -> &Path {
+        Path::new("")
+    }
+
+    pub fn serve<F>(&mut self, _handler: F)
+    where
+        F: Fn(NewWindow) + Send + 'static,
+    {
+    }
+}
+
+#[cfg(unix)]
 impl Drop for Primary {
     fn drop(&mut self) {
         // Order matters: unlink the socket while still holding the lock,
@@ -297,6 +347,34 @@ impl Drop for Primary {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn wire_format_round_trips() {
+        assert_eq!(NewWindow::default().encode(), "new-window");
+        assert_eq!(
+            NewWindow { fullscreen: true, ssh: None }.encode(),
+            "new-window --fullscreen"
+        );
+        assert_eq!(
+            NewWindow::decode("new-window --fullscreen\n"),
+            Some(NewWindow { fullscreen: true, ssh: None })
+        );
+        assert_eq!(
+            NewWindow::decode("new-window\n"),
+            Some(NewWindow::default())
+        );
+        // An empty message is a new-window request too.
+        assert_eq!(NewWindow::decode(""), Some(NewWindow::default()));
+        let dialled = NewWindow { fullscreen: true, ssh: Some("overseer@vault:2222".into()) };
+        assert_eq!(dialled.encode(), "new-window --fullscreen --ssh overseer@vault:2222");
+        assert_eq!(NewWindow::decode(&dialled.encode()), Some(dialled));
+        assert_eq!(NewWindow::decode("degauss"), None);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unix_tests {
     use super::*;
     use std::sync::mpsc;
 
@@ -330,29 +408,6 @@ mod tests {
             let _ = std::fs::remove_dir_all(&self.0);
             self.1.take();
         }
-    }
-
-    #[test]
-    fn wire_format_round_trips() {
-        assert_eq!(NewWindow::default().encode(), "new-window");
-        assert_eq!(
-            NewWindow { fullscreen: true, ssh: None }.encode(),
-            "new-window --fullscreen"
-        );
-        assert_eq!(
-            NewWindow::decode("new-window --fullscreen\n"),
-            Some(NewWindow { fullscreen: true, ssh: None })
-        );
-        assert_eq!(
-            NewWindow::decode("new-window\n"),
-            Some(NewWindow::default())
-        );
-        // An empty message is a new-window request too.
-        assert_eq!(NewWindow::decode(""), Some(NewWindow::default()));
-        let dialled = NewWindow { fullscreen: true, ssh: Some("overseer@vault:2222".into()) };
-        assert_eq!(dialled.encode(), "new-window --fullscreen --ssh overseer@vault:2222");
-        assert_eq!(NewWindow::decode(&dialled.encode()), Some(dialled));
-        assert_eq!(NewWindow::decode("degauss"), None);
     }
 
     /// The whole done-test in miniature, without a display: a first

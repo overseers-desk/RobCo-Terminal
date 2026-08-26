@@ -29,15 +29,25 @@
 //! `backtrace`/`backtrace_symbols_fd` are glibc's; on a non-glibc Unix the
 //! handler still writes the signal line and re-raises, which is the part
 //! that matters for "did it die, and of what".
+//!
+//! The whole handler is the Unix arm. On Windows `install` arms nothing
+//! and answers `None`, which the caller's verbose path reports as "crash
+//! log not armed"; the arm to build there is a structured-exception
+//! filter (`SetUnhandledExceptionFilter`) under the same discipline.
 
+#[cfg(unix)]
 use std::ffi::c_void;
 use std::path::Path;
+#[cfg(unix)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(unix)]
 const PATH_MAX: usize = 4096;
+#[cfg(unix)]
 const MAX_FRAMES: usize = 64;
 
 /// The fatal signals this logger arms, in the order they are installed.
+#[cfg(unix)]
 const FATAL_SIGNALS: [libc::c_int; 5] = [
     libc::SIGSEGV,
     libc::SIGABRT,
@@ -49,21 +59,23 @@ const FATAL_SIGNALS: [libc::c_int; 5] = [
 /// The precomputed, NUL-terminated log path. Written once by `install()`
 /// before any handler is armed, read-only afterwards, which is what makes
 /// the handler's access to it sound.
+#[cfg(unix)]
 static mut LOG_PATH: [u8; PATH_MAX] = [0; PATH_MAX];
+#[cfg(unix)]
 static ARMED: AtomicBool = AtomicBool::new(false);
 
-#[cfg(target_env = "gnu")]
+#[cfg(all(unix, target_env = "gnu"))]
 extern "C" {
     fn backtrace(buffer: *mut *mut c_void, size: libc::c_int) -> libc::c_int;
     fn backtrace_symbols_fd(buffer: *const *mut c_void, size: libc::c_int, fd: libc::c_int);
 }
 
-#[cfg(not(target_env = "gnu"))]
+#[cfg(all(unix, not(target_env = "gnu")))]
 unsafe fn backtrace(_buffer: *mut *mut c_void, _size: libc::c_int) -> libc::c_int {
     0
 }
 
-#[cfg(not(target_env = "gnu"))]
+#[cfg(all(unix, not(target_env = "gnu")))]
 unsafe fn backtrace_symbols_fd(_buffer: *const *mut c_void, _size: libc::c_int, _fd: libc::c_int) {}
 
 /// `write(2)` until the whole NUL-terminated string is out or the fd
@@ -72,6 +84,7 @@ unsafe fn backtrace_symbols_fd(_buffer: *const *mut c_void, _size: libc::c_int, 
 /// # Safety
 /// `text` must point at a NUL-terminated buffer that stays valid for the
 /// call.
+#[cfg(unix)]
 unsafe fn write_all(fd: libc::c_int, text: *const u8) {
     let mut at = text;
     let mut remaining = libc::strlen(text as *const libc::c_char);
@@ -87,6 +100,7 @@ unsafe fn write_all(fd: libc::c_int, text: *const u8) {
 
 /// The handler. Everything in here is async-signal-safe; see the module
 /// comment for why that constrains it so hard.
+#[cfg(unix)]
 extern "C" fn handle_fatal_signal(signal_number: libc::c_int) {
     unsafe {
         let mut frames: [*mut c_void; MAX_FRAMES] = [std::ptr::null_mut(); MAX_FRAMES];
@@ -155,6 +169,7 @@ pub fn log_path_in(directory: &Path) -> std::path::PathBuf {
 /// the fixed buffer). Never fails the process: a terminal that will not
 /// start because it could not arm its crash logger is a worse outcome
 /// than one that starts without it.
+#[cfg(unix)]
 pub fn install(directory: &Path) -> Option<std::path::PathBuf> {
     if ARMED.swap(true, Ordering::SeqCst) {
         return None;
@@ -189,6 +204,13 @@ pub fn install(directory: &Path) -> Option<std::path::PathBuf> {
     Some(path)
 }
 
+/// The unbuilt arm: arms nothing and says so through the `None` the
+/// caller already reports. See the module doc for what belongs here.
+#[cfg(not(unix))]
+pub fn install(_directory: &Path) -> Option<std::path::PathBuf> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +231,7 @@ mod tests {
     /// and must be idempotent (a second install is a no-op, so a
     /// multi-window app cannot re-arm and re-warm mid-flight).
     #[test]
+    #[cfg(unix)]
     fn install_creates_the_directory_and_arms_once() {
         let dir = std::env::temp_dir().join(format!("robco-crashlog-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
