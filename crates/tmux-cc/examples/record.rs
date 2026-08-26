@@ -17,14 +17,19 @@
 //! Everything each phase does is stated in `tests/transcripts/README.md`, which
 //! this program also writes, so the fixtures cannot outlive their description.
 
+#[cfg(unix)]
 #[path = "../tests/suite/support/mod.rs"]
 mod support;
 
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
 use support::{Gateway, Server, TMUX};
+#[cfg(unix)]
 use tmux_cc::{Command, PaneId, WindowId};
 
+#[cfg(unix)]
 fn main() {
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/transcripts");
     std::fs::create_dir_all(&out).expect("transcripts dir");
@@ -52,6 +57,7 @@ fn main() {
     println!("done");
 }
 
+#[cfg(unix)]
 fn write(out: &Path, name: &str, gateway: &Gateway) {
     let transcript = out.join(format!("{name}.txt"));
     std::fs::write(&transcript, gateway.transcript()).expect("write transcript");
@@ -72,6 +78,7 @@ fn write(out: &Path, name: &str, gateway: &Gateway) {
 }
 
 /// Attach to a one-window session and run the standard attach bootstrap.
+#[cfg(unix)]
 fn fresh_session(out: &Path) {
     let server = Server::start("fresh", "one", "/bin/cat");
     let mut gateway = server.attach("one");
@@ -92,6 +99,7 @@ fn fresh_session(out: &Path) {
 }
 
 /// Ask tmux for a window and hear it arrive.
+#[cfg(unix)]
 fn second_window(out: &Path) {
     let server = Server::start("second", "one", "/bin/cat");
     let mut gateway = server.attach("one");
@@ -115,6 +123,7 @@ fn second_window(out: &Path) {
 /// spaces (which re-joining split fields would collapse), a backslash, control
 /// bytes, valid UTF-8, and bytes that are not UTF-8 at all. This is the
 /// evidence behind `escape::unvis`.
+#[cfg(unix)]
 fn rename(out: &Path) {
     let server = Server::start("rename", "one", "/bin/cat");
     server.run(&["new-window", "-t", "one", "-d", "/bin/cat"]);
@@ -147,6 +156,7 @@ fn rename(out: &Path) {
 ///
 /// The pane runs `stty raw -echo` first, or the line discipline mangles what
 /// `cat` is about to write and the fixture measures the tty rather than tmux.
+#[cfg(unix)]
 fn output_octal(out: &Path) {
     let server = Server::start("octal", "one", "/bin/sh");
     // A fixed path, not one under the server's per-run scratch: the `cat`
@@ -188,6 +198,7 @@ fn output_octal(out: &Path) {
 
 /// Close a background window from the server and the current one through the
 /// codec.
+#[cfg(unix)]
 fn kill_window(out: &Path) {
     let server = Server::start("kill", "one", "/bin/cat");
     server.run(&["new-window", "-t", "one", "-d", "/bin/cat"]);
@@ -207,6 +218,7 @@ fn kill_window(out: &Path) {
 }
 
 /// The other detach: the server throws this client off.
+#[cfg(unix)]
 fn detach_from_the_server(out: &Path) {
     let server = Server::start("detach", "one", "/bin/cat");
     let mut gateway = server.attach("one");
@@ -228,6 +240,7 @@ fn detach_from_the_server(out: &Path) {
 /// tmux announces no `%window-add` for a window that already existed, so a
 /// client that learns its windows only from notifications comes up with an
 /// empty bank. The listing is the only source of truth on attach.
+#[cfg(unix)]
 fn reattach_after_kill(out: &Path) {
     let server = Server::start("reattach", "one", "/bin/cat");
     let mut first = server.attach("one");
@@ -252,6 +265,7 @@ fn reattach_after_kill(out: &Path) {
 }
 
 /// A command that fails, and the `%output` form the pause-after flag turns on.
+#[cfg(unix)]
 fn error_and_extended_output(out: &Path) {
     let server = Server::start("extended", "one", "/bin/cat");
     let mut gateway = server.attach("one");
@@ -275,6 +289,7 @@ fn error_and_extended_output(out: &Path) {
 }
 
 /// tmux's own lexer, probed. The evidence behind `command::quote_format`.
+#[cfg(unix)]
 fn quoting(out: &Path) {
     let server = Server::start("quoting", "one", "/bin/cat");
     server.run(&["set-environment", "-g", "MYVAR", "expanded"]);
@@ -301,6 +316,7 @@ fn quoting(out: &Path) {
 
 /// As many notification names as one session can be made to produce, so the
 /// decoder's breadth is evidence rather than a reading of the manual.
+#[cfg(unix)]
 fn notification_zoo(out: &Path) {
     let server = Server::start("zoo", "one", "/bin/cat");
     let mut gateway = server.attach("one");
@@ -366,6 +382,7 @@ fn notification_zoo(out: &Path) {
 
 /// What a client learns about the server it is attached to: the identity
 /// line, the session listing, and what a session appearing sounds like.
+#[cfg(unix)]
 fn sessions(out: &Path) {
     let server = Server::start("sessions", "one", "/bin/cat");
     server.run(&["new-session", "-d", "-s", "two", "/bin/cat"]);
@@ -388,6 +405,7 @@ fn sessions(out: &Path) {
     write(out, "11-sessions", &gateway);
 }
 
+#[cfg(unix)]
 fn readme(version: &str) -> String {
     format!(
         "# Recorded tmux control-mode transcripts\n\
@@ -416,4 +434,11 @@ fn readme(version: &str) -> String {
          | `10-notification-zoo` | As many notification names as one session can be made to emit: `%sessions-changed`, `%unlinked-window-add`, `%session-renamed`, the paste-buffer pair, `%message` (inside a reply block, which the manual says cannot happen), `%layout-change`, `%window-pane-changed`, `%pane-mode-changed`, `%client-session-changed`, and `%exit` under a dying server. |\n\
          | `11-sessions` | What a client learns about the server it attached to: the identity line (`#{{socket_path}} #{{pid}} #{{session_id}} #{{host_short}}`), `list-sessions` over two sessions, a third session created from the other hand (`%sessions-changed`, which names nothing and may repeat), and the re-listing that finds the third. The socket path in the identity line carries the recording run's pid, so that one field moves under a re-record. |\n"
     )
+}
+
+/// The recorder drives a real tmux, which does not run on this platform;
+/// the transcripts it writes are recorded on Unix and replayed everywhere.
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("record: tmux runs on no Windows; record transcripts on a Unix box");
 }
