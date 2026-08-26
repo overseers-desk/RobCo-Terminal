@@ -254,6 +254,36 @@ test val-7.1 {a literal string parses, types and unquotes without escapes} -body
         [string equal [::rcsettings::toml::plain $raw] {"Atari800"}]
 } -result {1 string 1}
 
+test guard-10.1 {the fixtures sit inside the surgeon's subset} -body {
+    list [::rcsettings::toml::unsafe $::fixture] \
+        [::rcsettings::toml::unsafe $::sshfixture] \
+        [::rcsettings::toml::unsafe ""]
+} -result {{} {} {}}
+
+test guard-10.2 {a multiline string is named, with its line} -body {
+    # The construct that motivates the guard: the string's body holds a
+    # line shaped like a header, and an unguarded set_key would edit
+    # inside the string instead of the real table.
+    ::rcsettings::toml::unsafe \
+        "\[general\]\nbanner = \"\"\"\nwelcome\n\[screen\]\n\"\"\"\n"
+} -result {line 2 holds a multiline string delimiter}
+
+test guard-10.3 {a multiline literal string is refused too} -body {
+    ::rcsettings::toml::unsafe "\[general\]\nb = '''\nx\n'''\n"
+} -result {line 2 holds a multiline string delimiter}
+
+test guard-10.4 {a dotted key is refused} -body {
+    ::rcsettings::toml::unsafe "\[screen\]\nphysical.shape = \"round\"\n"
+} -result {line 2 holds the dotted key physical.shape}
+
+test guard-10.5 {an inline table is refused} -body {
+    ::rcsettings::toml::unsafe "\[extra\]\npoint = { x = 1, y = 2 }\n"
+} -result {line 2 holds an inline table}
+
+test guard-10.6 {a multiline array is refused} -body {
+    ::rcsettings::toml::unsafe "\[extra\]\nxs = \[\n1,\n2,\n\]\n"
+} -result {line 2 opens a multiline array}
+
 test io-6.3 {the write lands by rename in the config file's own directory} -setup {
     set path [file join [temporaryDirectory] rt2 config.toml]
 } -body {

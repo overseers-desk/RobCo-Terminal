@@ -13,6 +13,7 @@
 
 namespace eval ::rcsettings::toml {
     namespace export parse get_key set_key unset_key type_of format_value \
+        unsafe \
         read_file atomic_write array_spans set_array_key unset_array_key \
         append_array_row remove_array_row ensure_table
 
@@ -163,6 +164,39 @@ namespace eval ::rcsettings::toml {
             }
         }
         return [expr {$depth <= 0}]
+    }
+
+    # Whether the document sits inside the subset the line surgery
+    # understands: the answer is empty, or one line naming what falls
+    # outside. A construct beyond the subset can fool the span finder (a
+    # multiline string may hold a line shaped like a header, and an edit
+    # would then land inside the string), so a writer asks this first and
+    # refuses rather than guessing. Valid TOML the terminal accepts is
+    # deliberately refusable here: a refused edit costs the user a hand
+    # edit, a misplaced one costs them their file.
+    proc unsafe {text} {
+        lassign [lines $text] all trailing
+        set n 0
+        foreach line $all {
+            incr n
+            if {[string first {"""} $line] >= 0 \
+                    || [string first {'''} $line] >= 0} {
+                return "line $n holds a multiline string delimiter"
+            }
+            set key [key_of $line]
+            if {$key eq ""} { continue }
+            if {[string first . $key] >= 0} {
+                return "line $n holds the dotted key $key"
+            }
+            regexp {^\s*[A-Za-z0-9_.-]+\s*=\s*(.*)$} $line -> rest
+            if {[string index [string trim $rest] 0] eq "\{"} {
+                return "line $n holds an inline table"
+            }
+            if {![balanced $line]} {
+                return "line $n opens a multiline array"
+            }
+        }
+        return {}
     }
 
     # The raw value of table.key, or $fallback when absent.

@@ -103,6 +103,19 @@ namespace eval ::rcsettings::model {
         return $Text
     }
 
+    # What every mutating operation starts from: the file as it stands,
+    # refused whole when it carries TOML outside the surgeon's subset
+    # (toml.tcl's unsafe). Reading stays open to any file; only editing
+    # is gated, and the refusal names the line so the user can hand-edit.
+    proc edit_base {} {
+        set text [reload]
+        set what [::rcsettings::toml::unsafe $text]
+        if {$what ne ""} {
+            error "this file uses TOML the settings window cannot edit safely ($what); edit it by hand instead"
+        }
+        return $text
+    }
+
     proc parsed_tables {text} {
         return [dict get [::rcsettings::toml::parse $text] tables]
     }
@@ -196,7 +209,7 @@ namespace eval ::rcsettings::model {
         set type [::rcsettings::toml::type_of \
             [::rcsettings::dump::default $Dump $table $key]]
         set raw [::rcsettings::toml::format_value $type $value]
-        set text [reload]
+        set text [edit_base]
         if {[same_value $type $raw [base_raw $table $key]]} {
             set text [::rcsettings::toml::unset_key $text $table $key]
         } else {
@@ -208,7 +221,7 @@ namespace eval ::rcsettings::model {
     # Unpin a key, letting it fall back to its base. Note that its base is
     # the named preset's value, not necessarily the shipped default.
     proc reset {table key} {
-        set text [::rcsettings::toml::unset_key [reload] $table $key]
+        set text [::rcsettings::toml::unset_key [edit_base] $table $key]
         return [commit $text]
     }
 
@@ -218,7 +231,7 @@ namespace eval ::rcsettings::model {
     # belongs to someone else and is round-tripped.
     proc switch_preset {table presetname} {
         variable Dump
-        set text [reload]
+        set text [edit_base]
         foreach key [::rcsettings::dump::table_keys $Dump $table] {
             if {$key eq "name"} { continue }
             set text [::rcsettings::toml::unset_key $text $table $key]
@@ -232,7 +245,7 @@ namespace eval ::rcsettings::model {
     # gives it is unpinned instead, the edit being minimal either way.
     proc pin_overrides {table presetname} {
         variable Dump
-        set text [reload]
+        set text [edit_base]
         set old [preset_name $table]
         set plan {}
         foreach key [::rcsettings::dump::table_keys $Dump $table] {
@@ -338,7 +351,7 @@ namespace eval ::rcsettings::model {
     }
 
     proc set_ssh_default {value} {
-        return [commit [write_ssh_default [reload] $value]]
+        return [commit [write_ssh_default [edit_base] $value]]
     }
 
     # A new row is written with its `host` alone. Every other field is what
@@ -346,7 +359,7 @@ namespace eval ::rcsettings::model {
     # their default.
     proc add_ssh_host {} {
         variable SshRows
-        set text [::rcsettings::toml::append_array_row [reload] $SshRows \
+        set text [::rcsettings::toml::append_array_row [edit_base] $SshRows \
             [list host [::rcsettings::toml::format_value string ""]]]
         return [commit $text]
     }
@@ -357,7 +370,7 @@ namespace eval ::rcsettings::model {
     # moment another row took that name.
     proc remove_ssh_host {index} {
         variable SshRows
-        set text [reload]
+        set text [edit_base]
         set gone [lindex [hosts_in $text] $index]
         set text [::rcsettings::toml::remove_array_row $text $SshRows $index]
         set host [expr {$gone eq "" ? "" : [dict get $gone host]}]
@@ -375,7 +388,7 @@ namespace eval ::rcsettings::model {
     # the type `[ssh_host_defaults]` gives the key.
     proc set_ssh_host {index key value} {
         variable SshRows
-        set text [reload]
+        set text [edit_base]
         set rows [hosts_in $text]
         if {![string is integer -strict $index] || $index < 0
             || $index >= [llength $rows]} {

@@ -408,6 +408,23 @@ test ssh-14.1 {the file is re-read before an ssh write too} -setup {
         [lindex [::rcsettings::model::ssh_hosts] 1]
 } -result {20 {host relay user {} port 2200 key {}}}
 
+test guard-15.1 {an edit is refused whole on a file outside the subset} -setup {
+    with_config "\[general\]\nbanner = \"\"\"\nwelcome\n\[screen\]\n\"\"\"\n"
+} -body {
+    set code [catch {::rcsettings::model::set_value screen bloom 0.4} err]
+    # The refusal must leave the file's bytes exactly as they were: the
+    # guard exists so nothing lands inside the string's body.
+    list $code [string match "*cannot edit safely*" $err] \
+        [string equal [on_disk] \
+            "\[general\]\nbanner = \"\"\"\nwelcome\n\[screen\]\n\"\"\"\n"]
+} -result {1 1 1}
+
+test guard-15.2 {reading an unsafe file still works} -setup {
+    with_config "\[general\]\nfont_scaling = 1.5\npoint = { x = 1 }\n"
+} -body {
+    ::rcsettings::model::effective general font_scaling
+} -result 1.5
+
 test path-7.1 {the platform's default config path} -body {
     set saved [array get ::env XDG_CONFIG_HOME]
     set ::env(XDG_CONFIG_HOME) [file join / xdg]
