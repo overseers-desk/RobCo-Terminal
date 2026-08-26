@@ -70,13 +70,8 @@ the whole contract, including what it does not read (`~/.ssh/config`).
 **Linux, today.** X11 is what is wired and measured; on Wayland the window
 runs.
 
-**Windows compiles, and has not yet been run.** The stack was chosen for
-all three desktop markets (the terminal core speaks ConPTY, the GPU layer
-covers Metal and D3D from the same shader source), and the config paths
-are implemented throughout. The terminal cannot be cross-compiled from
-Linux, because its C++ dependency needs a native toolchain, so CI proves
-the Windows build on every push instead. Nobody has launched the binary
-on real Windows hardware yet: treat it as compiled, not shipped. macOS
+**Windows compiles, and has not yet been run.** Nobody has launched the
+binary on real Windows hardware: treat it as compiled, not shipped. macOS
 has not been attempted.
 
 You need a GPU the graphics layer can reach. It picks a backend on its own,
@@ -92,13 +87,11 @@ comes to 1265 by 730, and the first window opens no smaller.
 To build from source you need:
 
 - Rust 1.96.1 or newer (developed on 1.97.1),
-- a C++ compiler, for the terminal core's SIMD dependency; the SSH stack's
-  crypto (`ring`) uses the same C toolchain and links statically, adding no
-  requirement of its own.
+- a C++ compiler, for the terminal core's SIMD dependency.
 
-At run time the installed binary wants libstdc++. On Debian and Ubuntu the
-`.deb` below works the exact list out from the built binary and declares it
-itself, so you do not need to keep one.
+At run time the installed binary wants libstdc++; on Debian and Ubuntu the
+`.deb` below declares it for you. [BUILD.md](BUILD.md) holds the rest of
+the build and packaging detail.
 
 ## Installing
 
@@ -129,17 +122,16 @@ installed robco-term 0.1.0 to /home/you/.local
   checked: robco-term 0.1.0 runs from the prefix with a clean HOME
 ```
 
-Binary, desktop entry and icon: that is the whole installation. Fonts, shaders, presets and
-the noise texture are compiled in, and the binary unpacks its shader preset
-under `~/.cache` at startup and runs from wherever you put it. `--destdir`
-stages under another root if you are packaging. The command warns you if the
-prefix's `bin` is off your `PATH`, since the desktop entry launches by name.
+Binary, desktop entry and icon: that is the whole installation. Everything
+else lives inside the binary, which runs from wherever you put it. The
+command warns you if the prefix's `bin` is off your `PATH`, since the
+desktop entry launches by name.
 
 **As a tarball**, to move to another machine of the same architecture:
 
 ```console
 $ cargo run -p xtask -- dist --out-dir dist
-wrote dist/robco-term-0.1.0-linux-x86_64.tar.gz (32.5 MiB)
+wrote dist/robco-term-0.1.0-linux-x86_64.tar.gz (94.4 MiB)
 ```
 
 It unpacks into one directory holding the same three files. Unpack it
@@ -154,12 +146,9 @@ dpkg-deb: building package 'robco-term' in '../robco-term_0.1.0_amd64.deb'.
 
 Then `sudo dpkg -i ../robco-term_0.1.0_amd64.deb`; the artifacts land in the
 parent directory, which is dpkg-buildpackage's convention. It builds without
-root, the installed binary is stripped, and a `robco-term-dbgsym` package
-rides beside it carrying the symbols a crash log's frames resolve against.
-The settings window ships as Tcl sources running on the distribution's own
-`tcl9.0`/`tk9.0`, declared as dependencies; the C dependencies are read out
-of the binary rather than maintained by hand. One caveat worth stating:
-those versions are the ones on the machine that built the package, so a
+root, and a `robco-term-dbgsym` package rides beside it carrying the symbols
+a crash log's frames resolve against. One caveat worth stating: the
+dependency versions are the ones on the machine that built the package, so a
 package built on a newer distribution declares bounds an older one cannot
 satisfy. Build it where you will install it.
 
@@ -262,7 +251,8 @@ request to the one already running, which opens another window and exits.
 
 ## Status
 
-Version 0.1.0, unreleased. Channels and tmux control mode work against live
+Version 0.1.0, on the [releases page](https://github.com/overseers-desk/RobCo-Terminal/releases).
+Channels and tmux control mode work against live
 tmux; the core passes the conformance suite bar the 8-bit cases xterm fails.
 
 Known gaps, so you find them here rather than by hitting them. Anything but
