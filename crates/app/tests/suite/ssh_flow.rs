@@ -23,6 +23,7 @@ struct FarSide {
     _rt: tokio::runtime::Runtime,
     port: u16,
     host_key_line: String,
+    seen: std::sync::Arc<std::sync::Mutex<ssh_link::test_server::Seen>>,
     _dir: tempfile::TempDir,
 }
 
@@ -37,7 +38,7 @@ fn far_side() -> &'static FarSide {
         let identity = mint(Algorithm::Ed25519);
         let host_key: PrivateKey = mint(Algorithm::Ed25519);
         let host_public = host_key.public_key().to_openssh().expect("openssh form");
-        let (port, _seen) =
+        let (port, seen) =
             rt.block_on(serve_echo(vec![host_key], identity.public_key().clone()));
         let sock = rt.block_on(serve_agent(dir.path(), &identity));
         std::env::set_var("SSH_AUTH_SOCK", &sock);
@@ -45,6 +46,7 @@ fn far_side() -> &'static FarSide {
             _rt: rt,
             port,
             host_key_line: format!("[127.0.0.1]:{port} {host_public}"),
+            seen,
             _dir: dir,
         }
     })
@@ -144,6 +146,46 @@ fn an_ssh_bank_lives_types_and_dies_on_the_glass() {
         s.channels().rows().iter().all(|r| r.bank == 0)
     });
     assert_eq!(s.channels().current_bank(), 0);
+}
+
+#[test]
+fn a_tmux_opener_echoed_over_ssh_transports_the_channel_to_a_gateway() {
+    let far = far_side();
+    let mut s = surface();
+    s.connect_ssh_with(
+        &request(far.port),
+        Box::new(KnownHosts::over(vec![known_hosts(&[&far.host_key_line])])),
+    );
+    let ssh_bank = s.channels().current_bank();
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+
+    // The far side is an echo, so typing tmux's control-mode opener brings
+    // the same bytes back as remote output, exactly what a remote tmux -CC
+    // prints; the tap on the SSH channel must detect it and the channel
+    // transport to a gateway holding its SSH slot dark behind it.
+    s.write(b"\x1bP1000p");
+    pump_until(&mut s, "the transport to a tmux bank", |s| {
+        s.channels().current().is_some_and(|r| r.title.starts_with("tmux -CC"))
+    });
+    let tmux_bank = s.channels().current_bank();
+    assert_ne!(tmux_bank, ssh_bank);
+    assert_eq!(s.channels().current_channel(), 1);
+
+    // The gateway's bootstrap went out over the SSH wire: the far side
+    // received the client-size and bootstrap commands as channel data.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        {
+            let seen = far.seen.lock().unwrap();
+            let text = String::from_utf8_lossy(&seen.received).into_owned();
+            if text.contains("refresh-client") || text.contains("display-message") {
+                break;
+            }
+        }
+        assert!(Instant::now() < deadline, "no bootstrap reached the far side");
+        s.pump();
+        std::thread::sleep(Duration::from_millis(15));
+    }
 }
 
 #[test]

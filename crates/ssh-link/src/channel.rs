@@ -98,6 +98,49 @@ impl ChannelHandle {
     pub fn sheds(&self) -> u64 {
         self.sheds.load(Ordering::Relaxed)
     }
+
+    /// An independently-owned writer onto the same channel, sharing the
+    /// byte budget and the shed counter. What a tmux gateway writes with
+    /// once the channel's shell has become a control-mode wire.
+    pub fn writer(&self) -> InputWriter {
+        InputWriter {
+            cmd: self.cmd.clone(),
+            queued: self.queued.clone(),
+            sheds: self.sheds.clone(),
+        }
+    }
+}
+
+/// See [`ChannelHandle::writer`]. Whole-write-or-nothing under the shared
+/// budget; a refusal is reported as `Ok` with the bytes counted shed, the
+/// shape `Session::write` gives its own refusals, because there is nothing
+/// on the wire for the caller to retry.
+pub struct InputWriter {
+    cmd: mpsc::UnboundedSender<ChannelCmd>,
+    queued: Arc<AtomicUsize>,
+    sheds: Arc<AtomicU64>,
+}
+
+impl std::io::Write for InputWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let held = self.queued.load(Ordering::Relaxed);
+        if held.saturating_add(bytes.len()) > INPUT_CAP {
+            self.sheds.fetch_add(1, Ordering::Relaxed);
+            return Ok(bytes.len());
+        }
+        self.queued.fetch_add(bytes.len(), Ordering::Relaxed);
+        if self.cmd.send(ChannelCmd::Data(bytes.to_vec())).is_err() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "the connection is over",
+            ));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 impl Drop for ChannelHandle {

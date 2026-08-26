@@ -59,6 +59,13 @@ pub trait SshWire: Send {
     fn window_change(&mut self, cols: u16, rows: u16, pix_w: u16, pix_h: u16);
     /// Whole writes the wire refused for want of budget.
     fn sheds(&self) -> u64;
+    /// An independently-owned writer onto the same channel, sharing the
+    /// budget: the analogue of the dup'd fd `Session::control_mode_writer`
+    /// hands a gateway. What makes two writers safe is the same discipline
+    /// as there: the surface is single-threaded, and while control mode is
+    /// active nothing writes this channel but the gateway
+    /// ([`SshChannel::write`]'s swallow).
+    fn writer(&self) -> Box<dyn std::io::Write + Send>;
 }
 
 /// A channel fed by an SSH connection rather than a PTY.
@@ -201,6 +208,20 @@ impl<T: DcsTap> SshChannel<T> {
     pub fn tap_mut(&mut self) -> &mut T {
         self.dcs.tap_mut()
     }
+
+    /// The gateway's write half onto this channel. See [`SshWire::writer`].
+    pub fn control_writer(&self) -> Box<dyn std::io::Write + Send> {
+        self.wire.writer()
+    }
+
+    /// Force both parsers out of a DCS string that will never close, the
+    /// counterpart of `Session::leave_control_mode` and for the same
+    /// reason: at ground it is a no-op, so a healthy session pays nothing.
+    pub fn leave_control_mode(&mut self) {
+        const ST: &[u8] = b"\x1b\\";
+        self.dcs.feed(ST);
+        self.processor.advance(&mut self.term, ST);
+    }
 }
 
 #[cfg(test)]
@@ -233,6 +254,20 @@ mod tests {
         }
         fn sheds(&self) -> u64 {
             0
+        }
+        fn writer(&self) -> Box<dyn std::io::Write + Send> {
+            #[derive(Clone)]
+            struct Onto(Arc<Mutex<Vec<u8>>>);
+            impl std::io::Write for Onto {
+                fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                    self.0.lock().unwrap().extend_from_slice(bytes);
+                    Ok(bytes.len())
+                }
+                fn flush(&mut self) -> std::io::Result<()> {
+                    Ok(())
+                }
+            }
+            Box::new(Onto(self.sent.clone()))
         }
     }
 

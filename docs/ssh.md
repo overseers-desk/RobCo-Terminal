@@ -23,6 +23,10 @@ Ceilings of the reader, each of which costs a spurious refusal and never a false
 * A tab-separated or double-spaced line does not parse.
 * `@revoked` does better than the ceiling: any presented key a revocation line names is refused, whatever host it is filed under.
 
+## tmux over the connection
+
+Type `tmux -CC` on an SSH channel and the attachment arrives exactly as it does locally: the channel becomes the gateway, the session's windows fill a bank of their own, and a detach brings the channel home to its slot on the connection's bank. Because the connection multiplexes, each SSH channel can carry its own attachment: several remote tmux sessions over one wire, one `tmux -CC` each. Sessions on the remote server are not discovered automatically; the discovery mechanism is local by construction.
+
 ## Authentication
 
 The ssh-agent, and nothing else: `SSH_AUTH_SOCK` on Unix, the agent named pipe or Pageant on Windows. Identities are tried in the order the agent lists them, silently; in the common case you never see an authentication message at all. Every failure names its remedy on the glass: an unset `SSH_AUTH_SOCK` says to run `ssh-add`, and a refused identity list says what the server would have accepted. Password and keyboard-interactive authentication need typed input before a shell exists, which is the operator surface's territory; key files and passphrases likewise.

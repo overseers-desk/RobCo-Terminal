@@ -230,6 +230,39 @@ impl<T: DcsTap> ChannelSession<T> {
             _ => None,
         }
     }
+
+    /// The DCS tap, on the variants that carry one: a pane has none, its
+    /// payload being already inside the gateway's envelope.
+    pub fn tap_mut(&mut self) -> Option<&mut T> {
+        match self {
+            ChannelSession::Pty(s) => Some(s.tap_mut()),
+            ChannelSession::TmuxPane(_) => None,
+            ChannelSession::Ssh(s) => Some(s.tap_mut()),
+        }
+    }
+
+    /// A gateway's write half onto this slot's wire: the dup'd fd on a PTY,
+    /// the budget-sharing writer on an SSH channel, nothing on a pane.
+    pub fn control_writer(&mut self) -> Option<std::io::Result<Box<dyn std::io::Write + Send>>> {
+        match self {
+            ChannelSession::Pty(s) => Some(
+                s.control_mode_writer()
+                    .map(|f| Box::new(f) as Box<dyn std::io::Write + Send>),
+            ),
+            ChannelSession::TmuxPane(_) => None,
+            ChannelSession::Ssh(s) => Some(Ok(s.control_writer())),
+        }
+    }
+
+    /// Force the slot's parsers out of an unclosable DCS string, where the
+    /// slot has parsers of its own to force.
+    pub fn leave_control_mode(&mut self) {
+        match self {
+            ChannelSession::Pty(s) => s.leave_control_mode(),
+            ChannelSession::TmuxPane(_) => {}
+            ChannelSession::Ssh(s) => s.leave_control_mode(),
+        }
+    }
 }
 
 #[cfg(test)]

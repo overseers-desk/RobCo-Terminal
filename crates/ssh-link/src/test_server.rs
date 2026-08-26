@@ -18,6 +18,8 @@ use russh::{Channel, ChannelId, MethodSet};
 #[derive(Default)]
 pub struct Seen {
     pub resizes: Vec<(u32, u32)>,
+    /// Every byte the client sent, in order.
+    pub received: Vec<u8>,
 }
 
 /// The test shell: accepts one authorized key, replies to pty and shell
@@ -90,6 +92,7 @@ impl server::Handler for Echo {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        self.seen.lock().unwrap().received.extend_from_slice(data);
         if data == b"\x04" {
             session.exit_status_request(channel, 7)?;
             session.eof(channel)?;

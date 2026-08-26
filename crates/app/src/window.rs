@@ -423,7 +423,7 @@ pub struct TerminalSurface {
     /// write side is a second handle onto the gateway's PTY
     /// (`term::Session::control_mode_writer`); the read side arrives through the
     /// gateway's DCS tap on every [`TerminalSurface::pump`].
-    gateways: HashMap<BankId, Gateway<std::fs::File>>,
+    gateways: HashMap<BankId, Gateway<Box<dyn std::io::Write + Send>>>,
     /// One SSH connection per bank, beside the gateways: the `Link` is the
     /// connection thread's lifetime, and dropping it is the disconnect.
     ssh_links: HashMap<BankId, Link>,
@@ -1028,8 +1028,8 @@ impl TerminalSurface {
         // attachment's wire.
         let mut detected: Vec<(BankId, u32)> = Vec::new();
         for row in self.channels.rows_mut() {
-            if let Some(session) = row.session.pty_mut() {
-                if session.tap_mut().take_detected() {
+            if let Some(tap) = row.session.tap_mut() {
+                if tap.take_detected() {
                     detected.push((row.bank, row.channel));
                 }
             }
@@ -1076,16 +1076,19 @@ impl TerminalSurface {
             .channels
             .rows_mut()
             .find(|r| r.bank == bank && r.channel == 1)
-            .and_then(|r| r.session.pty_mut())
-            .map(|s| s.control_mode_writer());
+            .and_then(|r| r.session.control_writer());
         match writer {
             Some(Ok(writer)) => {
                 self.gateways.insert(bank, Gateway::new(writer));
                 self.set_client_size();
                 true
             }
-            other => {
-                log::error!("tmux: no wire for the attachment: {other:?}");
+            Some(Err(e)) => {
+                log::error!("tmux: no wire for the attachment: {e}");
+                false
+            }
+            None => {
+                log::error!("tmux: no wire for the attachment: the slot has none");
                 false
             }
         }
@@ -1127,10 +1130,7 @@ impl TerminalSurface {
         for b in self.channels.banks() {
             up += usize::from(matches!(
                 b.manager,
-                Manager::Tmux {
-                    home_slot: None,
-                    ..
-                }
+                Manager::Tmux { home: None, .. }
             ));
         }
         let size = self.viewport.term_size();
@@ -1195,11 +1195,8 @@ impl TerminalSurface {
             .channels
             .rows_mut()
             .find(|r| r.bank == bank && r.channel == 1)
-            .and_then(|r| r.session.pty_mut())
-            .map(|s| {
-                let tap = s.tap_mut();
-                (tap.take_body(), tap.take_ended())
-            });
+            .and_then(|r| r.session.tap_mut())
+            .map(|tap| (tap.take_body(), tap.take_ended()));
         let Some((bytes, ended)) = drained else {
             // No gateway, no wire: the bank collapsed under this client.
             return visible;
@@ -1315,16 +1312,18 @@ impl TerminalSurface {
     /// `ST` also forces the gateway's parsers out of the envelope no one will
     /// ever close (`term::Session::leave_control_mode`).
     fn collapse_bank(&mut self, bank: BankId, lost_protocol: bool) {
-        let home_slot = self.channels.collapse_bank(bank);
+        let home = self.channels.collapse_bank(bank);
         self.forget_bank(bank, false);
         // A bank that never held a home slot left no row to tell.
-        if lost_protocol && home_slot > 0 {
-            let row = self
-                .channels
-                .rows_mut()
-                .find(|r| r.bank == 0 && r.channel == home_slot);
-            if let Some(session) = row.and_then(|r| r.session.pty_mut()) {
-                session.leave_control_mode();
+        if lost_protocol {
+            if let Some((home_bank, home_slot)) = home {
+                let row = self
+                    .channels
+                    .rows_mut()
+                    .find(|r| r.bank == home_bank && r.channel == home_slot);
+                if let Some(row) = row {
+                    row.session.leave_control_mode();
+                }
             }
         }
         log::info!("tmux: bank {bank} collapsed (protocol lost: {lost_protocol})");

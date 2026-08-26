@@ -233,6 +233,10 @@ impl SshWire for WireAdapter {
     fn sheds(&self) -> u64 {
         self.handle.sheds()
     }
+
+    fn writer(&self) -> Box<dyn std::io::Write + Send> {
+        Box::new(self.handle.writer())
+    }
 }
 
 #[cfg(test)]

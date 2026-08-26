@@ -46,7 +46,8 @@ attached arrives as a bank of channels of its own: the channel you typed in
 becomes its gateway and stops taking keystrokes, the session's windows fill
 the slots after it, and they are switched with the same chords as any other.
 On a local server every other session gets a bank too, each with a gateway
-the terminal starts for it; over ssh you get the session you attached. There
+the terminal starts for it; over ssh you get each session you attach, one
+per `--ssh` channel you type the attach into. There
 is no status bar to read, because the bank is doing that job. `Enter` on a
 gateway detaches: a channel you typed in comes home, one the terminal started
 closes. Nothing is lost if the terminal dies mid-session: run `tmux -CC`
