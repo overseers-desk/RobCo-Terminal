@@ -99,8 +99,10 @@ proc ::rcsettings::ui::app::build {} {
     # repaints its rows and a row that cannot be read reports through here.
     set Status .status
     # The width is asked for in characters rather than left to the text: the
-    # resting message is the config file's path, and a path in a deep
-    # directory would otherwise open the window as wide as it is long.
+    # line is empty at rest and its messages differ in length, and a label
+    # that sized itself to each one would move the window's edge every time
+    # something was said. Characters rather than pixels, so the reservation
+    # follows the font at any scaling.
     ttk::label $Status -anchor w -width 40 -padding {8 3}
     ttk::separator .sep -orient horizontal
     ttk::frame .buttons -padding {10 8}
@@ -137,13 +139,14 @@ proc ::rcsettings::ui::app::build {} {
 
 # ------------------------------------------------------------ status line --
 
-# The resting text: which file this window is editing. Every other message is
-# transient and falls back to this.
+# The resting state, which is silence. Everything this line says is something
+# that has just happened, so a line with nothing on it is a window with
+# nothing to report rather than a window that has stopped saying it.
 proc ::rcsettings::ui::app::rest {} {
     variable Status
     variable StatusAfter
     if {$StatusAfter ne ""} { after cancel $StatusAfter; set StatusAfter "" }
-    $Status configure -style "" -text [::rcsettings::model::path]
+    $Status configure -style "" -text ""
 }
 
 proc ::rcsettings::ui::app::say {msg {isError 0}} {
