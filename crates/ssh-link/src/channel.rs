@@ -99,3 +99,23 @@ impl Drop for ChannelHandle {
         let _ = self.cmd.send(ChannelCmd::Close);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::thread::endpoints;
+
+    #[test]
+    fn a_write_over_budget_sheds_whole_and_is_counted() {
+        let (mut handle, wire) = endpoints();
+        handle.send(&vec![b'x'; INPUT_CAP - 1]);
+        assert_eq!(handle.sheds(), 0);
+        // One byte of budget left: a two-byte write sheds whole, and the
+        // budgeted byte is still spendable after it.
+        handle.send(b"ab");
+        assert_eq!(handle.sheds(), 1);
+        handle.send(b"c");
+        assert_eq!(handle.sheds(), 1);
+        drop(wire);
+    }
+}
