@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The GPU suites want a Vulkan adapter; Mesa's lavapipe renders them
+      # in software on a runner with no GPU.
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
