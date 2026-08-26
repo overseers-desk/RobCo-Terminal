@@ -8,12 +8,14 @@
 //! the running binary), so `robco-term --dump-settings` prints it rather
 //! than having every tool keep a copy that drifts.
 //!
-//! The output is TOML: `[general]` / `[screen]` / `[chassis]` hold the
-//! fully-resolved defaults, `[[screen_presets]]` / `[[chassis_presets]]`
-//! the built-in presets with every field resolved (a consumer never redoes
-//! the diff-against-default resolution `presets.rs` states them in),
-//! `[[fonts]]` the catalogue the binary was asked for, and `[values]` the
-//! admissible strings for each enum key.
+//! The output is TOML: `[general]` / `[screen]` / `[chassis]` / `[ssh]`
+//! hold the fully-resolved defaults, `[ssh_host_defaults]` what a fresh
+//! `[[ssh.host]]` row holds (row defaults, not a fifth config table),
+//! `[[screen_presets]]` / `[[chassis_presets]]` the built-in presets with
+//! every field resolved (a consumer never redoes the diff-against-default
+//! resolution `presets.rs` states them in), `[[fonts]]` the catalogue the
+//! binary was asked for, and `[values]` the admissible strings for each
+//! enum key.
 
 use serde::Serialize;
 
@@ -44,6 +46,10 @@ struct Dump {
     screen: ScreenSettings,
     chassis: ChassisSettings,
     ssh: crate::schema::SshSettings,
+    /// What a fresh `[[ssh.host]]` row holds before the user types: the
+    /// shipped `[ssh]` table has no rows, so the per-row defaults appear
+    /// nowhere else in this dump.
+    ssh_host_defaults: crate::schema::SshHost,
     screen_presets: Vec<ScreenSettings>,
     chassis_presets: Vec<ChassisSettings>,
     fonts: Vec<FontListing>,
@@ -59,6 +65,7 @@ pub fn dump(fonts: Vec<FontListing>) -> String {
         screen: ScreenSettings::default(),
         chassis: ChassisSettings::default(),
         ssh: crate::schema::SshSettings::default(),
+        ssh_host_defaults: crate::schema::SshHost::default(),
         screen_presets: crate::presets::screen_presets(),
         chassis_presets: crate::presets::chassis_presets(),
         fonts,
