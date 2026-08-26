@@ -12,16 +12,25 @@
 
 #![allow(dead_code)]
 
+// Two halves: the tmux server and its gateway live on Unix, where tmux
+// does; the byte helpers at the bottom decode recorded transcripts and
+// compile everywhere the transcripts replay.
+#[cfg(unix)]
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command as OsCommand;
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 use rio_vt::teletypewriter::{create_pty_with_spawn, Pty};
 use tmux_cc::{Codec, Command, Event};
 
 /// The tmux this is measured against. Recorded in the transcripts' README as
 /// well: a protocol claim is only true of a version.
+#[cfg(unix)]
 pub const TMUX: &str = "/usr/bin/tmux";
 
 /// A private tmux server, killed when it goes out of scope.
@@ -29,11 +38,13 @@ pub const TMUX: &str = "/usr/bin/tmux";
 /// Private in every sense that matters to a test: its own socket under a
 /// scratch directory, so nothing here can touch a real server, and nothing a
 /// developer is running can answer these commands.
+#[cfg(unix)]
 pub struct Server {
     socket: PathBuf,
     dir: PathBuf,
 }
 
+#[cfg(unix)]
 impl Server {
     /// Start a server with one detached session.
     ///
@@ -113,6 +124,7 @@ impl Server {
     }
 }
 
+#[cfg(unix)]
 impl Drop for Server {
     fn drop(&mut self) {
         let _ = OsCommand::new(TMUX)
@@ -125,6 +137,7 @@ impl Drop for Server {
 }
 
 /// One `tmux -CC attach` on a PTY, with everything it has ever written kept.
+#[cfg(unix)]
 pub struct Gateway {
     pty: Pty,
     transcript: Vec<u8>,
@@ -134,6 +147,7 @@ pub struct Gateway {
     sent: Vec<String>,
 }
 
+#[cfg(unix)]
 impl Gateway {
     fn spawn(socket: &Path, session: &str) -> Gateway {
         let args = vec![
