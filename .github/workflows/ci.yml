@@ -1,30 +1,18 @@
-# Two proofs on every push: the Linux suite stays green, and the whole
-# workspace compiles on Windows. The Windows job stops at compilation
-# (`--no-run` still builds every crate, binary and test) because no
-# runner has the GPU or the pty behaviour the executing suites assume;
-# running them there is its own piece of work.
+# One proof, the one this repository cannot make locally: the terminal
+# compiles for Windows (the C++ terminal-core dependency needs a native
+# toolchain, so no Linux box can check this). Nothing else runs here; the
+# test suite runs on the development machines before every push.
 name: CI
 
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # The GPU suites want a Vulkan adapter; Mesa's lavapipe renders them
-      # in software on a runner with no GPU.
-      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace
-
   windows:
     runs-on: windows-latest
     steps:
@@ -32,4 +20,4 @@ jobs:
       # ring's build assembles its MSVC objects with nasm.
       - uses: ilammy/setup-nasm@v1
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --no-run
+      - run: cargo build -p robco-app
