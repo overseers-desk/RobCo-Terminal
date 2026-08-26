@@ -234,6 +234,7 @@ impl SessionSlot {
 
 /// Ours and local: `/proc/<pid>` is a process of our uid and the socket path
 /// stats to a socket; anything that will not answer is a no.
+#[cfg(unix)]
 fn server_is_local(socket: &str, pid: u32) -> bool {
     use std::os::unix::fs::{FileTypeExt, MetadataExt};
     let uid = |path: String| std::fs::metadata(path).ok().map(|m| m.uid());
@@ -241,6 +242,13 @@ fn server_is_local(socket: &str, pid: u32) -> bool {
     server.is_some()
         && server == uid("/proc/self".to_string())
         && std::fs::metadata(socket).is_ok_and(|m| m.file_type().is_socket())
+}
+
+/// No tmux runs on this platform, so no server can be ours and local; the
+/// caller's refusal path is the whole answer.
+#[cfg(not(unix))]
+fn server_is_local(_socket: &str, _pid: u32) -> bool {
+    false
 }
 
 /// The server's own binary, so both ends speak one dialect; `tmux` on PATH if `/proc` will not say.
