@@ -189,6 +189,7 @@ effects that age them.
 | `screen_curvature` | `0.2` | How far the tube bulges. Also what your clicks are mapped back through, so selection follows the curve. |
 | `rasterization` | `"no_rasterization"` | Which scanline/pixel grid is laid over the type. One of `no_rasterization`, `scanline_rasterization`, `pixel_rasterization`, `subpixel_rasterization`, `modern_rasterization`. |
 | `font_name` | `"TERMINESS_SCALED"` | The glyph face, by catalogue key (see below). A key naming nothing falls back to the shipped default rather than refusing to draw. |
+| `font_source` | `"bundled_fonts"` | Present in the schema; nothing in this build reads it. |
 | `font_width` | `1.0` | Cell width as a multiple of the face's own. Bitmap faces want pixel-exact ratios. |
 | `line_spacing` | `0.1` | Extra height per row. |
 | `margin` | `0.3` | Inset between the type and the bezel. |
