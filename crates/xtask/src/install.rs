@@ -17,14 +17,20 @@
 //! | `bin/robco-term` | the binary |
 //! | `share/applications/robco-term.desktop` | the desktop entry, `packaging/robco-term.desktop` verbatim |
 //! | `share/icons/hicolor/256x256/apps/robco-term.png` | the icon, `packaging/icons/robco-term.png` verbatim |
-//! | `bin/robco-settings` | the settings window, when `--settings-binary` names one |
+//! | `bin/robco-settings` | the settings window, in the shape its route ships (below) |
 //!
-//! `robco-settings` is not built by this workspace's own `cargo build`: it is
-//! a Tcl/Tk application packaged separately by
-//! `settings/zipfs/build-selfcontained.sh`, and the resulting single-file
-//! image is what `--settings-binary` names. `install` accepts running
-//! without one (a developer install, GUI-less); `dist` and `deb`, which are
-//! what a user downloads, refuse to produce a package that lacks it.
+//! `robco-settings` is not built by this workspace's own `cargo build`: it
+//! is a Tcl/Tk application, and it ships in the shape its destination
+//! expects. The tarball carries the single-file image
+//! `settings/zipfs/build-selfcontained.sh` builds (`--settings-binary`
+//! names it), because a tarball promises to run on a host with nothing
+//! installed; `dist` refuses to produce one without it, and `install`
+//! accepts running without one (a developer install, GUI-less). The `.deb`
+//! instead ships the Tcl sources under `share/robco-term/settings`, the
+//! launcher at `bin/robco-settings` with its ROOT pointed there, and
+//! `tcl9.0`/`tk9.0` in its `Depends`: on Debian the interpreter is the
+//! distribution's to provide, the same rule `dpkg-shlibdeps` applies to
+//! the C libraries.
 //!
 //! **Embedded**: compiled into the binary, so none of it is installed, none
 //! of it is looked up at run time, and the binary does not care where it sits
@@ -199,6 +205,148 @@ fn lay_out(root: &Path, binary: &Path, settings_binary: Option<&Path>) -> Result
     }
 
     Ok(written)
+}
+
+/// The `.deb`'s shape of the settings window: the Tcl sources under
+/// `share/robco-term/settings` and the launcher at `bin/robco-settings`
+/// with its ROOT pointed there, leaning on the distribution's own
+/// `tcl9.0`/`tk9.0` (declared in `Depends` by [`deb`]) instead of
+/// bundling an interpreter.
+fn lay_out_settings_scripts(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut written = Vec::new();
+    let source = workspace_root().join("settings");
+    let share = root.join("share").join(NAME).join("settings");
+
+    for dir in ["lib", "ui"] {
+        let dest = share.join(dir);
+        std::fs::create_dir_all(&dest).with_context(|| format!("creating {}", dest.display()))?;
+        let from = source.join(dir);
+        for entry in
+            std::fs::read_dir(&from).with_context(|| format!("reading {}", from.display()))?
+        {
+            let path = entry?.path();
+            if path.extension().is_none_or(|e| e != "tcl") {
+                continue;
+            }
+            let target = dest.join(path.file_name().expect("a read_dir entry has a name"));
+            std::fs::copy(&path, &target).with_context(|| {
+                format!("copying {} to {}", path.display(), target.display())
+            })?;
+            set_mode(&target, 0o644)?;
+            written.push(target);
+        }
+    }
+
+    let launcher_source = source.join(SETTINGS_NAME);
+    let launcher = std::fs::read_to_string(&launcher_source)
+        .with_context(|| format!("reading {}", launcher_source.display()))?;
+    let patched = point_root_at(&launcher, &format!("/usr/share/{NAME}/settings"))?;
+    let bin_dir = root.join("bin");
+    std::fs::create_dir_all(&bin_dir).with_context(|| format!("creating {}", bin_dir.display()))?;
+    let installed_launcher = bin_dir.join(SETTINGS_NAME);
+    std::fs::write(&installed_launcher, patched)
+        .with_context(|| format!("writing {}", installed_launcher.display()))?;
+    set_mode(&installed_launcher, 0o755)?;
+    written.push(installed_launcher);
+
+    Ok(written)
+}
+
+/// The two files Debian policy wants under `usr/share/doc/<package>`: a
+/// changelog (this is a native package, so `changelog.gz`, dated from
+/// HEAD's commit time like the dist tarball) and a machine-readable
+/// copyright file. The license text itself is not duplicated: the crate
+/// declares GPL-3.0-or-later, and Debian keeps that text in
+/// `/usr/share/common-licenses/GPL-3`, which is what the file points at.
+fn deb_doc_files(root: &Path, version: &str) -> Result<Vec<PathBuf>> {
+    let doc = root.join("share/doc").join(NAME);
+    std::fs::create_dir_all(&doc).with_context(|| format!("creating {}", doc.display()))?;
+
+    let stamp = crate::proc::capture(
+        "date",
+        &["-u", "-R", "-d", &format!("@{}", released_commit_timestamp()?)],
+    )?;
+    let changelog = doc.join("changelog");
+    std::fs::write(
+        &changelog,
+        format!(
+            "{NAME} ({version}) unstable; urgency=medium\n\n  \
+             * Built from the source tree at this version.\n\n \
+             -- {}  {stamp}\n",
+            maintainer()
+        ),
+    )
+    .with_context(|| format!("writing {}", changelog.display()))?;
+    // -n keeps the timestamp out of the gzip header, so the same tree
+    // packages to the same bytes.
+    let status = Command::new("gzip")
+        .args(["-9", "-n", "-f"])
+        .arg(&changelog)
+        .status()
+        .context("spawning gzip")?;
+    if !status.success() {
+        bail!("gzip exited with {status}");
+    }
+    let changelog_gz = doc.join("changelog.gz");
+    set_mode(&changelog_gz, 0o644)?;
+
+    let copyright = doc.join("copyright");
+    std::fs::write(
+        &copyright,
+        format!(
+            "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n\
+             Upstream-Name: {NAME}\n\
+             Source: https://github.com/overseers-desk/RobCo-Terminal\n\
+             \n\
+             Files: *\n\
+             Copyright: 2026 RobCo Terminal contributors\n\
+             License: GPL-3.0-or-later\n\
+            \x20This package is distributed under the terms of the GNU General\n\
+            \x20Public License, version 3 or (at your option) any later version.\n\
+            \x20.\n\
+            \x20On Debian systems, the complete text of the GNU General Public\n\
+            \x20License version 3 can be found in /usr/share/common-licenses/GPL-3.\n"
+        ),
+    )
+    .with_context(|| format!("writing {}", copyright.display()))?;
+    set_mode(&copyright, 0o644)?;
+
+    Ok(vec![changelog_gz, copyright])
+}
+
+/// 0755 on every directory under `root`: the staging tree inherits the
+/// building user's umask, and dpkg-deb archives modes as it finds them.
+fn normalize_dir_modes(root: &Path) -> Result<()> {
+    set_mode(root, 0o755)?;
+    for entry in std::fs::read_dir(root).with_context(|| format!("reading {}", root.display()))? {
+        let path = entry?.path();
+        if path.is_dir() {
+            normalize_dir_modes(&path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Rewrite the launcher's `set ROOT ...` line to the installed location.
+/// The launcher derives ROOT from its own path when run from a checkout;
+/// installed to `bin/` away from its sources, it has to be told. Refuses a
+/// launcher with no such line rather than installing one that resolves
+/// nothing.
+fn point_root_at(launcher: &str, root: &str) -> Result<String> {
+    if !launcher.lines().any(|l| l.starts_with("set ROOT ")) {
+        bail!("the {SETTINGS_NAME} launcher has no `set ROOT` line to point at {root}");
+    }
+    let lines: Vec<String> = launcher
+        .lines()
+        .map(|line| {
+            if line.starts_with("set ROOT ") {
+                format!("set ROOT {root}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    Ok(lines.join("\n") + "\n")
 }
 
 fn set_mode(path: &Path, mode: u32) -> Result<()> {
@@ -512,7 +660,6 @@ fn archive(staging: &Path, stem: &str, out_dir: &Path, mtime: i64) -> Result<Pat
 pub struct DebArgs {
     pub out_dir: PathBuf,
     pub binary: Option<PathBuf>,
-    pub settings_binary: Option<PathBuf>,
 }
 
 /// `xtask deb`: a binary Debian package, built without root.
@@ -535,19 +682,11 @@ pub struct DebArgs {
 /// the reason distributions build in a clean chroot; naming it is the honest
 /// alternative to pretending the artifact is portable across releases.
 pub fn deb(args: DebArgs) -> Result<()> {
-    for tool in ["dpkg-deb", "dpkg-shlibdeps", "dpkg"] {
+    for tool in ["dpkg-deb", "dpkg-shlibdeps", "dpkg", "strip", "gzip", "date"] {
         if which(tool).is_none() {
-            bail!("`{tool}` is not on PATH; `xtask deb` needs dpkg-dev and dpkg");
+            bail!("`{tool}` is not on PATH; `xtask deb` needs dpkg-dev, dpkg, binutils and coreutils");
         }
     }
-    // Same requirement as `dist`, for the same reason: this is a package a
-    // user installs, not a developer's local build.
-    let Some(settings_binary) = args.settings_binary else {
-        bail!(
-            "official {NAME} packages always carry {SETTINGS_NAME}; pass --settings-binary <path>. Build one with settings/zipfs/build-selfcontained.sh."
-        );
-    };
-
     let version = version()?;
     let binary = resolve_binary(args.binary)?;
     let arch = crate::proc::capture("dpkg", &["--print-architecture"])?;
@@ -569,15 +708,37 @@ pub fn deb(args: DebArgs) -> Result<()> {
     .context("writing the scratch debian/control")?;
 
     let package_root = debian.join(NAME);
-    let written = lay_out(&package_root.join("usr"), &binary, Some(&settings_binary))?;
+    let mut written = lay_out(&package_root.join("usr"), &binary, None)?;
+    written.extend(lay_out_settings_scripts(&package_root.join("usr"))?);
+    written.extend(deb_doc_files(&package_root.join("usr"), &version)?);
     let installed_binary = package_root.join("usr/bin").join(NAME);
+
+    // Debian ships stripped binaries. The line tables the release profile
+    // carries stay on the build machine's unstripped copy, which is what a
+    // crash log's module+offset frames are resolved against; in the
+    // package they were a couple hundred megabytes the loader never pages
+    // in. The check below then runs the stripped copy, the one that ships.
+    let status = Command::new("strip")
+        .arg("--strip-unneeded")
+        .arg(&installed_binary)
+        .status()
+        .context("spawning strip")?;
+    if !status.success() {
+        bail!("strip exited with {status}");
+    }
     check_installed(&installed_binary, &version)?;
 
-    let depends = shlibdeps(scratch.path(), &installed_binary)?;
+    // The staging directories inherit the building user's umask; dpkg-deb
+    // archives whatever it sees, and Debian directories are 0755.
+    normalize_dir_modes(&package_root)?;
+
+    // The C dependencies are read off the binary; the Tcl/Tk ones are the
+    // settings window's, stated by name because no ELF names them.
+    let depends = format!("{}, tcl9.0, tk9.0", shlibdeps(scratch.path(), &installed_binary)?);
 
     // Installed-Size is in KiB, and is the size of the installed files, which
     // for this package is robco-term plus two small data files plus the
-    // robco-settings image.
+    // robco-settings sources.
     let installed_size: u64 = written
         .iter()
         .filter_map(|path| std::fs::metadata(path).ok())
@@ -655,21 +816,29 @@ fn control(version: &str, arch: &str, depends: &str, installed_size: u64) -> Str
          Section: x11\n\
          Priority: optional\n\
          Installed-Size: {installed_size}\n\
-         Maintainer: {MAINTAINER}\n\
+         Maintainer: {}\n\
          Depends: {depends}\n\
          Provides: x-terminal-emulator\n\
          Description: terminal emulator which mimics old screens\n\
         \x20RobCo Terminal is a terminal emulator which mimics the look and feel\n\
         \x20of the old cathode tube screens. It has been designed to be eye-candy,\n\
-        \x20customizable, and reasonably lightweight.\n"
+        \x20customizable, and reasonably lightweight.\n",
+        maintainer()
     )
 }
 
-/// A placeholder, and one of the things that has to become real before
-/// anything is published: `Maintainer` is a required Debian field with no
-/// sensible empty value, and the project has no published contact yet. It sits
-/// beside the placeholder icon as the same kind of debt.
-const MAINTAINER: &str = "RobCo Terminal maintainers <robco-term@localhost>";
+/// `Maintainer` is a required Debian field. The person comes from
+/// `DEBFULLNAME`/`DEBEMAIL`, the same environment `dch` and the other
+/// Debian tools read, so no name lives in this source; without them the
+/// placeholder stands, and lintian's `bogus-mail-host` will say so.
+fn maintainer() -> String {
+    match (std::env::var("DEBFULLNAME"), std::env::var("DEBEMAIL")) {
+        (Ok(name), Ok(email)) if !name.is_empty() && !email.is_empty() => {
+            format!("{name} <{email}>")
+        }
+        _ => "RobCo Terminal maintainers <robco-term@localhost>".to_string(),
+    }
+}
 
 /// `command -v`, without a shell.
 fn which(tool: &str) -> Option<PathBuf> {
@@ -846,6 +1015,18 @@ mod tests {
         let stem = artifact_stem("9.9.9");
         assert!(stem.starts_with("robco-term-9.9.9-linux-"));
         assert!(stem.ends_with(std::env::consts::ARCH));
+    }
+
+    /// The installed launcher must point at the package's share directory,
+    /// wherever the checkout kept its sources, and a launcher whose ROOT
+    /// line vanished is a refusal, not a silent pass-through.
+    #[test]
+    fn the_deb_launcher_gets_its_root_pointed_at_share() {
+        let launcher = "#!/usr/bin/env tclsh9.0\nset ROOT [file dirname [file normalize [info script]]]\nsource [file join $ROOT lib toml.tcl]\n";
+        let patched = point_root_at(launcher, "/usr/share/robco-term/settings").unwrap();
+        assert!(patched.contains("set ROOT /usr/share/robco-term/settings\n"));
+        assert!(!patched.contains("info script"), "{patched}");
+        assert!(point_root_at("#!/usr/bin/env tclsh9.0\n", "/usr/share/x").is_err());
     }
 
     /// The control file is a single RFC822 stanza with the fields dpkg

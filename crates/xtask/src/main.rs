@@ -151,7 +151,10 @@ enum Command {
         #[arg(long)]
         settings_binary: Option<PathBuf>,
     },
-    /// Build a binary `.deb` from the install layout, without root.
+    /// Build a binary `.deb` from the install layout, without root. The
+    /// settings window rides as Tcl sources with `tcl9.0`/`tk9.0` in
+    /// `Depends`: on Debian the interpreter is the distribution's to
+    /// provide, so no self-contained image is involved.
     Deb {
         /// Where the package is written.
         #[arg(long, default_value = "dist")]
@@ -159,12 +162,6 @@ enum Command {
         /// Package this binary instead of building a fresh release one.
         #[arg(long)]
         binary: Option<PathBuf>,
-        /// The robco-settings single-file image to install as
-        /// `bin/robco-settings`, built by
-        /// `settings/zipfs/build-selfcontained.sh`. Required: an official
-        /// `.deb` always carries the settings window.
-        #[arg(long)]
-        settings_binary: Option<PathBuf>,
     },
 }
 
@@ -253,14 +250,6 @@ fn main() -> anyhow::Result<()> {
             binary,
             settings_binary,
         }),
-        Command::Deb {
-            out_dir,
-            binary,
-            settings_binary,
-        } => install::deb(install::DebArgs {
-            out_dir,
-            binary,
-            settings_binary,
-        }),
+        Command::Deb { out_dir, binary } => install::deb(install::DebArgs { out_dir, binary }),
     }
 }
