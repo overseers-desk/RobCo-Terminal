@@ -298,8 +298,18 @@ async fn authenticate(
             return false;
         }
     };
+    agent_auth(handle, target, wire, &offered).await
+}
 
-    let mut agent = match AgentClient::connect_env().await {
+/// This platform's agent: whatever `SSH_AUTH_SOCK` names.
+#[cfg(unix)]
+async fn agent_auth(
+    handle: &mut client::Handle<Handler>,
+    target: &SshTarget,
+    wire: &ChannelWire,
+    offered: &str,
+) -> bool {
+    let agent = match AgentClient::connect_env().await {
         Ok(agent) => agent,
         Err(_) => {
             notice(wire, "SSH_AUTH_SOCK is unset or dead: run ssh-add, then retry").await;
@@ -307,6 +317,48 @@ async fn authenticate(
             return false;
         }
     };
+    sign_with(handle, target, wire, offered, agent).await
+}
+
+/// This platform's agents: the OpenSSH Authentication Agent service on its
+/// fixed pipe name, then Pageant. Tried in that order because the service
+/// ships with Windows and Pageant is the add-on.
+#[cfg(windows)]
+async fn agent_auth(
+    handle: &mut client::Handle<Handler>,
+    target: &SshTarget,
+    wire: &ChannelWire,
+    offered: &str,
+) -> bool {
+    const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
+    if let Ok(agent) = AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE).await {
+        return sign_with(handle, target, wire, offered, agent).await;
+    }
+    match AgentClient::connect_pageant().await {
+        Ok(agent) => sign_with(handle, target, wire, offered, agent).await,
+        Err(_) => {
+            notice(
+                wire,
+                "no agent answered: neither the OpenSSH Authentication Agent service nor Pageant is running",
+            )
+            .await;
+            notice(wire, format!("(this build authenticates with the agent only; the server offers {offered})")).await;
+            false
+        }
+    }
+}
+
+/// The identities loop, blind to which stream the agent answers on.
+async fn sign_with<S>(
+    handle: &mut client::Handle<Handler>,
+    target: &SshTarget,
+    wire: &ChannelWire,
+    offered: &str,
+    mut agent: AgentClient<S>,
+) -> bool
+where
+    S: russh::keys::agent::client::AgentStream + Send + Unpin,
+{
     let identities = match agent.request_identities().await {
         Ok(ids) => ids,
         Err(e) => {
