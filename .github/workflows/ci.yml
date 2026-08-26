@@ -1,7 +1,13 @@
-# One proof, the one this repository cannot make locally: the terminal
-# compiles for Windows (the C++ terminal-core dependency needs a native
-# toolchain, so no Linux box can check this). Nothing else runs here; the
-# test suite runs on the development machines before every push.
+# The proofs this repository cannot make locally, both about Windows. The
+# terminal compiles there (the C++ terminal-core dependency needs a native
+# toolchain, so no Linux box can check it), and glyph fallback finds a face
+# there for a character the bundled font has no glyph for. That second one
+# is behaviour rather than compilation: the fallback list, the font families
+# it names and the directories the font database reads are all different on
+# Windows, so a build that succeeds says nothing about whether a character
+# outside ASCII reaches the glass. Shaping needs no GPU and no window, so
+# those tests run anywhere. The rest of the suite runs on the development
+# machines before every push.
 name: CI
 
 on:
@@ -21,3 +27,4 @@ jobs:
       - uses: ilammy/setup-nasm@v1
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p robco-app
+      - run: cargo test -p robco-term --test suite fallback
