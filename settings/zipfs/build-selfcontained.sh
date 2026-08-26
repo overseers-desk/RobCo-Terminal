@@ -48,7 +48,7 @@ mkdir -p "$SRC" "$STAGE" "$RUNTIME"
 echo "build dir: $BUILD_DIR"
 
 fetch() {
-    # fetch URL OUTFILE — download and verify it untars
+    # fetch URL OUTFILE: download and verify it untars
     local url="$1" out="$2"
     curl -fsSL --retry 3 -o "$SRC/$out" "$url"
     tar tzf "$SRC/$out" >/dev/null

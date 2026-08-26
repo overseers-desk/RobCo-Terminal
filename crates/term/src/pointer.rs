@@ -119,9 +119,9 @@ pub enum PointerAction {
 ///
 /// The three buttons divide as: left marks or reports, middle pastes the
 /// primary selection or reports, and right opens the settings application or
-/// reports. Whichever half of each pair applies is decided by the one rule at
-/// the top of the module, so a program that owns the mouse still receives
-/// every button.
+/// reports. Whichever half of each pair applies is decided by the one
+/// `marks` computation below, so a program that owns the mouse still
+/// receives every button.
 pub fn on_press(
     ctx: PointerContext,
     button: Button,
