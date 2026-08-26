@@ -52,6 +52,17 @@ gateway detaches: a channel you typed in comes home, one the terminal started
 closes. Nothing is lost if the terminal dies mid-session: run `tmux -CC`
 again and every session comes back with its windows and their titles.
 
+**Built-in SSH, from the command line.** `robco-term --ssh user@host` opens
+the first channel on an SSH connection the terminal itself owns, PuTTY's
+`-ssh` for a cabinet: the connection is a bank of its own, and further
+channels of it will multiplex over the one wire. Two things will surprise
+you in the first minute, both deliberate: it authenticates with your
+ssh-agent and nothing else, and an unknown host key is refused with its
+fingerprint and the command that records it rather than prompted about,
+because there is no prompt UI yet and a program should not make trust
+decisions for you. `docs/ssh.md` has the whole contract, including what it
+does not read (`~/.ssh/config`).
+
 ## Will it run here
 
 **Linux, today.** X11 is what is wired and measured; on Wayland the window
@@ -77,7 +88,9 @@ comes to 1265 by 730, and the first window opens no smaller.
 To build from source you need:
 
 - Rust 1.96.1 or newer (developed on 1.97.1),
-- a C++ compiler, for the terminal core's SIMD dependency.
+- a C++ compiler, for the terminal core's SIMD dependency; the SSH stack's
+  crypto (`ring`) uses the same C toolchain and links statically, adding no
+  requirement of its own.
 
 At run time the installed binary wants libstdc++. On Debian and Ubuntu the
 `.deb` below works the exact list out from the built binary and declares it

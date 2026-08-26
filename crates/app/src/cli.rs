@@ -23,12 +23,13 @@
 //! -v, --version        print version
 //! ```
 //!
-//! One flag beyond that list is this rebuild's own: the live-preview
-//! throughput instrument needs a way to turn on from the CLI rather
-//! than only from a test, so `--frame-stats` joins the set. It logs a p50/p99
-//! line periodically and does nothing when absent (the instrument's default),
-//! so it does not change what `xtask verify`'s flag-presence check expects of
-//! the documented contract items above.
+//! Two flags beyond that list are this rebuild's own, and neither changes
+//! what `xtask verify`'s flag-presence check expects of the documented
+//! contract items above. `--frame-stats` is the live-preview throughput
+//! instrument's CLI switch: it logs a p50/p99 line periodically and does
+//! nothing when absent. `--ssh [user@]host[:port]` opens the first channel
+//! on an SSH connection this program owns (#14) instead of a shell; the
+//! spelling is validated here, so a bad one fails before a window exists.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -222,6 +223,23 @@ mod tests {
     fn frame_stats_flag_parses_and_defaults_off() {
         assert!(!run(&[]).frame_stats);
         assert!(run(&["--frame-stats"]).frame_stats);
+    }
+
+    #[test]
+    fn ssh_flag_takes_a_destination_and_refuses_a_bad_one() {
+        assert_eq!(run(&[]).ssh, None);
+        assert_eq!(
+            run(&["--ssh", "overseer@vault:2222"]).ssh.as_deref(),
+            Some("overseer@vault:2222")
+        );
+        assert!(matches!(
+            parse("robco-term", ["--ssh"]),
+            Outcome::Fail(text) if text.contains("destination")
+        ));
+        assert!(matches!(
+            parse("robco-term", ["--ssh", "vault:notaport"]),
+            Outcome::Fail(text) if text.contains("not a port")
+        ));
     }
 
     #[test]
