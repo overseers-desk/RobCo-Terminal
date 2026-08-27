@@ -177,8 +177,9 @@ file exists until you write one.
 
 When you do want to change something, right-click the glass. That opens
 the settings window, a small companion program every binary package
-carries (on Windows it lives inside the terminal's own exe), with the presets, sliders and pickers for everything the glass
-and the cabinet do; each change lands the moment you make it, and Cancel
+carries (on Windows it lives inside the terminal's own exe), with the
+presets, sliders and pickers for everything the glass and the cabinet
+do; each change lands the moment you make it, and Cancel
 puts everything back. Underneath, all it does is edit one TOML file the
 terminal watches, so the editor path is just as good: open the file, change
 a number, save, and the glass changes under you while the editor is still

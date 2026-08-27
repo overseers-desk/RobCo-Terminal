@@ -49,7 +49,7 @@
 //!   connection is dialled.
 //! - [`settings`] -- `robco-config` behind a typed, live-reloading handle.
 //! - [`settings_embed`] -- the settings window when it is inside this binary
-//!   rather than beside it: the Windows single-exe build's seam onto the
+//!   rather than beside it: the Windows single-exe build's link into the
 //!   linked-in Tcl/Tk interpreter. Every other build carries the same entry
 //!   point as a refusal, so no caller writes a `cfg`.
 

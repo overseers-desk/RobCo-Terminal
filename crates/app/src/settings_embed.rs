@@ -33,7 +33,7 @@ mod embedded {
     const ARCHIVE: &[u8] = include_bytes!(env!("ROBCO_SETTINGS_ZIP"));
 
     extern "C" {
-        /// The agreed seam with `settings/zipfs/appinit.c`, compiled under
+        /// The agreed boundary with `settings/zipfs/appinit.c`, compiled under
         /// `ROBCO_EMBEDDED_SETTINGS`: an argv for the interpreter, the
         /// payload zip as a pointer and a length, and a path for the
         /// diagnostics an interpreter that fails before it has a window has

@@ -7,7 +7,7 @@ The procedure that cut v0.1.0, kept current so the next cut repeats it instead o
 - [ ] Version in `[workspace.package]` (root `Cargo.toml`) is the target version. Bumping it is its own decision, made ahead of cutting, not during.
 - [ ] `debian/changelog` has an entry for the target version.
 - [ ] All changes committed and pushed to main.
-- [ ] The release commit's CI run is green: `windows` and `settings-windows` prove both Windows halves build. The release's own Windows zip is built fresh by `release.yml` when the tag is pushed, not carried over from this run.
+- [ ] The release commit's CI run is green: `windows` proves the Windows build, including the settings payload's own `--settings-selftest`. The release's own Windows exe is built fresh by `release.yml` when the tag is pushed, not carried over from this run.
 
 ## Build the Linux artifacts
 

@@ -81,7 +81,7 @@ jobs:
           if (-not (Select-String -Path selftest.txt -Pattern 'settings selftest ok' -Quiet)) {
               throw 'selftest output missing its ok line'
           }
-      # The direct regression test for the reported silent death: the
+      # The direct regression test for the silent death the owner reported (#14): the
       # settings window must still be alive six seconds after launch. The
       # runner's session has a desktop, so Tk can map a window there; if
       # this proves flaky under Session 0, demote it to continue-on-error
