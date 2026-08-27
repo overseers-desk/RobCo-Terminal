@@ -7,6 +7,7 @@ mod bank_column;
 mod channel_bank;
 mod clipboard_keys;
 mod frame_stats;
+mod fullscreen_pointer;
 mod ime;
 mod keyboard_scroll;
 mod pointer;
