@@ -164,10 +164,12 @@ pub trait Surface {
     }
 }
 
-/// Builds the surface for a newly created window.
-/// Builds a window's surface. The second argument is the `--ssh` destination
-/// this window dials, if it was launched with one.
-pub type SurfaceFactory = Box<dyn FnMut(&Arc<Window>, Option<&str>) -> Box<dyn Surface>>;
+/// Builds the surface for a newly created window. The second argument is the
+/// destination this window dials, if it has one: the resolved request itself,
+/// so what a `[[ssh.host]]` row named -- its key above all -- reaches the
+/// window whole rather than through a spelling that carries none of it.
+pub type SurfaceFactory =
+    Box<dyn FnMut(&Arc<Window>, Option<&crate::ssh::SshRequest>) -> Box<dyn Surface>>;
 
 /// What a surface wants after one [`Surface::tick`].
 #[derive(Debug, Clone, Copy, Default)]
@@ -220,10 +222,16 @@ pub struct ShellConfig {
     pub identity: String,
     /// Whether the first window comes up fullscreen (`--fullscreen`).
     pub fullscreen: bool,
-    /// The `--ssh` destination every window this process opens dials, the
-    /// way the session config's program applies to every window. `None`
-    /// opens shells, which is the default.
-    pub ssh: Option<String>,
+    /// The destination every window this process opens dials, the way the
+    /// session config's program applies to every window: `--ssh`'s spelling
+    /// parsed, or the `[ssh]` table's default row resolved. `None` opens
+    /// shells, which is the default.
+    ///
+    /// A resolved request rather than a spelling, because the row names
+    /// things no spelling has room for: the key it offers is part of the
+    /// destination, and re-parsing a `user@host:port` on the way to a window
+    /// would drop it.
+    pub ssh: Option<crate::ssh::SshRequest>,
     /// The `showTerminalSize` setting for the size overlay.
     pub show_terminal_size: bool,
     /// The channel bank's width in *logical* pixels, which sets the
@@ -394,7 +402,12 @@ impl Shell {
         self.windows.len()
     }
 
-    fn open_window(&mut self, event_loop: &ActiveEventLoop, fullscreen: bool, ssh: Option<&str>) {
+    fn open_window(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        fullscreen: bool,
+        ssh: Option<&crate::ssh::SshRequest>,
+    ) {
         // A fullscreen window's inner size is the compositor's to choose, so
         // nothing is measured for one and no property is read.
         let usable = (!fullscreen)
@@ -543,7 +556,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
         self.started = true;
         let fullscreen = self.config.fullscreen;
         let ssh = self.config.ssh.clone();
-        self.open_window(event_loop, fullscreen, ssh.as_deref());
+        self.open_window(event_loop, fullscreen, ssh.as_ref());
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ShellEvent) {
@@ -551,9 +564,17 @@ impl ApplicationHandler<ShellEvent> for Shell {
             ShellEvent::NewWindow(request) => {
                 // A handoff that named a destination gets it; one that did
                 // not follows this process's own answer, config default
-                // included, like any other new window.
-                let ssh = request.ssh.clone().or_else(|| self.config.ssh.clone());
-                self.open_window(event_loop, request.fullscreen, ssh.as_deref());
+                // included, like any other new window. The handoff crosses
+                // as the spelling it was typed as, which is all a command
+                // line ever had, so it is parsed here; a spelling that fails
+                // to parse is no destination and the window opens on this
+                // process's own.
+                let ssh = request
+                    .ssh
+                    .as_deref()
+                    .and_then(|spec| crate::ssh::SshRequest::parse(spec).ok())
+                    .or_else(|| self.config.ssh.clone());
+                self.open_window(event_loop, request.fullscreen, ssh.as_ref());
             }
             ShellEvent::SetBankWidth { width, minimum } => self.set_bank_width(width, minimum),
         }
@@ -657,7 +678,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
                     }
                     PhysicalKey::Code(KeyCode::KeyN) if ctrl_shift => {
                         let ssh = self.config.ssh.clone();
-                        self.open_window(event_loop, false, ssh.as_deref());
+                        self.open_window(event_loop, false, ssh.as_ref());
                     }
                     PhysicalKey::Code(KeyCode::KeyQ) if ctrl_shift => {
                         self.windows.remove(&window_id);

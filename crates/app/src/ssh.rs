@@ -167,12 +167,13 @@ impl SshRequest {
     }
 
     /// The destination spelled the way [`parse`](Self::parse) reads one,
-    /// leaving unsaid what was unsaid.
-    ///
-    /// A window opened by the single-instance listener carries its
-    /// destination across as this string, so what the operator did not say
-    /// has to survive the round trip: spelling in the invoking user's name
+    /// leaving unsaid what was unsaid: spelling in the invoking user's name
     /// here would have `~/.ssh/config` answering a question nobody asked.
+    ///
+    /// The spelling is the grammar's writer, and the tests hold it against
+    /// [`parse`](Self::parse) so the round trip keeps a gap a gap. Requests
+    /// themselves travel typed (`ShellConfig::ssh`), because the spelling
+    /// cannot carry a key file.
     pub fn spec(&self) -> String {
         let mut spec = String::new();
         if !self.unsaid.user {
@@ -680,6 +681,26 @@ mod tests {
             default_request(&cfg).unwrap().unsaid,
             Unsaid { user: true, port: true },
             "an absent port reaches the row as 22, which is this program filling it"
+        );
+    }
+
+    /// The row's key is part of the destination, and the carry from the
+    /// config to a window is the request itself, so what is asserted here
+    /// is what the window dials with: a spelling has nowhere to put a key.
+    #[test]
+    fn the_default_carries_the_rows_key_to_the_window() {
+        let mut cfg = config::Config::default();
+        cfg.ssh.hosts.push(config::SshHost {
+            host: "vault".into(),
+            user: "overseer".into(),
+            port: 22,
+            key: "~/.ssh/id_foo".into(),
+        });
+        cfg.ssh.default = "vault".into();
+        let home = std::env::home_dir().unwrap();
+        assert_eq!(
+            default_request(&cfg).unwrap().keys,
+            vec![home.join(".ssh").join("id_foo")]
         );
     }
 

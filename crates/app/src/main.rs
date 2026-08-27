@@ -367,11 +367,15 @@ fn main() -> ExitCode {
     let mut shell_config = ShellConfig::empty(&identity);
     shell_config.fullscreen = options.fullscreen;
     // The flag outranks the config's default connection; both feed the
-    // same field every window this process opens reads.
+    // same field every window this process opens reads, and both feed it a
+    // resolved request, so the row's key travels with its destination. The
+    // flag's spelling was validated at the CLI, before any window existed;
+    // one that fails anyway names nothing, and the config's default stands.
     shell_config.ssh = options
         .ssh
-        .clone()
-        .or_else(|| app::ssh::default_request(&initial_config).map(|r| r.spec()));
+        .as_deref()
+        .and_then(|spec| app::ssh::SshRequest::parse(spec).ok())
+        .or_else(|| app::ssh::default_request(&initial_config));
     shell_config.bank_width = bank_width;
     shell_config.bank_minimum = bank_minimum;
     // At scale factor 1, which is the unit the default window size is quoted
@@ -382,11 +386,10 @@ fn main() -> ExitCode {
     let surface_proxy = event_loop.create_proxy();
     let frame_stats_enabled = options.frame_stats;
     shell_config.surface_factory = Box::new(move |window, ssh| {
-        // The spelling was validated at the CLI (and a handoff's came off a
-        // CLI too); one that fails anyway opens the window on a shell.
-        let dial = ssh.and_then(|spec| app::ssh::SshRequest::parse(spec).ok());
+        // The destination arrives resolved, keys and all; nothing is
+        // re-read on the way in, and `None` opens the window on a shell.
         let mut surface =
-            TerminalSurface::new(window, &session.clone(), frame_stats_enabled, dial.as_ref());
+            TerminalSurface::new(window, &session.clone(), frame_stats_enabled, ssh);
         surface.set_shell_events(surface_proxy.clone());
         // The config this run resolved, whether or not a file is behind it.
         // Under `--default-settings` there is no handle to attach and this is
