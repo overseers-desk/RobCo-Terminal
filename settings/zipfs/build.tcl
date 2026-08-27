@@ -97,6 +97,7 @@ file delete -force $stage
 file mkdir $stage
 file copy $launcher                       [file join $stage robco-settings]
 file copy [file join $repo zipfs main.tcl] [file join $stage main.tcl]
+file copy [file join $repo zipfs selftest.tcl] [file join $stage selftest.tcl]
 # tests/ travels with lib/ and ui/ so that the finished image can be asked
 # to test itself. A suite that only ever runs against the checkout proves
 # the scripts are right; run from inside the image it also proves the image
