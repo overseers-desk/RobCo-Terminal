@@ -1,3 +1,16 @@
+robco-term (0.1.3) unstable; urgency=medium
+
+  * The settings window opens on its own knowledge: the schema is data in
+    the window's code, held to the terminal's --dump-settings by a test,
+    and no process is run or parsed on the right-click.
+  * The terminal names its own binary to the settings window it spawns,
+    so the system-font list is asked of the terminal that will render it.
+  * The TOML editing under the window is the tomledit 1.0 module from the
+    teatotal shelf, vendored: an edit changes one key's bytes and no
+    others.
+
+ -- Weiwu Zhang <a@colourful.land>  Thu, 27 Aug 2026 23:12:13 +1000
+
 robco-term (0.1.2) unstable; urgency=medium
 
   * The private key a [[ssh.host]] row names is offered on every window's
