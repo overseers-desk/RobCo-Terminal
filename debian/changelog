@@ -1,3 +1,15 @@
+robco-term (0.1.4) unstable; urgency=medium
+
+  * On macOS the settings window is reached the way a Mac reaches things:
+    Ctrl+click as the right-click, and a Settings item on Cmd+, in the
+    application menu the platform draws.
+  * Cmd holds the unbroken copy of a wrapped selection on macOS, Ctrl
+    being the secondary click there; Ctrl still holds it elsewhere.
+  * Cmd+Q closes the terminal through its own shutdown, so the
+    single-instance socket and lock are cleared rather than left behind.
+
+ -- Weiwu Zhang <a@colourful.land>  Fri, 28 Aug 2026 09:29:43 +1000
+
 robco-term (0.1.3) unstable; urgency=medium
 
   * The settings window opens on its own knowledge: the schema is data in
