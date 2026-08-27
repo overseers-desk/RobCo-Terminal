@@ -88,25 +88,29 @@ namespace eval ::rcsettings::dump {
             [join $where {; }]. Put robco-term beside this program or on PATH."
     }
 
-    # Run the binary and parse what it prints. A non-zero exit or unusable
-    # output is an error carrying the binary's own stderr: the caller has
-    # no way to guess defaults without it.
-    proc load {{path ""}} {
-        if {$path eq ""} { set path [locate] }
+    # Run the binary under one flag and hand back its raw stdout. A
+    # non-zero exit or unusable output is an error carrying the binary's
+    # own stderr: the caller has no way to guess defaults without it.
+    proc run_dump {path flag} {
         # The binary logs to stderr, and a log line is not a failure, so
         # stderr goes to a file rather than through exec's error path or
         # out of this process. Only a non-zero exit is a failure, and then
         # what the binary said is the useful half of the message.
         set ch [file tempfile errpath]
         close $ch
-        set failed [catch {exec -- $path --dump-settings 2> $errpath} out]
+        set failed [catch {exec -- $path $flag 2> $errpath} out]
         set said [string trim [::rcsettings::toml::read_file $errpath]]
         file delete -- $errpath
         if {$failed} {
-            error "running \"$path --dump-settings\" failed: $out\
+            error "running \"$path $flag\" failed: $out\
                 [expr {$said eq "" ? "" : "\n$said"}]"
         }
-        return [load_text $out $path]
+        return $out
+    }
+
+    proc load {{path ""}} {
+        if {$path eq ""} { set path [locate] }
+        return [load_text [run_dump $path --dump-settings] $path]
     }
 
     # The parse step alone, so tests can feed a canned dump.
@@ -143,14 +147,7 @@ namespace eval ::rcsettings::dump {
             dict set data preset_order $axis $order
             dict set data presets $axis $byname
         }
-        set fonts {}
-        if {[dict exists $arrays fonts]} {
-            foreach entry [dict get $arrays fonts] {
-                lappend fonts [list \
-                    [::rcsettings::toml::plain [dict get $entry name]] \
-                    [::rcsettings::toml::plain [dict get $entry text]]]
-            }
-        }
+        set fonts [parse_font_array $arrays]
         if {[llength $fonts] == 0} {
             error "$origin has no \[\[fonts\]\] entries"
         }
@@ -173,16 +170,7 @@ namespace eval ::rcsettings::dump {
     # one, so there is no required-table check here to fail it on.
     proc system_fonts {{path ""}} {
         if {$path eq ""} { set path [locate] }
-        set ch [file tempfile errpath]
-        close $ch
-        set failed [catch {exec -- $path --dump-system-fonts 2> $errpath} out]
-        set said [string trim [::rcsettings::toml::read_file $errpath]]
-        file delete -- $errpath
-        if {$failed} {
-            error "running \"$path --dump-system-fonts\" failed: $out\
-                [expr {$said eq "" ? "" : "\n$said"}]"
-        }
-        return [system_fonts_text $out]
+        return [system_fonts_text [run_dump $path --dump-system-fonts]]
     }
 
     # The parse step alone, so tests can feed a canned dump. {name text}
@@ -190,7 +178,13 @@ namespace eval ::rcsettings::dump {
     # absent altogether: a machine with nothing installed is not an error.
     proc system_fonts_text {text} {
         set parsed [::rcsettings::toml::parse $text]
-        set arrays [dict get $parsed arrays]
+        return [parse_font_array [dict get $parsed arrays]]
+    }
+
+    # The [[fonts]] array, wherever it appears, as {catalogue_key
+    # display_name} pairs. Shared by load_text (which then requires at
+    # least one) and system_fonts_text (for which zero is a legal answer).
+    proc parse_font_array {arrays} {
         set fonts {}
         if {[dict exists $arrays fonts]} {
             foreach entry [dict get $arrays fonts] {

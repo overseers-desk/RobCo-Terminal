@@ -72,11 +72,12 @@ namespace eval ::rcsettings::ui::form {
                 rasterization    enum "Rasterization"    {}
             }
             {Type} {
-                font_name    font        "Font"         {}
-                font_source  source_bool "Also offer installed system fonts" {}
-                font_width   scale       "Font width"   {0.3 2.0}
-                line_spacing frac        "Line spacing" {}
-                margin       frac        "Margin"       {}
+                font_name    font  "Font"         {}
+                font_source  bool  "Also offer installed system fonts"
+                    {system_fonts bundled_fonts}
+                font_width   scale "Font width"   {0.3 2.0}
+                line_spacing frac  "Line spacing" {}
+                margin       frac  "Margin"       {}
             }
             {Moulding, shown when the chassis is not} {
                 frame_size      frac  "Frame size"   {}
@@ -313,19 +314,17 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
             dict set row to $to
         }
         bool {
+            # arg is empty for a plain TOML boolean, whose two states this
+            # checkbutton carries as 1/0 and refresh_row translates against
+            # true/false. A two-element arg is a key the dump writes as a
+            # string enum of two names rather than a boolean (screen's
+            # font_source is one, telling apart which flag printed the font
+            # catalogue), and those two names are the on/off values verbatim,
+            # with no translation on refresh.
+            lassign [expr {$arg eq "" ? "1 0" : $arg}] on off
             set w $g.ctl_$key
             ttk::checkbutton $w -variable ::rcsettings::ui::form::Value($id) \
-                -onvalue 1 -offvalue 0 -text "" \
-                -command [list ::rcsettings::ui::form::on_toggle $id]
-        }
-        source_bool {
-            # Not a plain bool: the key it writes is a string enum of two
-            # names, not a TOML boolean, because the terminal's dump tells
-            # the two apart by which flag printed the font catalogue and a
-            # true/false could not carry that.
-            set w $g.ctl_$key
-            ttk::checkbutton $w -variable ::rcsettings::ui::form::Value($id) \
-                -onvalue system_fonts -offvalue bundled_fonts -text "" \
+                -onvalue $on -offvalue $off -text "" \
                 -command [list ::rcsettings::ui::form::on_toggle $id]
         }
         enum - font {
@@ -375,21 +374,21 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
 # name: a system install sharing a bundled face's own name is still a
 # different key, and only position (not the printed words) tells the two
 # apart, the same reasoning on_pick already relies on.
-proc ::rcsettings::ui::form::font_keys {} {
+# Column $i (0 the catalogue key, 1 the display name) of the bundled
+# fonts followed by the system ones, which is the one list font_keys and
+# font_labels each pick a column out of.
+proc ::rcsettings::ui::form::font_column {i} {
     variable SystemFonts
-    set out [lmap f [::rcsettings::dump::fonts [::rcsettings::model::dump]] \
-        {lindex $f 0}]
-    foreach f $SystemFonts { lappend out [lindex $f 0] }
+    set out {}
+    foreach f [::rcsettings::dump::fonts [::rcsettings::model::dump]] {
+        lappend out [lindex $f $i]
+    }
+    foreach f $SystemFonts { lappend out [lindex $f $i] }
     return $out
 }
 
-proc ::rcsettings::ui::form::font_labels {} {
-    variable SystemFonts
-    set out [lmap f [::rcsettings::dump::fonts [::rcsettings::model::dump]] \
-        {lindex $f 1}]
-    foreach f $SystemFonts { lappend out [lindex $f 1] }
-    return $out
-}
+proc ::rcsettings::ui::form::font_keys {} { return [font_column 0] }
+proc ::rcsettings::ui::form::font_labels {} { return [font_column 1] }
 
 # ----------------------------------------------------- system font fetch --
 
@@ -612,14 +611,15 @@ proc ::rcsettings::ui::form::refresh_row {id} {
                 [dict get $row readout] configure -text ""
             }
             bool {
-                set Value($id) [expr {$value eq "true" ? 1 : 0}]
-                [dict get $row readout] configure -text ""
-            }
-            source_bool {
-                # The effective value is already one of the checkbutton's
-                # two on/off strings, so it goes into the variable plain,
-                # unlike bool's 0/1 translation.
-                set Value($id) $value
+                # A plain boolean (empty arg) is what the file spells
+                # true/false, translated to the checkbutton's 1/0. A
+                # two-name arg is already one of the checkbutton's own
+                # on/off strings, so it goes into the variable plain.
+                if {[dict get $row arg] eq ""} {
+                    set Value($id) [expr {$value eq "true" ? 1 : 0}]
+                } else {
+                    set Value($id) $value
+                }
                 [dict get $row readout] configure -text ""
             }
             enum - font {

@@ -304,6 +304,17 @@ pub fn font_by_name(name: &str, source: FontSource) -> Option<&'static FontEntry
     fonts_for(source).iter().find(|f| f.name == name)
 }
 
+/// [`font_by_name`], and if `source`'s catalogue does not offer `name`, the
+/// bundled entry named `fallback` instead. The fallback is looked up
+/// bundled: the bundled catalogue always resolves it.
+pub fn font_by_name_or(
+    name: &str,
+    source: FontSource,
+    fallback: &str,
+) -> Option<&'static FontEntry> {
+    font_by_name(name, source).or_else(|| font_by_name(fallback, FontSource::Bundled))
+}
+
 /// The bundled low-resolution faces, the list the LED and tape displays
 /// letter themselves from.
 pub fn low_resolution_fonts() -> impl Iterator<Item = &'static FontEntry> {

@@ -592,6 +592,25 @@ async fn try_key_file(
     path: &std::path::Path,
 ) -> Authenticated {
     use russh::keys::{load_secret_key, Error as KeysError, PrivateKeyWithHashAlg};
+    // A PuTTY key reads as some russh parse error -- encrypted or not, russh
+    // has no format for it at all -- so it is sniffed once, before the
+    // passphrase state machine below gets a chance to mistake a foreign
+    // format for a locked one of its own. An answer to a passphrase prompt
+    // could not be used here, so asking would only mislead.
+    if let Some(ver) = ppk_version(path) {
+        notice(
+            wire,
+            format!(
+                "{} is a PuTTY key file (format {ver}), which this build cannot read; \
+                 convert it with puttygen {} -O private-openssh -o <new-file>, or \
+                 PuTTYgen's Conversions > Export OpenSSH key",
+                path.display(),
+                path.display()
+            ),
+        )
+        .await;
+        return Authenticated::No;
+    }
     let mut passphrase: Option<String> = None;
     let mut asked = 0usize;
     let key = loop {
@@ -599,25 +618,6 @@ async fn try_key_file(
         let Err(e) = attempt else {
             break attempt.expect("the Ok arm");
         };
-        // A PuTTY key reads as some russh parse error -- encrypted or not,
-        // russh has no format for it at all -- so it is sniffed before the
-        // passphrase logic below gets a chance to mistake a foreign format
-        // for a locked one of its own. An answer to a passphrase prompt
-        // could not be used here, so asking would only mislead.
-        if let Some(ver) = ppk_version(path) {
-            notice(
-                wire,
-                format!(
-                    "{} is a PuTTY key file (format {ver}), which this build cannot read; \
-                     convert it with puttygen {} -O private-openssh -o <new-file>, or \
-                     PuTTYgen's Conversions > Export OpenSSH key",
-                    path.display(),
-                    path.display()
-                ),
-            )
-            .await;
-            return Authenticated::No;
-        }
         // Two shapes of one situation: the key wants a passphrase and has
         // not been given one, or it was given one that did not fit. Any
         // other error with no passphrase in play is an unreadable file.

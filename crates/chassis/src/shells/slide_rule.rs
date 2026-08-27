@@ -649,13 +649,11 @@ fn counter_lamps(cfg: &config::Config, panel: PaintRect, page_label: &str) -> Op
     let lamp_cell_width = kit.lamp_cell_width.max(1) as u32;
     let lamp_cell_height = kit.lamp_cell_height.max(1) as u32;
     let grid = crate::displays::led::grid_size(lamp_cell_width, lamp_cell_height, 2, 0, 0, 0);
-    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name, crate::font_source(cfg))
-        .or_else(|| {
-            term::fonts::font_by_name(
-                crate::displays::led::DEFAULT_LED_FONT_NAME,
-                term::fonts::FontSource::Bundled,
-            )
-        })?;
+    let entry = term::fonts::font_by_name_or(
+        &cfg.chassis.bank_font_name,
+        crate::font_source(cfg),
+        crate::displays::led::DEFAULT_LED_FONT_NAME,
+    )?;
     let source = crate::furniture::led_grid(
         entry.data(),
         entry.pixel_size,

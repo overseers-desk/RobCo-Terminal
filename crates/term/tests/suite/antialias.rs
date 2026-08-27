@@ -233,7 +233,7 @@ fn every_scalable_catalogue_face_takes_the_coverage_path() {
 
     let scalable: Vec<_> = term::fonts::bundled_fonts()
         .iter()
-        .filter(|f| !f.is_system && !f.low_resolution)
+        .filter(|f| !f.low_resolution)
         .collect();
     assert_eq!(scalable.len(), 8, "A6 counted eight scalable bundled faces");
 

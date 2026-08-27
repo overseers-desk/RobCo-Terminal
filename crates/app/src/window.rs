@@ -2281,7 +2281,7 @@ impl TerminalSurface {
         // session. Only where this program is the manager is the question
         // "what does a session start as" the config's to answer -- and a
         // default naming a vanished row, or none at all, is a local shell.
-        if !self.channels.manager_of(view).is_some_and(Manager::is_tmux) {
+        if !self.is_tmux(view) {
             if let Some(req) = crate::ssh::default_request(&self.live_config()) {
                 self.connect_ssh(&req);
                 self.channel_changed();

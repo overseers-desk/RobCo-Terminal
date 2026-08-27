@@ -561,10 +561,11 @@ fn led_piece(
         pad_cells_y,
     );
 
-    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name, crate::font_source(cfg))
-        .or_else(|| {
-            term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME, term::fonts::FontSource::Bundled)
-        })?;
+    let entry = term::fonts::font_by_name_or(
+        &cfg.chassis.bank_font_name,
+        crate::font_source(cfg),
+        led::DEFAULT_LED_FONT_NAME,
+    )?;
     let shown = led::visible_text(&row.title, row.open, characters as usize);
     // The top band splits the vertical pad in half, rounded down.
     let source = led_grid(
@@ -620,10 +621,11 @@ fn tape_piece(
 
     // The cabinet's own face, the one `tape_metrics` measured the wheel from,
     // so the stamp and the spacing it was cut for agree.
-    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name, crate::font_source(cfg))
-        .or_else(|| {
-            term::fonts::font_by_name(tape::FONT_NAME, term::fonts::FontSource::Bundled)
-        })?;
+    let entry = term::fonts::font_by_name_or(
+        &cfg.chassis.bank_font_name,
+        crate::font_source(cfg),
+        tape::FONT_NAME,
+    )?;
     let label_h = (strip.height - 2.0 * WELL_INSET).max(1.0);
     let letter_scale = tape::letter_scale(label_h);
     let raster_size = tape::raster_size(label_h, letter_scale);

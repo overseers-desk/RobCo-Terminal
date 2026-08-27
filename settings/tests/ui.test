@@ -54,7 +54,7 @@ proc layout_rows {} {
     set out {}
     foreach table {general screen chassis} {
         foreach {title rows} [dict get $::rcsettings::ui::form::Layout $table] {
-            foreach {key kind label arg} $rows { lappend out [list $table $key $kind] }
+            foreach {key kind label arg} $rows { lappend out [list $table $key $kind $arg] }
         }
     }
     return $out
@@ -109,15 +109,20 @@ test layout-2.1 {each row's widget matches the type of the key it writes} -const
 } -body {
     # The model formats an edited value after the type of the dump's default,
     # so a checkbutton on a float key would write 1 into a key the terminal
-    # reads as a fraction. The kinds and the TOML types have to agree.
+    # reads as a fraction. The kinds and the TOML types have to agree. A
+    # `bool` row with a two-element arg is the one exception: it writes a
+    # string enum of two names, not a TOML boolean, which is what the arg
+    # itself tells apart from the plain 1/0 checkbutton.
     set want {frac float scale float int int bool bool color string enum string \
-        font string source_bool string}
+        font string}
     set wrong {}
     foreach row [layout_rows] {
-        lassign $row table key kind
+        lassign $row table key kind arg
         set type [::rcsettings::toml::type_of \
             [::rcsettings::dump::default $::dumpdata $table $key]]
-        if {$type ne [dict get $want $kind]} {
+        set expect [expr {
+            $kind eq "bool" && $arg ne "" ? "string" : [dict get $want $kind]}]
+        if {$type ne $expect} {
             lappend wrong "$table.$key is $type, drawn as $kind"
         }
     }
@@ -249,13 +254,13 @@ test colour-1.1 {a colour is narrowed to the file's three bytes} -constraints {
 
 # ------------------------------------------ font_source and its fetch --
 #
-# screen.font_source draws as a checkbutton (source_bool) rather than the
-# plain bool kind, because the key it writes is a two-name string enum, not
-# a TOML boolean. What has to hold: the row renders and writes through the
-# same set_value path every other row uses, and the lazy fetch it gates
-# fires exactly when the docs say it should - not before the box is
-# checked, not on a tab whose pickers do not read the list, and never a
-# second time.
+# screen.font_source draws as a checkbutton, the bool kind's arg carrying
+# {system_fonts bundled_fonts} instead of the default 1/0, because the key
+# it writes is a two-name string enum, not a TOML boolean. What has to
+# hold: the row renders and writes through the same set_value path every
+# other row uses, and the lazy fetch it gates fires exactly when the docs
+# say it should - not before the box is checked, not on a tab whose
+# pickers do not read the list, and never a second time.
 #
 # The exec itself is not run here: --dump-system-fonts is a sibling change
 # this suite's own binary may not carry yet, and what these tests are about
@@ -291,7 +296,7 @@ proc sf_reset_state {} {
     set ::rcsettings::ui::form::SystemFontsFetching 0
 }
 
-test sourcebool-6.1 {the row renders the effective string, unquoted} -constraints {
+test fontsource-6.1 {the row renders the effective string, unquoted} -constraints {
     schema
 } -body {
     sf_init "\[screen\]\n"
@@ -304,7 +309,7 @@ test sourcebool-6.1 {the row renders the effective string, unquoted} -constraint
     set v
 } -result bundled_fonts
 
-test sourcebool-6.2 {a pinned system_fonts value renders checked} -constraints {
+test fontsource-6.2 {a pinned system_fonts value renders checked} -constraints {
     schema
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
@@ -317,7 +322,7 @@ test sourcebool-6.2 {a pinned system_fonts value renders checked} -constraints {
     set v
 } -result system_fonts
 
-test sourcebool-6.3 {toggling it writes system_fonts through set_value} -constraints {
+test fontsource-6.3 {toggling it writes system_fonts through set_value} -constraints {
     schema
 } -body {
     sf_init "\[screen\]\n"
@@ -335,7 +340,7 @@ test sourcebool-6.3 {toggling it writes system_fonts through set_value} -constra
     list $pinned $eff
 } -result {1 system_fonts}
 
-test sourcebool-6.4 {toggling back off removes the key, the minimal edit} -constraints {
+test fontsource-6.4 {toggling back off removes the key, the minimal edit} -constraints {
     schema
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"

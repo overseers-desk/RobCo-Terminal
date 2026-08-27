@@ -173,13 +173,7 @@ pub fn font_source(cfg: &Config) -> term::fonts::FontSource {
 /// hand-edited config, or a system face named under a bundled profile, is not
 /// a reason to have no bank.
 pub fn led_metrics(font_name: &str, source: term::fonts::FontSource) -> LedMetrics {
-    let entry = term::fonts::font_by_name(font_name, source)
-        .or_else(|| {
-            term::fonts::font_by_name(
-                displays::led::DEFAULT_LED_FONT_NAME,
-                term::fonts::FontSource::Bundled,
-            )
-        })
+    let entry = term::fonts::font_by_name_or(font_name, source, displays::led::DEFAULT_LED_FONT_NAME)
         .expect("the bundled catalogue always carries the default lamp font");
     let (lamp_cell_width, lamp_cell_height) = displays::led::cell_metrics(entry.data(), entry.pixel_size);
     LedMetrics {
@@ -201,13 +195,7 @@ pub fn led_metrics(font_name: &str, source: term::fonts::FontSource) -> LedMetri
 /// not offer falls back to the tape's own, the way the lamp strip falls back
 /// to its.
 pub fn tape_metrics(font_name: &str, source: term::fonts::FontSource) -> TapeMetrics {
-    let entry = term::fonts::font_by_name(font_name, source)
-        .or_else(|| {
-            term::fonts::font_by_name(
-                displays::tape::FONT_NAME,
-                term::fonts::FontSource::Bundled,
-            )
-        })
+    let entry = term::fonts::font_by_name_or(font_name, source, displays::tape::FONT_NAME)
         .expect("the bundled catalogue always carries the tape's own face");
     TapeMetrics {
         unit_width: displays::tape::metrics::unit_width(entry.data()),
