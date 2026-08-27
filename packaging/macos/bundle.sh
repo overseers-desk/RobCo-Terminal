@@ -104,11 +104,15 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# What is checked instead of a seal: that the terminal, the binary macOS
-# will launch, carries the signature Apple Silicon demands of anything it
-# executes. A bundle that fails this does not open at all, which is worth
-# catching here rather than on a stranger's desk.
-codesign --verify --strict "$app/Contents/MacOS/robco-term"
+# What is checked instead of a seal: that both binaries still run from
+# where they now sit. This is the whole of what matters and the only form
+# the check can take, because Apple Silicon refuses to execute a Mach-O
+# whose signature is missing or broken, while codesign asked to verify a
+# file inside a bundle demands the resource envelope an unsealed bundle
+# does not have. Running them answers the real question; verifying them
+# answers a question about a bundle we are not making.
+"$app/Contents/MacOS/robco-term" --version > /dev/null
+"$app/Contents/MacOS/robco-settings" --version > /dev/null
 
 # The alias is the drag-to-install gesture every Mac user already knows;
 # without it the mounted volume shows an app and no hint of what to do.
