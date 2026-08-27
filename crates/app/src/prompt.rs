@@ -104,6 +104,26 @@ impl Line {
         self.text.is_empty()
     }
 
+    /// What the glass may show of the answer so far: an echoing line's text,
+    /// and nothing at all from a secret.
+    ///
+    /// For the caller that paints a whole page rather than trailing the
+    /// cursor -- the picker repaints its page on every keystroke, because a
+    /// checkbox and an error line above the field move too. Such a caller
+    /// needs the answer back to put it on the glass again, and the echo rule
+    /// is what decides whether it may: a secret hands back nothing here for
+    /// the same reason it echoes nothing, so no repaint can put a password
+    /// on the glass however hard it tries. [`Self::take`] is where the
+    /// answer itself leaves, and it goes to whoever asked the question, not
+    /// to the glass.
+    pub fn shown(&self) -> &str {
+        if self.echo {
+            &self.text
+        } else {
+            ""
+        }
+    }
+
     /// Whether the glass is showing this answer.
     pub fn echo(&self) -> bool {
         self.echo
@@ -183,6 +203,7 @@ mod tests {
             line.key(&named(NamedKey::Backspace), None),
             (Stroke::Backspace, b"\x08 \x08".to_vec())
         );
+        assert_eq!(line.shown(), "hi", "a page may repaint what it already showed");
         assert_eq!(
             line.key(&named(NamedKey::Enter), Some("\r")),
             (Stroke::Commit, b"\r\n".to_vec())
@@ -202,6 +223,7 @@ mod tests {
             (Stroke::Backspace, Vec::<u8>::new()),
             "a rub-out that moved a column would give the length away"
         );
+        assert_eq!(line.shown(), "", "nor may a repaint put it back on the glass");
         assert_eq!(
             line.key(&named(NamedKey::Enter), None),
             (Stroke::Commit, b"\r\n".to_vec()),

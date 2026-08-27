@@ -4,7 +4,13 @@
 
 A connection that fails before it ever produces a remote byte keeps its channel, wearing the refusal, until you close it (`Ctrl`+`Shift`+`W`): the slot is the only place the reason is readable. A connection that dies after working ends its channel the way a local shell's exit does.
 
-Where a session starts is configuration: the `[ssh]` table in `config.toml` holds the pre-configured servers as `[[ssh.host]]` rows and names which of them is the default (`docs/config.md`). The settings window is to list those rows as its SSH tab's radios, localhost first, the checked radio being the default; the terminal reads the table at launch, so a change applies to the next session started. `--ssh` on the command line outranks the configured default for its own invocation, and `Shift`+`Alt`+`T` raises a picker on the glass: the same rows and localhost, a digit opening one channel there, the default untouched. The sections below say exactly what this build will and will not do.
+Where a session starts is configuration: the `[ssh]` table in `config.toml` holds the pre-configured servers as `[[ssh.host]]` rows and names which of them is the default (`docs/config.md`). The settings window is to list those rows as its SSH tab's radios, localhost first, showing which of them is the default; the terminal reads the table at launch, so a change applies to the next session started. `--ssh` on the command line outranks the configured default for its own invocation.
+
+`Shift`+`Alt`+`T` raises a picker on the glass, and it is where a session that is not the default one is chosen. A digit opens a channel: `1` is localhost, `2` to `9` are the configured rows in the order the file lists them. `0` opens a field and takes a destination you type, spelled the way `--ssh` spells one, for a server that is configured nowhere; a spelling that does not parse says so under the field and leaves what you typed where it is. `Esc` steps out of the field, and out of the page.
+
+`Tab` ticks the checkbox on the same page: make this the default connection. Leave it clear and the picker writes nothing at all. Tick it and the destination you just chose becomes `ssh.default` before the connection is dialled, so a connection that fails is not also a preference lost. A typed destination has no row in the file to name, so it gains one: the `[[ssh.host]]` row and the default naming it are written in a single edit, and every other byte of the file is left as it was. The settings window's SSH radios set the same default from the bail-out side; on the glass, this checkbox is where it is set.
+
+The sections below say exactly what this build will and will not do.
 
 ## Host keys
 

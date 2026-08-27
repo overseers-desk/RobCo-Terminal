@@ -472,9 +472,10 @@ pub struct TerminalSurface {
     /// into it. At most one per bank: the transport asks one thing at a
     /// time, because it is blocked on the answer to the last one.
     prompts: HashMap<BankId, Pending>,
-    /// The home slot the destination picker stands on, while it does.
-    /// `Shift+Alt+T` raises it; a digit or `Esc` retires it.
-    picker_slot: Option<u32>,
+    /// The destination picker while it stands: the home slot its page holds,
+    /// and everything the user has said to it. `Shift+Alt+T` raises it; a
+    /// digit, a typed destination or `Esc` retires it.
+    picker: Option<crate::picker::Picker>,
     /// Every session seen, by socket, server pid and id: banked, in flight, or
     /// owed; the model holds banks, so a listing is read against this.
     sessions: HashMap<(String, u32, SessionId), SessionSlot>,
@@ -856,7 +857,7 @@ impl TerminalSurface {
             ssh_links: HashMap::new(),
             asks: HashMap::new(),
             prompts: HashMap::new(),
-            picker_slot: None,
+            picker: None,
             sessions: HashMap::new(),
             on_air,
             session_config: session.clone(),
@@ -983,13 +984,13 @@ impl TerminalSurface {
     /// painted with the configured servers, taking the air. Idempotent
     /// while one stands: the chord again only brings it back on air.
     pub fn open_picker(&mut self) {
-        if let Some(slot) = self.picker_slot {
+        if let Some(slot) = self.picker.as_ref().map(|picker| picker.slot) {
             if self.channels.slot_title(0, slot).is_some() {
                 self.channels.select_channel(0, slot);
                 self.channel_changed();
                 return;
             }
-            self.picker_slot = None;
+            self.picker = None;
         }
         let size = self.viewport.term_size();
         let scrollback = self.session_config.scrollback;
@@ -1001,43 +1002,66 @@ impl TerminalSurface {
             log::warn!("no free home slot for the destination picker");
             return;
         }
-        self.picker_slot = Some(slot);
+        self.picker = Some(crate::picker::Picker::new(slot));
         self.paint_picker();
         self.channel_changed();
     }
 
-    /// Repaint the picker's page from the live config, whole: raise,
-    /// resize, and nothing else, so tracking damage buys nothing.
+    /// Repaint the picker's page from the live config and the page's own
+    /// state, whole: raise, resize, and every key it took, because a
+    /// keystroke moves more of the page than the column it landed in.
     fn paint_picker(&mut self) {
-        let Some(slot) = self.picker_slot else {
+        let Some(picker) = self.picker.as_ref() else {
             return;
         };
-        let hosts = self.live_config().ssh.hosts;
+        let slot = picker.slot;
+        let bytes = crate::picker::paint(&self.live_config().ssh.hosts, picker);
         if let Some(row) = self.channels.rows_mut().find(|r| r.bank == 0 && r.channel == slot) {
             if let Some(screen) = row.session.tmux_pane_mut() {
-                screen.feed(&crate::picker::paint(&hosts));
+                screen.feed(&bytes);
             }
         }
     }
 
     /// The picker's keyboard: only while its page is the channel on the
     /// air. Answers whether the key was the picker's.
-    fn picker_key(&mut self, logical: &winit::keyboard::Key) -> bool {
-        let Some(slot) = self.picker_slot else {
+    ///
+    /// Every verdict that opens something writes the default first, when the
+    /// checkbox is ticked, and dials after. The write is the user's standing
+    /// answer to "where do sessions start"; the connection is one session.
+    /// A dial that fails, or a window that is switched off a second later,
+    /// must not be the reason the answer was lost, so the answer goes to the
+    /// file while there is nothing left that can go wrong with it.
+    fn picker_key(
+        &mut self,
+        logical: &winit::keyboard::Key,
+        text: Option<&str>,
+    ) -> bool {
+        // Out of the field for the duration: the verdicts below reach for
+        // `&mut self`, and the page is put back only if it still stands.
+        let Some(mut picker) = self.picker.take() else {
             return false;
         };
+        let slot = picker.slot;
         if (self.channels.current_bank(), self.channels.current_channel()) != (0, slot) {
             // The page is standing but off the air: the keyboard is the
             // visible channel's. A dead picker row (closed by hand) is
             // forgotten here, the one place that would otherwise trust it.
-            if self.channels.slot_title(0, slot).is_none() {
-                self.picker_slot = None;
+            if self.channels.slot_title(0, slot).is_some() {
+                self.picker = Some(picker);
             }
             return false;
         }
         let hosts = self.live_config().ssh.hosts;
-        match crate::picker::read_key(logical, &hosts) {
+        let verdict = picker.key(logical, text, &hosts);
+        let make_default = picker.make_default();
+        match verdict {
             crate::picker::Verdict::Localhost => {
+                if make_default {
+                    // Localhost's spelling in the file is an empty default,
+                    // and it names no row.
+                    self.set_default_connection("");
+                }
                 // The replacement stands before the page goes, so closing
                 // the page is never closing the last channel.
                 let (config, size) = (self.session_config.clone(), self.viewport.term_size());
@@ -1047,6 +1071,7 @@ impl TerminalSurface {
             }
             crate::picker::Verdict::Host(index) => {
                 let Some(row) = hosts.get(index) else {
+                    self.picker = Some(picker);
                     return true;
                 };
                 let user = if row.user.is_empty() {
@@ -1060,8 +1085,14 @@ impl TerminalSurface {
                         row.host,
                         crate::ssh::USER_VAR
                     );
+                    self.picker = Some(picker);
                     return true;
                 };
+                if make_default {
+                    // The row is already in the file; the default is the
+                    // only thing that has to move.
+                    self.set_default_connection(&row.host);
+                }
                 let req = SshRequest {
                     user,
                     host: row.host.clone(),
@@ -1072,11 +1103,80 @@ impl TerminalSurface {
                 self.retire_picker(slot);
                 true
             }
+            crate::picker::Verdict::Typed(spec) => {
+                // It parsed inside the picker before it was handed over, so
+                // this cannot fail; if the environment moved under it in
+                // between, the log is the whole of the consequence.
+                let req = match SshRequest::parse(&spec) {
+                    Ok(req) => req,
+                    Err(why) => {
+                        log::warn!("the typed destination {spec:?} did not parse: {why}");
+                        self.retire_picker(slot);
+                        return true;
+                    }
+                };
+                if make_default {
+                    // Typed, so the file names no row for it yet: it gains
+                    // the row and the default naming it, in one edit.
+                    self.remember_default_row(&req);
+                }
+                self.connect_ssh(&req);
+                self.retire_picker(slot);
+                true
+            }
             crate::picker::Verdict::Cancel => {
                 self.retire_picker(slot);
                 true
             }
-            crate::picker::Verdict::Ignored => true,
+            crate::picker::Verdict::Ignored => {
+                // The page stands and has very likely changed: a character
+                // typed, the box ticked, an error raised or cleared.
+                self.picker = Some(picker);
+                self.paint_picker();
+                true
+            }
+        }
+    }
+
+    /// Make a destination the file already names the default connection, an
+    /// empty `host` being localhost's own spelling for it.
+    ///
+    /// The picker's checkbox is the only thing that calls this, and the only
+    /// thing in the program that sets `ssh.default`: one surface, so there is
+    /// one answer to where sessions start and one place it was given.
+    fn set_default_connection(&self, host: &str) {
+        let Some(settings) = self.settings.as_ref() else {
+            // No handle: `--default-settings`, or a headless surface that
+            // never attached one. The connection is dialled and nothing is
+            // persisted, which is what "never touch the user's real config"
+            // means. The seam drag's shape, for the seam drag's reason.
+            log::debug!("the picker chose {host:?} as the default with no config to write");
+            return;
+        };
+        if let Err(e) = settings.write_key("ssh.default", Scalar::String(host.to_string())) {
+            log::error!("could not write ssh.default = {host:?}: {e}");
+        }
+    }
+
+    /// The same tick on a destination the user typed: the file gains the
+    /// `[[ssh.host]]` row and the default naming it, in one atomic edit.
+    ///
+    /// The key file stays empty. A row typed here names a host and an
+    /// account and nothing else; naming a private key file is an edit for
+    /// the settings window or the file itself, and guessing one would be
+    /// this program deciding something the user did not say.
+    fn remember_default_row(&self, req: &SshRequest) {
+        let Some(settings) = self.settings.as_ref() else {
+            log::debug!(
+                "the picker typed {}@{}:{} as the default with no config to write",
+                req.user,
+                req.host,
+                req.port
+            );
+            return;
+        };
+        if let Err(e) = settings.set_ssh_default_row(&req.host, &req.user, req.port, "") {
+            log::error!("could not write the [[ssh.host]] row for {}: {e}", req.host);
         }
     }
 
@@ -1084,7 +1184,7 @@ impl TerminalSurface {
     /// any channel's, so an Esc on the last channel anywhere switches the
     /// appliance off, the law `close_channel` already applies.
     fn retire_picker(&mut self, slot: u32) {
-        self.picker_slot = None;
+        self.picker = None;
         if self.channels.close_channel(0, slot) == Close::CloseWindow {
             self.eof = true;
         }
@@ -1686,9 +1786,10 @@ impl TerminalSurface {
             return;
         }
         // The destination picker's keyboard, when its page is on the air:
-        // a digit connects, Esc cancels, everything else is swallowed so
-        // the page stays put. The `gateway_key` shape.
-        if self.picker_key(logical) {
+        // a digit connects, `0` opens the arm a hostname is typed into,
+        // Esc steps back, everything else is swallowed so the page stays
+        // put. The `gateway_key` shape.
+        if self.picker_key(logical, text) {
             return;
         }
         // Then a question the connection on the air is waiting on. Same

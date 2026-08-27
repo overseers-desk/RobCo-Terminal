@@ -13,7 +13,7 @@ The chord modifier is `Alt`, and `Cmd` on macOS.
 | `Alt`+digit | Bring that channel to the screen |
 | `Alt`+`Shift`+digit | Move the channel on screen to that slot |
 | `Ctrl`+`Shift`+`T` | New channel |
-| `Shift`+`Alt`+`T` | Pick where one new channel goes: a page of the configured SSH servers and localhost takes a free slot, a digit connects, `Esc` cancels, and the configured default stays as it was |
+| `Shift`+`Alt`+`T` | Pick where one new channel goes: a page of the configured SSH servers and localhost takes a free slot, a digit connects, `0` takes a destination you type, `Tab` ticks "make this the default connection", `Esc` steps back and then cancels |
 | `Ctrl`+`Shift`+`W` | Close this channel |
 | `Ctrl`+`PageUp` / `PageDown` | Previous / next channel |
 | `Ctrl`+`Shift`+`Left` / `Right` | Move the channel on screen one slot |
