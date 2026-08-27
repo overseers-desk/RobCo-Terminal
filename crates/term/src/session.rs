@@ -15,12 +15,13 @@
 //! for.
 
 use std::io::{Read, Write};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::grid::Dimensions;
 use rio_vt::crosswords::Crosswords;
-use rio_vt::event::{VoidListener, WindowId};
+use rio_vt::event::{EventListener, RioEvent, WindowId};
 use rio_vt::performer::handler::Processor;
 #[cfg(unix)]
 use rio_vt::teletypewriter::create_pty_with_spawn;
@@ -32,7 +33,67 @@ use crate::dcs::{DcsParser, DcsTap};
 use crate::size::TermSize;
 
 /// The VT state machine and grid in one type, as rio-vt models it.
-pub type Term = Crosswords<VoidListener>;
+pub type Term = Crosswords<ReplyListener>;
+
+/// Where a grid parks the answers it owes, between the parse that made them
+/// and the pump that sends them. See [`ReplyListener`].
+pub type Replies = Arc<Mutex<Vec<u8>>>;
+
+/// The ear on a grid that has something to say back.
+///
+/// `Crosswords` writes nothing itself. A query it can answer -- primary and
+/// secondary DA, the cursor position report, XTVERSION, the keyboard and mode
+/// reports, colour requests, xtgettcap -- becomes a `RioEvent::PtyWrite`
+/// handed to its listener, and rio-vt's own `VoidListener` takes the trait's
+/// default for that, which is nothing. A grid wearing it is a terminal that
+/// answers no question it is asked: vim's DA probe times out, a script that
+/// positions itself by CPR reads a reply that never comes.
+///
+/// `EventListener::send_event` takes `&self`, so the ear has to be interior-
+/// mutable and shared: the listener the grid owns and the [`Replies`] its
+/// session drains are two handles on one queue. A queue rather than a channel
+/// because the drain is a single reader on the same thread as the parse, and
+/// bytes are what the far end wants -- concatenating them is the whole job.
+///
+/// Only `PtyWrite` is caught, and the omissions are decisions rather than a
+/// to-do list. OSC 52's clipboard *load* -- a remote asking to read what the
+/// local user has copied -- stays unanswered: reading the clipboard out is
+/// disabled by default across the terminal field, and this terminal does not
+/// reopen it. The other closure-carrying events (`ClipboardLoad`,
+/// `ColorRequest`, `TextAreaSizeRequest`) are unhandled because nothing here
+/// yet knows what to answer them with; the esctest harness answers the size
+/// one for itself, being the only place that knows a cell's pixels.
+#[derive(Clone, Default)]
+pub struct ReplyListener {
+    /// `None` on a grid whose answers have nowhere to go. See
+    /// [`ReplyListener::detached`].
+    queue: Option<Replies>,
+}
+
+impl ReplyListener {
+    /// An ear on the given queue: what the grid answers lands there.
+    pub fn new(replies: &Replies) -> Self {
+        Self {
+            queue: Some(replies.clone()),
+        }
+    }
+
+    /// An ear that hears and drops, for a grid whose answers cannot be sent
+    /// on this path. The behaviour rio-vt's `VoidListener` has, kept as a
+    /// state of this type so that [`Term`] stays one name across every
+    /// screen the app holds.
+    pub fn detached() -> Self {
+        Self { queue: None }
+    }
+}
+
+impl EventListener for ReplyListener {
+    fn send_event(&self, event: RioEvent, _id: WindowId) {
+        if let (Some(queue), RioEvent::PtyWrite(_, text)) = (&self.queue, event) {
+            queue.lock().unwrap().extend_from_slice(text.as_bytes());
+        }
+    }
+}
 
 /// Read buffer size. Matches the order of magnitude a PTY hands over per
 /// wakeup; larger buffers stop helping once the kernel's own buffer is
@@ -107,6 +168,9 @@ pub struct Session<T: DcsTap> {
     /// Bytes on their way to the child that the master would not take yet.
     /// See [`Session::write`].
     input: Vec<u8>,
+    /// The grid's end of [`Session::send_replies`]: the other handle on the
+    /// queue this session's [`ReplyListener`] fills.
+    replies: Replies,
     /// How many writes have been refused because the queue was full.
     /// See [`Session::sheds`].
     sheds: u64,
@@ -142,10 +206,11 @@ impl<T: DcsTap> Session<T> {
             size.rows() as u16,
         )?;
 
+        let replies = Replies::default();
         let term = Crosswords::new(
             size,
             CursorShape::Block,
-            VoidListener {},
+            ReplyListener::new(&replies),
             WindowId::from(0u64),
             0,
             config.scrollback,
@@ -159,6 +224,7 @@ impl<T: DcsTap> Session<T> {
             size,
             buf: Box::new([0u8; READ_BUF]),
             input: Vec::new(),
+            replies,
             sheds: 0,
             eof: false,
         })
@@ -168,6 +234,10 @@ impl<T: DcsTap> Session<T> {
     ///
     /// Every chunk goes to two consumers: the DCS tap and the grid. See
     /// `dcs.rs` for why feeding both is correct rather than double work.
+    ///
+    /// A pump that parsed a question also sends its answer
+    /// ([`Session::send_replies`]): the child asks and hears back within the
+    /// one call, which is what a program blocking on its own DA probe needs.
     pub fn pump(&mut self) -> Pumped {
         let mut out = Pumped::default();
         if self.eof {
@@ -231,6 +301,11 @@ impl<T: DcsTap> Session<T> {
             }
         }
 
+        // Whatever the grid was asked in the loop above, answered now, before
+        // the queue is examined for a control mode that may have opened in
+        // that same loop.
+        self.send_replies();
+
         // And again on the way out, because the envelope may have opened in
         // the loop just above: this is the one call that stands between the
         // control mode starting and the gateway's first write, which the host
@@ -239,6 +314,30 @@ impl<T: DcsTap> Session<T> {
 
         self.expire_sync();
         out
+    }
+
+    /// Send the child what the grid owes it.
+    ///
+    /// [`ReplyListener`] parked the bytes; this is where they become a write.
+    /// They go out through [`Session::write`] rather than straight at the
+    /// master, and every rule that path has applies to them: they queue behind
+    /// a paste the tty would not take whole, and they shed at [`INPUT_CAP`]
+    /// when the child has stopped reading -- a child that is not reading is
+    /// not reading its answers either.
+    ///
+    /// That path's control-mode swallow applies too, and it is the one worth
+    /// spelling out: while the envelope is open this fd belongs to the
+    /// gateway, so a report the grid generated in this same pump is dropped
+    /// rather than spliced into the gateway's wire. The querying program is a
+    /// shell that is no longer there.
+    fn send_replies(&mut self) {
+        let replies = std::mem::take(&mut *self.replies.lock().unwrap());
+        if replies.is_empty() {
+            return;
+        }
+        if let Err(e) = self.write(&replies) {
+            log::warn!("could not answer the child's query: {e}");
+        }
     }
 
     /// Give up any input still queued for a shell that has become a tmux
@@ -536,5 +635,40 @@ impl<T: DcsTap> Session<T> {
     /// True once the child's end has closed.
     pub fn is_finished(&self) -> bool {
         self.eof
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The listener alone, without a PTY under it: what it catches, what it
+    /// lets past, and that a detached one is the no-op it claims to be.
+    /// `transcript.rs` proves the other half, that a caught reply reaches a
+    /// real child.
+    #[test]
+    fn the_listener_catches_pty_writes_and_nothing_else() {
+        let replies = Replies::default();
+        let listener = ReplyListener::new(&replies);
+        let id = WindowId::from(0u64);
+
+        listener.send_event(RioEvent::PtyWrite(0, "\x1b[?62c".to_string()), id);
+        // Not a reply the far end is waiting on: a title is the host's to
+        // draw, and this listener is not the host.
+        listener.send_event(RioEvent::Title("robco".to_string()), id);
+        listener.send_event(RioEvent::PtyWrite(0, "\x1b[1;1R".to_string()), id);
+
+        assert_eq!(*replies.lock().unwrap(), b"\x1b[?62c\x1b[1;1R".to_vec());
+    }
+
+    #[test]
+    fn a_detached_listener_drops_what_it_hears() {
+        let replies = Replies::default();
+        let listener = ReplyListener::detached();
+        listener.send_event(
+            RioEvent::PtyWrite(0, "\x1b[?62c".to_string()),
+            WindowId::from(0u64),
+        );
+        assert!(replies.lock().unwrap().is_empty());
     }
 }

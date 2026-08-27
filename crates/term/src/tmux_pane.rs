@@ -20,16 +20,23 @@
 //!   (`%window-pane-changed`) without the session noticing.
 //! * **An EOF.** A pane ends when tmux says `%window-close`, a model
 //!   transition, not a session state.
+//! * **An answer to a query.** The PTY session and the SSH channel each hand
+//!   their grid a live [`crate::session::ReplyListener`], so a DA or CPR asked
+//!   of them is answered on the pump that parsed it. A pane's grid gets the
+//!   detached one: its answers would have to leave as `send-keys` on the
+//!   gateway's control wire, a different mechanism through a queue this type
+//!   does not own, and the program asking is anyway talking to tmux's own
+//!   terminal rather than to this one.
 
 use std::time::Instant;
 
 use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::Crosswords;
-use rio_vt::event::{VoidListener, WindowId};
+use rio_vt::event::WindowId;
 use rio_vt::performer::handler::Processor;
 
 use crate::dcs::DcsTap;
-use crate::session::{Pumped, Session, Term};
+use crate::session::{Pumped, ReplyListener, Session, Term};
 use crate::size::TermSize;
 use crate::ssh_channel::SshChannel;
 
@@ -55,7 +62,7 @@ impl TmuxPane {
             term: Crosswords::new(
                 size,
                 CursorShape::Block,
-                VoidListener {},
+                ReplyListener::detached(),
                 WindowId::from(0u64),
                 0,
                 scrollback,

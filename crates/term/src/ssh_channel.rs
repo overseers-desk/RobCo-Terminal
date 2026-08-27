@@ -23,11 +23,11 @@ use std::time::Instant;
 
 use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::Crosswords;
-use rio_vt::event::{VoidListener, WindowId};
+use rio_vt::event::WindowId;
 use rio_vt::performer::handler::Processor;
 
 use crate::dcs::{DcsParser, DcsTap};
-use crate::session::{Pumped, Term};
+use crate::session::{Pumped, Replies, ReplyListener, Term};
 use crate::size::TermSize;
 
 /// What the wire has for the grid.
@@ -75,6 +75,9 @@ pub struct SshChannel<T: DcsTap> {
     dcs: DcsParser<T>,
     size: TermSize,
     wire: Box<dyn SshWire>,
+    /// What the grid owes the remote side, waiting for the end of the pump
+    /// that parsed the question. See [`crate::session::ReplyListener`].
+    replies: Replies,
     /// A remote byte has arrived: the connection lived. What `Eof` means
     /// depends on it.
     lived: bool,
@@ -84,11 +87,12 @@ pub struct SshChannel<T: DcsTap> {
 impl<T: DcsTap> SshChannel<T> {
     /// An empty screen of the glass's geometry, listening on the wire.
     pub fn new(size: TermSize, scrollback: usize, tap: T, wire: Box<dyn SshWire>) -> Self {
+        let replies = Replies::default();
         Self {
             term: Crosswords::new(
                 size,
                 CursorShape::Block,
-                VoidListener {},
+                ReplyListener::new(&replies),
                 WindowId::from(0u64),
                 0,
                 scrollback,
@@ -97,6 +101,7 @@ impl<T: DcsTap> SshChannel<T> {
             dcs: DcsParser::new(tap),
             size,
             wire,
+            replies,
             lived: false,
             eof: false,
         }
@@ -142,6 +147,14 @@ impl<T: DcsTap> SshChannel<T> {
                     break;
                 }
             }
+        }
+        // A question the remote program asked in this pump is answered in it,
+        // through [`Self::write`] and so under the same control-mode swallow:
+        // while the envelope is open the channel is the gateway's, and a
+        // report generated then is dropped rather than spliced into its wire.
+        let replies = std::mem::take(&mut *self.replies.lock().unwrap());
+        if !replies.is_empty() {
+            self.write(&replies);
         }
         if let Some(deadline) = self.processor.sync_timeout().sync_timeout() {
             if deadline <= Instant::now() {
@@ -293,6 +306,26 @@ mod tests {
         assert_eq!(*wire.sent.lock().unwrap(), b"ls\r");
     }
 
+    /// The same answer a PTY session owes its child, owed here to a remote
+    /// program: a query parsed in a pump is answered in that pump, out the
+    /// wire the question came in on.
+    #[test]
+    fn a_query_from_the_remote_side_is_answered_on_the_wire() {
+        let wire = FakeWire::default();
+        wire.events
+            .lock()
+            .unwrap()
+            .push_back(SshEvent::Data(b"\x1b[c\x1b[6n".to_vec()));
+        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+
+        s.pump();
+        assert_eq!(
+            *wire.sent.lock().unwrap(),
+            b"\x1b[?62;4;6;22;52c\x1b[1;1R".to_vec(),
+            "the DA and the cursor report both left, in the order asked"
+        );
+    }
+
     #[test]
     fn a_resize_reflows_the_grid_and_tells_the_far_side() {
         let wire = FakeWire::default();
@@ -315,7 +348,10 @@ mod tests {
         }
         let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
         let pumped = s.pump();
-        assert!(!pumped.eof, "an unlived connection's end is not a row's end");
+        assert!(
+            !pumped.eof,
+            "an unlived connection's end is not a row's end"
+        );
         assert!(viewport_text(s.term())[0].contains("refused"));
         assert!(!s.pump().eof, "and stays not-ended: the user closes it");
     }

@@ -434,6 +434,49 @@ fn a_dcs_block_reaches_the_tap_and_stays_off_the_grid() {
     );
 }
 
+/// A program that asks the terminal a question hears an answer.
+///
+/// `Crosswords` writes nothing itself: a primary-DA probe or a cursor-position
+/// report becomes a `RioEvent::PtyWrite` handed to its listener, and rio-vt's
+/// own `VoidListener` takes the trait's default for that, which is nothing. A
+/// child's every query was parsed, answered into the void, and left the child
+/// waiting on a read that was never going to complete -- vim's DA probe at
+/// startup, a script placing itself by CPR.
+///
+/// The child asks before it has printed anything, so the cursor is still at
+/// the home position and the expected CPR is exact rather than a shape. It
+/// then becomes `cat -v`, which writes back what it reads with the escapes
+/// made visible, so the answers arrive on the grid as literal text instead of
+/// as sequences the parser would consume on the way in. `stty raw -echo`
+/// first, for the same reason the paste test needs it: what comes back must
+/// be what the session sent, undoubled by the line discipline.
+#[test]
+fn a_query_from_the_child_is_answered_on_the_wire() {
+    let viewport = Viewport::new(800, 480, 1.0, CellSize::new(10.0, 20.0));
+    let config = SessionConfig {
+        program: Some("/bin/sh".to_string()),
+        args: vec![
+            "-c".to_string(),
+            "stty raw -echo; printf '\\033[c\\033[6n'; exec cat -v".to_string(),
+        ],
+        working_directory: None,
+        env: vec![("TERM".to_string(), "xterm-256color".to_string())],
+        scrollback: 1000,
+    };
+    let mut session =
+        Session::spawn(&config, viewport.term_size(), NoopTap::default()).expect("spawn");
+
+    // Primary DA, as rio-vt answers it: a VT220 with sixel, selective erase,
+    // ANSI colour and OSC 52.
+    wait_for(&mut session, "the DA reply to reach the child", |s| {
+        on_screen(s, "^[[?62;4;6;22;52c")
+    });
+    // CPR, from the home position the child never left.
+    wait_for(&mut session, "the CPR reply to reach the child", |s| {
+        on_screen(s, "^[[1;1R")
+    });
+}
+
 /// The startup race, pinned.
 ///
 /// Pumping immediately after `spawn` lands in the window where the
