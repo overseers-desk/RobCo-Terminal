@@ -56,14 +56,15 @@ again and every session comes back with its windows and their titles.
 **Built-in SSH, from the command line.** `robco-term --ssh user@host` opens
 the first channel on an SSH connection the terminal itself owns, PuTTY's
 `-ssh` for a cabinet: the connection is a bank of its own, and further
-channels of it will multiplex over the one wire. Two things will surprise
-you in the first minute, both deliberate: it authenticates with public keys
-alone (a configured key file, your ssh-agent, or the default `~/.ssh` keys;
-an encrypted key or a password needs a prompt that does not exist yet), and
-an unknown host key is refused with its fingerprint and the command that
-records it rather than prompted about, because there is no prompt UI yet
-and a program should not make trust decisions for you. `docs/ssh.md` has
-the whole contract, including what it does not read (`~/.ssh/config`).
+channels of it will multiplex over the one wire. Authentication runs
+public keys first (a configured key file, your ssh-agent, or the default
+`~/.ssh` keys), then keyboard-interactive and password where the server
+offers them; a passphrase or a password is asked on the glass itself, and
+a secret echoes nothing, not even asterisks. An unknown host key shows its
+fingerprint and asks yes or no, a typed `yes` recording it in your
+`known_hosts`; a changed key is refused, always. `docs/ssh.md` has the
+whole contract, including how `~/.ssh/config` is read whole, or refused
+by the name of the directive it cannot honour.
 
 ## Will it run here
 
