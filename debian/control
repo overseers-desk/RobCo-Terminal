@@ -15,7 +15,13 @@ Depends:
  tcl9.0,
  tk9.0,
 Provides: x-terminal-emulator
-Description: terminal emulator which mimics old screens
- RobCo Terminal is a terminal emulator which mimics the look and feel
- of the old cathode tube screens. It has been designed to be eye-candy,
- customizable, and reasonably lightweight.
+Description: terminal emulator that behaves like a piece of hardware
+ The picture is a curved tube. Phosphor keeps glowing after the pixel
+ goes dark, bloom spills off bright type, and a scan line travels the
+ glass. Around it sits a chassis with a numbered channel bank down one
+ side. A session is picked by digit rather than read off a row of tabs,
+ and switching channels degausses the way the original hardware did.
+ .
+ The terminal owns an SSH connection of its own, carrying several
+ sessions as numbered channels on the bank, and speaks tmux control
+ mode so a remote session's windows arrive as those channels too.
