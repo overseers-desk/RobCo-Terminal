@@ -47,6 +47,9 @@
 //! - [`ssh`] / [`ssh_config`] -- the SSH policy this program applies, and
 //!   what `~/.ssh/config` is allowed to say about a destination before the
 //!   connection is dialled.
+//! - [`menu`] -- the application menu the platform draws, where it draws
+//!   one: on macOS the bar carrying About, Settings, Hide and Quit, whose
+//!   items reach the shell as events rather than acting themselves.
 //! - [`settings`] -- `robco-config` behind a typed, live-reloading handle.
 //! - [`settings_embed`] -- the settings window when it is inside this binary
 //!   rather than beside it: the Windows single-exe build's link into the
@@ -67,6 +70,7 @@ pub mod geometry;
 pub mod gpu;
 pub mod input;
 pub mod instance;
+pub mod menu;
 pub mod mouse;
 pub mod overlay;
 pub mod paths;

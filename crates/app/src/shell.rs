@@ -106,6 +106,14 @@ pub trait Surface {
     fn mouse_wheel(&mut self, _delta: MouseScrollDelta, _modifiers: ModifiersState) {}
     /// The window gained or lost keyboard focus.
     fn focus_changed(&mut self, _focused: bool) {}
+    /// Open the settings window.
+    ///
+    /// The right-click's own door, reached from outside the glass: the macOS
+    /// menu bar carries a Settings item, and the shell routes it to the
+    /// focused window's surface because the bookkeeping that keeps a second
+    /// settings window from opening lives there and nowhere else. A surface
+    /// with no settings window takes the default and does nothing.
+    fn open_settings(&mut self) {}
     /// Called once per turn of the loop, before it goes back to waiting.
     ///
     /// The PTY is not a winit event source: nothing wakes the loop when
@@ -214,6 +222,24 @@ pub enum ShellEvent {
         /// fitted to a window cannot set the floor that window is held to.
         minimum: u32,
     },
+    /// The application menu's Settings item was chosen ([`crate::menu`]).
+    ///
+    /// The right-click's own door, reached from outside the glass. It
+    /// arrives at the shell rather than at a surface because a menu bar
+    /// belongs to the application and not to any one window: which window it
+    /// means is the shell's answer, the shell being the only thing that
+    /// knows which one has focus.
+    OpenSettings,
+    /// The application menu's Quit item was chosen ([`crate::menu`]).
+    ///
+    /// Deliberately not AppKit's `terminate:`, which ends the process with
+    /// `exit()` and returns to nothing: `instance::Primary` would leave its
+    /// socket and lock file behind on every Command-Q. Through the loop's own
+    /// exit, Command-Q is the same shutdown as the last window closing. The
+    /// Dock's Quit and a system log-out still take `terminate:` and still
+    /// leave those two files, which the next launch clears as the corpses
+    /// they are (`crate::instance`).
+    Quit,
 }
 
 /// Everything the shell needs to know that it does not decide itself.
@@ -363,6 +389,18 @@ pub struct Shell {
     /// Set once the first window is up, so a `resumed` on a platform that
     /// sends it more than once does not open a second window.
     started: bool,
+    /// Which window last took keyboard focus, for the events that name the
+    /// application rather than a window: the menu bar's items, which have to
+    /// pick a window themselves.
+    ///
+    /// A record and not an authority. It goes stale, a window being able to
+    /// close while focused and macOS being able to leave an application
+    /// focused with no window at all, so [`menu_target`] reads it as a
+    /// preference over the windows that actually stand.
+    focused: Option<WindowId>,
+    /// The menu's way back to this loop, taken in [`Shell::run`] where the
+    /// loop is in hand and handed on at `resumed`.
+    menu_proxy: Option<EventLoopProxy<ShellEvent>>,
 }
 
 impl Shell {
@@ -373,6 +411,8 @@ impl Shell {
             modifiers: ModifiersState::empty(),
             last_tick: Instant::now(),
             started: false,
+            focused: None,
+            menu_proxy: None,
         }
     }
 
@@ -382,7 +422,12 @@ impl Shell {
     pub fn event_loop(
     ) -> Result<(EventLoop<ShellEvent>, EventLoopProxy<ShellEvent>), winit::error::EventLoopError>
     {
-        let event_loop = EventLoop::<ShellEvent>::with_user_event().build()?;
+        let mut builder = EventLoop::<ShellEvent>::with_user_event();
+        // Before the loop is built, because the menu bar this program puts up
+        // goes where winit would otherwise have put its own, a few lines
+        // earlier in the same launch. A no-op off macOS (`crate::menu`).
+        crate::menu::suppress_default(&mut builder);
+        let event_loop = builder.build()?;
         let proxy = event_loop.create_proxy();
         Ok((event_loop, proxy))
     }
@@ -392,6 +437,9 @@ impl Shell {
         mut self,
         event_loop: EventLoop<ShellEvent>,
     ) -> Result<(), winit::error::EventLoopError> {
+        // The menu's way back to this loop, taken here because this is where
+        // the loop is in hand and `resumed` is where the menu goes up.
+        self.menu_proxy = Some(event_loop.create_proxy());
         event_loop.set_control_flow(ControlFlow::Wait);
         event_loop.run_app(&mut self)
     }
@@ -510,6 +558,19 @@ fn with_identity(attributes: WindowAttributes, _identity: &str) -> WindowAttribu
     attributes
 }
 
+/// Which window an application-level request means: the focused one while it
+/// still stands, else any window, else none.
+///
+/// The menu bar is the application's, so a press on it names no window and
+/// one has to be chosen. Generic over the id so it can be tested without a
+/// display: `WindowId::dummy()` is a single value, and two distinct ids
+/// cannot be minted in a unit test.
+fn menu_target<Id: Copy + PartialEq>(focused: Option<Id>, open: &[Id]) -> Option<Id> {
+    focused
+        .filter(|id| open.contains(id))
+        .or_else(|| open.first().copied())
+}
+
 /// The size the first window is created at: the appliance's default, raised
 /// to hold the bank the profile asks for beside a terminal grid, then held
 /// down to the desktop it has to fit on, then raised again past nothing.
@@ -554,6 +615,13 @@ impl ApplicationHandler<ShellEvent> for Shell {
             return;
         }
         self.started = true;
+        // Here rather than before the loop ran: macOS puts a menu bar up
+        // during `applicationDidFinishLaunching:`, which is the call this
+        // event arrives inside, so this is the first moment both on the main
+        // thread and past launch.
+        if let Some(proxy) = self.menu_proxy.clone() {
+            crate::menu::install(&self.config.identity, proxy);
+        }
         let fullscreen = self.config.fullscreen;
         let ssh = self.config.ssh.clone();
         self.open_window(event_loop, fullscreen, ssh.as_ref());
@@ -577,6 +645,15 @@ impl ApplicationHandler<ShellEvent> for Shell {
                 self.open_window(event_loop, request.fullscreen, ssh.as_ref());
             }
             ShellEvent::SetBankWidth { width, minimum } => self.set_bank_width(width, minimum),
+            ShellEvent::OpenSettings => {
+                let open: Vec<WindowId> = self.windows.keys().copied().collect();
+                if let Some(id) = menu_target(self.focused, &open) {
+                    if let Some(state) = self.windows.get_mut(&id) {
+                        state.surface.open_settings();
+                    }
+                }
+            }
+            ShellEvent::Quit => event_loop.exit(),
         }
     }
 
@@ -747,6 +824,11 @@ impl ApplicationHandler<ShellEvent> for Shell {
                 }
             }
             WindowEvent::Focused(focused) => {
+                if focused {
+                    self.focused = Some(window_id);
+                } else if self.focused == Some(window_id) {
+                    self.focused = None;
+                }
                 if let Some(state) = self.windows.get_mut(&window_id) {
                     state.surface.focus_changed(focused);
                 }
@@ -825,6 +907,39 @@ impl ApplicationHandler<ShellEvent> for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_menu_means_the_focused_window() {
+        assert_eq!(menu_target(Some(2), &[1, 2, 3]), Some(2));
+    }
+
+    #[test]
+    fn a_stale_focus_does_not_name_a_window_that_has_closed() {
+        assert_eq!(menu_target(Some(9), &[7, 8]), Some(7));
+    }
+
+    #[test]
+    fn a_menu_press_with_nothing_focused_still_reaches_a_window() {
+        // macOS leaves an application focused with every window minimised,
+        // and a menu item that quietly did nothing would be worse than one
+        // that picks.
+        assert_eq!(menu_target(None, &[7, 8]), Some(7));
+    }
+
+    #[test]
+    fn a_menu_press_with_no_windows_names_nothing() {
+        assert_eq!(menu_target(Some(1), &[] as &[u32]), None);
+    }
+
+    /// The macOS menu hands its proxy to an Objective-C action through a
+    /// `static`, which holds only while the proxy is `Send + Sync`; winit
+    /// makes it so for a payload that is `Send`. This fails to compile on
+    /// every platform the moment a variant carries something that is not.
+    #[test]
+    fn the_shell_event_stays_sendable_across_the_menu_static() {
+        fn assert_shareable<T: Send + Sync>() {}
+        assert_shareable::<EventLoopProxy<ShellEvent>>();
+    }
 
     #[test]
     fn a_roomy_desktop_leaves_the_opening_size_alone() {

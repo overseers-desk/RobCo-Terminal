@@ -3629,6 +3629,10 @@ impl Surface for TerminalSurface {
         self.ime_input(event);
     }
 
+    fn open_settings(&mut self) {
+        self.open_settings_app();
+    }
+
     fn mouse_pressed(
         &mut self,
         button: MouseButton,

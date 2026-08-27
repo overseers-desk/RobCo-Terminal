@@ -102,6 +102,22 @@ signal-hook = "0.3"
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 x11rb = "0.13"
 
+# The application menu (`crate::menu`): the bar macOS draws for every
+# application, which is where a Mac expects Settings and Command-comma to
+# be. This is the objc2 generation winit 0.30.13 itself links, so the types
+# interconvert with anything winit hands back and the crates are already in
+# the lock file, costing three dependency lines rather than a download.
+# `NSResponder` is not decoration: `NSApplication` is declared behind it.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5.2"
+objc2-foundation = { version = "0.2.2", features = ["NSString", "NSThread"] }
+objc2-app-kit = { version = "0.2.2", features = [
+    "NSApplication",
+    "NSMenu",
+    "NSMenuItem",
+    "NSResponder",
+] }
+
 [dev-dependencies]
 # The known_hosts fixtures mint their own throwaway keys; the rand
 # generation matches the one russh's key types are built against. The
