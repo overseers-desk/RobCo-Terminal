@@ -10,18 +10,20 @@
 //! # Host keys, three outcomes
 //!
 //! * **Match**: the presented key is recorded for the host -- connect.
-//! * **Unknown**: no key is recorded for the host -- refuse, and print the
-//!   fingerprint with the command that records it. Accepting a first key
-//!   is a trust decision; a build with no prompt would be making it *for*
-//!   the user, so the honest substitute is a refusal that says what to
-//!   type. `ssh` itself is that prompt, on every box this program runs on.
+//! * **Unknown**: no key is recorded for the host -- put the fingerprint on
+//!   the glass and ask, in full words, whether to accept and record it.
+//!   Accepting a first key is a trust decision and belongs to the person at
+//!   the terminal; the terminal's job is to make sure they are shown what
+//!   they are deciding about. `yes` records the key in the user's own
+//!   `known_hosts` and connects; anything else refuses.
 //! * **Mismatch**: a key is recorded and the presented one differs --
-//!   refuse, always, both fingerprints and the offending line shown.
+//!   refuse, always, both fingerprints and the offending line shown. No
+//!   question is asked, because there is no answer that should change it.
 //!
-//! `known_hosts` is read-only to this program: nothing here calls
-//! `learn_known_hosts`, which is the no-trust-on-first-use decision as a
-//! code property. The prompted acceptance path arrives with the operator
-//! interface (#14), which puts a human back in the loop.
+//! Only the user's own file is ever written. The machine-wide trust file
+//! (`/etc/ssh/ssh_known_hosts`, or `%ProgramData%\ssh\ssh_known_hosts`) is
+//! read and never written: it is the administrator's statement about the
+//! machine, and one user answering a prompt is not an administrator.
 //!
 //! Ceilings of the reader (russh's, plus this module's pre-pass), each of
 //! which under a refuse-by-default policy costs a spurious refusal and
@@ -36,7 +38,7 @@ use std::path::PathBuf;
 use ssh_link::russh::keys::ssh_key::known_hosts::Entry;
 use ssh_link::russh::keys::ssh_key::{Fingerprint, HashAlg};
 use ssh_link::russh::keys::{known_hosts, Algorithm, Error as KeysError, PublicKeyOrCertificate};
-use ssh_link::{ChannelHandle, HostPolicy, WireEvent};
+use ssh_link::{Answer, Asker, ChannelHandle, HostPolicy, WireEvent};
 use term::ssh_channel::{SshEvent, SshWire};
 
 /// The environment variable that names the invoking user on this
@@ -166,23 +168,36 @@ fn known_hosts_files() -> Vec<PathBuf> {
     files
 }
 
+/// The one file an accepted key may be written to: the user's own. The
+/// machine-wide file is read above and never appears here.
+fn learnable_known_hosts() -> Option<PathBuf> {
+    std::env::home_dir().map(|home| home.join(".ssh").join("known_hosts"))
+}
+
 fn sha256(key: &ssh_link::russh::keys::PublicKey) -> Fingerprint {
     key.fingerprint(HashAlg::Sha256)
 }
 
-/// The refuse-by-default `known_hosts` policy described in the module doc.
+/// The `known_hosts` policy described in the module doc.
 pub struct KnownHosts {
     files: Vec<PathBuf>,
+    /// Where an accepted first key is recorded, and the only file this
+    /// program ever writes. `None` -- no home directory, nowhere to put
+    /// it -- makes an unknown host a refusal with nothing to ask about.
+    learn_into: Option<PathBuf>,
 }
 
 impl KnownHosts {
     pub fn new() -> Self {
-        Self { files: known_hosts_files() }
+        Self { files: known_hosts_files(), learn_into: learnable_known_hosts() }
     }
 
-    /// For tests: the same policy over explicit files.
+    /// For tests: the same policy over explicit files. The first is the
+    /// one an accepted key is recorded in, mirroring the real order where
+    /// the user's own file leads and the machine's follows it read-only.
     pub fn over(files: Vec<PathBuf>) -> Self {
-        Self { files }
+        let learn_into = files.first().cloned();
+        Self { files, learn_into }
     }
 
     /// Any `@revoked` line naming this key, in any file, under any host:
@@ -227,6 +242,7 @@ impl HostPolicy for KnownHosts {
         host: &str,
         port: u16,
         key: &PublicKeyOrCertificate,
+        ask: &Asker,
     ) -> Result<(), String> {
         let key = match key {
             PublicKeyOrCertificate::PublicKey { key, .. } => key,
@@ -265,19 +281,85 @@ impl HostPolicy for KnownHosts {
                 Err(_) => {}
             }
         }
-        Err(format!(
-            "no host key is recorded for {host} (key: {}); this build does not accept \
-             first keys itself. To record it, run: ssh -p {port} {host} exit \
-             -- then reconnect here.",
-            sha256(key)
-        ))
+        self.first_key(host, port, key, ask)
     }
 }
 
-/// The transport's endpoints wearing the session's trait, with the one
-/// presentational decision this side owns: how a transport notice looks
-/// on the glass. Dim, bracketed, on its own line, and in scrollback like
-/// everything else that ever happened on the channel.
+impl KnownHosts {
+    /// The unknown-host branch: show what is being decided, ask for it in
+    /// full words, and record only on `yes`.
+    ///
+    /// The full word is OpenSSH's rule and it is kept for OpenSSH's reason.
+    /// A single keystroke is what a hand does while the eye is elsewhere,
+    /// and the eye has to be here: the fingerprint above the question is
+    /// the whole of the evidence. Anything that is not an answer re-asks,
+    /// so the way past this is to answer it. Capitals are not part of the
+    /// friction, so `YES` is a yes.
+    fn first_key(
+        &self,
+        host: &str,
+        port: u16,
+        key: &ssh_link::russh::keys::PublicKey,
+        ask: &Asker,
+    ) -> Result<(), String> {
+        let refused =
+            || format!("the host key {} for {host} was not accepted; connection refused", sha256(key));
+        let Some(path) = &self.learn_into else {
+            return Err(format!(
+                "no host key is recorded for {host} (key: {}) and there is no known_hosts \
+                 file to record one in; connection refused",
+                sha256(key)
+            ));
+        };
+        let mut question = format!(
+            "The authenticity of {host} port {port} cannot be established.\n\
+             Its {} key fingerprint is {}.\n\
+             Type yes to accept and record it, no to refuse: ",
+            key.algorithm().as_str(),
+            sha256(key)
+        );
+        loop {
+            let Some(answer) = ask.ask(question.clone(), Answer::YesNo) else {
+                return Err(refused());
+            };
+            let answer = answer.trim();
+            if answer.eq_ignore_ascii_case("yes") {
+                if let Err(e) = known_hosts::learn_known_hosts_path(host, port, key, path) {
+                    // The user made the decision; a file this program could
+                    // not write is this program's problem, not a reason to
+                    // put the decision back to them. It holds for the
+                    // session and is asked again next time.
+                    ask.say(format!(
+                        "the key was accepted but could not be recorded in {}: {e}; \
+                         it holds for this session only",
+                        path.display()
+                    ));
+                }
+                return Ok(());
+            }
+            if answer.eq_ignore_ascii_case("no") {
+                return Err(refused());
+            }
+            question = "Please type 'yes' or 'no': ".to_string();
+        }
+    }
+}
+
+/// How the transport looks when it talks about itself: dim, bracketed, on
+/// a line of its own, and in scrollback like everything else that ever
+/// happened on the channel.
+///
+/// It lives as a function because the same look now arrives by two
+/// carriers. A `WireEvent::Notice` comes up the channel's own wire; an
+/// `Ask::Say` comes across the question desk, from a policy that was
+/// speaking from a stack with no wire in reach. The user should not be
+/// able to tell which road a line took, so there is one place that decides
+/// how a line looks and two places that call it.
+pub(crate) fn notice_bytes(text: &str) -> Vec<u8> {
+    format!("\r\n\x1b[2m[ssh: {text}]\x1b[0m\r\n").into_bytes()
+}
+
+/// The transport's endpoints wearing the session's trait.
 pub struct WireAdapter {
     handle: ChannelHandle,
 }
@@ -292,9 +374,7 @@ impl SshWire for WireAdapter {
     fn try_event(&mut self) -> Option<SshEvent> {
         Some(match self.handle.try_event()? {
             WireEvent::Data(bytes) => SshEvent::Data(bytes),
-            WireEvent::Notice(text) => {
-                SshEvent::Notice(format!("\r\n\x1b[2m[ssh: {text}]\x1b[0m\r\n").into_bytes())
-            }
+            WireEvent::Notice(text) => SshEvent::Notice(notice_bytes(&text)),
             WireEvent::ExitStatus(status) => SshEvent::ExitStatus(status),
             WireEvent::Eof => SshEvent::Eof,
         })
@@ -399,6 +479,107 @@ mod tests {
         format!("{host} {}", key.public_key().to_openssh().unwrap())
     }
 
+    fn present(k: &PrivateKey) -> PublicKeyOrCertificate {
+        PublicKeyOrCertificate::PublicKey { key: k.public_key().clone(), hash_alg: None }
+    }
+
+    /// Run `body` with a desk behind it, answering its questions from
+    /// `answers` in order and cancelling once the script runs out. Answers
+    /// the body's result and the transcript: every prompt asked and every
+    /// line said, in the order the glass would have shown them.
+    ///
+    /// The desk is driven from the test's own thread and the policy runs on
+    /// another, which is the real arrangement upside down -- the policy is
+    /// the one on a thread of its own in a running program. It has to be
+    /// one or the other: `ask` blocks, so whoever asks and whoever answers
+    /// cannot be the same thread, and this is the half a test can assert on.
+    fn asked<T: Send>(
+        answers: &[&str],
+        body: impl FnOnce(&Asker) -> T + Send,
+    ) -> (T, Vec<String>) {
+        let (asker, mut desk) = ssh_link::ask::desk();
+        let mut transcript: Vec<String> = Vec::new();
+        let mut answers = answers.iter();
+        let out = std::thread::scope(|scope| {
+            let running = scope.spawn(move || body(&asker));
+            loop {
+                match desk.take() {
+                    Some(ssh_link::Ask::Question(question)) => {
+                        transcript.push(question.prompt().to_string());
+                        match answers.next() {
+                            Some(answer) => question.answer((*answer).to_string()),
+                            None => question.cancel(),
+                        }
+                    }
+                    Some(ssh_link::Ask::Say(text)) => transcript.push(text),
+                    None if running.is_finished() => {
+                        // Finished means every send it was going to make
+                        // has been made, so one more sweep empties the desk.
+                        while let Some(ask) = desk.take() {
+                            match ask {
+                                ssh_link::Ask::Question(question) => {
+                                    transcript.push(question.prompt().to_string());
+                                    question.cancel();
+                                }
+                                ssh_link::Ask::Say(text) => transcript.push(text),
+                            }
+                        }
+                        break;
+                    }
+                    None => std::thread::sleep(std::time::Duration::from_millis(2)),
+                }
+            }
+            running.join().unwrap()
+        });
+        (out, transcript)
+    }
+
+    #[test]
+    fn a_first_key_is_recorded_when_the_user_types_yes_and_never_otherwise() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = key(Algorithm::Ed25519);
+        let file = write_lines(dir.path(), "known_hosts", &[]);
+        let lines = || std::fs::read_to_string(&file).unwrap();
+
+        // Anything that is not an answer re-asks, with the nag; then yes.
+        let (verdict, transcript) = asked(&["y", "maybe", "yes"], |ask| {
+            KnownHosts::over(vec![file.clone()]).verify("vault", 2222, &present(&vault), ask)
+        });
+        assert!(verdict.is_ok(), "{verdict:?}");
+        assert!(transcript[0].contains("authenticity of vault port 2222"), "{transcript:?}");
+        assert!(transcript[0].contains("SHA256:"), "{transcript:?}");
+        assert!(transcript[0].contains("ssh-ed25519 key fingerprint"), "{transcript:?}");
+        assert_eq!(transcript.len(), 3, "a single letter is not a full word: {transcript:?}");
+        assert!(transcript[1].contains("'yes' or 'no'"), "{transcript:?}");
+
+        // The key is in the file, and the same key now matches without a
+        // question being asked at all.
+        assert!(lines().contains("[vault]:2222"), "{:?}", lines());
+        let (verdict, transcript) = asked(&[], |ask| {
+            KnownHosts::over(vec![file.clone()]).verify("vault", 2222, &present(&vault), ask)
+        });
+        assert!(verdict.is_ok());
+        assert!(transcript.is_empty(), "a recorded host is not asked about: {transcript:?}");
+
+        // `no` refuses, and nothing is written.
+        let stranger = key(Algorithm::Ed25519);
+        let before = lines();
+        let (verdict, _) = asked(&["no"], |ask| {
+            KnownHosts::over(vec![file.clone()]).verify("elsewhere", 22, &present(&stranger), ask)
+        });
+        let text = verdict.unwrap_err();
+        assert!(text.contains("was not accepted"), "{text}");
+        assert_eq!(lines(), before, "a refusal writes nothing");
+
+        // Nobody to ask is a refusal too, and the refusal names no tool
+        // the user would have to leave the glass to run.
+        let text = KnownHosts::over(vec![file.clone()])
+            .verify("elsewhere", 22, &present(&stranger), &Asker::closed())
+            .unwrap_err();
+        assert!(!text.contains("ssh -p"), "{text}");
+        assert_eq!(lines(), before);
+    }
+
     #[test]
     fn the_three_outcomes_and_the_ceilings() {
         let dir = tempfile::tempdir().unwrap();
@@ -424,31 +605,33 @@ mod tests {
             ],
         );
         let mut policy = KnownHosts::over(vec![file.clone()]);
-        let present = |k: &PrivateKey| PublicKeyOrCertificate::PublicKey {
-            key: k.public_key().clone(),
-            hash_alg: None,
-        };
+        // Nobody at the desk throughout: every outcome below is one this
+        // policy reaches without a human, and an unknown host under a
+        // closed asker refuses rather than waits.
+        let nobody = Asker::closed();
 
         // Match, including the port-qualified and two-key spellings.
-        assert!(policy.verify("vault", 22, &present(&vault)).is_ok());
-        assert!(policy.verify("odd", 2222, &present(&odd)).is_ok());
-        assert!(policy.verify("plural", 22, &present(&rsa)).is_ok());
+        assert!(policy.verify("vault", 22, &present(&vault), &nobody).is_ok());
+        assert!(policy.verify("odd", 2222, &present(&odd), &nobody).is_ok());
+        assert!(policy.verify("plural", 22, &present(&rsa), &nobody).is_ok());
 
-        // Unknown: refused, fingerprint and the recording command named.
-        let text = policy.verify("nowhere", 22, &present(&vault)).unwrap_err();
+        // Unknown, with nobody to accept it: refused, and the refusal names
+        // the key rather than a command to go and run somewhere else.
+        let text = policy.verify("nowhere", 22, &present(&vault), &nobody).unwrap_err();
         assert!(text.contains("SHA256:"), "{text}");
-        assert!(text.contains("ssh -p 22 nowhere"), "{text}");
+        assert!(!text.contains("ssh -p"), "{text}");
 
-        // Mismatch: refused, the file and line named.
-        let text = policy.verify("vault", 22, &present(&stranger)).unwrap_err();
+        // Mismatch: refused unconditionally, nothing asked, the file and
+        // line named.
+        let text = policy.verify("vault", 22, &present(&stranger), &nobody).unwrap_err();
         assert!(text.contains("HOST KEY CHANGED"), "{text}");
         assert!(text.contains("known_hosts:1"), "{text}");
 
         // The glob ceiling: literal comparison, spurious refusal.
-        assert!(policy.verify("city.wasteland", 22, &present(&vault)).is_err());
+        assert!(policy.verify("city.wasteland", 22, &present(&vault), &nobody).is_err());
 
         // A revoked key is refused wherever it turns up.
-        let text = policy.verify("elsewhere", 22, &present(&burned)).unwrap_err();
+        let text = policy.verify("elsewhere", 22, &present(&burned), &nobody).unwrap_err();
         assert!(text.contains("revoked"), "{text}");
 
         // The recorded algorithms lead the preference order.

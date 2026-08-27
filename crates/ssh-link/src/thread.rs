@@ -22,7 +22,7 @@ use russh::ChannelMsg;
 use tokio::sync::mpsc;
 
 use crate::channel::{ChannelCmd, WireEvent, EVENT_QUEUE};
-use crate::{ChannelHandle, HostPolicy, SshTarget};
+use crate::{Asker, ChannelHandle, HostPolicy, SshTarget};
 
 /// Commands from the loop side to the connection itself.
 pub(crate) enum LinkCmd {
@@ -53,6 +53,7 @@ pub(crate) fn endpoints() -> (ChannelHandle, ChannelWire) {
 pub(crate) fn spawn(
     target: SshTarget,
     policy: Box<dyn HostPolicy>,
+    asker: Asker,
     wire: ChannelWire,
     link_cmd: mpsc::UnboundedReceiver<LinkCmd>,
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
@@ -75,7 +76,7 @@ pub(crate) fn spawn(
                     return;
                 }
             };
-            rt.block_on(run(target, policy, wire, link_cmd));
+            rt.block_on(run(target, policy, asker, wire, link_cmd));
         })
 }
 
@@ -90,6 +91,10 @@ struct Handler {
     host: String,
     port: u16,
     verdicts: Arc<Verdicts>,
+    /// The policy's line to the glass. Held here because this is where
+    /// russh calls the policy from, and the policy has no other way to
+    /// reach a human from inside a handshake.
+    ask: Asker,
 }
 
 impl client::Handler for Handler {
@@ -99,7 +104,7 @@ impl client::Handler for Handler {
         &mut self,
         key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        match self.policy.verify(&self.host, self.port, key) {
+        match self.policy.verify(&self.host, self.port, key, &self.ask) {
             Ok(()) => Ok(true),
             Err(text) => {
                 *self.verdicts.refusal.lock().unwrap() = Some(text);
@@ -157,6 +162,7 @@ pub(crate) fn client_config(order: Option<Vec<russh::keys::Algorithm>>) -> clien
 async fn run(
     target: SshTarget,
     mut policy: Box<dyn HostPolicy>,
+    asker: Asker,
     wire: ChannelWire,
     mut link_cmd: mpsc::UnboundedReceiver<LinkCmd>,
 ) {
@@ -171,6 +177,7 @@ async fn run(
         host: target.host.clone(),
         port: target.port,
         verdicts: verdicts.clone(),
+        ask: asker.clone(),
     };
 
     let mut handle = match client::connect(

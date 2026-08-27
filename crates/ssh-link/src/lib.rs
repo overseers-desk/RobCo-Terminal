@@ -13,17 +13,24 @@
 //! policy is security-critical code that belongs beside its documentation
 //! and its fixtures, not inside a transport.
 //!
-//! The auth surface is deliberately narrow while the operator interface is
-//! built elsewhere (#14): the agent path and unencrypted key files live
-//! here whole, and the prompted methods (password, keyboard-interactive,
-//! an encrypted key's passphrase) enter as a step-drivable exchange when
-//! there is an input surface to drive them.
+//! Everything a connection needs a human for -- a trust decision, a key's
+//! passphrase, a password, a server's own challenge -- it gets through
+//! [`Asker`], and it blocks its own thread until the answer arrives. This
+//! crate never learns where the answer was typed, and does not need to:
+//! the caller holds the [`AskDesk`], paints the question wherever it paints
+//! everything else, and hands the answer back. That is what keeps the
+//! whole prompted half of authentication out of a transport, exactly as
+//! trust is. See [`ask`] for why the channel underneath is std's and not
+//! tokio's, and for the ordering that keeps a question behind the notice
+//! explaining it.
 
+pub mod ask;
 mod channel;
 #[cfg(feature = "test-server")]
 pub mod test_server;
 mod thread;
 
+pub use ask::{Ask, AskDesk, Answer, Asker, Question};
 pub use channel::{ChannelHandle, WireEvent};
 /// The one russh everything downstream compiles against: re-exported so the
 /// policy implementation and this crate cannot drift apart on a version.
@@ -57,11 +64,18 @@ pub trait HostPolicy: Send + 'static {
 
     /// Accept or refuse the presented key. `Err` carries the refusal text
     /// for the user's glass, which then outranks the library's own error.
+    ///
+    /// The `ask` is how a policy puts the decision to the person in front
+    /// of the glass, and it blocks this thread until they answer. That is
+    /// safe here and nowhere near safe in general: see [`ask`] for the
+    /// stack this is called on and why std channels are the only ones that
+    /// may be used from it.
     fn verify(
         &mut self,
         host: &str,
         port: u16,
         key: &russh::keys::PublicKeyOrCertificate,
+        ask: &Asker,
     ) -> Result<(), String>;
 }
 
@@ -79,13 +93,18 @@ impl Link {
     /// grid exist from the first frame; progress, refusals and the shell's
     /// own bytes all arrive through the same handle, and the connection's
     /// death is the handle's `Eof`.
+    ///
+    /// The `asker` is the connection's line to the person at the glass;
+    /// [`Asker::closed`] is a caller saying there is nobody, which turns
+    /// every question into a refusal rather than a wait.
     pub fn connect(
         target: SshTarget,
         policy: Box<dyn HostPolicy>,
+        asker: Asker,
     ) -> std::io::Result<(Link, ChannelHandle)> {
         let (handle, wire) = thread::endpoints();
         let (cmd, link_cmd) = tokio::sync::mpsc::unbounded_channel();
-        let thread = thread::spawn(target, policy, wire, link_cmd)?;
+        let thread = thread::spawn(target, policy, asker, wire, link_cmd)?;
         Ok((Link { cmd, thread: Some(thread) }, handle))
     }
 

@@ -8,11 +8,13 @@ Where a session starts is configuration: the `[ssh]` table in `config.toml` hold
 
 ## Host keys
 
-Trust is read from `~/.ssh/known_hosts`, then `/etc/ssh/ssh_known_hosts`. The files are read-only to this program: nothing here ever writes an entry, which is the no-trust-on-first-use decision expressed as a property of the code. Three outcomes:
+Trust is read from `~/.ssh/known_hosts`, then `/etc/ssh/ssh_known_hosts`. Only the first is ever written: the machine-wide file is the administrator's statement about the machine, and one user answering a prompt is not an administrator. Three outcomes:
 
 * **Match**: a recorded key for the host matches the presented one, and the connection proceeds.
-* **Unknown**: no key is recorded. Refused, printing the `SHA256:` fingerprint and the `ssh` command that records it. Accepting a first key is a trust decision, and a build with no prompt would be making it for you; `ssh` itself is the prompt, on every box this program runs on.
-* **Mismatch**: a key is recorded and the presented one differs. Refused, always, with both fingerprints and the offending `file:line`; no flag, key or environment variable overrides it.
+* **Unknown**: no key is recorded. The `SHA256:` fingerprint goes on the channel's glass and the terminal asks whether to accept and record it. Type `yes` and the key is written to `~/.ssh/known_hosts` and the connection goes on; type `no` and it is refused. Anything shorter re-asks: the full word is the friction a trust decision is owed, and it is the same rule `ssh` applies for the same reason.
+* **Mismatch**: a key is recorded and the presented one differs. Refused, always, with both fingerprints and the offending `file:line`; no flag, key, environment variable or answer overrides it, and nothing is asked.
+
+The question is typed on the terminal's own grid through the terminal's own keyboard, like everything else here. `Esc` withdraws it, which refuses the key and ends the connection.
 
 The host-key algorithms recorded for a host lead the negotiation order, so a host known only under `ssh-rsa` connects rather than reading as unknown when the server also holds a newer key.
 

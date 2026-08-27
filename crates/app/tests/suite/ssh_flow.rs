@@ -194,7 +194,8 @@ fn a_refused_host_key_is_readable_until_the_user_closes_it() {
     let far = far_side();
     let mut s = surface();
 
-    // An empty known_hosts: unknown host, refuse-by-default.
+    // An empty known_hosts: unknown host. The question is asked and the
+    // user types `no`.
     s.connect_ssh_with(
         &request(far.port),
         Box::new(KnownHosts::over(vec![known_hosts(&[])])),
@@ -202,11 +203,16 @@ fn a_refused_host_key_is_readable_until_the_user_closes_it() {
     let bank = s.channels().current_bank();
     assert_ne!(bank, 0);
 
+    pump_until(&mut s, "the authenticity question", |s| {
+        glass_contains(s, "authenticity")
+    });
+    type_line(&mut s, "no");
+
     // The refusal lands on the channel's own glass and the row stays: a
     // connection that never lived keeps its slot, because that slot is the
     // only place its refusal is readable.
     pump_until(&mut s, "the refusal on the glass", |s| {
-        glass_contains(s, "no host key is recorded")
+        glass_contains(s, "was not accepted")
     });
     for _ in 0..5 {
         s.pump();
@@ -218,9 +224,62 @@ fn a_refused_host_key_is_readable_until_the_user_closes_it() {
     assert!(s.channels().rows().iter().all(|r| r.bank == 0));
 }
 
+#[test]
+fn a_first_key_accepted_on_the_glass_is_recorded_and_the_connection_goes_on() {
+    let far = far_side();
+    let mut s = surface();
+
+    // Nothing recorded for this host, and a file the policy may write to:
+    // exactly the state a user meets the first time they dial a box.
+    let file = known_hosts(&[]);
+    s.connect_ssh_with(
+        &request(far.port),
+        Box::new(KnownHosts::over(vec![file.clone()])),
+    );
+
+    // The question is on the glass, with the evidence above it, and it is
+    // asked on the channel the connection stands on -- not in a dialog, not
+    // in the settings window, not on stderr.
+    pump_until(&mut s, "the authenticity question", |s| {
+        glass_contains(s, "authenticity")
+    });
+    assert!(glass_contains(&s, "SHA256:"), "the fingerprint is the evidence");
+    assert!(glass_contains(&s, "Type yes to accept"));
+
+    // Typed through the keyboard the terminal already had, and echoed,
+    // because a trust decision is not a secret.
+    type_line(&mut s, "yes");
+    assert!(glass_contains(&s, "yes"), "a yes/no answer is shown as it is typed");
+
+    // Past trust and into the shell: the connection carried on where it
+    // was blocked.
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+
+    // And the key is in the file, so the next connection asks nothing.
+    let recorded = std::fs::read_to_string(&file).expect("the fixture");
+    assert!(
+        recorded.contains(&format!("[127.0.0.1]:{}", far.port)),
+        "nothing was recorded: {recorded:?}"
+    );
+}
+
 /// The chord, as the keyboard hands it to the surface.
 fn press(surface: &mut TerminalSurface, key: Key, mods: ModifiersState) {
     surface.key_input(&key, None, mods);
+}
+
+/// An answer typed at a prompt on the glass, character by character
+/// through `key_input`, then Enter: the same path a hand takes.
+fn type_line(surface: &mut TerminalSurface, answer: &str) {
+    for c in answer.chars() {
+        let text = c.to_string();
+        surface.key_input(
+            &Key::Character(text.as_str().into()),
+            Some(&text),
+            ModifiersState::empty(),
+        );
+    }
+    surface.key_input(&Key::Named(NamedKey::Enter), None, ModifiersState::empty());
 }
 
 #[test]

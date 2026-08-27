@@ -84,7 +84,7 @@ use term::fonts::sizing::{ScalePolicy, SizingRequest};
 use term::pointer::{self, on_press, PointerAction, PointerContext};
 use term::rio_vt::crosswords::Mode;
 use term::selection::{self, SelectionController};
-use ssh_link::{Link, SshTarget};
+use ssh_link::{Ask, AskDesk, Answer, Link, Question, SshTarget};
 use term::{
     CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, ResolvedFont,
     RioGrid, Scheme, ScrollPosition, Session, SessionConfig, SshChannel, Target, TmuxPane,
@@ -107,7 +107,7 @@ use crate::gpu::Gpu;
 use crate::input::{encode_winit_key, KeyAction, KeyboardModes, Modifiers};
 use crate::settings::{self, SettingsHandle};
 use crate::shell::{ShellEvent, Surface, Tick};
-use crate::ssh::{KnownHosts, SshRequest, WireAdapter};
+use crate::ssh::{notice_bytes, KnownHosts, SshRequest, WireAdapter};
 use crate::tmux::{Gateway, GatewayEvent};
 use crate::{clipboard, mouse, paths};
 
@@ -433,6 +433,19 @@ pub struct ImeState {
     pub cursor: Option<(usize, usize)>,
 }
 
+/// A question a connection asked, standing on the glass while the answer
+/// is typed.
+///
+/// The connection thread is blocked on the far side of the `Question` for
+/// as long as this lives, which is what makes the pairing exact: the
+/// question is answered once, or dropped -- and dropping it cancels, so a
+/// bank swept out from under a prompt releases the thread instead of
+/// stranding it.
+struct Pending {
+    question: Question,
+    line: crate::prompt::Line,
+}
+
 pub struct TerminalSurface {
     /// `None` in a headless surface (see [`TerminalSurface::headless`]).
     /// It is read for the window's own size on a DPI change, and it is
@@ -451,6 +464,14 @@ pub struct TerminalSurface {
     /// One SSH connection per bank, beside the gateways: the `Link` is the
     /// connection thread's lifetime, and dropping it is the disconnect.
     ssh_links: HashMap<BankId, Link>,
+    /// The answering end of each connection's question channel, drained on
+    /// the same pump as everything else. The connection thread is parked on
+    /// the other side of it while a question stands.
+    asks: HashMap<BankId, AskDesk>,
+    /// The question standing on a bank right now, and the line being typed
+    /// into it. At most one per bank: the transport asks one thing at a
+    /// time, because it is blocked on the answer to the last one.
+    prompts: HashMap<BankId, Pending>,
     /// The home slot the destination picker stands on, while it does.
     /// `Shift+Alt+T` raises it; a digit or `Esc` retires it.
     picker_slot: Option<u32>,
@@ -833,6 +854,8 @@ impl TerminalSurface {
             channels,
             gateways: HashMap::new(),
             ssh_links: HashMap::new(),
+            asks: HashMap::new(),
+            prompts: HashMap::new(),
             picker_slot: None,
             sessions: HashMap::new(),
             on_air,
@@ -930,6 +953,9 @@ impl TerminalSurface {
         // disconnect, so a bank closed by hand hangs up too.
         self.ssh_links
             .retain(|bank, _| self.channels.manager_of(*bank).is_some());
+        // Then, and only then, what the connections are asking: the wire
+        // events above carry the lines that explain the questions below.
+        self.pump_asks();
         // A pane row's own `pump` above read nothing and could not: its bytes
         // arrive off the gateway's wire, drained here, after the loop that
         // counted. Counted only there, a tmux window on the air never asked for
@@ -1121,7 +1147,11 @@ impl TerminalSurface {
             size: (size.cols() as u16, size.rows() as u16, pix_w, pix_h),
             key_file: req.key.clone(),
         };
-        let (link, handle) = match Link::connect(target, policy) {
+        // The connection's line to the person at the glass. It is built
+        // here, before the thread starts, so no question can be asked
+        // before there is a desk to receive it.
+        let (asker, desk) = ssh_link::ask::desk();
+        let (link, handle) = match Link::connect(target, policy, asker) {
             Ok(pair) => pair,
             Err(e) => {
                 log::error!("could not start the ssh thread for {}: {e}", req.host);
@@ -1140,7 +1170,116 @@ impl TerminalSurface {
         });
         if let Some(bank) = bank {
             self.ssh_links.insert(bank, link);
+            self.asks.insert(bank, desk);
         }
+    }
+
+    /// Drain what the connections are asking, after their wires have been
+    /// drained and their dead banks swept.
+    ///
+    /// After, and that ordering is the law `ssh_link::ask` states from the
+    /// other end: a notice and the question it explains travel by two
+    /// carriers, so the transport puts the notice on the wire before it
+    /// asks and the surface reads the wire before it reads the desk. Read
+    /// the other way round, a fingerprint would arrive under the question
+    /// about it.
+    ///
+    /// A question lands on the bank that asked, whether or not that bank is
+    /// on the air. Stealing the air would be the connection interrupting
+    /// whatever the user is doing on another channel; instead the question
+    /// waits where it belongs, and turning the knob back finds it standing.
+    fn pump_asks(&mut self) {
+        let banks: Vec<BankId> = self.asks.keys().copied().collect();
+        for bank in banks {
+            loop {
+                // A bank already holding a question is not asked another:
+                // the thread that asked is blocked until this one is
+                // answered, so there cannot be a second, and refusing to
+                // take one is cheaper than reasoning about whether there is.
+                if self.prompts.contains_key(&bank) {
+                    break;
+                }
+                let Some(ask) = self.asks.get_mut(&bank).and_then(AskDesk::take) else {
+                    break;
+                };
+                match ask {
+                    Ask::Say(text) => {
+                        let bytes = notice_bytes(&text);
+                        self.feed_prompt_channel(bank, &bytes);
+                    }
+                    Ask::Question(question) => {
+                        let bytes = crate::prompt::paint(question.prompt());
+                        self.feed_prompt_channel(bank, &bytes);
+                        let line = crate::prompt::Line::new(question.kind() != Answer::Secret);
+                        self.prompts.insert(bank, Pending { question, line });
+                    }
+                }
+            }
+        }
+        // A desk whose bank is gone goes with it; the questions on it are
+        // cancelled by the drop, which is what unblocks the thread.
+        self.asks
+            .retain(|bank, _| self.channels.manager_of(*bank).is_some());
+        self.prompts.retain(|bank, _| self.asks.contains_key(bank));
+    }
+
+    /// Put local bytes on the channel a connection's questions belong to,
+    /// which is always slot 1: everything asked here is asked before a
+    /// shell exists, so there is no second channel yet to ask on.
+    fn feed_prompt_channel(&mut self, bank: BankId, bytes: &[u8]) {
+        if let Some(row) = self.channels.rows_mut().find(|r| r.bank == bank && r.channel == 1) {
+            if let ChannelSession::Ssh(channel) = &mut row.session {
+                channel.feed(bytes);
+            }
+        }
+    }
+
+    /// The prompt's keyboard, on the `picker_key` model: only while a
+    /// question stands on the bank on the air, and only on the channel it
+    /// was asked on. Answers whether the key was the prompt's.
+    ///
+    /// Everything that is not an answer is swallowed rather than passed on.
+    /// A question is modal for the connection that asked it -- the thread is
+    /// blocked -- so a keystroke that fell through to the wire would be
+    /// typing at a shell that does not exist yet.
+    fn prompt_key(&mut self, logical: &winit::keyboard::Key, text: Option<&str>) -> bool {
+        let bank = self.channels.current_bank();
+        if self.channels.current_channel() != 1 || !self.prompts.contains_key(&bank) {
+            return false;
+        }
+        let Some(pending) = self.prompts.get_mut(&bank) else {
+            return false;
+        };
+        let (stroke, echo) = pending.line.key(logical, text);
+        if !echo.is_empty() {
+            self.feed_prompt_channel(bank, &echo);
+        }
+        match stroke {
+            crate::prompt::Stroke::Commit => {
+                if let Some(mut pending) = self.prompts.remove(&bank) {
+                    let answer = pending.line.take();
+                    pending.question.answer(answer);
+                }
+            }
+            crate::prompt::Stroke::Cancel => {
+                // Cancelling hands the transport a `None`, and the
+                // transport's own supervisor does the rest: it says so on
+                // the wire and Eofs the channel. The row stays under the
+                // unlived law, wearing why it is dead.
+                if let Some(pending) = self.prompts.remove(&bank) {
+                    pending.question.cancel();
+                }
+            }
+            _ => {}
+        }
+        true
+    }
+
+    /// Whether a question is standing on the channel currently on the air.
+    /// What the clipboard consults before it decides where a paste goes.
+    fn prompt_on_air(&self) -> bool {
+        self.channels.current_channel() == 1
+            && self.prompts.contains_key(&self.channels.current_bank())
     }
 
     fn watch_the_write_queues(&mut self) {
@@ -1550,6 +1689,12 @@ impl TerminalSurface {
         // a digit connects, Esc cancels, everything else is swallowed so
         // the page stays put. The `gateway_key` shape.
         if self.picker_key(logical) {
+            return;
+        }
+        // Then a question the connection on the air is waiting on. Same
+        // shape, same reason: while it stands it holds the keyboard, so
+        // nothing typed at a password reaches a wire or a keytab.
+        if self.prompt_key(logical, text) {
             return;
         }
         // Then the gateway's own keyboard, which stands between the shortcuts
@@ -3122,6 +3267,22 @@ impl TerminalSurface {
         }
         match clipboard::paste() {
             Ok(text) => {
+                // A question standing on the air takes the paste instead of
+                // the wire. A password is a thing people keep in a password
+                // manager and paste; sending it down the wire because a
+                // prompt happened not to be a shell would put it in front
+                // of a server that never asked for it.
+                if self.prompt_on_air() {
+                    let bank = self.channels.current_bank();
+                    let echo = match self.prompts.get_mut(&bank) {
+                        Some(pending) => pending.line.paste(&text),
+                        None => Vec::new(),
+                    };
+                    if !echo.is_empty() {
+                        self.feed_prompt_channel(bank, &echo);
+                    }
+                    return;
+                }
                 // The terminal's own DECSET 2004 decides bracketing; the
                 // routing table asks for it too when Ctrl was held.
                 let bracketed = force_bracketed || self.mode_contains(Mode::BRACKETED_PASTE);

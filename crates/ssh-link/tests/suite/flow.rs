@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use ssh_link::russh::keys::{ssh_key, Algorithm, PrivateKey, PublicKeyOrCertificate};
 use ssh_link::test_server::{mint, serve_agent, serve_echo};
-use ssh_link::{ChannelHandle, HostPolicy, Link, SshTarget, WireEvent};
+use ssh_link::{Answer, Asker, ChannelHandle, HostPolicy, Link, SshTarget, WireEvent};
 
 /// A policy for the transport tests: scripted verdict, recorded evidence.
 /// The real known_hosts policy lives in the app crate with its fixtures;
@@ -20,6 +20,20 @@ struct Scripted {
     verdict: Result<(), String>,
     order: Option<Vec<Algorithm>>,
     saw: Arc<Mutex<Option<Algorithm>>>,
+    /// When set, the policy asks this before deciding, and the answer
+    /// decides: what proves the question reached a desk and the verdict
+    /// came back to the handshake.
+    consult: Option<String>,
+}
+
+impl Scripted {
+    fn verdict(verdict: Result<(), String>) -> Self {
+        Self { verdict, order: None, saw: Arc::new(Mutex::new(None)), consult: None }
+    }
+
+    fn watching(verdict: Result<(), String>, saw: Arc<Mutex<Option<Algorithm>>>) -> Self {
+        Self { verdict, order: None, saw, consult: None }
+    }
 }
 
 impl HostPolicy for Scripted {
@@ -32,9 +46,16 @@ impl HostPolicy for Scripted {
         _host: &str,
         _port: u16,
         key: &PublicKeyOrCertificate,
+        ask: &Asker,
     ) -> Result<(), String> {
         if let PublicKeyOrCertificate::PublicKey { key, .. } = key {
             *self.saw.lock().unwrap() = Some(key.algorithm());
+        }
+        if let Some(question) = &self.consult {
+            return match ask.ask(question.clone(), Answer::YesNo).as_deref() {
+                Some("yes") => Ok(()),
+                other => Err(format!("the desk said {other:?}")),
+            };
         }
         self.verdict.clone()
     }
@@ -98,8 +119,9 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     // would take, and the row ends.
     std::env::remove_var("SSH_AUTH_SOCK");
     let saw = Arc::new(Mutex::new(None));
-    let policy = Scripted { verdict: Ok(()), order: None, saw: saw.clone() };
-    let (_link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
+    let policy = Scripted::watching(Ok(()), saw.clone());
+    let (_link, mut handle) =
+        Link::connect(target(port), Box::new(policy), Asker::closed()).unwrap();
     let log = tokio::task::spawn_blocking(move || {
         wait_for(&mut handle, |e| matches!(e, WireEvent::Eof))
     })
@@ -115,10 +137,11 @@ async fn a_connection_lives_and_dies_on_the_glass() {
         identity.to_openssh(ssh_key::LineEnding::LF).unwrap().as_bytes(),
     )
     .unwrap();
-    let policy = Scripted { verdict: Ok(()), order: None, saw: Arc::new(Mutex::new(None)) };
+    let policy = Scripted::verdict(Ok(()));
     let mut with_key = target(port);
     with_key.key_file = Some(key_path.clone());
-    let (_key_link, mut handle) = Link::connect(with_key, Box::new(policy)).unwrap();
+    let (_key_link, mut handle) =
+        Link::connect(with_key, Box::new(policy), Asker::closed()).unwrap();
     let log = tokio::task::spawn_blocking(move || {
         wait_for(&mut handle, |e| {
             matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
@@ -137,10 +160,11 @@ async fn a_connection_lives_and_dies_on_the_glass() {
         sealed.to_openssh(ssh_key::LineEnding::LF).unwrap().as_bytes(),
     )
     .unwrap();
-    let policy = Scripted { verdict: Ok(()), order: None, saw: Arc::new(Mutex::new(None)) };
+    let policy = Scripted::verdict(Ok(()));
     let mut with_sealed = target(port);
     with_sealed.key_file = Some(sealed_path);
-    let (_sealed_link, mut handle) = Link::connect(with_sealed, Box::new(policy)).unwrap();
+    let (_sealed_link, mut handle) =
+        Link::connect(with_sealed, Box::new(policy), Asker::closed()).unwrap();
     let log = tokio::task::spawn_blocking(move || {
         wait_for(&mut handle, |e| matches!(e, WireEvent::Eof))
     })
@@ -155,8 +179,9 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     let sock = serve_agent(dir.path(), &identity).await;
     std::env::set_var("SSH_AUTH_SOCK", &sock);
     let saw = Arc::new(Mutex::new(None));
-    let policy = Scripted { verdict: Ok(()), order: None, saw: saw.clone() };
-    let (link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
+    let policy = Scripted::watching(Ok(()), saw.clone());
+    let (link, mut handle) =
+        Link::connect(target(port), Box::new(policy), Asker::closed()).unwrap();
     let seen_far = seen.clone();
     let log = tokio::task::spawn_blocking(move || {
         let mut log = wait_for(&mut handle, |e| {
@@ -211,8 +236,9 @@ async fn a_connection_lives_and_dies_on_the_glass() {
         identity.to_openssh(ssh_key::LineEnding::LF).unwrap().as_bytes(),
     )
     .unwrap();
-    let policy = Scripted { verdict: Ok(()), order: None, saw: Arc::new(Mutex::new(None)) };
-    let (_default_link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
+    let policy = Scripted::verdict(Ok(()));
+    let (_default_link, mut handle) =
+        Link::connect(target(port), Box::new(policy), Asker::closed()).unwrap();
     let log = tokio::task::spawn_blocking(move || {
         wait_for(&mut handle, |e| {
             matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
@@ -228,12 +254,9 @@ async fn a_refused_host_key_speaks_the_policy_and_ends_the_row() {
     let identity = ed25519();
     let (port, _seen) = serve_echo(vec![ed25519()], identity.public_key().clone()).await;
 
-    let policy = Scripted {
-        verdict: Err("the vault door stays shut: unknown host key".into()),
-        order: None,
-        saw: Arc::new(Mutex::new(None)),
-    };
-    let (_link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
+    let policy = Scripted::verdict(Err("the vault door stays shut: unknown host key".into()));
+    let (_link, mut handle) =
+        Link::connect(target(port), Box::new(policy), Asker::closed()).unwrap();
     let log = tokio::task::spawn_blocking(move || {
         wait_for(&mut handle, |e| matches!(e, WireEvent::Eof))
     })
@@ -242,6 +265,57 @@ async fn a_refused_host_key_speaks_the_policy_and_ends_the_row() {
     // The policy's words, not the library's, and no auth was attempted
     // (nothing here read SSH_AUTH_SOCK: refusal precedes auth).
     assert!(text_of(&log).contains("the vault door stays shut"), "{log:?}");
+}
+
+/// The question channel end to end through the transport: a policy asks
+/// from inside the handshake, the question surfaces at a desk on another
+/// thread, and the answer typed there is the verdict the connection acts
+/// on. Both answers, because a trust question that could only say yes
+/// would not be a question.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_policys_question_reaches_the_desk_and_the_answer_is_the_verdict() {
+    let identity = ed25519();
+    let (port, _seen) = serve_echo(vec![ed25519()], identity.public_key().clone()).await;
+
+    for (answer, refused) in [("yes", false), ("no", true)] {
+        let (asker, mut desk) = ssh_link::ask::desk();
+        let mut policy = Scripted::verdict(Ok(()));
+        policy.consult = Some("accept this key? ".into());
+        let (_link, mut handle) = Link::connect(target(port), Box::new(policy), asker).unwrap();
+
+        let log = tokio::task::spawn_blocking(move || {
+            // The desk is polled the way the surface polls it, on the same
+            // loop that drains the wire.
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let mut asked = None;
+            while asked.is_none() {
+                assert!(std::time::Instant::now() < deadline, "nothing was asked");
+                match desk.take() {
+                    Some(ssh_link::Ask::Question(question)) => asked = Some(question),
+                    Some(ssh_link::Ask::Say(_)) => {}
+                    None => std::thread::sleep(Duration::from_millis(5)),
+                }
+            }
+            let question = asked.unwrap();
+            assert_eq!(question.prompt(), "accept this key? ");
+            assert_eq!(question.kind(), Answer::YesNo);
+            question.answer(answer.to_string());
+            wait_for(&mut handle, |e| {
+                matches!(e, WireEvent::Eof)
+                    || matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+            })
+        })
+        .await
+        .unwrap();
+
+        if refused {
+            assert!(text_of(&log).contains(r#"the desk said Some("no")"#), "{log:?}");
+        } else {
+            // Past trust and into auth: the handshake carried on, which is
+            // the whole proof that the verdict came back where it was asked.
+            assert!(!text_of(&log).contains("the desk said"), "{log:?}");
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -264,8 +338,10 @@ async fn the_recorded_algorithm_leads_the_negotiation() {
         verdict: Err("recorded under P-256; stopping here proves the order".into()),
         order: Some(vec![Algorithm::Ecdsa { curve: ssh_key::EcdsaCurve::NistP256 }]),
         saw: saw.clone(),
+        consult: None,
     };
-    let (_link, mut handle) = Link::connect(target(port), Box::new(policy)).unwrap();
+    let (_link, mut handle) =
+        Link::connect(target(port), Box::new(policy), Asker::closed()).unwrap();
     tokio::task::spawn_blocking(move || wait_for(&mut handle, |e| matches!(e, WireEvent::Eof)))
         .await
         .unwrap();
