@@ -20,8 +20,23 @@
 #                            Tcl on the target.
 #                            zipfs/build-selfcontained.sh builds both and
 #                            calls here.
+#   ROBCO_SETTINGS_ZIP_OUT   Path to write the staged payload to as a plain
+#                            zip, for a build that embeds the archive in
+#                            somebody else's executable rather than stubbing
+#                            it onto a wish of its own: the Windows terminal
+#                            carries this zip in its PE image and mounts it
+#                            from C. Set alone, no image is built and no wish
+#                            is needed; set together with
+#                            ROBCO_SETTINGS_WISH, one invocation produces
+#                            both, so the standalone image stays available as
+#                            the proof that the payload runs.
+#   ROBCO_SETTINGS_TCLTEST   Path to a tcltest-*.tm module to stage, so the
+#                            suites in tests/ can be run from inside the
+#                            finished image. Unset, the module is left out
+#                            and the image's --selftest says so plainly
+#                            rather than failing.
 #
-# A third env var, ROBCO_SETTINGS_DIST_DIR, overrides where the image is
+# A further env var, ROBCO_SETTINGS_DIST_DIR, overrides where the image is
 # written; it defaults to <repo>/dist.
 
 package require Tcl 9
@@ -42,13 +57,30 @@ if {$ver eq ""} {
     exit 1
 }
 
+# What this run is asked to produce. A bare zip is for an executable that
+# is not ours to stub - the Windows terminal links Tcl and Tk itself and
+# mounts this archive out of its own image - so a run asked only for the zip
+# needs no wish at all. Asked for both, it makes both from one staging.
+set zipout ""
+if {[info exists ::env(ROBCO_SETTINGS_ZIP_OUT)] && $::env(ROBCO_SETTINGS_ZIP_OUT) ne ""} {
+    set zipout $::env(ROBCO_SETTINGS_ZIP_OUT)
+}
 if {[info exists ::env(ROBCO_SETTINGS_WISH)] && $::env(ROBCO_SETTINGS_WISH) ne ""} {
     set wish $::env(ROBCO_SETTINGS_WISH)
-} else {
+} elseif {$zipout eq ""} {
     set wish [lindex [auto_execok wish9.0] 0]
+} else {
+    # Only the zip was asked for. Falling back to a wish on PATH here would
+    # build an image nobody asked for out of whatever interpreter the build
+    # host happens to have.
+    set wish ""
 }
-if {$wish eq "" || ![file executable $wish]} {
+if {$wish eq "" && $zipout eq ""} {
     puts stderr "build: wish stub not found (set ROBCO_SETTINGS_WISH or install wish9.0)"
+    exit 1
+}
+if {$wish ne "" && ![file executable $wish]} {
+    puts stderr "build: wish stub $wish is not executable"
     exit 1
 }
 
@@ -65,8 +97,28 @@ file delete -force $stage
 file mkdir $stage
 file copy $launcher                       [file join $stage robco-settings]
 file copy [file join $repo zipfs main.tcl] [file join $stage main.tcl]
-foreach d {lib ui} {
+# tests/ travels with lib/ and ui/ so that the finished image can be asked
+# to test itself. A suite that only ever runs against the checkout proves
+# the scripts are right; run from inside the image it also proves the image
+# carries them, which is the half that breaks on a packaging change.
+foreach d {lib ui tests} {
     file copy [file join $repo $d] [file join $stage $d]
+}
+
+# tcltest is a module rather than part of the script library, so a
+# from-source runtime tree does not bring it: it is named separately or the
+# image simply cannot run its suites. ::tcl::tm looks under
+# <dirname of [info library]>/tcl9/<major.minor>, and [info library] in the
+# image is //zipfs:/app/tcl_library, so the module goes here.
+if {[info exists ::env(ROBCO_SETTINGS_TCLTEST)] && $::env(ROBCO_SETTINGS_TCLTEST) ne ""} {
+    set tm $::env(ROBCO_SETTINGS_TCLTEST)
+    if {![file readable $tm]} {
+        puts stderr "build: ROBCO_SETTINGS_TCLTEST names no readable file: $tm"
+        exit 1
+    }
+    set tmdir [file join $stage tcl9 9.0]
+    file mkdir $tmdir
+    file copy $tm [file join $tmdir [file tail $tm]]
 }
 
 # A self-contained stub carries no script library of its own, so overlay the
@@ -78,6 +130,21 @@ if {[info exists ::env(ROBCO_SETTINGS_RUNTIME)] && $::env(ROBCO_SETTINGS_RUNTIME
     foreach name [glob -nocomplain -tails -directory $runtime *] {
         file copy [file join $runtime $name] [file join $stage $name]
     }
+}
+
+# The bare zip, for an executable that mounts the archive itself. Same
+# staging, same root-relative paths as the image: what the terminal mounts at
+# //zipfs:/app is byte for byte what the standalone image carries there.
+if {$zipout ne ""} {
+    file mkdir [file dirname [file normalize $zipout]]
+    file delete -force $zipout
+    zipfs mkzip $zipout $stage $stage
+    puts "built $zipout"
+}
+
+if {$wish eq ""} {
+    file delete -force $stage
+    exit 0
 }
 
 set distdir [file join $repo dist]
