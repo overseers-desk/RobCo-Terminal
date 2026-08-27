@@ -11,12 +11,22 @@
 # Info.plist -- a name in the Dock and the menu bar, an icon, a version
 # the Finder can show -- none of which a bare Unix binary has.
 #
-# The signature here is ad-hoc (`-s -`), which is not a Developer ID and
-# does not satisfy Gatekeeper: a downloaded copy is still quarantined and
-# still refused on first launch. It is here because Apple Silicon refuses
-# to execute a binary with no signature at all, and because a bundle whose
-# seal does not match its contents is reported as damaged rather than as
-# unsigned, which is a worse thing to hand a stranger.
+# The bundle carries no seal of its own, and cannot until the settings
+# image changes shape. Sealing a bundle covers every Mach-O inside it, and
+# that image is a Tcl interpreter with its script archive appended past the
+# end of its Mach-O, which codesign rejects outright ("main executable
+# failed strict validation"). What holds the app together instead is the
+# ad-hoc signature the linker gave each binary at build time, which is all
+# Apple Silicon requires to execute them and which the append leaves
+# intact, covering as it does only the code pages.
+#
+# Gatekeeper wants a Developer ID rather than a seal, so nothing is lost
+# today: a downloaded copy is refused on first launch either way. The day
+# signing is real, notarization will demand a signature on every Mach-O in
+# the bundle, and this file has to become signable first: either its
+# archive is unpacked into Contents/Resources beside a plain interpreter,
+# or the settings program is embedded in the terminal the way the Windows
+# build embeds it, leaving one binary in Contents/MacOS.
 set -euo pipefail
 
 terminal=""
@@ -94,18 +104,11 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Only the bundle, and deliberately not the settings image inside it.
-# That image is a wish interpreter with its script archive appended past
-# the end of the Mach-O, which is how zipfs images are made everywhere;
-# codesign refuses to re-sign a file with data beyond what its signature
-# can cover ("main executable failed strict validation"). The linker's own
-# ad-hoc signature from its build still runs it, because the code pages it
-# covers are untouched by the append, and the release job has been
-# executing exactly this image to run its --selftest. So the seal here is
-# the bundle's, and the verify stops at the same boundary rather than
-# recursing into a file it would reject for being what it has to be.
-codesign --force --sign - "$app"
-codesign --verify --strict "$app"
+# What is checked instead of a seal: that the terminal, the binary macOS
+# will launch, carries the signature Apple Silicon demands of anything it
+# executes. A bundle that fails this does not open at all, which is worth
+# catching here rather than on a stranger's desk.
+codesign --verify --strict "$app/Contents/MacOS/robco-term"
 
 # The alias is the drag-to-install gesture every Mac user already knows;
 # without it the mounted volume shows an app and no hint of what to do.
