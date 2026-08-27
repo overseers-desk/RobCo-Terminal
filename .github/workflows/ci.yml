@@ -1,13 +1,11 @@
-# The proofs this repository cannot make locally, both about Windows. The
+# The proofs this repository cannot make locally, all about Windows. The
 # terminal compiles there (the C++ terminal-core dependency needs a native
-# toolchain, so no Linux box can check it), and glyph fallback finds a face
-# there for a character the bundled font has no glyph for. That second one
-# is behaviour rather than compilation: the fallback list, the font families
-# it names and the directories the font database reads are all different on
-# Windows, so a build that succeeds says nothing about whether a character
-# outside ASCII reaches the glass. Shaping needs no GPU and no window, so
-# those tests run anywhere. The rest of the suite runs on the development
-# machines before every push.
+# toolchain, so no Linux box can check it); glyph fallback finds a face
+# there for a character the bundled font has no glyph for; and the release
+# exe carries the settings program inside it, so the Tcl/Tk toolchain and
+# the Rust build are one artifact's two halves and cannot usefully be green
+# apart. Shaping needs no GPU and no window, so those tests run anywhere.
+# The rest of the suite runs on the development machines before every push.
 name: CI
 
 on:
@@ -26,13 +24,31 @@ jobs:
       # ring's build assembles its MSVC objects with nasm.
       - uses: ilammy/setup-nasm@v1
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release -p robco-app
+      # Static Tcl/Tk from source, the standalone image, the payload zip,
+      # and the five ROBCO_* variables the embedded cargo build reads,
+      # written to $GITHUB_ENV. Its own named step, so a Tcl/Tk break
+      # reads as what it is rather than as a cargo failure.
+      - name: build the settings toolchain and payload
+        shell: pwsh
+        run: ./settings/zipfs/build-selfcontained.ps1 -Embed
+      # The standalone image keeps its artifact: the Linux tarball route
+      # (`xtask dist --settings-binary`) consumes that shape, and this
+      # runner is the only machine proving build-selfcontained.ps1 works.
+      - name: name the image robco-settings.exe, the name the sibling spawn looks for
+        shell: pwsh
+        run: |
+          $built = Get-ChildItem -Path settings/dist -Filter 'robco-settings-*.exe' | Select-Object -First 1
+          if (-not $built) { throw 'no robco-settings-*.exe produced under settings/dist' }
+          Copy-Item $built.FullName 'settings/dist/robco-settings.exe' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: robco-settings-windows-x86_64
+          path: settings/dist/robco-settings.exe
+      - run: cargo build --release -p robco-app --features embedded-settings
       - run: cargo test --release -p robco-term --test suite fallback
       # The exe must speak before it may ship: a GUI-subsystem binary that
       # dies in startup dies without a console to say so, and this is the
-      # only Windows machine that runs it before a tester does. `--version`
-      # proves the process starts and exits cleanly; `--dump-settings`
-      # walks config, fonts and paths on Windows without needing a window.
+      # only Windows machine that runs it before a tester does.
       # Start-Process -Wait, not a plain invocation: the shell waits only
       # for console binaries, and racing ahead of a GUI-subsystem one both
       # misses its exit code and closes the capture pipe under it.
@@ -48,40 +64,44 @@ jobs:
             -NoNewWindow -Wait -PassThru -RedirectStandardOutput dump.txt
           if ($p.ExitCode -ne 0) { throw "--dump-settings exited $($p.ExitCode)" }
           if (-not (Get-Content dump.txt)) { throw '--dump-settings printed nothing' }
+      # The embedded payload proves itself without a window: mount, source,
+      # and the pure-Tcl suites, inside the shipped exe.
+      - name: the settings payload answers from inside the exe
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath target/release/robco-term.exe `
+            -ArgumentList '--settings-selftest' -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput selftest.txt
+          Get-Content selftest.txt
+          if ($p.ExitCode -ne 0) {
+              $log = Join-Path $env:LOCALAPPDATA 'robco-term/settings.log'
+              if (Test-Path $log) { Get-Content $log }
+              throw "--settings-selftest exited $($p.ExitCode)"
+          }
+          if (-not (Select-String -Path selftest.txt -Pattern 'settings selftest ok' -Quiet)) {
+              throw 'selftest output missing its ok line'
+          }
+      # The direct regression test for the reported silent death: the
+      # settings window must still be alive six seconds after launch. The
+      # runner's session has a desktop, so Tk can map a window there; if
+      # this proves flaky under Session 0, demote it to continue-on-error
+      # rather than deleting it.
+      - name: the settings window stays up
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath target/release/robco-term.exe `
+            -ArgumentList '--settings' -PassThru
+          Start-Sleep -Seconds 6
+          if ($p.HasExited) {
+              $log = Join-Path $env:LOCALAPPDATA 'robco-term/settings.log'
+              if (Test-Path $log) { Get-Content $log }
+              throw "the settings window exited within 6s (code $($p.ExitCode))"
+          }
+          Stop-Process -Id $p.Id -Force
       # The runner is this project's only Windows build machine, so what it
       # builds is the product, kept, not a proof discarded: every green run
-      # carries an exe a tester can download and launch.
+      # carries the one self-contained exe a tester can download and launch.
       - uses: actions/upload-artifact@v4
         with:
           name: robco-term-windows-x86_64
           path: target/release/robco-term.exe
-
-  # A parallel job, not a step tacked onto `windows`: the settings image is
-  # a separate toolchain (MSVC + nmake against a from-source Tcl/Tk, no
-  # Rust at all) with its own way to fail, and folding it into `windows`
-  # would let a settings-build break hide behind a green terminal build.
-  # This is also the first time build-selfcontained.ps1 has run anywhere;
-  # a green run here is the first proof its Windows twin of
-  # build-selfcontained.sh actually works, not just reads plausibly.
-  settings-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: build the self-contained settings image
-        shell: pwsh
-        run: ./settings/zipfs/build-selfcontained.ps1
-      # build.tcl names the image robco-settings-<version>-windows-<arch>.exe
-      # (settings/dist/, the version stamped from settings/robco-settings);
-      # the terminal looks for a fixed `robco-settings.exe` beside itself
-      # (crates/app/src/window.rs, SETTINGS_BINARY), so the artifact carries
-      # that name instead.
-      - name: name the image robco-settings.exe, the name the terminal looks for
-        shell: pwsh
-        run: |
-          $built = Get-ChildItem -Path settings/dist -Filter 'robco-settings-*.exe' | Select-Object -First 1
-          if (-not $built) { throw 'no robco-settings-*.exe produced under settings/dist' }
-          Copy-Item $built.FullName 'settings/dist/robco-settings.exe' -Force
-      - uses: actions/upload-artifact@v4
-        with:
-          name: robco-settings-windows-x86_64
-          path: settings/dist/robco-settings.exe
