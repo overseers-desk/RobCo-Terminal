@@ -24,10 +24,20 @@
 # Requires: Visual Studio 2019+ with the C++ toolset (the hosted windows
 # runners carry it), and tar + curl (in Windows 10 1803 and later).
 #
+# -Embed additionally produces what the terminal's own build needs to carry
+# this window inside robco-term.exe: the payload as a plain zip, and the
+# include and library paths of the static Tcl and Tk this script just built,
+# printed as NAME=value lines and appended to $env:GITHUB_ENV where CI set
+# one. The standalone image is still built and still the proof that the
+# payload runs; without the switch nothing about this script changes.
+#
 # Usage:
 #   pwsh -File zipfs/build-selfcontained.ps1
+#   pwsh -File zipfs/build-selfcontained.ps1 -Embed
 #   $env:BUILD_DIR = 'C:\rsbuild'; pwsh -File zipfs/build-selfcontained.ps1
 #   $env:ROBCO_SETTINGS_DIST_DIR = 'C:\out'; pwsh -File zipfs/build-selfcontained.ps1
+
+param([switch]$Embed)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -153,13 +163,21 @@ $Wish = Join-Path $BuildDir 'robco-settings-wish.exe'
 # this link: Tcl and Tk were compiled against it, and their objects call the
 # CRT through its import symbols. Linking them into a binary built for the
 # static CRT leaves every one of those unresolved.
+#
+# The include directories are one list, used both for this link and for the
+# terminal's own build of the same source file under -Embed. Two lists would
+# drift the first time a header moved, and the failure would land in the
+# other build.
+$IncludeDirs = @(
+    (Join-Path $Stage 'include')
+    (Join-Path $TclSrc 'generic')
+    (Join-Path $TkSrc 'generic')
+    (Join-Path $TkSrc 'win')
+    (Join-Path $TkSrc 'xlib')
+)
 $clArgs = @(
-    '/nologo', '/O2', '/MD', '/DSTATIC_BUILD', '/DUSE_TCL_STUBS=0', '/DUSE_TK_STUBS=0',
-    "/I$(Join-Path $Stage 'include')",
-    "/I$(Join-Path $TclSrc 'generic')",
-    "/I$(Join-Path $TkSrc 'generic')",
-    "/I$(Join-Path $TkSrc 'win')",
-    "/I$(Join-Path $TkSrc 'xlib')",
+    '/nologo', '/O2', '/MD', '/DSTATIC_BUILD', '/DUSE_TCL_STUBS=0', '/DUSE_TK_STUBS=0'
+) + ($IncludeDirs | ForEach-Object { "/I$_" }) + @(
     (Join-Path $RepoRoot 'zipfs\appinit.c'),
     "/Fe:$Wish",
     '/link', '/SUBSYSTEM:WINDOWS', '/ENTRY:mainCRTStartup',
@@ -197,5 +215,56 @@ $env:ROBCO_SETTINGS_WISH = $Wish
 $env:ROBCO_SETTINGS_RUNTIME = $Runtime
 Invoke-Checked -Exe $tclsh.FullName `
     -Arguments @((Join-Path $RepoRoot 'zipfs\build.tcl')) -WorkDir $RepoRoot
+
+if ($Embed) {
+    Write-Host '== 5. payload zip + the terminal build''s environment =='
+    # The same payload again, this time as a plain zip for the terminal to
+    # carry in its own image. The wish is cleared for this run so build.tcl
+    # writes the zip alone; the runtime tree stays, because an embedded
+    # interpreter needs the script libraries exactly as the standalone image
+    # does.
+    $Payload = Join-Path $BuildDir 'robco-settings-payload.zip'
+    $env:ROBCO_SETTINGS_WISH = ''
+    $env:ROBCO_SETTINGS_ZIP_OUT = $Payload
+
+    # tcltest is a module and no part of the script library, so it is found
+    # and named here or the image cannot run its own suites. The stage is
+    # asked first and the source tree second, the same order as the tclsh
+    # above and for the same reason.
+    $tm = @(
+        Get-ChildItem -Path $Stage -Recurse -Filter 'tcltest-*.tm' -ErrorAction SilentlyContinue
+        Get-ChildItem -Path (Join-Path $TclSrc 'library') -Recurse -Filter 'tcltest-*.tm' -ErrorAction SilentlyContinue
+    ) | Select-Object -First 1
+    if ($tm) {
+        Write-Host "  tcltest $($tm.FullName)"
+        $env:ROBCO_SETTINGS_TCLTEST = $tm.FullName
+    } else {
+        Write-Host '  no tcltest module found; the image will not run its own suites'
+    }
+
+    Invoke-Checked -Exe $tclsh.FullName `
+        -Arguments @((Join-Path $RepoRoot 'zipfs\build.tcl')) -WorkDir $RepoRoot
+    if (-not (Test-Path $Payload)) { throw "payload zip was not produced at $Payload" }
+
+    # What the terminal's own build reads: the payload to embed, and the
+    # static Tcl and Tk to link appinit.c against. The include list is the
+    # one the cl invocation above used, joined the way a Windows path list
+    # is; the libraries are the ones already found for that link.
+    $CargoEnv = [ordered]@{
+        ROBCO_SETTINGS_ZIP = $Payload
+        ROBCO_TCL_INCLUDE  = ($IncludeDirs -join ';')
+        ROBCO_TCL_LIB      = $TclLib
+        ROBCO_TK_LIB       = $TkLib
+        ROBCO_TCL_STUB_LIB = $StubLib
+    }
+    # Printed always, so a hand-run build can be copied out of the log, and
+    # appended to GITHUB_ENV when there is one, so a workflow's later steps
+    # inherit it without repeating any of this.
+    foreach ($name in $CargoEnv.Keys) {
+        $line = "$name=$($CargoEnv[$name])"
+        Write-Host $line
+        if ($env:GITHUB_ENV) { Add-Content -Path $env:GITHUB_ENV -Value $line }
+    }
+}
 
 Write-Host "done. Keep $BuildDir for reuse, or remove it."
