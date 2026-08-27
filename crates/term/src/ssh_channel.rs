@@ -171,7 +171,7 @@ impl<T: DcsTap> SshChannel<T> {
     /// Two things follow from local bytes being local. `lived` does not
     /// move -- a prompt is the connection asking, not the connection having
     /// lived, so a refusal that arrives after one still leaves the row under
-    /// the unlived law and the user still gets to read why. And the DCS tap
+    /// the Eof law and the user still gets to read why. And the DCS tap
     /// never sees them: control mode is a remote program's envelope, and
     /// nothing typed at this glass may open one. That is the same reasoning
     /// `SshEvent::Notice` runs on, and the same one line of body.
