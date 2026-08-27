@@ -44,15 +44,20 @@ use config::Config;
 /// - macOS: `~/Library/Application Support/robco-term/config.toml`
 /// - Windows: `%APPDATA%\robco-term\config.toml`
 ///
-/// This is the `directories` crate's standard XDG/Application
-/// Support/Roaming convention (`ProjectDirs::config_dir()`), not a bespoke
-/// path. `--profile <name>` (the CLI contract) is expected to select
-/// a sibling file, `config.<name>.toml`, in the same directory; that
-/// selection is `config_path_for_profile`, used by the CLI parsing.
+/// This is the platform's per-user config base (`BaseDirs::config_dir()`:
+/// XDG on Linux, Application Support on macOS, Roaming AppData on Windows)
+/// with the application's own directory on it, and the same three
+/// spellings the settings window computes in `settings/lib/model.tcl` --
+/// the two programs share the file, so they have to share the spelling.
+/// (`ProjectDirs::config_dir()` is not that spelling: on Windows it adds a
+/// `config` subfolder of its own.) `--profile <name>` (the CLI contract)
+/// is expected to select a sibling file, `config.<name>.toml`, in the same
+/// directory; that selection is `config_path_for_profile`, used by the CLI
+/// parsing.
 const APPLICATION: &str = "robco-term";
 
 /// The directory the config file (and, later, named-profile siblings) live
-/// in, per the `directories` XDG/Application Support/Roaming convention.
+/// in: the platform config base joined with [`APPLICATION`].
 ///
 /// Returns `None` only if the platform gives no home directory at all
 /// (e.g. no `$HOME` and no equivalent), which `directories` treats as
@@ -60,7 +65,7 @@ const APPLICATION: &str = "robco-term";
 /// current directory in that case, matching the config contract's rule
 /// that a missing config location is not fatal.
 pub fn config_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", APPLICATION).map(|dirs| dirs.config_dir().to_path_buf())
+    directories::BaseDirs::new().map(|dirs| dirs.config_dir().join(APPLICATION))
 }
 
 /// The default config file's full path: `config_dir()/config.toml`. Falls
@@ -397,8 +402,6 @@ impl SettingsHandle {
     /// carries `docs/config-format.md`'s obligations (atomic temp-then-rename,
     /// comments and unknown keys preserved, only the touched key's bytes
     /// changed), and an API that can only name one key cannot break them.
-    /// [`Self::set_ssh_default_row`] is the one thing beside it that is not a
-    /// key, and it names its own row rather than reaching the document either.
     ///
     /// The write lands in the watched directory, so the watcher picks it up and
     /// republishes the snapshot on its own thread; a caller that has already
@@ -407,30 +410,6 @@ impl SettingsHandle {
     /// which is a no-op rather than a jump.
     pub fn write_key(&self, key: &str, value: config::toml::Scalar) -> Result<(), ConfigError> {
         config::toml::write_key(&self.path, key, value)
-    }
-
-    /// Make a destination the default connection, row and all.
-    ///
-    /// The picker's typed arm is the caller: a hostname the user typed names
-    /// no `[[ssh.host]]` row yet, so becoming the default means the file
-    /// gains the row *and* the `ssh.default` naming it. Both or neither, in
-    /// one atomic write, for the reasons `config::toml::set_ssh_default_row`
-    /// states. An empty `host` is localhost, which needs no row.
-    ///
-    /// This is where "one key at a time, scalars only" above stops being the
-    /// whole truth, and the shape of the widening is deliberate: the caller
-    /// still names a destination rather than an edit, so nothing here can
-    /// drop a table, reorder a document, or write a key it was not given.
-    /// The write comes back through the watcher as an ordinary reload, the
-    /// same as [`Self::write_key`]'s.
-    pub fn set_ssh_default_row(
-        &self,
-        host: &str,
-        user: &str,
-        port: u16,
-        key: &str,
-    ) -> Result<(), ConfigError> {
-        config::toml::set_ssh_default_row(&self.path, host, user, port, key)
     }
 
     /// Keep the look currently on air as a saved profile under `name`.
@@ -509,14 +488,18 @@ pub fn install_sigusr1_handler(_handle: Arc<SettingsHandle>) -> std::io::Result<
 mod tests {
     use super::*;
 
+    /// The settings window computes this same path in Tcl
+    /// (`settings/lib/model.tcl`), so the file's parent is the application
+    /// directory itself: any segment between them (as `ProjectDirs` adds on
+    /// Windows) is a file the two programs no longer share.
     #[test]
     fn config_path_ends_in_app_dir_and_config_toml() {
         let path = config_path();
         assert_eq!(path.file_name().unwrap(), "config.toml");
-        assert!(
-            path.to_string_lossy().contains(APPLICATION),
-            "expected {:?} to contain {APPLICATION:?}",
-            path
+        assert_eq!(
+            path.parent().and_then(|dir| dir.file_name()).unwrap(),
+            APPLICATION,
+            "expected {path:?} to sit directly in the {APPLICATION:?} directory"
         );
     }
 
