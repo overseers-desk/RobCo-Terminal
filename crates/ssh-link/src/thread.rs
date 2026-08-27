@@ -550,6 +550,32 @@ fn default_key_files() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// The PuTTY private-key format version, if `path`'s first line says so.
+///
+/// Only that first line is read: a `.ppk` file announces itself with
+/// `PuTTY-User-Key-File-2:` or `PuTTY-User-Key-File-3:` before anything
+/// else, so there is no need to parse further to tell a foreign format from
+/// a merely broken one. A trailing `\r` is tolerated for a file that has
+/// crossed from Windows.
+///
+/// A crates.io search (2026-08) for a ppk parser came up empty: `osshkeys`
+/// claims PuTTY support in its description but implements none of it, and
+/// `puttykey` is a Ruby gem, not a Rust crate. A future reader who wants to
+/// convert instead of refuse should check the ecosystem again rather than
+/// assume this gap was left on purpose.
+fn ppk_version(path: &std::path::Path) -> Option<u8> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path).ok()?;
+    let mut line = String::new();
+    std::io::BufReader::new(file).read_line(&mut line).ok()?;
+    let line = line.trim_end_matches(['\r', '\n']);
+    line.strip_prefix("PuTTY-User-Key-File-")?
+        .split(':')
+        .next()?
+        .parse()
+        .ok()
+}
+
 /// One key file against the server, asking for its passphrase if it has
 /// one.
 ///
@@ -573,6 +599,25 @@ async fn try_key_file(
         let Err(e) = attempt else {
             break attempt.expect("the Ok arm");
         };
+        // A PuTTY key reads as some russh parse error -- encrypted or not,
+        // russh has no format for it at all -- so it is sniffed before the
+        // passphrase logic below gets a chance to mistake a foreign format
+        // for a locked one of its own. An answer to a passphrase prompt
+        // could not be used here, so asking would only mislead.
+        if let Some(ver) = ppk_version(path) {
+            notice(
+                wire,
+                format!(
+                    "{} is a PuTTY key file (format {ver}), which this build cannot read; \
+                     convert it with puttygen {} -O private-openssh -o <new-file>, or \
+                     PuTTYgen's Conversions > Export OpenSSH key",
+                    path.display(),
+                    path.display()
+                ),
+            )
+            .await;
+            return Authenticated::No;
+        }
         // Two shapes of one situation: the key wants a passphrase and has
         // not been given one, or it was given one that did not fit. Any
         // other error with no passphrase in play is an unreadable file.
@@ -810,5 +855,50 @@ mod tests {
             .cloned()
             .collect();
         assert_eq!(default, empty);
+    }
+
+    /// A ppk file names its own format on the first line; that is the whole
+    /// of what the sniff trusts.
+    #[test]
+    fn a_ppk_v2_header_is_recognised() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("key.ppk");
+        std::fs::write(&path, "PuTTY-User-Key-File-2: ssh-rsa\nother lines\n").unwrap();
+        assert_eq!(ppk_version(&path), Some(2));
+    }
+
+    #[test]
+    fn a_ppk_v3_header_is_recognised() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("key.ppk");
+        std::fs::write(&path, "PuTTY-User-Key-File-3: ssh-ed25519\nother lines\n").unwrap();
+        assert_eq!(ppk_version(&path), Some(3));
+    }
+
+    /// A file crossed from Windows carries a trailing \r on every line; the
+    /// sniff must not let that hide the version digit.
+    #[test]
+    fn a_crlf_header_is_still_recognised() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("key.ppk");
+        std::fs::write(&path, "PuTTY-User-Key-File-2: ssh-rsa\r\nother lines\r\n").unwrap();
+        assert_eq!(ppk_version(&path), Some(2));
+    }
+
+    /// An OpenSSH key's own first line must not read as a ppk header: the
+    /// two formats share nothing but both being text.
+    #[test]
+    fn an_openssh_key_is_not_mistaken_for_a_ppk_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("id_ed25519");
+        std::fs::write(&path, "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n").unwrap();
+        assert_eq!(ppk_version(&path), None);
+    }
+
+    #[test]
+    fn a_missing_file_sniffs_to_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("does-not-exist");
+        assert_eq!(ppk_version(&path), None);
     }
 }
