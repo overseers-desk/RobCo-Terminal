@@ -307,7 +307,6 @@ const ONLY_IF: &[(&str, &[&str])] = &[
     ("verifyhostkeydns", &["no"]),
 ];
 
-/// Whether one directive, as written, is one this build cannot honour.
 fn unhonourable(key: &str, value: &str) -> bool {
     let key = key.to_lowercase();
     if UNHONOURABLE.contains(&key.as_str()) {
