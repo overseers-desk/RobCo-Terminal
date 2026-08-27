@@ -1,6 +1,13 @@
-robco-term (0.1.0) unstable; urgency=medium
+robco-term (0.1.1) unstable; urgency=medium
 
-  * First Debian packaging: the terminal, its desktop entry and icon, and
-    the Tcl/Tk settings window running on the distribution's tcl9.0/tk9.0.
+  * Built-in SSH grows its operator surface: passwords, key passphrases
+    and keyboard-interactive answers are typed on the terminal's own
+    glass, and an unknown host key asks yes/no before being recorded.
+  * ~/.ssh/config is read whole; a directive the terminal cannot honour
+    refuses the file by name rather than half-obeying it.
+  * The mouse selection is drawn, in inverse video through the CRT chain.
+  * Terminal queries (device attributes, cursor position and kin) are
+    answered, and idle SSH connections send keepalives once a minute.
 
- -- Weiwu Zhang <a@colourful.land>  Wed, 26 Aug 2026 16:14:02 +0000
+ -- The Overseer <noreply@colourful.land>  Thu, 27 Aug 2026 15:12:12 +1000
+
