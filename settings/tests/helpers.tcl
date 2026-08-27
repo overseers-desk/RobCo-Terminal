@@ -2,16 +2,15 @@
 
 set ::libdir [file normalize [file join [file dirname [info script]] .. lib]]
 
-# The tests that run the real --dump-settings need a robco-term. One on PATH
-# is found the way the app finds it; a build tree's is named by the suite's
-# own ROBCO_SETTINGS_TEST_BINARY and handed straight to the dump namespace's
-# internal hook. This is the test harness reaching in, not configuration: the
-# app reads no environment variable to find its terminal, so there is nothing
-# here for a user to set. Call it after dump.tcl is sourced.
+# The tests that run the real binary need a robco-term. One on PATH is
+# found the way the app finds it; a build tree's is named by the suite's
+# own ROBCO_SETTINGS_TEST_BINARY and handed straight to the model's
+# internal hook. This is the test harness reaching in, not configuration.
+# Call it after model.tcl is sourced.
 proc force_test_binary {} {
     if {[info exists ::env(ROBCO_SETTINGS_TEST_BINARY)]
         && $::env(ROBCO_SETTINGS_TEST_BINARY) ne ""} {
-        set ::rcsettings::dump::ForcedBinary $::env(ROBCO_SETTINGS_TEST_BINARY)
+        set ::rcsettings::model::ForcedBinary $::env(ROBCO_SETTINGS_TEST_BINARY)
     }
 }
 
@@ -82,129 +81,4 @@ host = "spare"
 
 [dotfiles_tool]
 generated_at = "2026-08-01"
-}
-
-# A canned --dump-settings document: the shape of the real one (the
-# fully-resolved default tables, the ssh row defaults, both preset axes,
-# the font catalogue, the enumerated value lists) cut down to what the
-# model tests exercise.
-set ::dumptext {[general]
-effects_frame_skip = 3
-window_scaling = 1.0
-font_scaling = 1.0
-show_terminal_size = true
-custom_command = ""
-led_characters = 12
-chassis_shown = true
-
-[screen]
-name = "Default Amber"
-background_color = "#000000"
-font_color = "#ff8100"
-bloom = 0.6
-burn_in = 0.3
-jitter = 0.2
-rasterization = "no_rasterization"
-font_name = "TERMINESS_SCALED"
-blinking_cursor = false
-
-[chassis]
-name = "Annunciator"
-shell = "annunciator"
-channel_indicator = "glow"
-channel_display = "led"
-frame_size = 0.45
-bank_font_name = "COZETTE_SCALED"
-
-[ssh]
-default = ""
-host = []
-
-[ssh_host_defaults]
-host = ""
-user = ""
-port = 22
-key = ""
-
-[[screen_presets]]
-name = "Default Amber"
-background_color = "#000000"
-font_color = "#ff8100"
-bloom = 0.6
-burn_in = 0.3
-jitter = 0.2
-rasterization = "no_rasterization"
-font_name = "TERMINESS_SCALED"
-blinking_cursor = false
-
-[[screen_presets]]
-name = "Deep Blue"
-background_color = "#000000"
-font_color = "#5c9dff"
-bloom = 0.5
-burn_in = 0.3
-jitter = 0.2
-rasterization = "scanline_rasterization"
-font_name = "COZETTE_SCALED"
-blinking_cursor = false
-
-[[screen_presets]]
-name = "E-Ink"
-background_color = "#e8e8e8"
-font_color = "#101010"
-bloom = 0.0
-burn_in = 0.0
-jitter = 0.0
-rasterization = "no_rasterization"
-font_name = "IOSEVKA"
-blinking_cursor = true
-
-[[chassis_presets]]
-name = "Annunciator"
-shell = "annunciator"
-channel_indicator = "glow"
-channel_display = "led"
-frame_size = 0.45
-bank_font_name = "COZETTE_SCALED"
-
-[[chassis_presets]]
-name = "Switchboard"
-shell = "switchboard"
-channel_indicator = "switch"
-channel_display = "tape"
-frame_size = 0.5
-bank_font_name = "DEPARTURE_MONO_SCALED"
-
-[[fonts]]
-name = "TERMINESS_SCALED"
-text = "Terminess"
-
-[[fonts]]
-name = "COZETTE_SCALED"
-text = "Cozette"
-
-[[fonts]]
-name = "IOSEVKA"
-text = "Iosevka"
-
-[values]
-rasterization = [
-    "no_rasterization",
-    "scanline_rasterization",
-    "pixel_rasterization",
-]
-shell = [
-    "annunciator",
-    "slide-rule",
-    "switchboard",
-]
-channel_indicator = [
-    "glow",
-    "pointer",
-    "switch",
-]
-channel_display = [
-    "led",
-    "tape",
-]
 }

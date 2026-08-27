@@ -2,7 +2,9 @@
 # default), the four edits of a flat table, and the ssh rows, each held to
 # the machine-write contract's bar that one changed key is one changed
 # line. A row that is added or removed is one added or removed block, and
-# every byte around it stands.
+# every byte around it stands. The schema behind the resolution is the
+# literal data in model.tcl itself; tests/schema.test holds those literals
+# to the binary's own dump.
 
 package require tcltest 2.5
 namespace import ::tcltest::*
@@ -11,7 +13,6 @@ source [file join [file dirname [info script]] helpers.tcl]
 source [file join $::libdir model.tcl]
 force_test_binary
 
-set ::data [::rcsettings::dump::load_text $::dumptext fixture]
 set ::configdir [file join [temporaryDirectory] model-[pid]]
 set ::configpath [file join $::configdir config.toml]
 
@@ -19,75 +20,50 @@ set ::configpath [file join $::configdir config.toml]
 # test can compare the file's bytes before and after an edit.
 proc with_config {text} {
     file mkdir $::configdir
-    ::rcsettings::toml::atomic_write $::configpath $text
-    ::rcsettings::model::init $::data $::configpath
+    ::tomledit::atomic_write $::configpath $text
+    ::rcsettings::model::init $::configpath
     return $text
 }
 
 proc without_config {} {
     file delete -force $::configdir
-    ::rcsettings::model::init $::data $::configpath
+    ::rcsettings::model::init $::configpath
 }
 
 proc on_disk {} {
-    return [::rcsettings::toml::read_file $::configpath]
+    return [::tomledit::read_file $::configpath]
 }
 
-# Every screen key the dump knows, as the user currently sees it. What
+# Every screen key the schema knows, as the user currently sees it. What
 # pin_overrides must leave unchanged.
 proc screen_look {} {
     set out {}
-    foreach key [::rcsettings::dump::table_keys $::data screen] {
+    foreach key [::rcsettings::model::table_keys screen] {
         if {$key eq "name"} { continue }
         lappend out $key [::rcsettings::model::effective screen $key]
     }
     return $out
 }
 
-# A robco-term old enough to have no --dump-settings can sit on PATH, so
-# the constraint is that the dump works, not that a binary is there.
-testConstraint realBinary [expr {![catch {::rcsettings::dump::load} ::realdump]}]
+test schema-1.1 {defaults are raw TOML, presets in declaration order} -body {
+    list [::rcsettings::model::shipped screen bloom] \
+        [lrange [::rcsettings::model::preset_names screen] 0 2] \
+        [::rcsettings::model::preset_names chassis]
+} -result {0.6 {{Default Amber} {Monochrome Green} {Deep Blue}} {Annunciator {Slide Rule} Switchboard}}
 
-test dump-1.1 {defaults come out as raw TOML, presets in dump order} -body {
-    list [::rcsettings::dump::default $::data screen bloom] \
-        [::rcsettings::dump::preset_names $::data screen] \
-        [::rcsettings::dump::preset_names $::data chassis]
-} -result {0.6 {{Default Amber} {Deep Blue} E-Ink} {Annunciator Switchboard}}
-
-test dump-1.2 {fonts are catalogue key and display name} -body {
-    lindex [::rcsettings::dump::fonts $::data] 1
+test schema-1.2 {fonts are catalogue key and display name} -body {
+    lindex [::rcsettings::model::fonts] 6
 } -result {COZETTE_SCALED Cozette}
 
-test dump-1.3 {a multi-line value list becomes a Tcl list} -body {
-    list [::rcsettings::dump::enum $::data shell] \
-        [::rcsettings::dump::enum $::data channel_display]
+test schema-1.3 {the value lists} -body {
+    list [::rcsettings::model::enum shell] \
+        [::rcsettings::model::enum channel_display]
 } -result {{annunciator slide-rule switchboard} {led tape}}
 
-test dump-1.4 {an unknown table or preset is an error, never a guess} -body {
-    list [catch {::rcsettings::dump::preset $::data screen Vintage}] \
-        [catch {::rcsettings::dump::default $::data screen no_such_key}]
+test schema-1.4 {an unknown table or preset is an error, never a guess} -body {
+    list [catch {::rcsettings::model::preset screen Vintage}] \
+        [catch {::rcsettings::model::shipped screen no_such_key}]
 } -result {1 1}
-
-test dump-1.5 {the error names what was looked for and where} -body {
-    # Both places the app looks, and no third one: a message naming a
-    # variable the app no longer reads would send the user somewhere that
-    # cannot help them.
-    set msg [::rcsettings::dump::describe_search]
-    # The sibling is named with the platform's suffix (.exe on Windows),
-    # and this suite runs there too, inside the shipped exe's selftest.
-    set sibling "robco-term[::rcsettings::dump::exe_suffix]"
-    expr {[string match "*$sibling beside this interpreter*" $msg]
-          && [string match "*robco-term on PATH*" $msg]
-          && ![string match "*ROBCO_TERM*" $msg]}
-} -result 1
-
-test dump-1.6 {the real binary's dump parses} -constraints realBinary -body {
-    set real $::realdump
-    list [expr {[llength [::rcsettings::dump::preset_names $real screen]] > 0}] \
-        [expr {[llength [::rcsettings::dump::fonts $real]] > 0}] \
-        [::rcsettings::toml::type_of [::rcsettings::dump::default $real screen bloom]] \
-        [expr {"no_rasterization" in [::rcsettings::dump::enum $real rasterization]}]
-} -result {1 1 float 1}
 
 test effective-2.1 {pinned, then the named preset, then the default} -setup {
     with_config $::fixture
@@ -95,16 +71,16 @@ test effective-2.1 {pinned, then the named preset, then the default} -setup {
     list [::rcsettings::model::effective screen bloom] \
         [::rcsettings::model::effective screen font_color] \
         [::rcsettings::model::effective general led_characters]
-} -result {0.9 #5c9dff 12}
+} -result {0.9 #7fb4ff 12}
 
 test effective-2.2 {the base of an unpinned key is the preset's value} -setup {
     with_config $::fixture
 } -body {
-    list [::rcsettings::model::base screen bloom] \
+    list [::rcsettings::model::base screen ambient_light] \
         [::rcsettings::model::pinned screen bloom] \
         [::rcsettings::model::pinned screen font_color] \
         [::rcsettings::model::preset_name screen]
-} -result {0.5 1 0 {Deep Blue}}
+} -result {0.0 1 0 {Deep Blue}}
 
 test effective-2.3 {a name matching no built-in falls back to the default} -setup {
     with_config "\[screen\]\nname = \"my workshop\"\n"
@@ -131,19 +107,21 @@ test set-3.1 {an edit changes one line and no other byte} -setup {
 test set-3.2 {a value equal to the base is written by removing the key} -setup {
     set before [with_config $::fixture]
 } -body {
-    ::rcsettings::model::set_value screen bloom 0.5
+    ::rcsettings::model::set_value screen bloom 0.6
     list [surgery $before [on_disk]] \
         [::rcsettings::model::pinned screen bloom] \
         [::rcsettings::model::effective screen bloom]
-} -result {{{{bloom = 0.9}} {}} 0 0.5}
+} -result {{{{bloom = 0.9}} {}} 0 0.6}
 
 test set-3.3 {the base is the preset's value, not the shipped default} -setup {
     with_config $::fixture
 } -body {
-    ::rcsettings::model::set_value screen bloom 0.6
-    list [::rcsettings::model::pinned screen bloom] \
-        [::rcsettings::toml::get_key [on_disk] screen bloom]
-} -result {1 0.6}
+    # Deep Blue turns the ambient light off; the shipped default is 0.3,
+    # so asking for 0.3 is a pin, not a fall-back.
+    ::rcsettings::model::set_value screen ambient_light 0.3
+    list [::rcsettings::model::pinned screen ambient_light] \
+        [::tomledit::get [on_disk] screen.ambient_light]
+} -result {1 0.3}
 
 test set-3.4 {a key the file does not have yet costs one added line} -setup {
     set before [with_config $::fixture]
@@ -162,7 +140,7 @@ test set-3.5 {a value is formatted after the type of its default} -setup {
     set text [on_disk]
     lmap {table key} {screen font_name general led_characters
                       screen blinking_cursor general font_scaling} {
-        ::rcsettings::toml::get_key $text $table $key
+        ::tomledit::get $text $table.$key
     }
 } -result {{"IOSEVKA"} 20 true 2.0}
 
@@ -177,11 +155,11 @@ test set-3.7 {the file is re-read before each write} -setup {
     with_config $::fixture
 } -body {
     # Another writer lands between the model's load and its next edit.
-    ::rcsettings::toml::atomic_write $::configpath \
-        [::rcsettings::toml::set_key $::fixture general led_characters 20]
+    ::tomledit::atomic_write $::configpath \
+        [::tomledit::put $::fixture general.led_characters 20]
     ::rcsettings::model::set_value screen bloom 0.4
-    list [::rcsettings::toml::get_key [on_disk] general led_characters] \
-        [::rcsettings::toml::get_key [on_disk] screen bloom]
+    list [::tomledit::get [on_disk] general.led_characters] \
+        [::tomledit::get [on_disk] screen.bloom]
 } -result {20 0.4}
 
 test reset-4.1 {reset unpins, leaving the preset's value showing} -setup {
@@ -189,7 +167,7 @@ test reset-4.1 {reset unpins, leaving the preset's value showing} -setup {
 } -body {
     ::rcsettings::model::reset screen bloom
     list [surgery $before [on_disk]] [::rcsettings::model::effective screen bloom]
-} -result {{{{bloom = 0.9}} {}} 0.5}
+} -result {{{{bloom = 0.9}} {}} 0.6}
 
 test switch-5.1 {switching presets drops this table's overrides only} -setup {
     with_config $::fixture
@@ -220,7 +198,7 @@ test switch-5.2 {naming the shipped preset removes the name key} -setup {
     list [::rcsettings::model::pinned screen name] \
         [::rcsettings::model::preset_name screen] \
         [::rcsettings::model::effective screen bloom] \
-        [::rcsettings::toml::get_key [on_disk] screen mystery_key]
+        [::tomledit::get [on_disk] screen.mystery_key]
 } -result {0 {Default Amber} 0.6 {"kept"}}
 
 test switch-5.3 {switching a table the file has no header for} -setup {
@@ -305,26 +283,25 @@ test ssh-9.3 {host is written even when it is the row default's own value} -setu
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::set_ssh_host 2 host ""
-    list [::rcsettings::toml::array_spans [on_disk] ssh.host] \
+    list [::tomledit::count [on_disk] ssh.host] \
         [lmap row [::rcsettings::model::ssh_hosts] {dict get $row host}]
-} -result {{{7 12} {12 16} {16 19}} {vault relay {}}}
+} -result {3 {vault relay {}}}
 
 test ssh-9.4 {a field is formatted after the type of its row default} -setup {
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::set_ssh_host 0 port 2222
     ::rcsettings::model::set_ssh_host 0 key {~/.ssh/id_ed25519}
-    set entry [lindex [dict get [::rcsettings::toml::parse [on_disk]] \
-        arrays ssh.host] 0]
-    list [dict get $entry port] [dict get $entry key]
+    set text [on_disk]
+    list [::tomledit::get $text {ssh.host[0].port}] \
+        [::tomledit::get $text {ssh.host[0].key}]
 } -result {2222 {"~/.ssh/id_ed25519"}}
 
 test ssh-9.5 {an unknown key inside a row is round-tripped} -setup {
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::set_ssh_host 0 user "someone"
-    ::rcsettings::toml::plain [dict get [lindex [dict get \
-        [::rcsettings::toml::parse [on_disk]] arrays ssh.host] 0] note]
+    ::tomledit::plain [::tomledit::get [on_disk] {ssh.host[0].note}]
 } -result {unknown to this tool}
 
 test ssh-10.1 {renaming the checked row takes the check with it} -setup {
@@ -353,7 +330,7 @@ test ssh-11.2 {checking localhost removes the key rather than emptying it} -setu
 } -body {
     ::rcsettings::model::set_ssh_default ""
     list [surgery $before [on_disk]] \
-        [dict exists [::rcsettings::toml::parse [on_disk]] tables ssh default] \
+        [dict exists [::tomledit::parse [on_disk]] tables ssh default] \
         [::rcsettings::model::ssh_default]
 } -result {{{{default = "vault"}} {}} 0 {}}
 
@@ -394,7 +371,7 @@ test ssh-13.2 {removing the checked row unchecks it} -setup {
 } -body {
     ::rcsettings::model::remove_ssh_host 0
     list [ssh_view] \
-        [dict exists [::rcsettings::toml::parse [on_disk]] tables ssh default]
+        [dict exists [::tomledit::parse [on_disk]] tables ssh default]
 } -result {{{relay spare} {}} 0}
 
 test ssh-13.3 {a row of the same name still answering keeps the check} -setup {
@@ -407,10 +384,10 @@ test ssh-13.3 {a row of the same name still answering keeps the check} -setup {
 test ssh-14.1 {the file is re-read before an ssh write too} -setup {
     with_config $::sshfixture
 } -body {
-    ::rcsettings::toml::atomic_write $::configpath \
-        [::rcsettings::toml::set_key $::sshfixture general led_characters 20]
+    ::tomledit::atomic_write $::configpath \
+        [::tomledit::put $::sshfixture general.led_characters 20]
     ::rcsettings::model::set_ssh_host 1 port 2200
-    list [::rcsettings::toml::get_key [on_disk] general led_characters] \
+    list [::tomledit::get [on_disk] general.led_characters] \
         [lindex [::rcsettings::model::ssh_hosts] 1]
 } -result {20 {host relay user {} port 2200 key {}}}
 

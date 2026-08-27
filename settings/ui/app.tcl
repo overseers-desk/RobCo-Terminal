@@ -38,20 +38,16 @@ namespace eval ::rcsettings::ui::app {
 
 proc ::rcsettings::ui::app::start {} {
     # Nothing is drawn until the model is up: a window that appeared and then
-    # replaced itself with an error about a missing binary would be worse
+    # replaced itself with an error about an unreadable file would be worse
     # than the error alone.
     wm withdraw .
     styles
 
-    # Both of these are shown and recorded rather than only shown: the window
-    # is withdrawn at this point, and a message box that cannot be drawn -
-    # a display that went away, an image whose Tk failed to load - would
-    # otherwise take the reason with it.
-    if {[catch {::rcsettings::dump::load} dumpdata]} {
-        ::rcsettings::diag::fatal \
-            "Cannot read the terminal's settings schema." $dumpdata
-    }
-    if {[catch {::rcsettings::model::init $dumpdata} err]} {
+    # Shown and recorded rather than only shown: the window is withdrawn at
+    # this point, and a message box that cannot be drawn - a display that
+    # went away, an image whose Tk failed to load - would otherwise take
+    # the reason with it.
+    if {[catch {::rcsettings::model::init} err]} {
         ::rcsettings::diag::fatal \
             "Cannot read the configuration file." $err
     }
@@ -85,7 +81,7 @@ proc ::rcsettings::ui::app::snapshot {} {
     variable Existed
     set path [::rcsettings::model::path]
     set Existed [file exists $path]
-    set Snapshot [::rcsettings::toml::read_file $path]
+    set Snapshot [::tomledit::read_file $path]
 }
 
 proc ::rcsettings::ui::app::build {} {
@@ -240,7 +236,7 @@ proc ::rcsettings::ui::app::cancel {} {
     set path [::rcsettings::model::path]
     if {[catch {
         if {$Existed} {
-            ::rcsettings::toml::atomic_write $path $Snapshot
+            ::tomledit::atomic_write $path $Snapshot
         } elseif {[file exists $path]} {
             file delete -- $path
         }

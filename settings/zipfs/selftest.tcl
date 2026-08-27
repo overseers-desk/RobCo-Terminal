@@ -68,7 +68,7 @@ proc ::selftest::check {what script} {
 # 3. The app's own Tcl-only libraries, sourced in the order the launcher
 #    sources them. A file missing from the archive fails here rather than
 #    halfway through drawing a window.
-foreach ::selftest::lib {diag.tcl toml.tcl dump.tcl model.tcl} {
+foreach ::selftest::lib {diag.tcl tomledit-1.0.tm model.tcl} {
     ::selftest::check "lib/$::selftest::lib sources" [format {
         source [file join $::selftest::root lib %s]
         expr {1}
@@ -91,7 +91,7 @@ if {[catch {package require tcltest 2.5} ::selftest::tcltesterr]} {
     ::tcltest::configure -testdir [file join $::selftest::root tests]
     ::tcltest::configure -tmpdir [file tempdir robco-settings-selftest]
     set ::tcltest::testSingleFile false
-    foreach ::selftest::suite {toml.test model.test} {
+    foreach ::selftest::suite {model.test} {
         set ::selftest::path \
             [file join $::selftest::root tests $::selftest::suite]
         if {[catch {source $::selftest::path} ::selftest::err]} {

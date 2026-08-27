@@ -1,24 +1,22 @@
-# The form's layout against the schema the binary prints.
+# The form's layout against the schema in model.tcl.
 #
-# The rest of the suite can work from the canned dump in helpers.tcl, because
-# what it tests is how a value is resolved and written. This file tests the
-# one thing a cut-down fixture cannot answer: whether the window shows every
-# key the terminal has. A key added to the schema and never given a row is
-# invisible in the settings window and unreachable except by hand-editing, and
-# nothing else in this repository would notice. The SSH tab is held to the
-# same bar further down, against the fields of an `[[ssh.host]]` row and the
-# keys of `[ssh]`.
+# The rest of the suite tests how a value is resolved and written. This file
+# tests whether the window shows every key the schema carries: a key added
+# to the schema and never given a row is invisible in the settings window
+# and unreachable except by hand-editing, and nothing else in this
+# repository would notice. (tests/schema.test holds the schema itself to the
+# binary's dump, so the chain window-to-schema-to-binary closes.) The SSH
+# tab is held to the same bar further down, against the fields of an
+# `[[ssh.host]]` row and the keys of `[ssh]`.
 #
-# So these tests need the real --dump-settings, and skip without it, exactly
-# as the one dump test in model.test does. They also need Tk, ui/form.tcl
-# requiring it at source time; the toplevel is withdrawn on the way past so a
-# suite run on a live display flashes nothing.
+# These tests need Tk, ui/form.tcl requiring it at source time; the toplevel
+# is withdrawn on the way past so a suite run on a live display flashes
+# nothing.
 
 package require tcltest 2.5
 namespace import ::tcltest::*
 
 source [file join [file dirname [info script]] helpers.tcl]
-source [file join $::libdir dump.tcl]
 source [file join $::libdir model.tcl]
 force_test_binary
 
@@ -30,8 +28,6 @@ if {[testConstraint tk]} {
     source [file join $::uidir form.tcl]
     source [file join $::uidir ssh_page.tcl]
 }
-testConstraint schema [expr {
-    [testConstraint tk] && ![catch {::rcsettings::dump::load} ::dumpdata]}]
 
 # The keys the form deliberately does not show, and why. The first four are
 # what docs/config.md marks as read by nothing in this build; `name` is the
@@ -60,13 +56,13 @@ proc layout_rows {} {
     return $out
 }
 
-test layout-1.1 {every key the dump carries is either a row or a named omission} -constraints {
-    schema
+test layout-1.1 {every key the schema carries is either a row or a named omission} -constraints {
+    tk
 } -body {
     set missing {}
     foreach table {general screen chassis} {
         set shown [layout_keys $table]
-        foreach key [::rcsettings::dump::table_keys $::dumpdata $table] {
+        foreach key [::rcsettings::model::table_keys $table] {
             if {$key in $shown} { continue }
             if {$key in [dict get $::unshown $table]} { continue }
             lappend missing $table.$key
@@ -75,13 +71,13 @@ test layout-1.1 {every key the dump carries is either a row or a named omission}
     set missing
 } -result {}
 
-test layout-1.2 {no row names a key the dump does not have} -constraints {
-    schema
+test layout-1.2 {no row names a key the schema does not have} -constraints {
+    tk
 } -body {
     set unknown {}
     foreach row [layout_rows] {
         lassign $row table key
-        if {![::rcsettings::dump::has_default $::dumpdata $table $key]} {
+        if {![::rcsettings::model::has_default $table $key]} {
             lappend unknown $table.$key
         }
     }
@@ -89,14 +85,14 @@ test layout-1.2 {no row names a key the dump does not have} -constraints {
 } -result {}
 
 test layout-1.3 {a row that is omitted is omitted on purpose} -constraints {
-    schema
+    tk
 } -body {
     # The other direction of 1.1: an omission that no longer names a real key
     # is a stale exemption, and would hide the next key to take that name.
     set stale {}
     dict for {table keys} $::unshown {
         foreach key $keys {
-            if {![::rcsettings::dump::has_default $::dumpdata $table $key]} {
+            if {![::rcsettings::model::has_default $table $key]} {
                 lappend stale $table.$key
             }
         }
@@ -105,9 +101,9 @@ test layout-1.3 {a row that is omitted is omitted on purpose} -constraints {
 } -result {}
 
 test layout-2.1 {each row's widget matches the type of the key it writes} -constraints {
-    schema
+    tk
 } -body {
-    # The model formats an edited value after the type of the dump's default,
+    # The model formats an edited value after the type of the schema's default,
     # so a checkbutton on a float key would write 1 into a key the terminal
     # reads as a fraction. The kinds and the TOML types have to agree. A
     # `bool` row with a two-element arg is the one exception: it writes a
@@ -118,8 +114,8 @@ test layout-2.1 {each row's widget matches the type of the key it writes} -const
     set wrong {}
     foreach row [layout_rows] {
         lassign $row table key kind arg
-        set type [::rcsettings::toml::type_of \
-            [::rcsettings::dump::default $::dumpdata $table $key]]
+        set type [::tomledit::type_of \
+            [::rcsettings::model::shipped $table $key]]
         set expect [expr {
             $kind eq "bool" && $arg ne "" ? "string" : [dict get $want $kind]}]
         if {$type ne $expect} {
@@ -130,18 +126,18 @@ test layout-2.1 {each row's widget matches the type of the key it writes} -const
 } -result {}
 
 test layout-2.2 {every enum row has a value list, every colour row a colour} -constraints {
-    schema
+    tk
 } -body {
     set wrong {}
     foreach row [layout_rows] {
         lassign $row table key kind
-        set value [::rcsettings::toml::plain \
-            [::rcsettings::dump::default $::dumpdata $table $key]]
+        set value [::tomledit::plain \
+            [::rcsettings::model::shipped $table $key]]
         switch -exact -- $kind {
             enum {
-                if {$key ni [::rcsettings::dump::enum_names $::dumpdata]} {
+                if {$key ni [::rcsettings::model::enum_names]} {
                     lappend wrong "$table.$key has no \[values\] list"
-                } elseif {$value ni [::rcsettings::dump::enum $::dumpdata $key]} {
+                } elseif {$value ni [::rcsettings::model::enum $key]} {
                     lappend wrong "$table.$key defaults outside its own list"
                 }
             }
@@ -151,7 +147,7 @@ test layout-2.2 {every enum row has a value list, every colour row a colour} -co
                 }
             }
             font {
-                set catalogue [lmap f [::rcsettings::dump::fonts $::dumpdata] \
+                set catalogue [lmap f [::rcsettings::model::fonts] \
                     {lindex $f 0}]
                 if {$value ni $catalogue} {
                     lappend wrong "$table.$key defaults to an uncatalogued face"
@@ -176,22 +172,22 @@ proc ssh_field_keys {} {
 }
 
 test ssh-layout-1.1 {every field of an ssh row has a box on the tab} -constraints {
-    schema
+    tk
 } -body {
     set missing {}
     set shown [ssh_field_keys]
-    foreach key [::rcsettings::dump::table_keys $::dumpdata ssh_host_defaults] {
+    foreach key [::rcsettings::model::table_keys ssh_host_defaults] {
         if {$key ni $shown} { lappend missing $key }
     }
     set missing
 } -result {}
 
 test ssh-layout-1.2 {no box names a field a row does not have} -constraints {
-    schema
+    tk
 } -body {
     set unknown {}
     foreach key [ssh_field_keys] {
-        if {![::rcsettings::dump::has_default $::dumpdata ssh_host_defaults $key]} {
+        if {![::rcsettings::model::has_default ssh_host_defaults $key]} {
             lappend unknown $key
         }
     }
@@ -199,33 +195,33 @@ test ssh-layout-1.2 {no box names a field a row does not have} -constraints {
 } -result {}
 
 test ssh-layout-1.3 {every key of the ssh table has a control} -constraints {
-    schema
+    tk
 } -body {
     # A third key added to `[ssh]` would be invisible in this window and
     # reachable only by hand-editing, which is what this test is here to
     # stop. Naming it in ::sshcontrols is what deciding costs.
     set loose {}
-    foreach key [::rcsettings::dump::table_keys $::dumpdata ssh] {
+    foreach key [::rcsettings::model::table_keys ssh] {
         if {![dict exists $::sshcontrols $key]} { lappend loose $key }
     }
     dict for {key what} $::sshcontrols {
-        if {![::rcsettings::dump::has_default $::dumpdata ssh $key]} {
+        if {![::rcsettings::model::has_default ssh $key]} {
             lappend loose "$key ($what) is no longer a key"
         }
     }
     set loose
 } -result {}
 
-test ssh-layout-2.1 {a port box writes what the dump types as an integer} -constraints {
-    schema
+test ssh-layout-2.1 {a port box writes what the schema types as an integer} -constraints {
+    tk
 } -body {
     # The model formats a field after the type of its row default, so a box
     # that took anything but digits for `port` would write a string into a
     # key the terminal reads as a number.
     set wrong {}
     foreach {key type} {host string user string port int key string} {
-        set was [::rcsettings::toml::type_of \
-            [::rcsettings::dump::default $::dumpdata ssh_host_defaults $key]]
+        set was [::tomledit::type_of \
+            [::rcsettings::model::shipped ssh_host_defaults $key]]
         if {$was ne $type} { lappend wrong "$key is $was, edited as $type" }
     }
     set wrong
@@ -262,29 +258,28 @@ test colour-1.1 {a colour is narrowed to the file's three bytes} -constraints {
 # say it should - not before the box is checked, not on a tab whose
 # pickers do not read the list, and never a second time.
 #
-# The exec itself is not run here: --dump-system-fonts is a sibling change
-# this suite's own binary may not carry yet, and what these tests are about
-# is the gating around the call, not the call. So ::rcsettings::dump::
+# The exec itself is not run here: what these tests are about is the
+# gating around the call, not the call. So ::rcsettings::model::
 # system_fonts is swapped for a stub for the length of one body, the same
-# shape force_test_binary gives dump.tcl's own exec.
+# shape force_test_binary gives the model's own exec.
 proc with_stub_system_fonts {pairs script} {
-    rename ::rcsettings::dump::system_fonts ::rcsettings::dump::system_fonts_real
-    proc ::rcsettings::dump::system_fonts {{path ""}} [list return $pairs]
+    rename ::rcsettings::model::system_fonts ::rcsettings::model::system_fonts_real
+    proc ::rcsettings::model::system_fonts {{path ""}} [list return $pairs]
     set code [catch {uplevel 1 $script} result opts]
-    rename ::rcsettings::dump::system_fonts {}
-    rename ::rcsettings::dump::system_fonts_real ::rcsettings::dump::system_fonts
+    rename ::rcsettings::model::system_fonts {}
+    rename ::rcsettings::model::system_fonts_real ::rcsettings::model::system_fonts
     return -options $opts $result
 }
 
-if {[testConstraint schema]} {
+if {[testConstraint tk]} {
     set ::sfdir [file join [temporaryDirectory] ui-sysfonts-[pid]]
     set ::sfpath [file join $::sfdir config.toml]
 }
 
 proc sf_init {text} {
     file mkdir $::sfdir
-    ::rcsettings::toml::atomic_write $::sfpath $text
-    ::rcsettings::model::init $::dumpdata $::sfpath
+    ::tomledit::atomic_write $::sfpath $text
+    ::rcsettings::model::init $::sfpath
 }
 
 # The three module variables the fetch is gated on and remembers into,
@@ -297,7 +292,7 @@ proc sf_reset_state {} {
 }
 
 test fontsource-6.1 {the row renders the effective string, unquoted} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\n"
     sf_reset_state
@@ -310,7 +305,7 @@ test fontsource-6.1 {the row renders the effective string, unquoted} -constraint
 } -result bundled_fonts
 
 test fontsource-6.2 {a pinned system_fonts value renders checked} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
     sf_reset_state
@@ -323,7 +318,7 @@ test fontsource-6.2 {a pinned system_fonts value renders checked} -constraints {
 } -result system_fonts
 
 test fontsource-6.3 {toggling it writes system_fonts through set_value} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\n"
     sf_reset_state
@@ -341,7 +336,7 @@ test fontsource-6.3 {toggling it writes system_fonts through set_value} -constra
 } -result {1 system_fonts}
 
 test fontsource-6.4 {toggling back off removes the key, the minimal edit} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
     sf_reset_state
@@ -366,7 +361,7 @@ proc sf_build_pages {name} {
 }
 
 test fetch-7.1 {no fetch while the box reads bundled_fonts} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\n"
     sf_reset_state
@@ -380,7 +375,7 @@ test fetch-7.1 {no fetch while the box reads bundled_fonts} -constraints {
 } -result 0
 
 test fetch-7.2 {no fetch on a tab whose pickers do not read the list} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
     sf_reset_state
@@ -394,7 +389,7 @@ test fetch-7.2 {no fetch on a tab whose pickers do not read the list} -constrain
 } -result 0
 
 test fetch-7.3 {checked and on Screen or Chassis fetches, once} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
     sf_reset_state
@@ -415,18 +410,18 @@ test fetch-7.3 {checked and on Screen or Chassis fetches, once} -constraints {
 } -result {{1 {{Stub {The Stub}}}} {1 {{Stub {The Stub}}}}}
 
 test fetch-7.4 {an error surfaces and resets the guard for a later retry} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
     sf_reset_state
     sf_build_pages .t74
-    rename ::rcsettings::dump::system_fonts ::rcsettings::dump::system_fonts_real
-    proc ::rcsettings::dump::system_fonts {{path ""}} { error "no fonts for you" }
+    rename ::rcsettings::model::system_fonts ::rcsettings::model::system_fonts_real
+    proc ::rcsettings::model::system_fonts {{path ""}} { error "no fonts for you" }
     ::rcsettings::ui::form::maybe_fetch_system_fonts screen
     set after1 [list $::rcsettings::ui::form::SystemFontsFetched \
         $::rcsettings::ui::form::SystemFontsFetching]
-    rename ::rcsettings::dump::system_fonts {}
-    rename ::rcsettings::dump::system_fonts_real ::rcsettings::dump::system_fonts
+    rename ::rcsettings::model::system_fonts {}
+    rename ::rcsettings::model::system_fonts_real ::rcsettings::model::system_fonts
     with_stub_system_fonts {{Stub Stub}} {
         ::rcsettings::ui::form::maybe_fetch_system_fonts screen
     }
@@ -437,7 +432,7 @@ test fetch-7.4 {an error surfaces and resets the guard for a later retry} -const
 } -result {{0 0} {1 {{Stub Stub}}}}
 
 test fetch-7.5 {a fetch that lands updates both font combos' values} -constraints {
-    schema
+    tk
 } -body {
     sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
     sf_reset_state
@@ -452,7 +447,7 @@ test fetch-7.5 {a fetch that lands updates both font combos' values} -constraint
         [expr {"A System Face" in $chassis_values}]
 } -result {1 1}
 
-if {[testConstraint schema]} {
+if {[testConstraint tk]} {
     file delete -force $::sfdir
 }
 

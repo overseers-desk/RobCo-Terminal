@@ -3494,13 +3494,21 @@ impl TerminalSurface {
         // a window and not a job of the shell running here, and a child that
         // inherited stdin would be reading the keystrokes meant for the
         // terminal's own child.
-        match std::process::Command::new(&program)
+        let mut command = std::process::Command::new(&program);
+        command
             .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
+            .stderr(std::process::Stdio::null());
+        // The window asks this terminal for what only a terminal can answer
+        // (the machine's faces it can render), so the spawner names itself
+        // rather than leaving the child to guess among the binaries a PATH
+        // may hold. An unreadable own path is not fatal: the child falls
+        // back to the sibling and PATH arms it keeps for hand launches.
+        if let Ok(me) = std::env::current_exe() {
+            command.env("ROBCO_SETTINGS_TERMINAL", me);
+        }
+        match command.spawn() {
             Ok(child) => self.settings_app = Some(child),
             Err(e) => log::warn!("could not start {}: {e}", program.display()),
         }

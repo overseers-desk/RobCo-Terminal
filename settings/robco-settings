@@ -15,7 +15,7 @@ package require Tcl 9
 set ROBCO_SETTINGS_VERSION 0.1.2
 set ROOT [file dirname [file normalize [info script]]]
 
-foreach lib {diag.tcl toml.tcl dump.tcl model.tcl} {
+foreach lib {diag.tcl tomledit-1.0.tm model.tcl} {
     source [file join $ROOT lib $lib]
 }
 

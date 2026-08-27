@@ -1,0 +1,143 @@
+# The drift guard on the two-language schema. The literals in model.tcl
+# are this window's copy of what the Rust source states; the minimal-diff
+# writer computes diffs against them, so a stale copy writes wrong files.
+# When a robco-term binary is reachable, these tests run its
+# --dump-settings and hold every literal to it: defaults byte for byte in
+# declaration order, every preset resolved, every value list, the font
+# catalogue. A drift fails here, not in a user's config.
+#
+# The system-fonts fetch lives with the schema because it is the same
+# seam: the one schema answer that stays a runtime ask of the binary.
+
+package require tcltest 2.5
+namespace import ::tcltest::*
+
+source [file join [file dirname [info script]] helpers.tcl]
+source [file join $::libdir model.tcl]
+force_test_binary
+
+testConstraint realBinary \
+    [expr {![catch {::rcsettings::model::locate} ::binpath]}]
+
+if {[testConstraint realBinary]} {
+    set ::dump [::tomledit::parse \
+        [::rcsettings::model::run_dump $::binpath --dump-settings]]
+} else {
+    puts "schema.test: no robco-term reachable, the drift tests were not run"
+}
+
+# The elements of a TOML array of strings, whose raw text the parser has
+# already joined onto one line. Only string arrays appear in [values].
+proc string_array {raw} {
+    set out {}
+    foreach {- item} [regexp -all -inline {"((?:[^"\\]|\\.)*)"} $raw] {
+        lappend out [::tomledit::plain "\"$item\""]
+    }
+    return $out
+}
+
+test drift-1.1 {every default, raw and in declaration order} -constraints realBinary -body {
+    set bad {}
+    foreach table {general screen chassis ssh ssh_host_defaults} {
+        set theirs [dict get $::dump tables $table]
+        if {[dict keys $theirs] ne [::rcsettings::model::table_keys $table]} {
+            lappend bad "$table: key order"
+        }
+        dict for {key raw} $theirs {
+            if {$raw ne [::rcsettings::model::shipped $table $key]} {
+                lappend bad "$table.$key: theirs $raw ours\
+                    [::rcsettings::model::shipped $table $key]"
+            }
+        }
+    }
+    set bad
+} -result {}
+
+test drift-1.2 {every preset name, in dump order} -constraints realBinary -body {
+    set bad {}
+    foreach {axis arrayname} {screen screen_presets chassis chassis_presets} {
+        set theirs [lmap entry [dict get $::dump arrays $arrayname] {
+            ::tomledit::plain [dict get $entry name]
+        }]
+        if {$theirs ne [::rcsettings::model::preset_names $axis]} {
+            lappend bad "$axis: theirs {$theirs} ours\
+                {[::rcsettings::model::preset_names $axis]}"
+        }
+    }
+    set bad
+} -result {}
+
+test drift-1.3 {every preset, every key, resolved} -constraints realBinary -body {
+    # The dump states presets fully resolved; the literals state them as
+    # diffs. base_raw_under is the resolution the window actually uses,
+    # so it is the thing held to the dump, not a reimplementation of it.
+    set bad {}
+    foreach {axis arrayname} {screen screen_presets chassis chassis_presets} {
+        foreach entry [dict get $::dump arrays $arrayname] {
+            set name [::tomledit::plain [dict get $entry name]]
+            dict for {key raw} $entry {
+                if {$key eq "name"} { continue }
+                set ours [::rcsettings::model::base_raw_under $axis $name $key]
+                if {$raw ne $ours} {
+                    lappend bad "$axis \"$name\" $key: theirs $raw ours $ours"
+                }
+            }
+        }
+    }
+    set bad
+} -result {}
+
+test drift-1.4 {every value list} -constraints realBinary -body {
+    set bad {}
+    dict for {name raw} [dict get $::dump tables values] {
+        if {[string_array $raw] ne [::rcsettings::model::enum $name]} {
+            lappend bad $name
+        }
+    }
+    if {[lsort [dict keys [dict get $::dump tables values]]]
+        ne [lsort [::rcsettings::model::enum_names]]} {
+        lappend bad "the set of lists"
+    }
+    set bad
+} -result {}
+
+test drift-1.5 {the font catalogue, keys, labels and order} -constraints realBinary -body {
+    set theirs [lmap entry [dict get $::dump arrays fonts] {
+        list [::tomledit::plain [dict get $entry name]] \
+            [::tomledit::plain [dict get $entry text]]
+    }]
+    expr {$theirs eq [::rcsettings::model::fonts] ? "" : "catalogue differs"}
+} -result {}
+
+# ------------------------------------------------- the system-fonts seam --
+
+test fonts-2.1 {a fonts document parses to name and label pairs} -body {
+    ::rcsettings::model::system_fonts_text \
+        "\[\[fonts\]\]\nname = \"Hack\"\ntext = \"Hack\"\n\n\[\[fonts\]\]\nname = 'DejaVu \"Sans\" Mono'\ntext = \"DejaVu Sans Mono\"\n"
+} -result {{Hack Hack} {{DejaVu "Sans" Mono} {DejaVu Sans Mono}}}
+
+test fonts-2.2 {a machine with nothing installed is an empty list, not an error} -body {
+    ::rcsettings::model::system_fonts_text ""
+} -result {}
+
+test fonts-2.3 {the real binary's font walk answers} -constraints realBinary -body {
+    # An empty machine is legal; the assertion is that the exec and the
+    # parse hold together, not that fonts exist.
+    expr {[llength [::rcsettings::model::system_fonts $::binpath]] >= 0}
+} -result 1
+
+test locate-3.1 {the spawner's own name leads a hand launch's guesses} -body {
+    set saved [array get ::env ROBCO_SETTINGS_TERMINAL]
+    set ::env(ROBCO_SETTINGS_TERMINAL) [file join / spawner robco-term]
+    set was $::rcsettings::model::ForcedBinary
+    set ::rcsettings::model::ForcedBinary ""
+    set order [::rcsettings::model::candidates]
+    set ::rcsettings::model::ForcedBinary $was
+    unset ::env(ROBCO_SETTINGS_TERMINAL)
+    array set ::env $saved
+    # The env arm sits ahead of the sibling and PATH arms.
+    expr {[lindex $order 0] eq [file join / spawner robco-term]
+          || [lindex $order 1] eq [file join / spawner robco-term]}
+} -result 1
+
+::tcltest::cleanupTests

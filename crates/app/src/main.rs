@@ -155,7 +155,15 @@ fn main() -> ExitCode {
                 return app::settings_embed::run(&["--selftest"], std::path::Path::new(""));
             }
             let (program, args) = app::window::settings_command();
-            match std::process::Command::new(&program).args(args).status() {
+            let mut command = std::process::Command::new(&program);
+            command.args(args);
+            // The spawner names itself, as the right-click spawn does, so
+            // the window's font fetch asks this terminal and not whichever
+            // robco-term a PATH holds.
+            if let Ok(me) = std::env::current_exe() {
+                command.env("ROBCO_SETTINGS_TERMINAL", me);
+            }
+            match command.status() {
                 Ok(status) => {
                     return if status.success() {
                         ExitCode::SUCCESS

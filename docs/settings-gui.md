@@ -59,24 +59,29 @@ goes there too. A launch that shows nothing has left a reason behind.
 The two are separate processes with the config file between them; there is
 no other channel. The terminal spawns the app on right-click (a sibling
 binary first, then `$PATH`) and declines to spawn a second while one runs.
-The app asks the terminal for what the file cannot tell it, running
-`robco-term --dump-settings` at startup for the defaults, the resolved
-preset tables, the font catalogue and the enum value lists; it carries no
-copy of its own, so it cannot drift from the binary it serves. It looks for
-that binary beside its own executable, under the name the platform gives it
-(`robco-term.exe` on Windows, `robco-term` everywhere else), then on
-`$PATH`; where the window is embedded in the terminal's own executable the
-terminal is this process and needs no finding, so that path is taken first.
-Without a reachable `robco-term` it refuses to start and says where it
-looked.
+The app knows the schema the way its coder does: the defaults, the preset
+diffs, the font catalogue and the enum value lists are literal data in
+`settings/lib/model.tcl`, so the window opens without running or parsing
+anything. The Rust source stays the authority on those values:
+`robco-term --dump-settings` still prints them, and `tests/schema.test`
+holds the literals to that dump, so a drift fails the tests rather than a
+user's file. The one question left for the running terminal is the
+machine's installed faces, asked over `robco-term --dump-system-fonts`
+when the user opts into system fonts. For that call the spawning terminal
+names its own binary in `ROBCO_SETTINGS_TERMINAL`; a hand-launched window
+falls back to the sibling executable, under the name the platform gives it
+(`robco-term.exe` on Windows, `robco-term` everywhere else), then to
+`$PATH`, and where the window is embedded in the terminal's own executable
+the terminal is this process and needs no finding.
 
 ## Building and shipping it
 
 The app is Tcl/Tk 9, under `settings/` in this repository: `lib/` is the
-file surgery, dump client and value model, `ui/` the window, `tests/` the
-tcltest suites (`tclsh9.0 settings/tests/all.tcl`). During development the
-entry script `settings/robco-settings` runs directly against a system
-Tcl/Tk 9.
+schema-bearing value model and the vendored tomledit module (the
+byte-preserving TOML editor, from the teatotal shelf), `ui/` the window,
+`tests/` the tcltest suites (`tclsh9.0 settings/tests/all.tcl`). During
+development the entry script `settings/robco-settings` runs directly
+against a system Tcl/Tk 9.
 
 Releases ship it as one self-contained executable per platform, built by
 `settings/zipfs/build-selfcontained.sh` (Unix) or `.ps1` (Windows): a

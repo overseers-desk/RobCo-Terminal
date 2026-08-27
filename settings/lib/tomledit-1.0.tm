@@ -1,21 +1,134 @@
-# TOML surgery for the terminal's config file, under the machine-write
-# contract (docs/config-format.md): a writer that changes one key changes
-# only that key's bytes. Everything here therefore works on the file's raw
-# lines, never through a parse-and-reserialize round trip. The file's
-# values are all flat scalars, which is what makes line surgery adequate.
-# The one nested shape is `[[ssh.host]]`, an array of tables whose rows are
-# themselves flat, so a row is a span of lines and a row's key is a scalar
-# inside that span.
+package require Tcl 9
+package provide tomledit 1.0
+
+# tomledit - TOML edits that change one key's bytes and no others.
+#
+# A settings window, a wizard, or a tool writing into a config file the user
+# also edits by hand faces a file that is not its own: hand-written comments,
+# blank-line rhythm, odd spacing, keys some other tool owns. A
+# parse-and-reserialize round trip rewrites all of it to say one new value,
+# and the user's file stops being theirs. tomledit works on the file's raw
+# lines instead: a writer that changes one key changes only that key's
+# bytes, and every edit is provably that narrow - diff the before and after
+# and one line moves. The addressing is DOM-like, the materialisation
+# deliberately is not: a path resolves to a span of lines, never to a tree
+# that would be re-serialised.
 #
 # Text in and text out: every edit takes the whole document as a string and
 # returns the edited whole. Nothing here touches the filesystem except
 # read_file/atomic_write.
+#
+# A path names what an edit touches. `screen.bloom` is key bloom of table
+# [screen]; `ssh.host[1].port` is key port of the second [[ssh.host]] row;
+# `ssh.host[1]` is that row itself. The last dot splits table from key,
+# which is unambiguous because the subset refuses dotted keys.
+#
+#   tomledit::get text path ?fallback? -> raw value
+#   tomledit::put text path value -> text   (value pre-formatted, see format_value)
+#   tomledit::del text path -> text         (a key's line, or a whole row)
+#   tomledit::add text name kvlist -> text  (a new [[name]] row)
+#   tomledit::count text name -> how many [[name]] rows
+#   tomledit::ensure_table text table ?above? -> text
+#   tomledit::parse text -> dict {tables {t {k rawvalue ...}} arrays {n {row ...}}}
+#   tomledit::type_of raw -> string|bool|int|float
+#   tomledit::format_value type value -> raw TOML scalar
+#   tomledit::plain raw -> the unquoted Tcl value
+#   tomledit::unsafe text -> "" or one line naming what falls outside the subset
+#   tomledit::read_file path -> text ("" when absent)
+#   tomledit::atomic_write path text
+#
+# The subset: flat scalar values in named tables, plus arrays of tables
+# (`[[name]]`) whose rows are themselves flat, so a row is a span of lines
+# and a row's key is a scalar inside that span. Values are raw TOML text on
+# the way in and out of parse/get - quoting intact - so an edited value
+# can be formatted after the type of the value it replaces (type_of,
+# format_value) and unquoted only where displayed (plain). A document using
+# TOML beyond the subset (multiline strings, dotted keys, inline tables)
+# can fool a line-oriented span finder - a multiline string may hold a line
+# shaped like a header, and an edit would land inside the string - so a
+# writer asks `unsafe` first and refuses rather than guessing: a refused
+# edit costs the caller's user a hand edit, a misplaced one costs them
+# their file.
 
-namespace eval ::rcsettings::toml {
-    namespace export parse get_key set_key unset_key type_of format_value \
-        unsafe \
-        read_file atomic_write array_spans set_array_key unset_array_key \
-        append_array_row remove_array_row ensure_table
+namespace eval ::tomledit {
+    namespace export parse get put del add count type_of format_value \
+        plain unsafe read_file atomic_write ensure_table
+
+    # ------------------------------------------------------------ paths --
+
+    # What a path names: {table t key} for `t.key`, {row name index key}
+    # for `name[i].key`, {rowonly name index} for `name[i]`. A path that
+    # fits none of these shapes is an error naming the path, because a
+    # writer fed a malformed address must not guess where it lands.
+    proc resolve {path} {
+        if {[regexp {^([A-Za-z0-9_.-]+)\[(\d+)\]\.([A-Za-z0-9_-]+)$} \
+                $path -> name index key]} {
+            return [list row $name $index $key]
+        }
+        if {[regexp {^([A-Za-z0-9_.-]+)\[(\d+)\]$} $path -> name index]} {
+            return [list rowonly $name $index]
+        }
+        set dot [string last "." $path]
+        if {$dot > 0 && $dot < [string length $path] - 1
+            && [string first "\[" $path] < 0} {
+            set table [string range $path 0 [expr {$dot - 1}]]
+            set key [string range $path [expr {$dot + 1}] end]
+            return [list table $table $key]
+        }
+        error "not a path: \"$path\" (expected table.key, name\[i\].key or name\[i\])"
+    }
+
+    # The raw value the path names, or $fallback when absent. A row index
+    # out of range is an error, as it is for every row edit.
+    proc get {text path {fallback {}}} {
+        lassign [resolve $path] kind a b c
+        switch -exact -- $kind {
+            table { return [get_key $text $a $b $fallback] }
+            row {
+                set rows [dict get [parse $text] arrays]
+                if {![dict exists $rows $a]} { return $fallback }
+                set items [dict get $rows $a]
+                if {$b >= [llength $items]} { return $fallback }
+                set row [lindex $items $b]
+                if {![dict exists $row $c]} { return $fallback }
+                return [dict get $row $c]
+            }
+        }
+        error "cannot get \"$path\": a row is not a value"
+    }
+
+    # Set what the path names to the pre-formatted TOML scalar $value,
+    # touching only that key's bytes.
+    proc put {text path value} {
+        lassign [resolve $path] kind a b c
+        switch -exact -- $kind {
+            table { return [set_key $text $a $b $value] }
+            row   { return [set_array_key $text $a $b $c $value] }
+        }
+        error "cannot put \"$path\": a row takes add, not put"
+    }
+
+    # Remove what the path names: a key's line, or a whole row. An absent
+    # key is a byte-for-byte no-op; an absent row is an error.
+    proc del {text path} {
+        lassign [resolve $path] kind a b c
+        switch -exact -- $kind {
+            table   { return [unset_key $text $a $b] }
+            row     { return [unset_array_key $text $a $b $c] }
+            rowonly { return [remove_array_row $text $a $b] }
+        }
+    }
+
+    # A new [[name]] row carrying $kvlist, a flat list of keys and
+    # pre-formatted values; rows are addressed, never pathed into being.
+    proc add {text name kvlist} {
+        return [append_array_row $text $name $kvlist]
+    }
+
+    # How many [[name]] rows the document holds.
+    proc count {text name} {
+        return [llength [array_spans $text $name]]
+    }
 
     # Split into lines, remembering whether the text ended with a newline so
     # joining reproduces the original bytes.
@@ -35,9 +148,9 @@ namespace eval ::rcsettings::toml {
         return $text
     }
 
-    # Which table a header line opens, or -1. `[[name]]` counts as a header
-    # too: the config file has none, but the dump does, and an unknown
-    # table of either shape must end the span of the table before it.
+    # Which table a header line opens, or {}. `[[name]]` counts as a header
+    # too: even in a document holding none, an unknown header of either
+    # shape must end the span of the table before it.
     proc header_of {line} {
         if {[regexp {^\s*\[\[([^\]]+)\]\]\s*(?:#.*)?$} $line -> name]} {
             return [list array $name]
@@ -70,8 +183,8 @@ namespace eval ::rcsettings::toml {
         }
         if {[string index $rest 0] eq "'"} {
             # Literal string: no escapes, so through the next quote. The
-            # dump uses this form for a system font family whose name
-            # itself carries double quotes.
+            # form a writer reaches for when the value itself carries
+            # double quotes.
             if {[regexp {^'[^']*'} $rest match]} {
                 return $match
             }
@@ -87,7 +200,7 @@ namespace eval ::rcsettings::toml {
 
     # Parse into a dict: tables -> dict key -> raw value. A `[[name]]`
     # header appends a fresh dict to the list under arrays -> name.
-    # Multi-line arrays (the dump's value lists) are joined before parsing.
+    # Multi-line arrays are joined before parsing.
     # Returns dict with keys: tables, arrays.
     proc parse {text} {
         lassign [lines $text] all trailing
@@ -171,8 +284,8 @@ namespace eval ::rcsettings::toml {
     # outside. A construct beyond the subset can fool the span finder (a
     # multiline string may hold a line shaped like a header, and an edit
     # would then land inside the string), so a writer asks this first and
-    # refuses rather than guessing. Valid TOML the terminal accepts is
-    # deliberately refusable here: a refused edit costs the user a hand
+    # refuses rather than guessing. Valid TOML a reader elsewhere accepts
+    # is deliberately refusable here: a refused edit costs the user a hand
     # edit, a misplaced one costs them their file.
     proc unsafe {text} {
         lassign [lines $text] all trailing
@@ -301,11 +414,11 @@ namespace eval ::rcsettings::toml {
 
     # ------------------------------------------------- arrays of tables --
     #
-    # `[[ssh.host]]` is the file's one repeating shape, and the tab that
-    # edits it adds and removes rows rather than only moving values. A row
-    # is one span of lines: its own header through to the next header of
-    # either shape, or EOF. The span carries the header because a row is
-    # removed as a block, and a key edit works inside it.
+    # `[[name]]` is the one repeating shape, and a tool that edits it adds
+    # and removes rows rather than only moving values. A row is one span of
+    # lines: its own header through to the next header of either shape, or
+    # EOF. The span carries the header because a row is removed as a block,
+    # and a key edit works inside it.
 
     # The [start, end) spans of $name's rows, in declaration order.
     proc array_spans {text name} {
@@ -476,7 +589,8 @@ namespace eval ::rcsettings::toml {
     }
 
     # Format a plain Tcl value as a TOML scalar of the given type. Floats
-    # always carry a decimal point, matching how the file's values read.
+    # always carry a decimal point, so a written value reads back as the
+    # type it was written as.
     proc format_value {type value} {
         switch -exact -- $type {
             bool { return [expr {$value ? "true" : "false"}] }
@@ -506,8 +620,9 @@ namespace eval ::rcsettings::toml {
         return [string map {\\\" \" \\\\ \\ \\n \n \\t \t} $body]
     }
 
-    # Whole file as bytes; a missing file is the empty document, per the
-    # contract.
+    # Whole file as bytes; a missing file is the empty document, so a tool
+    # whose contract says "absent file, default settings" reads it without
+    # a branch.
     proc read_file {path} {
         if {![file exists $path]} { return "" }
         set ch [open $path rb]
@@ -516,12 +631,13 @@ namespace eval ::rcsettings::toml {
         return $text
     }
 
-    # Write-temp-then-rename in the file's own directory, the one write
-    # pattern the terminal's live watch is designed around.
+    # Write-temp-then-rename in the file's own directory, the write pattern
+    # a live watcher of the file can rely on: the file is never seen half
+    # written, and the rename fires exactly one change.
     proc atomic_write {path text} {
         set dir [file dirname $path]
         file mkdir $dir
-        set ch [file tempfile tmp [file join $dir .config.toml]]
+        set ch [file tempfile tmp [file join $dir .[file tail $path]]]
         fconfigure $ch -translation binary
         puts -nonewline $ch [encoding convertto utf-8 $text]
         close $ch

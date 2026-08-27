@@ -23,7 +23,7 @@ namespace eval ::rcsettings::ui::ssh_page {
 
     # A row's editable fields, in the order they sit across the page, with
     # the heading over each and the width of the box. The keys are
-    # `[ssh_host_defaults]`'s own, and ui.test holds this list to the dump's.
+    # `[ssh_host_defaults]`'s own, and ui.test holds this list to the schema's.
     variable Fields {
         host "Host" 18
         user "User" 12

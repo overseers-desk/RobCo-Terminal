@@ -329,7 +329,7 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
         }
         enum - font {
             set names [expr {$kind eq "font"
-                ? [font_keys] : [::rcsettings::dump::enum [::rcsettings::model::dump] $key]}]
+                ? [font_keys] : [::rcsettings::model::enum $key]}]
             set shown [expr {$kind eq "font" ? [font_labels] : $names}]
             set w $g.ctl_$key
             ttk::combobox $w -state readonly -values $shown -exportselection 0
@@ -380,7 +380,7 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
 proc ::rcsettings::ui::form::font_column {i} {
     variable SystemFonts
     set out {}
-    foreach f [::rcsettings::dump::fonts [::rcsettings::model::dump]] {
+    foreach f [::rcsettings::model::fonts] {
         lappend out [lindex $f $i]
     }
     foreach f $SystemFonts { lappend out [lindex $f $i] }
@@ -409,7 +409,7 @@ proc ::rcsettings::ui::form::maybe_fetch_system_fonts {table} {
     if {$table ni {screen chassis}} { return }
     set SystemFontsFetching 1
     say "reading installed fonts…"
-    if {[catch {::rcsettings::dump::system_fonts} fonts]} {
+    if {[catch {::rcsettings::model::system_fonts} fonts]} {
         say "cannot read installed fonts: $fonts" 1
         set SystemFontsFetching 0
         return
@@ -679,7 +679,7 @@ proc ::rcsettings::ui::form::refresh_preset {table} {
     variable Presets
     variable Repainting
     set cb [dict get $Presets $table]
-    set names [::rcsettings::dump::preset_names [::rcsettings::model::dump] $table]
+    set names [::rcsettings::model::preset_names $table]
     set current [::rcsettings::model::preset_name $table]
     # A look the user saved under a name of their own is not a built-in and
     # is still what the table resolves against, so it joins the list rather
@@ -714,7 +714,7 @@ proc ::rcsettings::ui::form::on_preset {table} {
 }
 
 proc ::rcsettings::ui::form::has_overrides {table} {
-    foreach key [::rcsettings::dump::table_keys [::rcsettings::model::dump] $table] {
+    foreach key [::rcsettings::model::table_keys $table] {
         if {$key eq "name"} { continue }
         if {[::rcsettings::model::pinned $table $key]} { return 1 }
     }

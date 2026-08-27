@@ -70,10 +70,11 @@ static int RobcoSettings_AppInit(Tcl_Interp *interp) {
     }
 #ifdef ROBCO_EMBEDDED_SETTINGS
     /*
-     * Before Tk, because the first thing the window does after Tk is up is
-     * ask the terminal for its schema, and lib/dump.tcl reads these to know
-     * it need not go looking. A qualified variable cannot be set in a
-     * namespace that does not exist yet, so the namespace is made first.
+     * Before Tk, because the window's font fetch asks the terminal for the
+     * machine's faces, and the model reads these to know it need not go
+     * looking: the terminal is this process. A qualified variable cannot be
+     * set in a namespace that does not exist yet, so the namespace is made
+     * first.
      */
     if (Tcl_Eval(interp, "namespace eval ::rcsettings {}") != TCL_OK) {
         return TCL_ERROR;
