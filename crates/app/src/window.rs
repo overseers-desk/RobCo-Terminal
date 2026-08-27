@@ -3418,6 +3418,7 @@ fn modifiers_from(modifiers: ModifiersState) -> Modifiers {
 
 impl Surface for TerminalSurface {
     fn resized(&mut self, size: winit::dpi::PhysicalSize<u32>) {
+        log::debug!("resized: {}x{}", size.width, size.height);
         self.window_size = (size.width.max(1), size.height.max(1));
         self.relayout();
     }

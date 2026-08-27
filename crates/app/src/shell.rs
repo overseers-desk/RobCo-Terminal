@@ -642,6 +642,17 @@ impl ApplicationHandler<ShellEvent> for Shell {
                             state.window.set_fullscreen(
                                 state.fullscreen.then(|| Fullscreen::Borderless(None)),
                             );
+                            // The surface learns the new size only from the
+                            // `Resized` that follows; #21's suspect is that
+                            // event arriving late or not at all, and this
+                            // line beside `resized`'s own is what shows it.
+                            let inner = state.window.inner_size();
+                            log::debug!(
+                                "fullscreen toggled {}: inner {}x{}",
+                                state.fullscreen,
+                                inner.width,
+                                inner.height
+                            );
                         }
                     }
                     PhysicalKey::Code(KeyCode::KeyN) if ctrl_shift => {
