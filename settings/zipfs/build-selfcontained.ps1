@@ -176,7 +176,7 @@ $IncludeDirs = @(
     (Join-Path $TkSrc 'xlib')
 )
 $clArgs = @(
-    '/nologo', '/O2', '/MD', '/DSTATIC_BUILD', '/DUSE_TCL_STUBS=0', '/DUSE_TK_STUBS=0'
+    '/nologo', '/O2', '/MD', '/DSTATIC_BUILD'
 ) + ($IncludeDirs | ForEach-Object { "/I$_" }) + @(
     (Join-Path $RepoRoot 'zipfs\appinit.c'),
     "/Fe:$Wish",

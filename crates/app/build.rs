@@ -147,9 +147,12 @@ fn compile_appinit(includes: &str) {
     let mut build = cc::Build::new();
     build
         .file(&appinit)
+        // STATIC_BUILD alone, and the stubs macros stay UNdefined: tcl.h
+        // tests them with `#if defined(...)`, so even a value of 0 reroutes
+        // Tcl_FindExecutable and its eight siblings through the stub
+        // library's dlopen shim, which in a static build aborts by the
+        // static library's own file name ("Cannot find tcl90s.lib").
         .define("STATIC_BUILD", None)
-        .define("USE_TCL_STUBS", "0")
-        .define("USE_TK_STUBS", "0")
         .define("ROBCO_EMBEDDED_SETTINGS", None);
     for dir in includes.split(';').filter(|d| !d.is_empty()) {
         build.include(dir);
