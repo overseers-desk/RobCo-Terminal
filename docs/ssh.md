@@ -45,4 +45,4 @@ Both are skipped when the server does not offer them, which is what the opening 
 
 ## `~/.ssh/config` is not read
 
-Not any of it, deliberately. Honouring `HostName` while ignoring `ProxyJump` connects, confidently, to the wrong place; `HostKeyAlias` silently changes which `known_hosts` entry applies. The file is worth reading only whole, and reading it whole is open work beside the prompts (#14).
+Not any of it, deliberately. Honouring `HostName` while ignoring `ProxyJump` connects, confidently, to the wrong place; `HostKeyAlias` silently changes which `known_hosts` entry applies. The file is worth reading only whole, and reading it whole is open work (#14).
