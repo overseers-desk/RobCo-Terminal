@@ -1265,7 +1265,7 @@ impl TerminalSurface {
                 // Cancelling hands the transport a `None`, and the
                 // transport's own supervisor does the rest: it says so on
                 // the wire and Eofs the channel. The row stays under the
-                // unlived law, wearing why it is dead.
+                // Eof law, wearing why it is dead.
                 if let Some(pending) = self.prompts.remove(&bank) {
                     pending.question.cancel();
                 }
