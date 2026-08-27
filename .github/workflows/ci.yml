@@ -33,14 +33,21 @@ jobs:
       # only Windows machine that runs it before a tester does. `--version`
       # proves the process starts and exits cleanly; `--dump-settings`
       # walks config, fonts and paths on Windows without needing a window.
+      # Start-Process -Wait, not a plain invocation: the shell waits only
+      # for console binaries, and racing ahead of a GUI-subsystem one both
+      # misses its exit code and closes the capture pipe under it.
       - name: the exe answers from the command line
         shell: pwsh
         run: |
-          $v = ./target/release/robco-term.exe --version
-          if ($LASTEXITCODE -ne 0) { throw "--version exited $LASTEXITCODE" }
-          if (-not $v) { throw '--version printed nothing' }
-          ./target/release/robco-term.exe --dump-settings | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "--dump-settings exited $LASTEXITCODE" }
+          $exe = 'target/release/robco-term.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--version' `
+            -NoNewWindow -Wait -PassThru -RedirectStandardOutput version.txt
+          if ($p.ExitCode -ne 0) { throw "--version exited $($p.ExitCode)" }
+          if (-not (Get-Content version.txt)) { throw '--version printed nothing' }
+          $p = Start-Process -FilePath $exe -ArgumentList '--dump-settings' `
+            -NoNewWindow -Wait -PassThru -RedirectStandardOutput dump.txt
+          if ($p.ExitCode -ne 0) { throw "--dump-settings exited $($p.ExitCode)" }
+          if (-not (Get-Content dump.txt)) { throw '--dump-settings printed nothing' }
       # The runner is this project's only Windows build machine, so what it
       # builds is the product, kept, not a proof discarded: every green run
       # carries an exe a tester can download and launch.

@@ -53,6 +53,16 @@ fn adopt_parent_console() {
     }
 }
 
+/// Write to stdout, shrugging off a stream that is gone. `print!` panics
+/// when its write fails, and a GUI-subsystem binary's caller may close the
+/// pipe without waiting (`cmd` and PowerShell wait only for console
+/// binaries), so version text was able to kill the process. Whoever closed
+/// the stream has stopped reading; there is nobody to tell.
+fn say(text: &str) {
+    use std::io::Write;
+    let _ = std::io::stdout().write_all(text.as_bytes());
+}
+
 fn main() -> ExitCode {
     #[cfg(windows)]
     adopt_parent_console();
@@ -62,11 +72,12 @@ fn main() -> ExitCode {
     let options = match cli::parse(&identity, std::env::args_os().skip(1)) {
         Outcome::Run(options) => options,
         Outcome::Print(text) => {
-            print!("{text}");
+            say(&text);
             return ExitCode::SUCCESS;
         }
         Outcome::Fail(text) => {
-            eprint!("{text}");
+            use std::io::Write;
+            let _ = std::io::stderr().write_all(text.as_bytes());
             return ExitCode::FAILURE;
         }
     };
@@ -82,7 +93,7 @@ fn main() -> ExitCode {
                 text: f.text.to_string(),
             })
             .collect();
-        print!("{}", config::dump::dump(fonts));
+        say(&config::dump::dump(fonts));
         return ExitCode::SUCCESS;
     }
 
