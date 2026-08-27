@@ -41,6 +41,9 @@
 //!   where the record of what is *not* drawn yet lives.
 //! - [`distortion`] -- the inverse screen-curvature transform that turns a
 //!   window pixel back into a flat-screen one before it becomes a cell.
+//! - [`picker`] / [`prompt`] -- the two things the glass asks the user: which
+//!   destination, and the answer to a question the connection raised. Both
+//!   are pure state over keys, painted through a channel's own parser.
 //! - [`settings`] -- `robco-config` behind a typed, live-reloading handle.
 
 pub mod badge;
@@ -61,6 +64,7 @@ pub mod mouse;
 pub mod overlay;
 pub mod paths;
 pub mod picker;
+pub mod prompt;
 pub mod settings;
 pub mod shell;
 pub mod ssh;
