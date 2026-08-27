@@ -30,10 +30,13 @@
 //! handler still writes the signal line and re-raises, which is the part
 //! that matters for "did it die, and of what".
 //!
-//! The whole handler is the Unix arm. On Windows `install` arms nothing
-//! and answers `None`, which the caller's verbose path reports as "crash
-//! log not armed"; the arm to build there is a structured-exception
-//! filter (`SetUnhandledExceptionFilter`) under the same discipline.
+//! The signal handler is the Unix arm. On Windows `install` arms a panic
+//! hook writing the panic and its backtrace to the same file, because a
+//! GUI-subsystem binary has no console for the default hook to speak to
+//! and a panicking start would otherwise be a silent exit. Native faults
+//! (the SIGSEGV family's equivalents) still go untraced there; that arm
+//! is a structured-exception filter (`SetUnhandledExceptionFilter`) under
+//! the same discipline, unbuilt.
 
 #[cfg(unix)]
 use std::ffi::c_void;
@@ -204,11 +207,33 @@ pub fn install(directory: &Path) -> Option<std::path::PathBuf> {
     Some(path)
 }
 
-/// The unbuilt arm: arms nothing and says so through the `None` the
-/// caller already reports. See the module doc for what belongs here.
+/// The panic-hook arm. A panic is the one death this can trace without a
+/// native exception filter, and it is traced to a file because the
+/// GUI-subsystem binary's stderr reaches nobody on a double-click. The
+/// previous hook still runs, so a console attached from `cmd` sees the
+/// panic text as well.
 #[cfg(not(unix))]
-pub fn install(_directory: &Path) -> Option<std::path::PathBuf> {
-    None
+pub fn install(directory: &Path) -> Option<std::path::PathBuf> {
+    use std::io::Write;
+
+    if std::fs::create_dir_all(directory).is_err() {
+        return None;
+    }
+    let path = directory.join(format!("crash-{}.log", std::process::id()));
+    let hook_path = path.clone();
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&hook_path)
+        {
+            let _ = writeln!(file, "panic: {info}");
+            let _ = writeln!(file, "{}", std::backtrace::Backtrace::force_capture());
+        }
+        previous(info);
+    }));
+    Some(path)
 }
 
 #[cfg(test)]

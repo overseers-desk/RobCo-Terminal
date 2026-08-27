@@ -17,9 +17,9 @@
 //! settings handle watching the config file alongside.
 
 // A GUI-subsystem binary, or Windows allocates a console window beside the
-// cabinet just to hold the startup log. Piped stdio still works, so
-// `--dump-settings` keeps feeding the settings window; what a double-click
-// loses is the log, and the crash file is the trace that remains there.
+// cabinet just to hold the startup log. What a double-click loses is the
+// log, and the crash file is the trace that remains there; a launch from
+// `cmd` keeps its output through the parent console adopted below.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::process::ExitCode;
@@ -32,7 +32,31 @@ use app::window::TerminalSurface;
 use app::{crashlog, paths, settings};
 use term::SessionConfig;
 
+/// Adopt the console this process was launched from, where there is one.
+///
+/// The GUI subsystem starts a process with no console at all, so a launch
+/// from `cmd` would run mute: version text, the startup log and a panic
+/// all written to handles nobody holds. Attaching to the parent's console
+/// puts them back on the screen that launched us, while a double-click,
+/// having no parent console, attaches to nothing and opens no window.
+/// The one middle ground Windows offers between a console binary (a
+/// second window on every double-click) and a mute one.
+#[cfg(windows)]
+fn adopt_parent_console() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn AttachConsole(process_id: u32) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
 fn main() -> ExitCode {
+    #[cfg(windows)]
+    adopt_parent_console();
+
     let identity = app::identity();
 
     let options = match cli::parse(&identity, std::env::args_os().skip(1)) {
