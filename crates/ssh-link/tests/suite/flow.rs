@@ -151,8 +151,8 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     .unwrap();
     assert!(text_of(&log).contains("authenticated as overseer"), "{log:?}");
 
-    // An encrypted key is named and skipped, never silently ignored: its
-    // passphrase waits on the operator surface (#14).
+    // An encrypted key is asked about. With nobody at the desk there is
+    // nobody to ask, so it is a cancellation and the row says so.
     let sealed = identity.encrypt(&mut rand::rng(), "tumblers").unwrap();
     let sealed_path = dir.path().join("sealed_key");
     std::fs::write(
@@ -170,10 +170,7 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     })
     .await
     .unwrap();
-    assert!(
-        text_of(&log).contains("cannot ask for its passphrase yet"),
-        "{log:?}"
-    );
+    assert!(text_of(&log).contains("the question was cancelled"), "{log:?}");
 
     // Agent up: connect, shell, echo, resize, remote exit, the whole life.
     let sock = serve_agent(dir.path(), &identity).await;
@@ -247,6 +244,106 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     .await
     .unwrap();
     assert!(text_of(&log).contains("id_ed25519"), "{log:?}");
+}
+
+/// Somebody at the desk, answering from a script: one entry per question,
+/// `None` for the answer nobody gives. Answers the transcript -- every
+/// prompt asked and every line said, in order.
+///
+/// It runs on a thread of its own because that is where a surface would
+/// be: the asking side blocks, so the answering side cannot be the same
+/// thread.
+fn deskhand(
+    mut desk: ssh_link::AskDesk,
+    answers: Vec<Option<&'static str>>,
+) -> std::thread::JoinHandle<Vec<String>> {
+    std::thread::spawn(move || {
+        let mut transcript = Vec::new();
+        for answer in answers {
+            let deadline = std::time::Instant::now() + Duration::from_secs(20);
+            loop {
+                match desk.take() {
+                    Some(ssh_link::Ask::Question(question)) => {
+                        transcript.push(question.prompt().to_string());
+                        match answer {
+                            Some(text) => question.answer(text.to_string()),
+                            None => question.cancel(),
+                        }
+                        break;
+                    }
+                    Some(ssh_link::Ask::Say(text)) => transcript.push(text),
+                    None => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "nothing was asked; heard: {transcript:?}"
+                        );
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                }
+            }
+        }
+        transcript
+    })
+}
+
+/// An encrypted key file and the two ways the question about it can end.
+/// The key is named on the target, so it is tried before the agent and
+/// this test owes nothing to the environment.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_encrypted_key_opens_on_a_passphrase_and_a_cancel_ends_the_attempt() {
+    let dir = tempfile::tempdir().unwrap();
+    let identity = ed25519();
+    let (port, _seen) = serve_echo(vec![ed25519()], identity.public_key().clone()).await;
+    let sealed = identity.encrypt(&mut rand::rng(), "tumblers").unwrap();
+    let path = dir.path().join("sealed_key");
+    std::fs::write(
+        &path,
+        sealed.to_openssh(ssh_key::LineEnding::LF).unwrap().as_bytes(),
+    )
+    .unwrap();
+
+    // Wrong, then right: the second attempt gets in, and the line between
+    // the two says which of them was wrong.
+    let (asker, desk) = ssh_link::ask::desk();
+    let hand = deskhand(desk, vec![Some("wrong"), Some("tumblers")]);
+    let mut sealed_target = target(port);
+    sealed_target.key_file = Some(path.clone());
+    let (_link, mut handle) =
+        Link::connect(sealed_target, Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+        })
+    })
+    .await
+    .unwrap();
+    let prompts = hand.join().unwrap();
+    assert_eq!(prompts.len(), 2, "{prompts:?}");
+    assert!(prompts[0].contains("passphrase for"), "{prompts:?}");
+    assert!(prompts[0].contains("sealed_key"), "{prompts:?}");
+    assert!(text_of(&log).contains("that passphrase did not open"), "{log:?}");
+    assert!(text_of(&log).contains("authenticated as overseer"), "{log:?}");
+
+    // Withdrawn: the attempt ends where it stands. No agent is tried, no
+    // default key is tried, and no shell ever exists.
+    let (asker, desk) = ssh_link::ask::desk();
+    let hand = deskhand(desk, vec![None]);
+    let mut sealed_target = target(port);
+    sealed_target.key_file = Some(path);
+    let (_link, mut handle) =
+        Link::connect(sealed_target, Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| matches!(e, WireEvent::Eof))
+    })
+    .await
+    .unwrap();
+    hand.join().unwrap();
+    assert!(text_of(&log).contains("the question was cancelled"), "{log:?}");
+    assert!(!text_of(&log).contains("agent"), "the sequence went on: {log:?}");
+    assert!(
+        !log.iter().any(|e| matches!(e, WireEvent::Data(_))),
+        "a cancelled question opened a shell: {log:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

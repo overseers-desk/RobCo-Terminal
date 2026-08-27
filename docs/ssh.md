@@ -31,7 +31,11 @@ Type `tmux -CC` on an SSH channel and the attachment arrives exactly as it does 
 
 ## Authentication
 
-Public keys, from three sources, in intent order: the key a `[[ssh.host]]` row names (`key`, with `~/` expanded to home), the ssh-agent (`SSH_AUTH_SOCK` on Unix; the OpenSSH Authentication Agent's named pipe, then Pageant, on Windows), and, only when no key is named, the default files `ssh` itself would try: `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`. Agent identities are tried in the order the agent lists them, silently; in the common case you never see an authentication message at all. A named or default key that is encrypted is announced and skipped: its passphrase is typed input before a shell exists, which is the operator surface's territory (#14), and password and keyboard-interactive authentication wait on the same surface. A lost cause closes with a line naming what the server would have accepted.
+Public keys, from three sources, in intent order: the key a `[[ssh.host]]` row names (`key`, with `~/` expanded to home), the ssh-agent (`SSH_AUTH_SOCK` on Unix; the OpenSSH Authentication Agent's named pipe, then Pageant, on Windows), and, only when no key is named, the default files `ssh` itself would try: `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`. Agent identities are tried in the order the agent lists them, silently; in the common case you never see an authentication message at all.
+
+An encrypted key file is asked about on the channel's own glass. The passphrase is typed there and never echoed, not even as asterisks: a count of asterisks is a length, and a length is something about your passphrase. Three wrong ones give that key up and the sequence moves on. `Esc` withdraws the question, and withdrawing ends the whole attempt rather than moving to the next method: declining to connect is an answer about connecting.
+
+Password and keyboard-interactive authentication wait on the same surface. A lost cause closes with a line naming what the server would have accepted.
 
 ## `~/.ssh/config` is not read
 

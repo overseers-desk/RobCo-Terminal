@@ -22,7 +22,25 @@ use russh::ChannelMsg;
 use tokio::sync::mpsc;
 
 use crate::channel::{ChannelCmd, WireEvent, EVENT_QUEUE};
-use crate::{Asker, ChannelHandle, HostPolicy, SshTarget};
+use crate::{Answer, Asker, ChannelHandle, HostPolicy, SshTarget};
+
+/// How many times a passphrase may be got wrong before a key file is given
+/// up on and the next method tried. `ssh`'s own `NumberOfPasswordPrompts`,
+/// and the same number for the same reason: enough for a typo, few enough
+/// that a wrong key does not become an interrogation.
+const PASSPHRASE_TRIES: usize = 3;
+
+/// The end of an authentication attempt. Three answers rather than two,
+/// because withdrawing a question is not the same as failing to satisfy
+/// it: a user who pressed `Esc` at a passphrase prompt has said they do
+/// not want to connect, and falling through to the next method would
+/// answer that by asking them something else.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Authenticated {
+    Yes,
+    No,
+    Cancelled,
+}
 
 /// Commands from the loop side to the connection itself.
 pub(crate) enum LinkCmd {
@@ -200,9 +218,20 @@ async fn run(
         }
     };
 
-    if !authenticate(&mut handle, &target, &wire).await {
-        let _ = wire.events.send(WireEvent::Eof).await;
-        return;
+    match authenticate(&mut handle, &target, &wire, &asker).await {
+        Authenticated::Yes => {}
+        Authenticated::Cancelled => {
+            // The user withdrew a question rather than failing one. Saying
+            // so is what distinguishes the row they meant to close from the
+            // row that could not get in.
+            notice(&wire, "the question was cancelled").await;
+            let _ = wire.events.send(WireEvent::Eof).await;
+            return;
+        }
+        Authenticated::No => {
+            let _ = wire.events.send(WireEvent::Eof).await;
+            return;
+        }
     }
 
     // The first channel, then any the loop side asks for: opened here (the
@@ -317,41 +346,50 @@ async fn drive(channel: russh::Channel<client::Msg>, mut wire: ChannelWire) {
 
 /// Publickey auth, in intent order: the key the configuration names, then
 /// whatever agent is running, then (only when no key was named) the
-/// default key files `ssh` itself would try. Returns whether the session
-/// is authenticated; each stage's failure puts its reason on the wire, and
-/// the summary that closes a lost cause names what the server offers.
+/// default key files `ssh` itself would try. Each stage's failure puts its
+/// reason on the wire, and the summary that closes a lost cause names what
+/// the server offers.
+///
+/// A cancellation anywhere in the sequence ends it where it stands. The
+/// method after the one the user just declined would ask them something
+/// else, and "no" to a question about connecting is an answer about
+/// connecting, not about that question.
 async fn authenticate(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
-) -> bool {
+    ask: &Asker,
+) -> Authenticated {
     // Not an auth attempt that could succeed: the reply's method list is
     // what makes the closing refusal name what the server would take.
     let offered = match handle.authenticate_none(target.user.clone()).await {
-        Ok(AuthResult::Success) => return true,
+        Ok(AuthResult::Success) => return Authenticated::Yes,
         Ok(AuthResult::Failure { remaining_methods, .. }) => format!("{remaining_methods:?}"),
         Err(e) => {
             notice(wire, format!("authentication failed: {e}")).await;
-            return false;
+            return Authenticated::No;
         }
     };
     if let Some(path) = &target.key_file {
-        if try_key_file(handle, target, wire, path).await {
-            return true;
+        match try_key_file(handle, target, wire, ask, path).await {
+            Authenticated::No => {}
+            end => return end,
         }
     }
-    if agent_auth(handle, target, wire).await {
-        return true;
+    match agent_auth(handle, target, wire).await {
+        Authenticated::No => {}
+        end => return end,
     }
     if target.key_file.is_none() {
         for path in default_key_files() {
-            if try_key_file(handle, target, wire, &path).await {
-                return true;
+            match try_key_file(handle, target, wire, ask, &path).await {
+                Authenticated::No => {}
+                end => return end,
             }
         }
     }
     notice(wire, format!("authentication failed; the server offers {offered}")).await;
-    false
+    Authenticated::No
 }
 
 /// The key files `ssh` itself tries when none is named, kept to the ones
@@ -368,31 +406,55 @@ fn default_key_files() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-/// One key file against the server. An encrypted key is named and skipped:
-/// its passphrase is a prompt this build cannot make yet (#14).
+/// One key file against the server, asking for its passphrase if it has
+/// one.
+///
+/// The ask runs on a blocking task rather than on this one. A human types
+/// at a human's pace, and this runtime is a single thread that is also
+/// driving the russh session: parking it on the answer would stop reading
+/// packets for as long as someone is looking for a sticky note.
 async fn try_key_file(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
+    ask: &Asker,
     path: &std::path::Path,
-) -> bool {
+) -> Authenticated {
     use russh::keys::{load_secret_key, Error as KeysError, PrivateKeyWithHashAlg};
-    let key = match load_secret_key(path, None) {
-        Ok(key) => key,
-        Err(KeysError::KeyIsEncrypted) => {
-            notice(
-                wire,
-                format!(
-                    "{} is encrypted; this build cannot ask for its passphrase yet",
-                    path.display()
-                ),
-            )
-            .await;
-            return false;
-        }
-        Err(e) => {
+    let mut passphrase: Option<String> = None;
+    let mut asked = 0usize;
+    let key = loop {
+        let attempt = load_secret_key(path, passphrase.as_deref());
+        let Err(e) = attempt else {
+            break attempt.expect("the Ok arm");
+        };
+        // Two shapes of one situation: the key wants a passphrase and has
+        // not been given one, or it was given one that did not fit. Any
+        // other error with no passphrase in play is an unreadable file.
+        let unlocked = !matches!(e, KeysError::KeyIsEncrypted);
+        if unlocked && passphrase.is_none() {
             notice(wire, format!("could not read {}: {e}", path.display())).await;
-            return false;
+            return Authenticated::No;
+        }
+        if unlocked {
+            // The wire before the desk: this is the line that explains the
+            // question about to be asked, so it goes out first.
+            notice(wire, format!("that passphrase did not open {}", path.display())).await;
+        }
+        if asked >= PASSPHRASE_TRIES {
+            notice(wire, format!("{} stays locked", path.display())).await;
+            return Authenticated::No;
+        }
+        asked += 1;
+        let asking = ask.clone();
+        let prompt = format!("passphrase for {}: ", path.display());
+        let answer = tokio::task::spawn_blocking(move || asking.ask(prompt, Answer::Secret))
+            .await
+            .ok()
+            .flatten();
+        match answer {
+            Some(text) => passphrase = Some(text),
+            None => return Authenticated::Cancelled,
         }
     };
     let hash_alg = if key.algorithm().is_rsa() {
@@ -416,11 +478,11 @@ async fn try_key_file(
                 format!("authenticated as {} ({})", target.user, path.display()),
             )
             .await;
-            true
+            Authenticated::Yes
         }
         Ok(AuthResult::Failure { .. }) => {
             notice(wire, format!("the server did not accept {}", path.display())).await;
-            false
+            Authenticated::No
         }
         Err(e) => {
             notice(
@@ -428,23 +490,26 @@ async fn try_key_file(
                 format!("authentication with {} failed: {e}", path.display()),
             )
             .await;
-            false
+            Authenticated::No
         }
     }
 }
 
-/// This platform's agent: whatever `SSH_AUTH_SOCK` names.
+/// This platform's agent: whatever `SSH_AUTH_SOCK` names. The agent path
+/// asks nobody anything -- signing is the agent's business, and any
+/// unlocking it wants it does at its own prompt -- so `Cancelled` is not
+/// among its answers.
 #[cfg(unix)]
 async fn agent_auth(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
-) -> bool {
+) -> Authenticated {
     let agent = match AgentClient::connect_env().await {
         Ok(agent) => agent,
         Err(_) => {
             notice(wire, "no agent is reachable (SSH_AUTH_SOCK is unset or dead)").await;
-            return false;
+            return Authenticated::No;
         }
     };
     sign_with(handle, target, wire, agent).await
@@ -458,7 +523,7 @@ async fn agent_auth(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
-) -> bool {
+) -> Authenticated {
     const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
     if let Ok(agent) = AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE).await {
         return sign_with(handle, target, wire, agent).await;
@@ -471,7 +536,7 @@ async fn agent_auth(
                 "no agent answered: neither the OpenSSH Authentication Agent service nor Pageant is running",
             )
             .await;
-            false
+            Authenticated::No
         }
     }
 }
@@ -482,7 +547,7 @@ async fn sign_with<S>(
     target: &SshTarget,
     wire: &ChannelWire,
     mut agent: AgentClient<S>,
-) -> bool
+) -> Authenticated
 where
     S: russh::keys::agent::client::AgentStream + Send + Unpin,
 {
@@ -490,12 +555,12 @@ where
         Ok(ids) => ids,
         Err(e) => {
             notice(wire, format!("the agent refused to list identities: {e}")).await;
-            return false;
+            return Authenticated::No;
         }
     };
     if identities.is_empty() {
         notice(wire, "the agent holds no identities").await;
-        return false;
+        return Authenticated::No;
     }
 
     for identity in identities {
@@ -518,18 +583,18 @@ where
         {
             Ok(AuthResult::Success) => {
                 notice(wire, format!("authenticated as {} ({comment})", target.user)).await;
-                return true;
+                return Authenticated::Yes;
             }
             Ok(AuthResult::Failure { .. }) => continue,
             Err(e) => {
                 notice(wire, format!("agent signing failed: {e}")).await;
-                return false;
+                return Authenticated::No;
             }
         }
     }
 
     notice(wire, "no identity in the agent was accepted").await;
-    false
+    Authenticated::No
 }
 
 #[cfg(test)]
