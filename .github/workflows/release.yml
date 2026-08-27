@@ -77,25 +77,25 @@ jobs:
       - run: cargo build --release -p robco-app
       - name: build the self-contained settings image
         run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
-      # The terminal looks for a fixed `robco-settings` beside its own
-      # binary, so the tarball carries that name; the image proves its
-      # payload the same way the Windows exe does, before it may ship.
-      - name: prove the image and stage the pair
+      # The image proves its payload the same way the Windows exe does,
+      # before it may ship inside the app bundle.
+      - name: prove the image
         run: |
           image=$(ls settings/dist/robco-settings-*-macos-* | head -1)
           test -n "$image"
           "$image" --selftest | tee selftest.txt
           grep -q 'settings selftest ok' selftest.txt
-          mkdir stage
-          cp target/release/robco-term stage/robco-term
-          cp "$image" stage/robco-settings
-      - name: tar the pair for the release page
+      # The macOS asset is the disk image: an app with a name and an icon,
+      # both binaries inside it, built by the same script CI proves on
+      # every push to main.
+      - name: bundle the app and its disk image
         run: |
+          image=$(ls settings/dist/robco-settings-*-macos-* | head -1)
           version="${GITHUB_REF_NAME#v}"
-          tarball="robco-term-$version-macos-arm64.tar.gz"
-          tar -C stage -czf "$tarball" robco-term robco-settings
-          echo "TAR_PATH=$tarball" >> "$GITHUB_ENV"
-      - name: attach the tarball to this tag's release, once one exists
+          bash packaging/macos/bundle.sh --terminal target/release/robco-term \
+            --settings "$image" --version "$version" --out-dir dist
+          echo "DMG_PATH=dist/robco-term-$version-macos-arm64.dmg" >> "$GITHUB_ENV"
+      - name: attach the disk image to this tag's release, once one exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -103,4 +103,4 @@ jobs:
               gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
               sleep 15
           done
-          gh release upload "$GITHUB_REF_NAME" "$TAR_PATH" --clobber
+          gh release upload "$GITHUB_REF_NAME" "$DMG_PATH" --clobber
