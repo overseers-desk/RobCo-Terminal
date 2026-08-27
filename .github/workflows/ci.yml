@@ -105,3 +105,31 @@ jobs:
         with:
           name: robco-term-windows-x86_64
           path: target/release/robco-term.exe
+
+  # The first macOS compile this tree has ever had: a discovery job, so it
+  # may not hold up the Windows recut while its findings are worked
+  # through; drop the continue-on-error once it holds green. ring needs no
+  # nasm here (its macOS assembly builds with the toolchain's own as), and
+  # the settings image's build-selfcontained.sh carries the macOS arms.
+  macos:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p robco-app
+      - run: cargo test --release -p robco-term --test suite fallback
+      - name: the binary answers from the command line
+        run: |
+          ./target/release/robco-term --version
+          ./target/release/robco-term --dump-settings > /dev/null
+      - name: build the self-contained settings image
+        run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: robco-term-macos-arm64
+          path: target/release/robco-term
+      - uses: actions/upload-artifact@v4
+        with:
+          name: robco-settings-macos-arm64
+          path: settings/dist/robco-settings-*
