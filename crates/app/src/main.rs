@@ -107,10 +107,12 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    // The machine's own monospace families, as a `[[fonts]]` document. This
-    // is the scan, asked for by name: the enumeration runs here and the
+    // The machine's own monospace families, as a `[[fonts]]` document:
+    // the ones this terminal's renderer resolves, which is why the settings
+    // window asks this binary instead of enumerating fonts itself. This is
+    // the scan, asked for by name: the enumeration runs here and the
     // process exits with it, having opened no window and read no config.
-    if options.dump_system_fonts {
+    if options.list_renderable_fonts {
         let installed: Vec<_> = term::system_fonts()
             .iter()
             .filter(|f| f.is_system)

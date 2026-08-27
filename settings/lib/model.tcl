@@ -280,7 +280,7 @@ namespace eval ::rcsettings::model {
     # falls back to the sibling binary and then PATH.
 
     # A binary the suites point this namespace at, so a test can run the
-    # real --dump-system-fonts against a build tree. Nothing user-facing
+    # real --list-renderable-fonts against a build tree. Nothing user-facing
     # sets it.
     variable ForcedBinary ""
 
@@ -350,7 +350,7 @@ namespace eval ::rcsettings::model {
     # a broken one.
     proc system_fonts {{path ""}} {
         if {$path eq ""} { set path [locate] }
-        return [system_fonts_text [run_dump $path --dump-system-fonts]]
+        return [system_fonts_text [run_dump $path --list-renderable-fonts]]
     }
 
     # The parse step alone, so tests can feed a canned dump. {name text}

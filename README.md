@@ -245,7 +245,7 @@ program with no arguments; `--workdir` sets the starting directory;
 starts from the built-in defaults without reading your config file; and
 `--dump-settings` prints the defaults, presets, bundled fonts and value
 lists as TOML for external tools, the settings window among them, with
-`--dump-system-fonts` beside it for the machine's own monospace families.
+`--list-renderable-fonts` beside it for the machine's own monospace families, the ones this terminal's renderer can actually load.
 
 A second `robco-term` does not start a second application. It hands its
 request to the one already running, which opens another window and exits.

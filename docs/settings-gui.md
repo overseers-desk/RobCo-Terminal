@@ -66,7 +66,7 @@ anything. The Rust source stays the authority on those values:
 `robco-term --dump-settings` still prints them, and `tests/schema.test`
 holds the literals to that dump, so a drift fails the tests rather than a
 user's file. The one question left for the running terminal is the
-machine's installed faces, asked over `robco-term --dump-system-fonts`
+machine's installed faces, asked over `robco-term --list-renderable-fonts`
 when the user opts into system fonts. For that call the spawning terminal
 names its own binary in `ROBCO_SETTINGS_TERMINAL`; a hand-launched window
 falls back to the sibling executable, under the name the platform gives it
@@ -94,7 +94,10 @@ script. `cargo run -p xtask -- dist --settings-binary <that file>` (and
 `deb` likewise) stages it beside `robco-term`; both refuse to package
 without it, because no official package omits the settings app. A
 self-compiled terminal without it loses only the right-click: the press
-logs one warning and the file remains yours to edit. macOS `.app`/`.dmg`
-bundling and a CI matrix for all platforms are follow-up work; questlog's
-release machinery, which `settings/zipfs/` is adapted from, shows the
-finished shape.
+logs one warning and the file remains yours to edit. On macOS the pair
+ships inside `RobCo Terminal.app` on a disk image
+(`packaging/macos/bundle.sh`); on Windows the settings archive rides
+inside the terminal exe itself. `.github/workflows/ci.yml` proves the
+Windows and macOS builds on every push, Linux being proven on the
+development machines before each push; `release.yml` builds the shipped
+artifacts on tag.

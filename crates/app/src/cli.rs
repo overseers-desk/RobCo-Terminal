@@ -33,9 +33,10 @@
 //! `--dump-settings` prints the settings dump (defaults, presets, the
 //! bundled font catalogue, enum value lists; see `config::dump`) on stdout
 //! and exits, the query external settings tools build their view from.
-//! `--dump-system-fonts` is the machine's own monospace families, asked for
-//! separately because that answer costs a walk of the platform's font
-//! directories and the settings dump does not. `--settings`
+//! `--list-renderable-fonts` is the machine's own monospace families as this
+//! terminal's renderer can resolve them, asked for separately because that
+//! answer costs a walk of the platform's font directories and the settings
+//! dump does not. `--settings`
 //! opens the settings window and nothing else: where the window is linked
 //! into this binary this process becomes it, and everywhere else the
 //! companion application is started and waited on, so the flag means the
@@ -82,10 +83,16 @@ pub struct Options {
     /// `--dump-settings`: print the settings dump on stdout and exit
     /// without opening a window (see the module doc).
     pub dump_settings: bool,
-    /// `--dump-system-fonts`: print the machine's monospace families on
-    /// stdout and exit. The one flag that asks for a font scan, which is
-    /// why it is its own flag rather than a part of the settings dump.
-    pub dump_system_fonts: bool,
+    /// `--list-renderable-fonts`: print the machine's monospace families
+    /// on stdout and exit -- the ones this terminal's renderer can resolve,
+    /// which is the list's whole point. A generic enumerator (fontconfig,
+    /// Tk's `font families`) also lists faces this renderer cannot load,
+    /// and a settings window offering one of those would write a
+    /// `font_name` the terminal silently falls back from. Only the
+    /// renderer's own database can name the set it will honour. The one
+    /// flag that asks for a font scan, which is why it is its own flag
+    /// rather than a part of the settings dump.
+    pub list_renderable_fonts: bool,
     /// `--settings`: open the settings window instead of a terminal. No
     /// glass, no instance lock, no config watch; this process is the
     /// settings application for as long as it lives.
@@ -130,7 +137,7 @@ pub fn help(program_name: &str) -> String {
 \x20 --verbose           Print additional information such as profiles and settings.\n\
 \x20 --frame-stats       Log GPU frame-timing p50/p99 periodically (this rebuild only).\n\
 \x20 --dump-settings     Print defaults, presets, bundled fonts and value lists as TOML, then exit.\n\
-\x20 --dump-system-fonts Print this machine's monospace font families as TOML, then exit.\n\
+\x20 --list-renderable-fonts Print the machine's monospace families this terminal can render, as TOML, then exit.\n\
 \x20 --settings          Open the settings window instead of a terminal.\n"
     )
 }
@@ -163,7 +170,7 @@ where
             "--verbose" => opts.verbose = true,
             "--frame-stats" => opts.frame_stats = true,
             "--dump-settings" => opts.dump_settings = true,
-            "--dump-system-fonts" => opts.dump_system_fonts = true,
+            "--list-renderable-fonts" => opts.list_renderable_fonts = true,
             "--settings" => opts.settings = true,
             "--settings-selftest" => opts.settings_selftest = true,
             "-p" | "--profile" => match args.get(i + 1) {
@@ -267,13 +274,13 @@ mod tests {
     }
 
     #[test]
-    fn dump_system_fonts_flag_parses_and_defaults_off() {
-        assert!(!run(&[]).dump_system_fonts);
-        assert!(run(&["--dump-system-fonts"]).dump_system_fonts);
-        // The two dumps are separate answers: asking for the settings does
-        // not ask for the scan.
-        assert!(!run(&["--dump-settings"]).dump_system_fonts);
-        assert!(!run(&["--dump-system-fonts"]).dump_settings);
+    fn list_renderable_fonts_flag_parses_and_defaults_off() {
+        assert!(!run(&[]).list_renderable_fonts);
+        assert!(run(&["--list-renderable-fonts"]).list_renderable_fonts);
+        // The two are separate answers: asking for the settings does not
+        // ask for the scan.
+        assert!(!run(&["--dump-settings"]).list_renderable_fonts);
+        assert!(!run(&["--list-renderable-fonts"]).dump_settings);
     }
 
     #[test]
