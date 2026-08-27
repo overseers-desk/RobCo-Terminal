@@ -126,6 +126,35 @@ test fonts-2.3 {the real binary's font walk answers} -constraints realBinary -bo
     expr {[llength [::rcsettings::model::system_fonts $::binpath]] >= 0}
 } -result 1
 
+test locate-3.0 {the sibling is looked for under the platform's own name} -body {
+    # Windows resolves an executable by extension; looking for the bare
+    # name there is how the sibling arm once silently never matched.
+    set tail [file tail [lindex [::rcsettings::model::candidates] end-1]]
+    expr {$::tcl_platform(platform) eq "windows"
+          ? $tail eq "robco-term.exe" : $tail eq "robco-term"}
+} -result 1
+
+test locate-3.2 {the test hook, then the embedded terminal, lead them all} -body {
+    set was $::rcsettings::model::ForcedBinary
+    set ::rcsettings::model::ForcedBinary [file join / forced robco-term]
+    set ::rcsettings::embedded(terminal) [file join / myself robco-term]
+    set order [::rcsettings::model::candidates]
+    set ::rcsettings::model::ForcedBinary $was
+    unset ::rcsettings::embedded(terminal)
+    list [lindex $order 0] [lindex $order 1]
+} -result [list [file join / forced robco-term] [file join / myself robco-term]]
+
+test locate-3.3 {not finding the binary names every place it was not} -body {
+    # The message is the user's whole diagnostic; each arm it names must
+    # be an arm candidates actually walks, the sibling with the
+    # platform's own suffix.
+    set msg [::rcsettings::model::describe_search]
+    set sibling "robco-term[::rcsettings::model::exe_suffix]"
+    list [string match "*ROBCO_SETTINGS_TERMINAL*" $msg] \
+        [string match "*beside this program ($sibling)*" $msg] \
+        [string match "*PATH*" $msg]
+} -result {1 1 1}
+
 test locate-3.1 {the spawner's own name leads a hand launch's guesses} -body {
     set saved [array get ::env ROBCO_SETTINGS_TERMINAL]
     set ::env(ROBCO_SETTINGS_TERMINAL) [file join / spawner robco-term]

@@ -318,8 +318,15 @@ namespace eval ::rcsettings::model {
                 return $path
             }
         }
-        error "cannot find the robco-term binary: not named in\
-            ROBCO_SETTINGS_TERMINAL, not beside this program, not on PATH"
+        error [describe_search]
+    }
+
+    # The message locate fails with: each arm it names is an arm
+    # candidates actually walks, and the tests hold the two together.
+    proc describe_search {} {
+        return "cannot find the robco-term binary: not named in\
+            ROBCO_SETTINGS_TERMINAL, not beside this program\
+            (robco-term[exe_suffix]), not on PATH"
     }
 
     # Run the binary under one flag and hand back its raw stdout. The

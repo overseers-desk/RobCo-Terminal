@@ -25,7 +25,7 @@ namespace eval ::rcsettings::diag {
 
     # The channel a record is echoed to as well as filed. It is stderr in
     # every run but a suite's own, which points it at a file it can read
-    # back: this is the harness reaching in, the way dump.tcl's ForcedBinary
+    # back: this is the harness reaching in, the way model.tcl's ForcedBinary
     # is, and there is nothing here for a user to set.
     variable Console stderr
 }

@@ -78,10 +78,12 @@ the terminal is this process and needs no finding.
 
 The app is Tcl/Tk 9, under `settings/` in this repository: `lib/` is the
 schema-bearing value model and the vendored tomledit module (the
-byte-preserving TOML editor, from the teatotal shelf), `ui/` the window,
-`tests/` the tcltest suites (`tclsh9.0 settings/tests/all.tcl`). During
-development the entry script `settings/robco-settings` runs directly
-against a system Tcl/Tk 9.
+byte-preserving TOML editor), `ui/` the window, `tests/` the tcltest
+suites (`tclsh9.0 settings/tests/all.tcl`). tomledit's home is the
+teatotal module shelf, <https://github.com/teatotal/teatotal>, where its
+own test suite, man page and updates live; the copy in `lib/` is vendored
+byte-identical from there. During development the entry script
+`settings/robco-settings` runs directly against a system Tcl/Tk 9.
 
 Releases ship it as one self-contained executable per platform, built by
 `settings/zipfs/build-selfcontained.sh` (Unix) or `.ps1` (Windows): a
