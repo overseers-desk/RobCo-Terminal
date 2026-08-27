@@ -1092,11 +1092,7 @@ impl TerminalSurface {
     /// A dial that fails, or a window that is switched off a second later,
     /// must not be the reason the answer was lost, so the answer goes to the
     /// file while there is nothing left that can go wrong with it.
-    fn picker_key(
-        &mut self,
-        logical: &winit::keyboard::Key,
-        text: Option<&str>,
-    ) -> bool {
+    fn picker_key(&mut self, logical: &winit::keyboard::Key) -> bool {
         // Out of the field for the duration: the verdicts below reach for
         // `&mut self`, and the page is put back only if it still stands.
         let Some(mut picker) = self.picker.take() else {
@@ -1113,7 +1109,7 @@ impl TerminalSurface {
             return false;
         }
         let hosts = self.live_config().ssh.hosts;
-        let verdict = picker.key(logical, text, &hosts);
+        let verdict = picker.key(logical, &hosts);
         let make_default = picker.make_default();
         match verdict {
             crate::picker::Verdict::Localhost => {
@@ -1170,27 +1166,6 @@ impl TerminalSurface {
                 self.retire_picker(slot);
                 true
             }
-            crate::picker::Verdict::Typed(spec) => {
-                // It parsed inside the picker before it was handed over, so
-                // this cannot fail; if the environment moved under it in
-                // between, the log is the whole of the consequence.
-                let req = match SshRequest::parse(&spec) {
-                    Ok(req) => req,
-                    Err(why) => {
-                        log::warn!("the typed destination {spec:?} did not parse: {why}");
-                        self.retire_picker(slot);
-                        return true;
-                    }
-                };
-                if make_default {
-                    // Typed, so the file names no row for it yet: it gains
-                    // the row and the default naming it, in one edit.
-                    self.remember_default_row(&req);
-                }
-                self.connect_ssh(&req);
-                self.retire_picker(slot);
-                true
-            }
             crate::picker::Verdict::Cancel => {
                 self.retire_picker(slot);
                 true
@@ -1225,28 +1200,6 @@ impl TerminalSurface {
         }
     }
 
-    /// The same tick on a destination the user typed: the file gains the
-    /// `[[ssh.host]]` row and the default naming it, in one atomic edit.
-    ///
-    /// The key file stays empty. A row typed here names a host and an
-    /// account and nothing else; naming a private key file is an edit for
-    /// the settings window or the file itself, and guessing one would be
-    /// this program deciding something the user did not say.
-    fn remember_default_row(&self, req: &SshRequest) {
-        let Some(settings) = self.settings.as_ref() else {
-            log::debug!(
-                "the picker typed {}@{}:{} as the default with no config to write",
-                req.user,
-                req.host,
-                req.port
-            );
-            return;
-        };
-        if let Err(e) = settings.set_ssh_default_row(&req.host, &req.user, req.port, "") {
-            log::error!("could not write the [[ssh.host]] row for {}: {e}", req.host);
-        }
-    }
-
     /// Take the picker's page down. Its `Close` verdict is honoured like
     /// any channel's, so an Esc on the last channel anywhere switches the
     /// appliance off, the law `close_channel` already applies.
@@ -1263,7 +1216,7 @@ impl TerminalSurface {
     ///
     /// This is where `~/.ssh/config` is asked about the destination, and
     /// the only place: every road to a connection -- the command line, the
-    /// configured default, both arms of the picker -- arrives here, and a
+    /// configured default, the picker's own row -- arrives here, and a
     /// file read once on the way to the wire cannot disagree with itself.
     /// What the file could not be honoured over comes back as the
     /// request's own notice and is said on the channel's glass below.
@@ -1869,10 +1822,9 @@ impl TerminalSurface {
             return;
         }
         // The destination picker's keyboard, when its page is on the air:
-        // a digit connects, `0` opens the arm a hostname is typed into,
-        // Esc steps back, everything else is swallowed so the page stays
-        // put. The `gateway_key` shape.
-        if self.picker_key(logical, text) {
+        // a digit connects, Esc steps back, everything else is swallowed
+        // so the page stays put. The `gateway_key` shape.
+        if self.picker_key(logical) {
             return;
         }
         // Then a question the connection on the air is waiting on. Same

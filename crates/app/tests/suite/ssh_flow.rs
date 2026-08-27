@@ -7,10 +7,9 @@
 //! set, so ordering between them does not matter.
 
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use app::settings::SettingsHandle;
 use app::ssh::{KnownHosts, SshRequest};
 use app::window::TerminalSurface;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
@@ -433,81 +432,6 @@ fn the_picker_offers_the_configured_rows_and_the_default_stays_put() {
     let home_rows = s.channels().rows().iter().filter(|r| r.bank == 0).count();
     assert_eq!(home_rows, 2, "the shell that was asked for, beside the first");
     assert!(!glass_contains(&s, "SELECT DESTINATION"));
-}
-
-/// The typed arm and the checkbox, over a real config file: a destination
-/// the file has never heard of is typed on the glass, ticked as the default,
-/// and the file comes out of it carrying both the row and the default. Then
-/// the same destination again with the box left alone, which must cost the
-/// file nothing at all: an untouched checkbox is the picker this repository
-/// shipped before the box existed.
-#[test]
-fn a_typed_destination_dials_and_the_tick_writes_the_row_and_the_default() {
-    let far = far_side();
-    let mut s = surface();
-
-    // A config file of the user's own, watched by a real handle: what the
-    // checkbox writes has somewhere to land, and something to leave alone.
-    let dir = tempfile::tempdir().expect("scratch dir");
-    let path = dir.path().join("config.toml");
-    let original = "# the user's own file\n[general]\nled_characters = 12  # twelve\n";
-    std::fs::write(&path, original).expect("fixture");
-    let handle = SettingsHandle::spawn(path.clone(), |_, _, _| {}).expect("watcher should start");
-    s.set_settings(Arc::new(handle));
-
-    let chord = ModifiersState::ALT | ModifiersState::SHIFT;
-    press(&mut s, Key::Character("T".into()), chord);
-    assert!(glass_contains(&s, "SELECT DESTINATION"));
-    assert!(
-        glass_contains(&s, "[ ] Tab  make this the default connection"),
-        "the box is on the glass and clear: {:?}",
-        s.viewport_text()
-    );
-
-    // `0` opens the arm; the destination is typed there, digits and all,
-    // and shown as it is typed because a hostname is not a secret.
-    press(&mut s, Key::Character("0".into()), ModifiersState::empty());
-    let spec = format!("overseer@127.0.0.1:{}", far.port);
-    type_text(&mut s, &spec);
-    assert!(glass_contains(&s, &spec), "{:?}", s.viewport_text());
-
-    // Tab ticks the box, and the page says so before anything is committed.
-    press(&mut s, Key::Named(NamedKey::Tab), ModifiersState::empty());
-    assert!(
-        glass_contains(&s, "[x] Tab  make this the default connection"),
-        "{:?}",
-        s.viewport_text()
-    );
-
-    // Enter: the connection stands as its own bank, the page is gone.
-    press(&mut s, Key::Named(NamedKey::Enter), ModifiersState::empty());
-    let bank = s.channels().current_bank();
-    assert_ne!(bank, 0, "the typed destination stands as its own bank");
-    assert_eq!(s.channels().current().unwrap().title, "overseer@127.0.0.1");
-    assert!(!glass_contains(&s, "SELECT DESTINATION"));
-
-    // And the file carries both halves: the row that was not there, and the
-    // default naming it. Everything the user wrote is still theirs.
-    let written = std::fs::read_to_string(&path).expect("the config file");
-    assert!(written.starts_with(original), "{written}");
-    assert!(written.contains("default = \"127.0.0.1\""), "{written}");
-    assert!(written.contains("[[ssh.host]]"), "{written}");
-    assert!(written.contains("host = \"127.0.0.1\""), "{written}");
-    assert!(written.contains("user = \"overseer\""), "{written}");
-    assert!(written.contains(&format!("port = {}", far.port)), "{written}");
-
-    // The same destination again, the box left alone: a session goes where
-    // it was asked to go and the file is not touched for it.
-    press(&mut s, Key::Character("T".into()), chord);
-    press(&mut s, Key::Character("0".into()), ModifiersState::empty());
-    type_text(&mut s, &spec);
-    press(&mut s, Key::Named(NamedKey::Enter), ModifiersState::empty());
-    assert_ne!(s.channels().current_bank(), 0, "the second connection stands too");
-    assert_eq!(
-        std::fs::read_to_string(&path).expect("the config file"),
-        written,
-        "an untouched checkbox writes nothing"
-    );
 }
 
 /// A third far side, authorizing one key and nothing else: what proves an
