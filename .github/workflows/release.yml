@@ -1,4 +1,4 @@
-# Ships the Windows half of a tagged release. Pushing a `v*` tag is the only
+# Ships the Windows and macOS halves of a tagged release. Pushing a `v*` tag is the only
 # trigger, so this never touches a tag already cut: v0.1.0 carries its
 # Linux assets alone, exactly as they were published, and stays that way.
 #
@@ -68,3 +68,39 @@ jobs:
               Start-Sleep -Seconds 15
           }
           gh release upload $tag "$env:EXE_PATH" --clobber
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p robco-app
+      - name: build the self-contained settings image
+        run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
+      # The terminal looks for a fixed `robco-settings` beside its own
+      # binary, so the tarball carries that name; the image proves its
+      # payload the same way the Windows exe does, before it may ship.
+      - name: prove the image and stage the pair
+        run: |
+          image=$(ls settings/dist/robco-settings-*-macos-* | head -1)
+          test -n "$image"
+          "$image" --selftest | tee selftest.txt
+          grep -q 'settings selftest ok' selftest.txt
+          mkdir stage
+          cp target/release/robco-term stage/robco-term
+          cp "$image" stage/robco-settings
+      - name: tar the pair for the release page
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          tarball="robco-term-$version-macos-arm64.tar.gz"
+          tar -C stage -czf "$tarball" robco-term robco-settings
+          echo "TAR_PATH=$tarball" >> "$GITHUB_ENV"
+      - name: attach the tarball to this tag's release, once one exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 20); do
+              gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
+              sleep 15
+          done
+          gh release upload "$GITHUB_REF_NAME" "$TAR_PATH" --clobber

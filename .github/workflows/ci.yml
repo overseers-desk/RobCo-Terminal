@@ -106,14 +106,11 @@ jobs:
           name: robco-term-windows-x86_64
           path: target/release/robco-term.exe
 
-  # The first macOS compile this tree has ever had: a discovery job, so it
-  # may not hold up the Windows recut while its findings are worked
-  # through; drop the continue-on-error once it holds green. ring needs no
+  # macOS holds green, so it gates like every other job. ring needs no
   # nasm here (its macOS assembly builds with the toolchain's own as), and
   # the settings image's build-selfcontained.sh carries the macOS arms.
   macos:
     runs-on: macos-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
