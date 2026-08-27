@@ -11,6 +11,7 @@
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use russh::client;
 use russh::keys::agent::client::AgentClient;
@@ -112,21 +113,34 @@ async fn notice(wire: &ChannelWire, text: impl Into<String>) {
     let _ = wire.events.send(WireEvent::Notice(text.into())).await;
 }
 
-async fn run(
-    target: SshTarget,
-    mut policy: Box<dyn HostPolicy>,
-    wire: ChannelWire,
-    mut link_cmd: mpsc::UnboundedReceiver<LinkCmd>,
-) {
-    let verdicts = Arc::new(Verdicts { refusal: Mutex::new(None) });
+/// How often the client asks a silent server whether it is still there.
+///
+/// A shell left sitting at its prompt sends nothing, and a NAT or a stateful
+/// firewall between here and the server forgets an idle mapping in minutes.
+/// Neither end notices: the connection is not closed, it is unreachable, and
+/// the first the user hears of it is that their next keystroke goes nowhere
+/// and stays nowhere. russh runs the probe loop itself once this is set, so
+/// setting it is the whole of the fix.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(60);
 
-    notice(&wire, format!("connecting to {}:{}", target.host, target.port)).await;
-
-    // The recorded algorithms lead the preference list, or a host recorded
-    // under one algorithm reads as unknown when the server also holds a
-    // preferred one.
-    let mut config = client::Config::default();
-    if let Some(order) = policy.key_order(&target.host, target.port) {
+/// The connection's configuration, split out from [`run`] so that what it
+/// promises is testable without a socket: the keepalive, and the host-key
+/// order the policy recorded.
+///
+/// `keepalive_max` is left at russh's default of three. Three unanswered
+/// probes a minute apart is about three minutes to call a peer dead, the same
+/// order as OpenSSH's own `ServerAliveInterval`/`ServerAliveCountMax` and long
+/// enough that a laptop's lid or a train's tunnel is not mistaken for a
+/// disconnection.
+///
+/// The recorded algorithms lead the preference list, or a host recorded under
+/// one algorithm reads as unknown when the server also holds a preferred one.
+pub(crate) fn client_config(order: Option<Vec<russh::keys::Algorithm>>) -> client::Config {
+    let mut config = client::Config {
+        keepalive_interval: Some(KEEPALIVE_INTERVAL),
+        ..Default::default()
+    };
+    if let Some(order) = order {
         if !order.is_empty() {
             let mut key: Vec<_> = order;
             for alg in config.preferred.key.iter() {
@@ -137,6 +151,20 @@ async fn run(
             config.preferred.key = key.into();
         }
     }
+    config
+}
+
+async fn run(
+    target: SshTarget,
+    mut policy: Box<dyn HostPolicy>,
+    wire: ChannelWire,
+    mut link_cmd: mpsc::UnboundedReceiver<LinkCmd>,
+) {
+    let verdicts = Arc::new(Verdicts { refusal: Mutex::new(None) });
+
+    notice(&wire, format!("connecting to {}:{}", target.host, target.port)).await;
+
+    let config = client_config(policy.key_order(&target.host, target.port));
 
     let handler = Handler {
         policy,
@@ -495,4 +523,68 @@ where
 
     notice(wire, "no identity in the agent was accepted").await;
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use russh::keys::Algorithm;
+
+    /// The keepalive, pinned. An idle shell behind a NAT is the case: with no
+    /// interval russh never probes, the mapping is forgotten, and the row is
+    /// dead without anything having said so.
+    #[test]
+    fn a_connection_probes_a_silent_server_and_gives_it_three_chances() {
+        let config = client_config(None);
+        assert_eq!(
+            config.keepalive_interval,
+            Some(Duration::from_secs(60)),
+            "a silent connection must still say something once a minute"
+        );
+        assert_eq!(
+            config.keepalive_max, 3,
+            "three missed probes is about three minutes to call a peer dead"
+        );
+    }
+
+    /// The order the policy recorded leads, and nothing russh would have
+    /// offered is dropped to make room for it: a server holding both a
+    /// recorded key and a default-preferred one must present the recorded one,
+    /// while a server holding neither must still be able to negotiate.
+    #[test]
+    fn a_recorded_key_order_leads_the_preference_list() {
+        let recorded = Algorithm::Rsa { hash: None };
+        let keys: Vec<_> = client_config(Some(vec![recorded.clone()]))
+            .preferred
+            .key
+            .iter()
+            .cloned()
+            .collect();
+
+        assert_eq!(keys.first(), Some(&recorded), "the recorded key must lead");
+        assert_eq!(
+            keys.iter().filter(|a| **a == recorded).count(),
+            1,
+            "leading is a move, not a second entry"
+        );
+        for offered in client_config(None).preferred.key.iter() {
+            assert!(
+                keys.contains(offered),
+                "{offered:?} was dropped from the preference list"
+            );
+        }
+    }
+
+    /// An empty recording is not a recording: russh's own order stands.
+    #[test]
+    fn no_recording_leaves_russhs_own_order_alone() {
+        let default: Vec<_> = client_config(None).preferred.key.iter().cloned().collect();
+        let empty: Vec<_> = client_config(Some(Vec::new()))
+            .preferred
+            .key
+            .iter()
+            .cloned()
+            .collect();
+        assert_eq!(default, empty);
+    }
 }
