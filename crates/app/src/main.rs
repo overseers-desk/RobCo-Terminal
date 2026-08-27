@@ -97,6 +97,57 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    // `--settings` is the settings window and nothing else: no glass, no
+    // instance lock, no config watch. Handled here, beside the dump, because
+    // everything below this line is the terminal starting up and none of it
+    // is wanted.
+    //
+    // Where the window is linked into this binary, this process becomes it:
+    // `settings_embed::run` hands the interpreter its argv and the payload
+    // and does not come back. Where it is not, the companion application is
+    // started and waited on, so `--settings` means the same thing on every
+    // platform the terminal runs on rather than being a Windows-only
+    // spelling. `--settings-selftest` is the same door with the interpreter
+    // asked to prove it came up and leave; on a build with no interpreter in
+    // it there is nothing to prove, and the stub's refusal is the answer.
+    if options.settings || options.settings_selftest {
+        let selftest = options.settings_selftest;
+        #[cfg(all(windows, feature = "embedded-settings"))]
+        {
+            // The diagnostics file is for an interpreter that fails before it
+            // has a window to fail in: it goes where the rest of this
+            // identity's per-user files go.
+            let diagfile = paths::data_dir(&identity).join("settings.log");
+            return app::settings_embed::run(
+                if selftest { &["--selftest"] } else { &[] },
+                &diagfile,
+            );
+        }
+        #[cfg(not(all(windows, feature = "embedded-settings")))]
+        {
+            if selftest {
+                // Nothing linked in to test. The stub says so in one line,
+                // which is the honest answer to a proof asked of a build that
+                // carries nothing to prove.
+                return app::settings_embed::run(&["--selftest"], std::path::Path::new(""));
+            }
+            let (program, args) = app::window::settings_command();
+            match std::process::Command::new(&program).args(args).status() {
+                Ok(status) => {
+                    return if status.success() {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("could not start {}: {e}", program.display());
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+    }
+
     let mut builder = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("robco_app=info,app=info"),
     );

@@ -23,7 +23,7 @@
 //! -v, --version        print version
 //! ```
 //!
-//! Three flags beyond that list are this rebuild's own, and none changes
+//! Five flags beyond that list are this rebuild's own, and none changes
 //! what `xtask verify`'s flag-presence check expects of the documented
 //! contract items above. `--frame-stats` is the live-preview throughput
 //! instrument's CLI switch: it logs a p50/p99 line periodically and does
@@ -32,7 +32,14 @@
 //! spelling is validated here, so a bad one fails before a window exists.
 //! `--dump-settings` prints the settings dump (defaults, presets, font
 //! catalogue, enum value lists; see `config::dump`) on stdout and exits,
-//! the query external settings tools build their view from.
+//! the query external settings tools build their view from. `--settings`
+//! opens the settings window and nothing else: where the window is linked
+//! into this binary this process becomes it, and everywhere else the
+//! companion application is started and waited on, so the flag means the
+//! same thing wherever it is typed. `--settings-selftest` is that same door
+//! with the interpreter asked to prove it came up and then leave; it is a
+//! build proof rather than a contract item, so it stays out of the help
+//! text.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -72,6 +79,14 @@ pub struct Options {
     /// `--dump-settings`: print the settings dump on stdout and exit
     /// without opening a window (see the module doc).
     pub dump_settings: bool,
+    /// `--settings`: open the settings window instead of a terminal. No
+    /// glass, no instance lock, no config watch; this process is the
+    /// settings application for as long as it lives.
+    pub settings: bool,
+    /// `--settings-selftest`: the same door with the interpreter asked to
+    /// prove it came up and then exit. Out of the help text on purpose (see
+    /// the module doc).
+    pub settings_selftest: bool,
 }
 
 /// An `-e` command: the program and the arguments after it.
@@ -107,7 +122,8 @@ pub fn help(program_name: &str) -> String {
 \x20 -h|--help           Print this help.\n\
 \x20 --verbose           Print additional information such as profiles and settings.\n\
 \x20 --frame-stats       Log GPU frame-timing p50/p99 periodically (this rebuild only).\n\
-\x20 --dump-settings     Print defaults, presets, fonts and value lists as TOML, then exit.\n"
+\x20 --dump-settings     Print defaults, presets, fonts and value lists as TOML, then exit.\n\
+\x20 --settings          Open the settings window instead of a terminal.\n"
     )
 }
 
@@ -139,6 +155,8 @@ where
             "--verbose" => opts.verbose = true,
             "--frame-stats" => opts.frame_stats = true,
             "--dump-settings" => opts.dump_settings = true,
+            "--settings" => opts.settings = true,
+            "--settings-selftest" => opts.settings_selftest = true,
             "-p" | "--profile" => match args.get(i + 1) {
                 Some(v) => {
                     opts.profile = Some(v.to_string_lossy().into_owned());
@@ -237,6 +255,28 @@ mod tests {
     fn dump_settings_flag_parses_and_defaults_off() {
         assert!(!run(&[]).dump_settings);
         assert!(run(&["--dump-settings"]).dump_settings);
+    }
+
+    #[test]
+    fn settings_flags_parse_and_default_off() {
+        assert!(!run(&[]).settings);
+        assert!(!run(&[]).settings_selftest);
+        assert!(run(&["--settings"]).settings);
+        assert!(run(&["--settings-selftest"]).settings_selftest);
+    }
+
+    #[test]
+    fn dash_e_swallows_the_settings_flags_too() {
+        // The same rule as every other flag of ours: after `-e` these belong
+        // to the child, and a command line ending in one still opens a
+        // terminal running that command.
+        let o = run(&["-e", "sh", "-c", "echo hi", "--settings"]);
+        assert!(!o.settings);
+        assert_eq!(
+            o.command.expect("command").args.last(),
+            Some(&OsString::from("--settings"))
+        );
+        assert!(!run(&["-e", "sh", "--settings-selftest"]).settings_selftest);
     }
 
     #[test]

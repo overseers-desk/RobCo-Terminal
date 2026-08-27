@@ -400,11 +400,53 @@ const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 /// [`crate::identity`]: a renamed copy of the terminal binary is a second
 /// identity for the terminal, and it still edits its settings with the one
 /// settings application the install carries.
+#[cfg(not(all(windows, feature = "embedded-settings")))]
 const SETTINGS_BINARY: &str = if cfg!(windows) {
     "robco-settings.exe"
 } else {
     "robco-settings"
 };
+
+/// What to run to put the settings window on the screen: a program and the
+/// arguments it takes.
+///
+/// Two builds, one answer. Where the settings window is linked into this
+/// binary there is no companion executable to find, and the program to run
+/// is this one with `--settings`: a second copy of the terminal that never
+/// becomes a terminal. Everywhere else it is the companion application,
+/// looked for beside this binary first (so an install that is a directory of
+/// files runs its own rather than whichever one happens to be earlier on the
+/// PATH) and by bare name after (the fallback for a packaged install that
+/// puts the two in different directories).
+///
+/// A separate process either way, which is the point: `open_settings_app`'s
+/// one-at-a-time bookkeeping, its null stdio and its shrug at a missing
+/// binary are the same code for both, and the terminal goes on running while
+/// the window is up.
+#[cfg(all(windows, feature = "embedded-settings"))]
+pub fn settings_command() -> (std::path::PathBuf, Vec<&'static str>) {
+    // A path that cannot be read is not a reason to give up: the binary's own
+    // name is what a launcher would have used, and the PATH is where it looks.
+    let program = std::env::current_exe()
+        .unwrap_or_else(|_| std::path::PathBuf::from(format!("{}.exe", crate::identity())));
+    (program, vec!["--settings"])
+}
+
+/// The same question on a build that ships the settings window beside the
+/// terminal rather than inside it: the companion executable, beside this
+/// binary first and by bare name after, taking no arguments. The whole rule
+/// is on the embedded arm of this function.
+#[cfg(not(all(windows, feature = "embedded-settings")))]
+pub fn settings_command() -> (std::path::PathBuf, Vec<&'static str>) {
+    let beside = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(SETTINGS_BINARY)))
+        .filter(|path| path.is_file());
+    (
+        beside.unwrap_or_else(|| std::path::PathBuf::from(SETTINGS_BINARY)),
+        Vec::new(),
+    )
+}
 
 /// The surface the binary runs behind the
 /// [`crate::shell::Surface`] seam: the shell owns the event loop and the
@@ -3458,21 +3500,14 @@ impl TerminalSurface {
             }
         }
 
-        // Beside this binary first, so an install that is a directory of files
-        // runs its own settings application rather than whichever one happens
-        // to be earlier on the PATH. The bare name is the fallback for a
-        // packaged install that puts the two in different directories.
-        let beside = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|dir| dir.join(SETTINGS_BINARY)))
-            .filter(|path| path.is_file());
-        let program = beside.unwrap_or_else(|| std::path::PathBuf::from(SETTINGS_BINARY));
+        let (program, args) = settings_command();
 
         // Detached from this terminal's own stdio: the settings application is
         // a window and not a job of the shell running here, and a child that
         // inherited stdin would be reading the keystrokes meant for the
         // terminal's own child.
         match std::process::Command::new(&program)
+            .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
