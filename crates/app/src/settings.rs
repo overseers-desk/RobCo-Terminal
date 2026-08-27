@@ -397,6 +397,8 @@ impl SettingsHandle {
     /// carries `docs/config-format.md`'s obligations (atomic temp-then-rename,
     /// comments and unknown keys preserved, only the touched key's bytes
     /// changed), and an API that can only name one key cannot break them.
+    /// [`Self::set_ssh_default_row`] is the one thing beside it that is not a
+    /// key, and it names its own row rather than reaching the document either.
     ///
     /// The write lands in the watched directory, so the watcher picks it up and
     /// republishes the snapshot on its own thread; a caller that has already
@@ -405,6 +407,30 @@ impl SettingsHandle {
     /// which is a no-op rather than a jump.
     pub fn write_key(&self, key: &str, value: config::toml::Scalar) -> Result<(), ConfigError> {
         config::toml::write_key(&self.path, key, value)
+    }
+
+    /// Make a destination the default connection, row and all.
+    ///
+    /// The picker's typed arm is the caller: a hostname the user typed names
+    /// no `[[ssh.host]]` row yet, so becoming the default means the file
+    /// gains the row *and* the `ssh.default` naming it. Both or neither, in
+    /// one atomic write, for the reasons `config::toml::set_ssh_default_row`
+    /// states. An empty `host` is localhost, which needs no row.
+    ///
+    /// This is where "one key at a time, scalars only" above stops being the
+    /// whole truth, and the shape of the widening is deliberate: the caller
+    /// still names a destination rather than an edit, so nothing here can
+    /// drop a table, reorder a document, or write a key it was not given.
+    /// The write comes back through the watcher as an ordinary reload, the
+    /// same as [`Self::write_key`]'s.
+    pub fn set_ssh_default_row(
+        &self,
+        host: &str,
+        user: &str,
+        port: u16,
+        key: &str,
+    ) -> Result<(), ConfigError> {
+        config::toml::set_ssh_default_row(&self.path, host, user, port, key)
     }
 
     /// Keep the look currently on air as a saved profile under `name`.
