@@ -288,7 +288,8 @@ fn the_tape_well_metrics_composes_the_bare_functions() {
     assert_eq!(TAPE_LETTER_PIXEL_SIZE as u32, LETTER_PIXEL_SIZE);
     assert_eq!(TAPE_NATURAL_HEIGHT as u32, NATURAL_HEIGHT);
 
-    let entry = term::font_by_name(tape::FONT_NAME).expect("the bundled tape face");
+    let entry = term::font_by_name(tape::FONT_NAME, term::FontSource::Bundled)
+        .expect("the bundled tape face");
     let advance = tape::metrics::unit_width(entry.data());
     assert!(advance > 0.0, "the tape face measured no advance");
 

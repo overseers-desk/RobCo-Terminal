@@ -14,8 +14,15 @@
 //!     both rasterising callers in this crate share.
 //!
 //! System fonts are [`system`]'s, enumerated through `fontdb` and appended
-//! to the catalogue after the bundled faces. The `is_system` flag was
-//! already here for the filtering rules; now something sets it.
+//! to the catalogue after the bundled faces. The `is_system` flag is what
+//! the filtering rules read to tell the two halves apart.
+//!
+//! There are two catalogues, not one, and which one a caller gets is an
+//! argument rather than a default: [`bundled_fonts`] is the 24 faces this
+//! binary carries and never touches the machine, [`system_fonts`] is those
+//! plus whatever the machine has and is the only function here that walks
+//! a font directory. A profile asking for bundled faces therefore never
+//! pays for an enumeration it will not offer.
 
 pub mod led;
 pub mod metrics;
@@ -171,7 +178,7 @@ const BUNDLED: &[BundledFont] = &[
 ];
 
 fn resolve_all() -> Vec<FontEntry> {
-    let mut all = resolve_bundled();
+    let mut all = bundled_fonts().to_vec();
     // Bundled, then system, in one list. The system half is appended, never
     // interleaved, so the bundled menu order this catalogue's test pins is
     // untouched by what is installed on the machine.
@@ -262,20 +269,45 @@ fn resolve_bundled() -> Vec<FontEntry> {
         .collect()
 }
 
-/// The whole catalogue, in declared order. Resolved once.
-pub fn fonts() -> &'static [FontEntry] {
-    static FONTS: OnceLock<Vec<FontEntry>> = OnceLock::new();
-    FONTS.get_or_init(resolve_all)
+/// The bundled catalogue, in declared order. Resolved once, off bytes this
+/// binary already carries: nothing here reads a directory, opens a font file
+/// or asks the platform anything, so a process that only ever wants bundled
+/// faces never scans.
+pub fn bundled_fonts() -> &'static [FontEntry] {
+    static BUNDLED_FONTS: OnceLock<Vec<FontEntry>> = OnceLock::new();
+    BUNDLED_FONTS.get_or_init(resolve_bundled)
 }
 
-pub fn font_by_name(name: &str) -> Option<&'static FontEntry> {
-    fonts().iter().find(|f| f.name == name)
+/// The bundled catalogue plus the machine's monospace families, in that
+/// order. Resolved once, and the resolution walks the platform's font
+/// directories: this is the only function in the crate that does.
+pub fn system_fonts() -> &'static [FontEntry] {
+    static SYSTEM_FONTS: OnceLock<Vec<FontEntry>> = OnceLock::new();
+    SYSTEM_FONTS.get_or_init(resolve_all)
+}
+
+/// The catalogue a source names. The dispatch is the whole reason the two
+/// catalogues are separate functions: a caller states which one it wants and
+/// the cost follows from the statement.
+pub fn fonts_for(source: FontSource) -> &'static [FontEntry] {
+    match source {
+        FontSource::Bundled => bundled_fonts(),
+        FontSource::System => system_fonts(),
+    }
+}
+
+/// The entry a name selects within a source's catalogue. A system face is
+/// not found under [`FontSource::Bundled`], which is what makes a persisted
+/// system font name under a bundled profile a miss the caller handles rather
+/// than a silent enumeration.
+pub fn font_by_name(name: &str, source: FontSource) -> Option<&'static FontEntry> {
+    fonts_for(source).iter().find(|f| f.name == name)
 }
 
 /// The bundled low-resolution faces, the list the LED and tape displays
 /// letter themselves from.
 pub fn low_resolution_fonts() -> impl Iterator<Item = &'static FontEntry> {
-    fonts().iter().filter(|f| !f.is_system && f.low_resolution)
+    bundled_fonts().iter().filter(|f| f.low_resolution)
 }
 
 /// The faces offered for a given source and rasterization mode. Modern
@@ -286,7 +318,7 @@ pub fn filtered_fonts(
     rasterization: i32,
 ) -> impl Iterator<Item = &'static FontEntry> {
     let modern = rasterization == MODERN_RASTERIZATION;
-    fonts().iter().filter(move |f| {
+    fonts_for(source).iter().filter(move |f| {
         let matches_source = match source {
             FontSource::Bundled => !f.is_system,
             FontSource::System => f.is_system,
@@ -315,28 +347,29 @@ mod tests {
     use super::*;
 
     /// The bundled half, which is the half that is the same on every machine.
-    fn bundled() -> Vec<&'static FontEntry> {
-        fonts().iter().filter(|f| !f.is_system).collect()
+    fn bundled() -> &'static [FontEntry] {
+        bundled_fonts()
     }
 
     #[test]
     fn the_catalogue_matches_the_recorded_entries() {
-        // The bundled half is pinned exactly; the system half is whatever the
-        // machine has, so the count below is the count of `BUNDLED` and the
-        // last bundled entry is still the last entry the bundled table
-        // declares.
+        // The bundled catalogue is pinned exactly, and carries nothing off
+        // the machine.
         let bundled = bundled();
         assert_eq!(bundled.len(), 24);
         assert_eq!(bundled[0].name, "TERMINESS_SCALED");
         assert_eq!(bundled.last().unwrap().name, "OPENDYSLEXIC");
+        assert!(bundled.iter().all(|f| !f.is_system));
         // System entries are appended, never interleaved: the first 24 of the
-        // whole catalogue are the bundled 24 in declared order.
-        assert!(fonts()[..24].iter().all(|f| !f.is_system));
+        // system catalogue are the bundled 24 in declared order.
+        let system = system_fonts();
+        assert!(system[..24].iter().all(|f| !f.is_system));
+        assert_eq!(system[..24], bundled[..]);
         // The default font name.
-        assert!(font_by_name("TERMINESS_SCALED").is_some());
+        assert!(font_by_name("TERMINESS_SCALED", FontSource::Bundled).is_some());
         // The settings default for the channel-bank lettering.
-        assert!(font_by_name("UNSCII_8_SCALED").is_some());
-        assert!(font_by_name("NO_SUCH_FONT").is_none());
+        assert!(font_by_name("UNSCII_8_SCALED", FontSource::Bundled).is_some());
+        assert!(font_by_name("NO_SUCH_FONT", FontSource::Bundled).is_none());
     }
 
     #[test]
@@ -377,7 +410,9 @@ mod tests {
     /// `tests/suite/system_fonts.rs`, which says so out loud when it skips.
     #[test]
     fn the_system_half_is_populate_system_fonts() {
-        let system: Vec<_> = fonts().iter().filter(|f| f.is_system).collect();
+        // The one test here that asks the machine anything, so it says the
+        // scanning catalogue's name out loud.
+        let system: Vec<_> = system_fonts().iter().filter(|f| f.is_system).collect();
         for f in &system {
             assert_eq!(f.name, f.text, "{}: name and label are the family", f.name);
             assert_eq!(f.family, f.name, "{}: family is the name", f.name);
@@ -395,9 +430,9 @@ mod tests {
         // A bundled family is never offered twice.
         for f in &system {
             assert!(
-                !fonts()
+                !bundled_fonts()
                     .iter()
-                    .any(|b| !b.is_system && !b.family.is_empty() && b.family == f.family),
+                    .any(|b| !b.family.is_empty() && b.family == f.family),
                 "{} is offered as both a bundled and a system face",
                 f.name
             );

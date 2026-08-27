@@ -14,7 +14,7 @@ fn main() {
         .nth(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(40);
-    let entry = fonts::font_by_name(&name).expect("known font");
+    let entry = fonts::font_by_name(&name, fonts::FontSource::Bundled).expect("known font");
     let ours = led::led_text_image(entry.data(), entry.pixel_size, LED_TEXT).unwrap();
 
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

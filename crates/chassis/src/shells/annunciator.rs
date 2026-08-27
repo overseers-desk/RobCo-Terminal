@@ -329,7 +329,7 @@ pub fn row_furniture(
 /// The natural height of one numeral's text, which is what sizes the lane
 /// and therefore what centres the strike in the row.
 fn numeral_line_height() -> f64 {
-    term::fonts::font_by_name("IOSEVKA")
+    term::fonts::font_by_name("IOSEVKA", term::fonts::FontSource::Bundled)
         .and_then(|e| {
             term::fonts::metrics::scaled_metrics(e.data(), row::NUMERAL_PIXEL_SIZE as u32)
         })

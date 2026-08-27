@@ -208,11 +208,11 @@ pub fn family_name(data: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fonts::font_by_name;
+    use crate::fonts::{font_by_name, FontSource};
 
     #[test]
     fn char_advance_px_matches_the_26_6_value_it_wraps() {
-        let entry = font_by_name("DEPARTURE_MONO_SCALED").unwrap();
+        let entry = font_by_name("DEPARTURE_MONO_SCALED", FontSource::Bundled).unwrap();
         let face = Face::parse(entry.data(), 0).unwrap();
         let want = char_advance_26_6(&face, 'M', 20) as f64 / 64.0;
         let got = char_advance_px(entry.data(), 'M', 20).unwrap();

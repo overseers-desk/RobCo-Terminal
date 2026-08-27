@@ -561,8 +561,10 @@ fn led_piece(
         pad_cells_y,
     );
 
-    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name)
-        .or_else(|| term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME))?;
+    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name, crate::font_source(cfg))
+        .or_else(|| {
+            term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME, term::fonts::FontSource::Bundled)
+        })?;
     let shown = led::visible_text(&row.title, row.open, characters as usize);
     // The top band splits the vertical pad in half, rounded down.
     let source = led_grid(
@@ -618,8 +620,10 @@ fn tape_piece(
 
     // The cabinet's own face, the one `tape_metrics` measured the wheel from,
     // so the stamp and the spacing it was cut for agree.
-    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name)
-        .or_else(|| term::fonts::font_by_name(tape::FONT_NAME))?;
+    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name, crate::font_source(cfg))
+        .or_else(|| {
+            term::fonts::font_by_name(tape::FONT_NAME, term::fonts::FontSource::Bundled)
+        })?;
     let label_h = (strip.height - 2.0 * WELL_INSET).max(1.0);
     let letter_scale = tape::letter_scale(label_h);
     let raster_size = tape::raster_size(label_h, letter_scale);
@@ -1308,7 +1312,7 @@ mod tests {
                 .1
         };
         // `characters: 2`, every pad at 0.
-        let kit = crate::led_metrics(&cfg.chassis.bank_font_name);
+        let kit = crate::led_metrics(&cfg.chassis.bank_font_name, term::FontSource::Bundled);
         assert_eq!(param("gridSizeX"), (kit.lamp_cell_width.max(1) * 2) as f32);
         assert_eq!(param("gridSizeY"), kit.lamp_cell_height.max(1) as f32);
         // `spillStrength: 0.12`, unlike a channel window's own
@@ -1338,7 +1342,9 @@ mod tests {
 
     #[test]
     fn the_lamp_grid_lays_the_proven_raster_in_a_field_of_dark_ones() {
-        let entry = term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME).unwrap();
+        let entry =
+            term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME, term::fonts::FontSource::Bundled)
+                .unwrap();
         let cell = 8;
         let grid = (cell * (12 + 2), 8 + 15);
         let r = led_grid(

@@ -174,7 +174,9 @@ pub enum Face {
     /// bundle already occupies the family.
     Catalogue(&'static str),
     /// The application's own default face: see
-    /// [`term::fonts::system::default_sans`].
+    /// [`term::fonts::system::default_sans`]. Which face that is depends on
+    /// whether the profile lets the cabinet letter itself off the machine;
+    /// a bundled profile gets the bundled numeral face here too.
     Sans,
     /// The generic serif face, which the switchboard's counter rolls name
     /// and nothing else in the three shells does.
@@ -314,7 +316,12 @@ impl Painting {
 /// supply it.
 fn face_data(face: Face) -> Option<&'static [u8]> {
     match face {
-        Face::Catalogue(name) => term::fonts::font_by_name(name).map(|e| e.data()),
+        // Bundled by name: the catalogue key a `Face` carries is a bundled
+        // entry's (see [`Face::Catalogue`]), so nothing painted on the
+        // cabinet reaches for the machine's fonts here.
+        Face::Catalogue(name) => {
+            term::fonts::font_by_name(name, term::fonts::FontSource::Bundled).map(|e| e.data())
+        }
         Face::Sans => term::fonts::system::default_sans(),
         Face::Serif => term::fonts::system::default_serif(),
     }

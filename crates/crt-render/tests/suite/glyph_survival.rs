@@ -36,7 +36,7 @@ use crt::{Chain, DegaussState, Pacing, Params};
 use term::atlas::Rasterization;
 use term::cells::CellGrid;
 use term::color::Scheme;
-use term::fonts::font_by_name;
+use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
 use term::gpu::Image;
 use term::render::GridRenderer;
@@ -118,7 +118,8 @@ fn measure(name: &str, (w, h): (u32, u32)) -> Survival {
     // The renderer the application builds, from the same catalogue entry and
     // the same sizing request: a low-resolution face at its design size,
     // magnified as geometry by the integer scale.
-    let entry = font_by_name(&cfg.screen.font_name).expect("the shipped profile's font");
+    let entry = font_by_name(&cfg.screen.font_name, FontSource::Bundled)
+        .expect("the shipped profile's font");
     let request = SizingRequest {
         line_spacing: cfg.screen.line_spacing,
         font_width: cfg.screen.font_width,

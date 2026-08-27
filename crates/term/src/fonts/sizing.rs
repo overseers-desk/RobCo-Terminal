@@ -127,7 +127,7 @@ pub fn compute_font(entry: &FontEntry, req: &SizingRequest) -> ComputedFont {
         1.0
     };
 
-    let fallback_family = super::font_by_name(entry.fallback_name)
+    let fallback_family = super::font_by_name(entry.fallback_name, super::FontSource::Bundled)
         .filter(|f| f.name != entry.name)
         .map(|f| f.family.clone())
         .unwrap_or_default();
@@ -253,11 +253,11 @@ pub fn snap_font_width(cell_width_px: u32, integer_scale: u32, wanted: f64) -> f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fonts::font_by_name;
+    use crate::fonts::{font_by_name, FontSource};
 
     #[test]
     fn low_resolution_face_never_changes_raster_size() {
-        let entry = font_by_name("TERMINESS_SCALED").unwrap();
+        let entry = font_by_name("TERMINESS_SCALED", FontSource::Bundled).unwrap();
         for scaling in [0.5, 1.0, 1.7, 3.0] {
             for dpr in [1.0, 1.5, 2.0, 3.0] {
                 let r = resolve(
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn scalable_face_moves_raster_size_and_keeps_scale_at_one() {
-        let entry = font_by_name("HACK").unwrap();
+        let entry = font_by_name("HACK", FontSource::Bundled).unwrap();
         let r = resolve(
             entry,
             &SizingRequest {
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn dpr_only_multiplies_the_geometric_scale() {
-        let entry = font_by_name("TERMINESS_SCALED").unwrap();
+        let entry = font_by_name("TERMINESS_SCALED", FontSource::Bundled).unwrap();
         let base = resolve(entry, &SizingRequest::default(), ScalePolicy::Floor);
         let hidpi = resolve(
             entry,
@@ -314,7 +314,7 @@ mod tests {
     /// a request just short of 2x renders at 1x.
     #[test]
     fn floor_policy_can_render_a_quarter_smaller_than_asked() {
-        let entry = font_by_name("UNSCII_8_SCALED").unwrap();
+        let entry = font_by_name("UNSCII_8_SCALED", FontSource::Bundled).unwrap();
         // Sweep the font-size knob and keep the worst case: how much smaller
         // than the requested line height the floor policy is willing to draw.
         let mut worst = 1.0f64;
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn font_width_is_accepted_only_on_whole_pixel_cells() {
-        let entry = font_by_name("UNSCII_8_SCALED").unwrap();
+        let entry = font_by_name("UNSCII_8_SCALED", FontSource::Bundled).unwrap();
         let mut r = resolve(entry, &SizingRequest::default(), ScalePolicy::Floor);
         // baseWidth 0.5 on an 8px cell: 4 whole pixels, exact.
         assert!(is_pixel_exact_width(8, &r));
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn a_scalable_face_is_squeezed_freely() {
-        let entry = font_by_name("HACK").unwrap();
+        let entry = font_by_name("HACK", FontSource::Bundled).unwrap();
         let mut r = resolve(entry, &SizingRequest::default(), ScalePolicy::Floor);
         r.font_width = 0.813;
         assert!(is_pixel_exact_width(19, &r));

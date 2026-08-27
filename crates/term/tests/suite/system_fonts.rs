@@ -17,7 +17,8 @@
 
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
 use term::fonts::{
-    filtered_fonts, font_by_name, fonts, FontSource, MODERN_RASTERIZATION, SYSTEM_FONT_PIXEL_SIZE,
+    filtered_fonts, font_by_name, system_fonts, FontSource, MODERN_RASTERIZATION,
+    SYSTEM_FONT_PIXEL_SIZE,
 };
 use term::{ascii_charset, FontContext, Rasterization};
 
@@ -25,7 +26,7 @@ const DEJAVU: &str = "DejaVu Sans Mono";
 
 /// `None`, loudly, on a machine without the family.
 fn dejavu() -> Option<&'static term::FontEntry> {
-    match font_by_name(DEJAVU) {
+    match font_by_name(DEJAVU, FontSource::System) {
         Some(entry) if entry.is_system => Some(entry),
         Some(_) => panic!("{DEJAVU} is in the catalogue but not as a system face"),
         None => {
@@ -33,8 +34,8 @@ fn dejavu() -> Option<&'static term::FontEntry> {
                 "skipping: {DEJAVU} is not installed on this machine, so the \
                  named-family evidence cannot be taken here. The enumeration \
                  found {} system famil(ies): {:?}",
-                fonts().iter().filter(|f| f.is_system).count(),
-                fonts()
+                system_fonts().iter().filter(|f| f.is_system).count(),
+                system_fonts()
                     .iter()
                     .filter(|f| f.is_system)
                     .map(|f| f.name)

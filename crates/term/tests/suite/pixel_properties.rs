@@ -34,7 +34,7 @@ use term::atlas::Rasterization;
 use term::cells::CellGrid;
 use term::color::Scheme;
 use term::fonts::sizing::{self, ResolvedFont, ScalePolicy, SizingRequest};
-use term::fonts::{self, font_by_name, FontEntry};
+use term::fonts::{self, font_by_name, FontEntry, FontSource};
 use term::gpu::{Gpu, Image};
 use term::render::GridRenderer;
 
@@ -42,11 +42,13 @@ use term::render::GridRenderer;
 /// They used to be `const FontSpec`s; the catalogue is the one home for
 /// bundled-face metadata now, so they are looked up by their catalogue name.
 fn terminess() -> &'static FontEntry {
-    font_by_name("TERMINESS_SCALED").expect("TERMINESS_SCALED in the catalogue")
+    font_by_name("TERMINESS_SCALED", FontSource::Bundled)
+        .expect("TERMINESS_SCALED in the catalogue")
 }
 
 fn commodore_pet() -> &'static FontEntry {
-    font_by_name("COMMODORE_PET_SCALED").expect("COMMODORE_PET_SCALED in the catalogue")
+    font_by_name("COMMODORE_PET_SCALED", FontSource::Bundled)
+        .expect("COMMODORE_PET_SCALED in the catalogue")
 }
 use term::{ascii_charset, FontContext, DEFAULT_THRESHOLD};
 
@@ -265,7 +267,7 @@ fn property_1_control_the_measurement_can_see_antialiasing() {
 #[test]
 fn property_1_premise_a_low_resolution_face_needs_no_threshold() {
     let Some((gpu, _lock)) = gpu() else { return };
-    for spec in fonts::fonts().iter().filter(|f| f.low_resolution) {
+    for spec in fonts::bundled_fonts().iter().filter(|f| f.low_resolution) {
         let resolved = sizing::resolve(spec, &SizingRequest::default(), ScalePolicy::Floor);
         assert_eq!(
             resolved.raster_pixel_size, spec.pixel_size,
@@ -305,7 +307,7 @@ fn property_1_premise_a_low_resolution_face_needs_no_threshold() {
             spec.name
         );
     }
-    let terminess = font_by_name("TERMINESS_SCALED").expect("catalogue");
+    let terminess = font_by_name("TERMINESS_SCALED", FontSource::Bundled).expect("catalogue");
     let resolved = sizing::resolve(terminess, &SizingRequest::default(), ScalePolicy::Floor);
     let mut font = FontContext::new(terminess);
     let coverage = font.build_atlas(

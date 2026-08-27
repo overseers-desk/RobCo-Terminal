@@ -126,7 +126,9 @@ pub fn chassis_style(cfg: &Config) -> frame::ChassisStyle {
     }
 }
 
-/// The display kit the profile asks for, measured off the bundled font stack.
+/// The display kit the profile asks for, measured off the font stack the
+/// profile's [`font_source`] names -- the bundled catalogue for an
+/// unconfigured profile, so measuring a cabinet costs no font scan.
 ///
 /// This is the one function in the crate that touches a font. Everything else
 /// takes the measured kit as a value, which is what keeps the geometry testable
@@ -134,9 +136,28 @@ pub fn chassis_style(cfg: &Config) -> frame::ChassisStyle {
 /// so a host does not have to know which of the two kits reads the user's lamp
 /// font and which carries its own.
 pub fn display_kit(cfg: &Config) -> Display {
+    let source = font_source(cfg);
     match cfg.chassis.channel_display {
-        config::ChannelDisplay::Led => Display::Led(led_metrics(&cfg.chassis.bank_font_name)),
-        config::ChannelDisplay::Tape => Display::Tape(tape_metrics(&cfg.chassis.bank_font_name)),
+        config::ChannelDisplay::Led => {
+            Display::Led(led_metrics(&cfg.chassis.bank_font_name, source))
+        }
+        config::ChannelDisplay::Tape => {
+            Display::Tape(tape_metrics(&cfg.chassis.bank_font_name, source))
+        }
+    }
+}
+
+/// Which catalogue a profile's font names are looked up in.
+///
+/// The config key and the catalogue's own selector are two spellings of one
+/// choice, and this crate is where they meet: it is the only one that depends
+/// on both. Under [`term::fonts::FontSource::Bundled`] nothing a cabinet
+/// looks up can reach a face off the machine, which is what keeps an
+/// unconfigured profile from scanning.
+pub fn font_source(cfg: &Config) -> term::fonts::FontSource {
+    match cfg.screen.font_source {
+        config::FontSource::BundledFonts => term::fonts::FontSource::Bundled,
+        config::FontSource::SystemFonts => term::fonts::FontSource::System,
     }
 }
 
@@ -146,12 +167,19 @@ pub fn display_kit(cfg: &Config) -> Display {
 /// over the proven 26.6 path). The four remaining measures are the
 /// settings' own defaults.
 ///
-/// A cabinet's `bank_font_name` naming no bundled face falls back to the lamp
-/// strip's own shipped face rather than refusing to measure: a hand-edited
-/// config is not a reason to have no bank.
-pub fn led_metrics(font_name: &str) -> LedMetrics {
-    let entry = term::fonts::font_by_name(font_name)
-        .or_else(|| term::fonts::font_by_name(displays::led::DEFAULT_LED_FONT_NAME))
+/// `source` is the catalogue the name is looked up in ([`font_source`]). A
+/// `bank_font_name` naming no face that catalogue offers falls back to the
+/// lamp strip's own shipped face rather than refusing to measure: a
+/// hand-edited config, or a system face named under a bundled profile, is not
+/// a reason to have no bank.
+pub fn led_metrics(font_name: &str, source: term::fonts::FontSource) -> LedMetrics {
+    let entry = term::fonts::font_by_name(font_name, source)
+        .or_else(|| {
+            term::fonts::font_by_name(
+                displays::led::DEFAULT_LED_FONT_NAME,
+                term::fonts::FontSource::Bundled,
+            )
+        })
         .expect("the bundled catalogue always carries the default lamp font");
     let (lamp_cell_width, lamp_cell_height) = displays::led::cell_metrics(entry.data(), entry.pixel_size);
     LedMetrics {
@@ -169,11 +197,17 @@ pub fn led_metrics(font_name: &str) -> LedMetrics {
 /// and the same character floor the lamp strip takes.
 ///
 /// The letter size is the wheel's and not the face's, so a cabinet that names
-/// another face stamps it at the same 20 px. A name matching no bundled face
-/// falls back to the tape's own, the way the lamp strip falls back to its.
-pub fn tape_metrics(font_name: &str) -> TapeMetrics {
-    let entry = term::fonts::font_by_name(font_name)
-        .or_else(|| term::fonts::font_by_name(displays::tape::FONT_NAME))
+/// another face stamps it at the same 20 px. A name `source`'s catalogue does
+/// not offer falls back to the tape's own, the way the lamp strip falls back
+/// to its.
+pub fn tape_metrics(font_name: &str, source: term::fonts::FontSource) -> TapeMetrics {
+    let entry = term::fonts::font_by_name(font_name, source)
+        .or_else(|| {
+            term::fonts::font_by_name(
+                displays::tape::FONT_NAME,
+                term::fonts::FontSource::Bundled,
+            )
+        })
         .expect("the bundled catalogue always carries the tape's own face");
     TapeMetrics {
         unit_width: displays::tape::metrics::unit_width(entry.data()),
@@ -194,6 +228,17 @@ pub fn channel_indicator(cfg: &Config) -> ChannelIndicator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_profile_names_the_catalogue_its_faces_are_looked_up_in() {
+        // The shipped profile asks for bundled faces, which is what makes
+        // measuring the stock cabinet a scan-free thing to do.
+        let mut cfg = Config::default();
+        assert_eq!(cfg.screen.font_source, config::FontSource::BundledFonts);
+        assert_eq!(font_source(&cfg), term::FontSource::Bundled);
+        cfg.screen.font_source = config::FontSource::SystemFonts;
+        assert_eq!(font_source(&cfg), term::FontSource::System);
+    }
 
     #[test]
     fn every_shell_the_config_can_name_has_metrics_a_bezel_and_a_casting() {
@@ -231,7 +276,7 @@ mod tests {
         // 205.
         let cfg = Config::default();
         assert_eq!(cfg.chassis.bank_font_name, "COZETTE_SCALED");
-        let led = led_metrics(&cfg.chassis.bank_font_name);
+        let led = led_metrics(&cfg.chassis.bank_font_name, term::FontSource::Bundled);
         assert_eq!((led.lamp_cell_width, led.lamp_cell_height), (6, 13));
         assert_eq!(led.unit_width(), 9.0); // 6 * 1.5
         assert_eq!(led.width_for_units(12), 126); // round(6 * 14 * 1.5)
@@ -241,14 +286,14 @@ mod tests {
         // shipped face rather than refusing, which is a different face from
         // the one this cabinet names.
         assert_eq!(
-            led_metrics("NO_SUCH_FACE"),
-            led_metrics(displays::led::DEFAULT_LED_FONT_NAME)
+            led_metrics("NO_SUCH_FACE", term::FontSource::Bundled),
+            led_metrics(displays::led::DEFAULT_LED_FONT_NAME, term::FontSource::Bundled)
         );
-        assert_ne!(led_metrics("NO_SUCH_FACE"), led);
+        assert_ne!(led_metrics("NO_SUCH_FACE", term::FontSource::Bundled), led);
 
         // Departure Mono at 20 px, the tape's one letter size, measured the
         // same way.
-        let tape = tape_metrics("DEPARTURE_MONO_SCALED");
+        let tape = tape_metrics("DEPARTURE_MONO_SCALED", term::FontSource::Bundled);
         assert_eq!(tape.end_pad, 12);
         assert_eq!(tape.min_characters, 8);
         assert!(
@@ -292,9 +337,9 @@ mod tests {
         // The tape's letter size is the punch wheel's, so another face is
         // stamped at the same 20 px and measures differently; a face the
         // catalogue does not carry leaves the wheel its own.
-        let departure = tape_metrics("DEPARTURE_MONO_SCALED");
-        assert_ne!(tape_metrics("COZETTE_SCALED"), departure);
-        assert_eq!(tape_metrics("NO_SUCH_FACE"), departure);
+        let departure = tape_metrics("DEPARTURE_MONO_SCALED", term::FontSource::Bundled);
+        assert_ne!(tape_metrics("COZETTE_SCALED", term::FontSource::Bundled), departure);
+        assert_eq!(tape_metrics("NO_SUCH_FACE", term::FontSource::Bundled), departure);
     }
 
     #[test]

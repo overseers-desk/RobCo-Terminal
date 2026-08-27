@@ -24,7 +24,7 @@ use term::atlas::Rasterization;
 use term::cells::{CellGrid, CursorShape, CursorState};
 use term::color::Scheme;
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
-use term::fonts::{font_by_name, FontEntry};
+use term::fonts::{font_by_name, FontEntry, FontSource};
 use term::gpu::{Gpu, Image};
 use term::render::GridRenderer;
 use term::{ascii_charset, FontContext, DEFAULT_THRESHOLD};
@@ -41,7 +41,8 @@ const CURSOR_ROW: usize = 1;
 const CURSOR_COL: usize = 2;
 
 fn terminess() -> &'static FontEntry {
-    font_by_name("TERMINESS_SCALED").expect("TERMINESS_SCALED in the catalogue")
+    font_by_name("TERMINESS_SCALED", FontSource::Bundled)
+        .expect("TERMINESS_SCALED in the catalogue")
 }
 
 /// Same rule as `pixel_properties.rs`: real bytes off a real device, under the

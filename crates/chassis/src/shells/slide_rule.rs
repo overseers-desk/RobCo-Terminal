@@ -271,7 +271,7 @@ pub fn row_furniture(
 
 /// The natural height of one stamped numeral's text.
 fn numeral_line_height() -> f64 {
-    term::fonts::font_by_name("IOSEVKA")
+    term::fonts::font_by_name("IOSEVKA", term::fonts::FontSource::Bundled)
         .and_then(|e| {
             term::fonts::metrics::scaled_metrics(e.data(), row::NUMERAL_PIXEL_SIZE as u32)
         })
@@ -649,8 +649,13 @@ fn counter_lamps(cfg: &config::Config, panel: PaintRect, page_label: &str) -> Op
     let lamp_cell_width = kit.lamp_cell_width.max(1) as u32;
     let lamp_cell_height = kit.lamp_cell_height.max(1) as u32;
     let grid = crate::displays::led::grid_size(lamp_cell_width, lamp_cell_height, 2, 0, 0, 0);
-    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name)
-        .or_else(|| term::fonts::font_by_name(crate::displays::led::DEFAULT_LED_FONT_NAME))?;
+    let entry = term::fonts::font_by_name(&cfg.chassis.bank_font_name, crate::font_source(cfg))
+        .or_else(|| {
+            term::fonts::font_by_name(
+                crate::displays::led::DEFAULT_LED_FONT_NAME,
+                term::fonts::FontSource::Bundled,
+            )
+        })?;
     let source = crate::furniture::led_grid(
         entry.data(),
         entry.pixel_size,

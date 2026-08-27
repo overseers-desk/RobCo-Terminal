@@ -63,6 +63,18 @@ fn say(text: &str) {
     let _ = std::io::stdout().write_all(text.as_bytes());
 }
 
+/// Catalogue entries as the dump carries them: the key settings persist and
+/// the label a menu shows for it, and nothing else either dump needs.
+fn listings(fonts: &[term::FontEntry]) -> Vec<config::dump::FontListing> {
+    fonts
+        .iter()
+        .map(|f| config::dump::FontListing {
+            name: f.name.to_string(),
+            text: f.text.to_string(),
+        })
+        .collect()
+}
+
 fn main() -> ExitCode {
     #[cfg(windows)]
     adopt_parent_console();
@@ -85,15 +97,26 @@ fn main() -> ExitCode {
     // The settings dump is pure output: no window, no instance lock, no
     // config file touched. Handled before anything else starts so external
     // tools can call it while a terminal is running.
+    //
+    // The bundled catalogue only. What the machine has installed is the other
+    // dump below, because it is the one that costs a walk of the platform's
+    // font directories: a settings tool refreshing its view pays for that
+    // when it asks for it and not otherwise.
     if options.dump_settings {
-        let fonts = term::fonts()
+        say(&config::dump::dump(listings(term::bundled_fonts())));
+        return ExitCode::SUCCESS;
+    }
+
+    // The machine's own monospace families, as a `[[fonts]]` document. This
+    // is the scan, asked for by name: the enumeration runs here and the
+    // process exits with it, having opened no window and read no config.
+    if options.dump_system_fonts {
+        let installed: Vec<_> = term::system_fonts()
             .iter()
-            .map(|f| config::dump::FontListing {
-                name: f.name.to_string(),
-                text: f.text.to_string(),
-            })
+            .filter(|f| f.is_system)
+            .cloned()
             .collect();
-        say(&config::dump::dump(fonts));
+        say(&config::dump::dump_fonts_only(listings(&installed)));
         return ExitCode::SUCCESS;
     }
 
@@ -298,6 +321,17 @@ fn main() -> ExitCode {
             config
         }
     };
+
+    // Whether this run may letter its cabinet in a face off the machine,
+    // decided once, here, from the config that resolved above and before any
+    // window exists to paint a label. A profile that asks for bundled faces
+    // gets the bundled numeral face for the pager's words and counter rolls
+    // too, and the process never walks the platform's font directories at
+    // all. The two dumps return above this line and never decide, which is
+    // what keeps `--dump-settings` scan-free.
+    term::fonts::system::allow_system_lettering(
+        initial_config.screen.font_source == config::FontSource::SystemFonts,
+    );
 
     // The look this run actually came up wearing, after the file, the
     // profile and the defaults have all had their say. Printed because it

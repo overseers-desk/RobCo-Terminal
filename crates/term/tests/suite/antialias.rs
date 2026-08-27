@@ -46,7 +46,7 @@ use crt_burnin::headless::GpuLock;
 use term::atlas::Rasterization;
 use term::cells::CellGrid;
 use term::color::Scheme;
-use term::fonts::font_by_name;
+use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{ScalePolicy, SizingRequest};
 use term::gpu::{Gpu, Image};
 use term::render::GridRenderer;
@@ -168,8 +168,8 @@ fn the_scalable_half_is_antialiased_and_the_pixel_half_is_not() {
     // a bitmap-derived face carrying a strike at the size the shipped request
     // resolves to, so it is the exception rather than the case. Hack is an
     // outline face, which is what seven of the eight scalable entries are.
-    let scalable = font_by_name("HACK").expect("HACK");
-    let pixel = font_by_name("TERMINESS_SCALED").expect("TERMINESS_SCALED");
+    let scalable = font_by_name("HACK", FontSource::Bundled).expect("HACK");
+    let pixel = font_by_name("TERMINESS_SCALED", FontSource::Bundled).expect("TERMINESS_SCALED");
 
     let aa = ink(&gpu, scalable);
     let binary = ink(&gpu, pixel);
@@ -231,7 +231,7 @@ fn the_scalable_half_is_antialiased_and_the_pixel_half_is_not() {
 fn every_scalable_catalogue_face_takes_the_coverage_path() {
     let Some((gpu, _lock)) = gpu() else { return };
 
-    let scalable: Vec<_> = term::fonts::fonts()
+    let scalable: Vec<_> = term::fonts::bundled_fonts()
         .iter()
         .filter(|f| !f.is_system && !f.low_resolution)
         .collect();
@@ -277,7 +277,7 @@ fn every_scalable_catalogue_face_takes_the_coverage_path() {
 #[test]
 fn terminess_takes_its_strike_even_with_antialiasing_on() {
     let Some((gpu, _lock)) = gpu() else { return };
-    let entry = font_by_name("TERMINESS").expect("TERMINESS");
+    let entry = font_by_name("TERMINESS", FontSource::Bundled).expect("TERMINESS");
 
     let on_strike = ink(&gpu, entry);
     assert_eq!(on_strike.mode, Rasterization::Coverage);

@@ -199,7 +199,9 @@ mod tests {
 
     #[test]
     fn cell_metrics_are_at_least_one_pixel() {
-        let entry = term::fonts::font_by_name(DEFAULT_LED_FONT_NAME).unwrap();
+        let entry =
+            term::fonts::font_by_name(DEFAULT_LED_FONT_NAME, term::fonts::FontSource::Bundled)
+                .unwrap();
         let (w, h) = cell_metrics(entry.data(), entry.pixel_size);
         assert!(w >= 1);
         assert!(h >= 1);

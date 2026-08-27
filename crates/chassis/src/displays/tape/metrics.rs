@@ -45,7 +45,9 @@ mod tests {
 
     #[test]
     fn unit_width_is_the_departure_mono_m_advance_at_20px() {
-        let entry = term::fonts::font_by_name(super::super::FONT_NAME).unwrap();
+        let entry =
+            term::fonts::font_by_name(super::super::FONT_NAME, term::fonts::FontSource::Bundled)
+                .unwrap();
         let got = unit_width(entry.data());
         // A monospaced face's advance at 20px sits comfortably inside a
         // pixel-ish band; this pins it against silent regression without

@@ -13,9 +13,13 @@
 //! `[[ssh.host]]` row holds (row defaults, not a fifth config table),
 //! `[[screen_presets]]` / `[[chassis_presets]]` the built-in presets with
 //! every field resolved (a consumer never redoes the diff-against-default
-//! resolution `presets.rs` states them in), `[[fonts]]` the catalogue the
-//! binary was asked for, and `[values]` the admissible strings for each
-//! enum key.
+//! resolution `presets.rs` states them in), `[[fonts]]` the bundled font
+//! catalogue, and `[values]` the admissible strings for each enum key.
+//!
+//! What the machine has installed is [`dump_fonts_only`], a `[[fonts]]`
+//! document of its own, because that answer costs a walk of the platform's
+//! font directories and this one does not: a tool asks for it when the user
+//! is choosing a system font and not on every refresh.
 
 use serde::Serialize;
 
@@ -57,8 +61,7 @@ struct Dump {
 }
 
 /// The whole dump as a TOML document. `fonts` comes from the caller because
-/// the catalogue lives in the binary, not in this crate, and half of it
-/// (system monospace faces) only exists at runtime on the machine at hand.
+/// the catalogue lives in the binary, not in this crate.
 pub fn dump(fonts: Vec<FontListing>) -> String {
     let dump = Dump {
         general: GeneralSettings::default(),
@@ -77,6 +80,22 @@ pub fn dump(fonts: Vec<FontListing>) -> String {
         },
     };
     toml_edit::ser::to_string_pretty(&dump).expect("settings dump serializes")
+}
+
+/// A `[[fonts]]` table and nothing else.
+///
+/// The catalogue half of the dump asked for on its own, because the two
+/// halves cost different things: the defaults, presets and value lists are
+/// this crate's own constants, while the machine's monospace families are a
+/// walk of the platform's font directories. A tool that wants the second
+/// half says so, and a tool that wants the settings does not pay for it.
+#[derive(Serialize)]
+struct FontsOnly {
+    fonts: Vec<FontListing>,
+}
+
+pub fn dump_fonts_only(fonts: Vec<FontListing>) -> String {
+    toml_edit::ser::to_string_pretty(&FontsOnly { fonts }).expect("font dump serializes")
 }
 
 // Every variant of each enum-shaped key, in declared order. The exhaustive
@@ -163,5 +182,25 @@ mod tests {
             doc["values"]["shell"].as_array().unwrap().iter().nth(1).unwrap().as_str(),
             Some("slide-rule")
         );
+    }
+
+    #[test]
+    fn the_font_dump_is_the_catalogue_and_nothing_else() {
+        let text = dump_fonts_only(vec![FontListing {
+            name: "DejaVu Sans Mono".into(),
+            text: "DejaVu Sans Mono".into(),
+        }]);
+        let doc: toml_edit::DocumentMut = text.parse().expect("dump is valid TOML");
+        let fonts = doc["fonts"].as_array_of_tables().unwrap();
+        assert_eq!(fonts.len(), 1);
+        assert_eq!(
+            fonts.iter().next().unwrap()["text"].as_str(),
+            Some("DejaVu Sans Mono")
+        );
+        // Nothing of the settings dump rides along: this is the answer to a
+        // different question, not that answer with a font list appended.
+        assert!(!doc.contains_key("screen"));
+        assert!(!doc.contains_key("screen_presets"));
+        assert!(!doc.contains_key("values"));
     }
 }

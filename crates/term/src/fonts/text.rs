@@ -313,7 +313,7 @@ mod tests {
     use super::*;
 
     fn iosevka() -> &'static [u8] {
-        super::super::font_by_name("IOSEVKA")
+        super::super::font_by_name("IOSEVKA", super::super::FontSource::Bundled)
             .expect("Iosevka is bundled")
             .data()
     }

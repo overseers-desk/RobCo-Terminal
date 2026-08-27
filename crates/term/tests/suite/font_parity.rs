@@ -40,7 +40,7 @@ const LED_TEXT: &str = "CH 01 AMBER 1234567890";
 /// system half is whatever the running machine has installed, which the
 /// fixture has no way to pin.
 fn bundled() -> Vec<&'static fonts::FontEntry> {
-    fonts::fonts().iter().filter(|f| !f.is_system).collect()
+    fonts::bundled_fonts().iter().collect()
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn scaled_metrics_match_golden() {
     let g = golden();
     for row in g["fonts"].as_array().unwrap() {
         let name = row["name"].as_str().unwrap();
-        let entry = fonts::font_by_name(name).unwrap();
+        let entry = fonts::font_by_name(name, fonts::FontSource::Bundled).unwrap();
         let sm = fonts::metrics::scaled_metrics(entry.data(), entry.pixel_size).unwrap();
         assert!(
             (sm.ascent() - row["ascent"].as_f64().unwrap()).abs() < 1e-12,
@@ -154,7 +154,7 @@ fn computed_font_matches_golden() {
     let g = golden();
     for row in g["fonts"].as_array().unwrap() {
         let name = row["name"].as_str().unwrap();
-        let entry = fonts::font_by_name(name).unwrap();
+        let entry = fonts::font_by_name(name, fonts::FontSource::Bundled).unwrap();
         for c in row["computed"].as_array().unwrap() {
             let req = sizing::SizingRequest {
                 font_scaling: c["in_fontScaling"].as_f64().unwrap(),
@@ -287,6 +287,6 @@ fn led_raster_rmse_against_golden() {
 
 #[test]
 fn empty_text_has_no_raster() {
-    let entry = fonts::font_by_name("UNSCII_8_SCALED").unwrap();
+    let entry = fonts::font_by_name("UNSCII_8_SCALED", fonts::FontSource::Bundled).unwrap();
     assert!(led::led_text_image(entry.data(), entry.pixel_size, "").is_none());
 }

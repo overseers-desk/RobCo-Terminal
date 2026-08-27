@@ -24,7 +24,7 @@ use crt_burnin::headless::GpuLock;
 use std::time::Instant;
 use term::atlas::Rasterization;
 use term::color::Scheme;
-use term::fonts::font_by_name;
+use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
 use term::gpu::Gpu;
 use term::render::GridRenderer;
@@ -79,7 +79,8 @@ fn gpu() -> Option<(Gpu, GpuLock)> {
 /// frame through `sync`, which resolves any character the atlas lacks against
 /// this context, so the two travel together the way they do in the app.
 fn renderer(gpu: &Gpu, scheme: &Scheme) -> (GridRenderer, FontContext) {
-    let terminess = font_by_name("TERMINESS_SCALED").expect("TERMINESS_SCALED in the catalogue");
+    let terminess = font_by_name("TERMINESS_SCALED", FontSource::Bundled)
+        .expect("TERMINESS_SCALED in the catalogue");
     let resolved = sizing::resolve(terminess, &SizingRequest::default(), ScalePolicy::Floor);
     let mut font = FontContext::new(terminess);
     let atlas = font.build_atlas(

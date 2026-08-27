@@ -492,7 +492,9 @@ impl FontContext {
                 spec.name,
                 spec.data().len()
             );
-            if let Some(fallback) = crate::fonts::font_by_name(FALLBACK_FACE) {
+            if let Some(fallback) =
+                crate::fonts::font_by_name(FALLBACK_FACE, crate::fonts::FontSource::Bundled)
+            {
                 db.load_font_data(fallback.data().to_vec());
             }
         }
@@ -820,7 +822,9 @@ mod tests {
 
         // And that what it stood up is the bundled default, not an empty
         // shell that will produce blank glyphs forever.
-        let fallback = crate::fonts::font_by_name(FALLBACK_FACE).expect("the bundled fallback");
+        let fallback =
+            crate::fonts::font_by_name(FALLBACK_FACE, crate::fonts::FontSource::Bundled)
+                .expect("the bundled fallback");
         assert_eq!(
             context.family, fallback.family,
             "the fallback face is not the one the atlas fell back to"

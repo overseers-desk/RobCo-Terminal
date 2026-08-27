@@ -29,6 +29,7 @@
 //! costs the directory walk, not tens of megabytes of resident font data.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use cosmic_text::fontdb;
 
@@ -51,9 +52,52 @@ pub struct SystemFace {
 /// otherwise offer them twice, once from the bundle and once from the system,
 /// under the same label and with different metadata.
 pub fn monospace_families(exclude: &[String]) -> Vec<SystemFace> {
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
-    families_from(&db, exclude)
+    families_from(installed(), exclude)
+}
+
+/// The machine's fonts, walked at most once for the life of the process.
+///
+/// One database, not one per question. The three things this module answers
+/// off the platform's font directories -- the monospace family list, the
+/// `sans-serif` generic, the `serif` generic -- are three readings of the
+/// same walk, and `load_system_fonts` is the expensive half of all three.
+fn installed() -> &'static fontdb::Database {
+    static DB: OnceLock<fontdb::Database> = OnceLock::new();
+    DB.get_or_init(|| {
+        let mut db = fontdb::Database::new();
+        db.load_system_fonts();
+        db
+    })
+}
+
+/// Whether the chassis lettering may be set in a face off the machine.
+///
+/// Off, and the two generics below answer with the bundled Iosevka rather
+/// than with a walk of the font directories: a profile that asks for bundled
+/// faces gets a cabinet lettered in a face this binary carries, and the
+/// process never touches the machine's fonts at all.
+///
+/// One shot: the first call decides for the process, later ones are ignored,
+/// and never calling means off. The gate is a startup decision made once from
+/// the resolved config, not a setting that moves under a running cabinet --
+/// the generics are `'static` byte slices resolved once each, so there is
+/// nothing for a second answer to change.
+pub fn allow_system_lettering(allowed: bool) {
+    let _ = LETTERING.set(allowed);
+}
+
+static LETTERING: OnceLock<bool> = OnceLock::new();
+
+fn system_lettering_allowed() -> bool {
+    *LETTERING.get().unwrap_or(&false)
+}
+
+/// The bundled face the chassis letters itself in when the machine's fonts
+/// are off limits: Iosevka, which is already the numeral face all three
+/// shells stamp their channel numbers in, so a cabinet whose labels and
+/// numerals both come from the bundle is a cabinet set in one face.
+fn bundled_lettering() -> Option<&'static [u8]> {
+    super::font_by_name("IOSEVKA", super::FontSource::Bundled).map(|e| e.data())
 }
 
 /// The body of [`monospace_families`] against an arbitrary database.
@@ -137,16 +181,22 @@ const SANS_CANDIDATES: &[&str] = &[
 
 /// The application font's bytes, read once for the life of the process.
 ///
+/// Under [`allow_system_lettering(false)`](allow_system_lettering) -- which
+/// is what an unconfigured process is -- this is the bundled Iosevka and no
+/// candidate above is consulted, so the machine's fonts are never walked for
+/// a label. The caller's own miss handling stays the fallback of the
+/// fallback: a build with no Iosevka in it still paints no label rather than
+/// painting one in the wrong face.
+///
 /// Leaked for the same reason [`face_data`] leaks: the callers want a
 /// `&'static [u8]` to hand a rasteriser, and there is exactly one of these.
 pub fn default_sans() -> Option<&'static [u8]> {
-    use std::sync::OnceLock;
-
     static SANS: OnceLock<Option<&'static [u8]>> = OnceLock::new();
     *SANS.get_or_init(|| {
-        let mut db = fontdb::Database::new();
-        db.load_system_fonts();
-        let path = sans_face(&db)?;
+        if !system_lettering_allowed() {
+            return bundled_lettering();
+        }
+        let path = sans_face(installed())?;
         let data = face_data(&path);
         (!data.is_empty()).then_some(data)
     })
@@ -164,15 +214,15 @@ const SERIF_CANDIDATES: &[&str] = &[
     "Times",
 ];
 
-/// The `serif` generic's bytes, read once for the life of the process.
+/// The `serif` generic's bytes, read once for the life of the process, under
+/// the same gate and the same bundled answer as [`default_sans`].
 pub fn default_serif() -> Option<&'static [u8]> {
-    use std::sync::OnceLock;
-
     static SERIF: OnceLock<Option<&'static [u8]>> = OnceLock::new();
     *SERIF.get_or_init(|| {
-        let mut db = fontdb::Database::new();
-        db.load_system_fonts();
-        let path = named_face(&db, SERIF_CANDIDATES)?;
+        if !system_lettering_allowed() {
+            return bundled_lettering();
+        }
+        let path = named_face(installed(), SERIF_CANDIDATES)?;
         let data = face_data(&path);
         (!data.is_empty()).then_some(data)
     })
@@ -235,7 +285,7 @@ fn source_path(face: &fontdb::FaceInfo) -> Option<(PathBuf, u32)> {
 /// to do, and the caller ([`super::FontEntry::data`]) turns it into a fallback.
 pub fn face_data(path: &Path) -> &'static [u8] {
     use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
 
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, &'static [u8]>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -280,8 +330,9 @@ mod tests {
             std::fs::create_dir_all(&dir).expect("temp dir");
             let mut db = fontdb::Database::new();
             for entry_name in faces {
-                let entry = super::super::font_by_name(entry_name)
-                    .unwrap_or_else(|| panic!("{entry_name} is in the catalogue"));
+                let entry =
+                    super::super::font_by_name(entry_name, super::super::FontSource::Bundled)
+                        .unwrap_or_else(|| panic!("{entry_name} is in the catalogue"));
                 let path = dir.join(format!("{entry_name}.ttf"));
                 std::fs::write(&path, entry.data()).expect("write the face out");
                 db.load_font_file(&path).expect("load the face back");
@@ -294,6 +345,25 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.dir);
         }
+    }
+
+    /// An ungated process letters the chassis in the bundled Iosevka, and
+    /// asks the machine for nothing.
+    ///
+    /// Nothing in this test binary calls [`allow_system_lettering`], so the
+    /// gate is in the state every process starts in and the one state a
+    /// process that never decides stays in. The gate is one-shot for the
+    /// life of a process, which is why this is asserted rather than driven
+    /// both ways here: the system arm is a startup decision, and
+    /// `tests/suite/system_fonts.rs` is where the machine's own fonts are
+    /// spoken about.
+    #[test]
+    fn the_generics_are_the_bundled_numeral_face_until_the_gate_is_opened() {
+        let iosevka = super::super::font_by_name("IOSEVKA", super::super::FontSource::Bundled)
+            .expect("the bundled catalogue carries Iosevka")
+            .data();
+        assert_eq!(default_sans(), Some(iosevka));
+        assert_eq!(default_serif(), Some(iosevka));
     }
 
     /// The family name this module reports is the family name the *catalogue*
@@ -311,9 +381,9 @@ mod tests {
         let f = Fixture::new("names", &["HACK", "FIRA_CODE"]);
         for face in families_from(&f.db, &[]) {
             assert!(
-                super::super::fonts()
+                super::super::bundled_fonts()
                     .iter()
-                    .any(|e| !e.is_system && e.family == face.family),
+                    .any(|e| e.family == face.family),
                 "fontdb calls this file's family {:?}, and no *bundled* catalogue \
                  entry agrees; the bundled-family exclusion compares these two",
                 face.family
@@ -361,7 +431,7 @@ mod tests {
         let f = Fixture::new("exclude", &["HACK", "FIRA_CODE"]);
         // The catalogue's own family string for Hack, which is exactly what
         // `resolve_all` builds the exclusion list out of.
-        let hack = super::super::font_by_name("HACK")
+        let hack = super::super::font_by_name("HACK", super::super::FontSource::Bundled)
             .expect("HACK")
             .family
             .clone();

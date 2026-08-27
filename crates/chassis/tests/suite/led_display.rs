@@ -33,7 +33,9 @@ fn led_display_composes_the_proven_raster_with_led_matrix() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
     let gpu = headless::Gpu::new().expect("headless wgpu device");
 
-    let font = term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME).unwrap();
+    let font =
+        term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME, term::fonts::FontSource::Bundled)
+            .unwrap();
     let font_color = str_to_color(AMBER);
 
     // A sampled channel set: a couple of real channel titles at both

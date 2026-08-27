@@ -69,7 +69,7 @@ pub use color::{Rgba, Scheme};
 pub use dcs::{DcsParser, DcsTap, NoopTap};
 pub use distortion::{correct_distortion, DistortionParams};
 pub use fonts::sizing::{resolve, ResolvedFont, ScalePolicy, SizingRequest};
-pub use fonts::{font_by_name, fonts, FontEntry};
+pub use fonts::{bundled_fonts, font_by_name, system_fonts, FontEntry, FontSource};
 pub use gpu::{Gpu, Image, Target};
 pub use grid::{GridView, ScriptedGrid};
 pub use hotspots::{HotSpot, HotSpotType, UrlFilterChain, UrlType};

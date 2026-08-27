@@ -111,7 +111,8 @@ fn tape_display_composes_the_proven_raster_with_tape_label() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/tape_label/tape_label.slangp");
     let gpu = headless::Gpu::new().expect("headless wgpu device");
 
-    let font = term::fonts::font_by_name(tape::FONT_NAME).unwrap();
+    let font = term::fonts::font_by_name(tape::FONT_NAME, term::fonts::FontSource::Bundled)
+        .unwrap();
     let light = normalize(tape::DISPLAY_LIGHT_DIR);
     let tape_color = tape::tape_color();
     let letter_color = tape::letter_color();

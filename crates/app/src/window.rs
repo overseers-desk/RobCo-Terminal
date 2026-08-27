@@ -188,13 +188,31 @@ fn bank_physical(cabinet: &Cabinet, scale_factor: f64, window_width: u32) -> u32
         .min(window_width.saturating_sub(1))
 }
 
-/// The catalogue entry `screen.font_name` names, or the shipped default if it
-/// names nothing (a hand-edited config can, and a font that has gone missing
-/// is not a reason to refuse to draw).
+/// The catalogue entry `screen.font_name` names, looked up in the catalogue
+/// `screen.font_source` selects, or the shipped default if it names nothing
+/// there.
+///
+/// Two ways to name nothing, and both end here rather than in a refusal to
+/// draw: a hand-edited config, and a profile still carrying a system face's
+/// name after its source went back to the bundled faces. The second is the
+/// migration, and it is a warning and a legible font rather than a scan --
+/// the whole point of the source key is that a bundled profile does not
+/// enumerate the machine to find out what it is missing.
 fn font_entry(cfg: &Config) -> &'static FontEntry {
-    term::font_by_name(&cfg.screen.font_name)
-        .or_else(|| term::font_by_name(&Config::default().screen.font_name))
-        .expect("the bundled catalogue always contains the default font")
+    let source = chassis::font_source(cfg);
+    if let Some(entry) = term::font_by_name(&cfg.screen.font_name, source) {
+        return entry;
+    }
+    log::warn!(
+        "the font {:?} is not in the {source:?} catalogue; \
+         falling back to the shipped default",
+        cfg.screen.font_name,
+    );
+    term::font_by_name(
+        &Config::default().screen.font_name,
+        term::FontSource::Bundled,
+    )
+    .expect("the bundled catalogue always contains the default font")
 }
 
 /// What a channel slot holds in this binary: a PTY session carrying the

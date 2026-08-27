@@ -23,16 +23,19 @@
 //! -v, --version        print version
 //! ```
 //!
-//! Five flags beyond that list are this rebuild's own, and none changes
+//! Six flags beyond that list are this rebuild's own, and none changes
 //! what `xtask verify`'s flag-presence check expects of the documented
 //! contract items above. `--frame-stats` is the live-preview throughput
 //! instrument's CLI switch: it logs a p50/p99 line periodically and does
 //! nothing when absent. `--ssh [user@]host[:port]` opens the first channel
 //! on an SSH connection this program owns (#14) instead of a shell; the
 //! spelling is validated here, so a bad one fails before a window exists.
-//! `--dump-settings` prints the settings dump (defaults, presets, font
-//! catalogue, enum value lists; see `config::dump`) on stdout and exits,
-//! the query external settings tools build their view from. `--settings`
+//! `--dump-settings` prints the settings dump (defaults, presets, the
+//! bundled font catalogue, enum value lists; see `config::dump`) on stdout
+//! and exits, the query external settings tools build their view from.
+//! `--dump-system-fonts` is the machine's own monospace families, asked for
+//! separately because that answer costs a walk of the platform's font
+//! directories and the settings dump does not. `--settings`
 //! opens the settings window and nothing else: where the window is linked
 //! into this binary this process becomes it, and everywhere else the
 //! companion application is started and waited on, so the flag means the
@@ -79,6 +82,10 @@ pub struct Options {
     /// `--dump-settings`: print the settings dump on stdout and exit
     /// without opening a window (see the module doc).
     pub dump_settings: bool,
+    /// `--dump-system-fonts`: print the machine's monospace families on
+    /// stdout and exit. The one flag that asks for a font scan, which is
+    /// why it is its own flag rather than a part of the settings dump.
+    pub dump_system_fonts: bool,
     /// `--settings`: open the settings window instead of a terminal. No
     /// glass, no instance lock, no config watch; this process is the
     /// settings application for as long as it lives.
@@ -122,7 +129,8 @@ pub fn help(program_name: &str) -> String {
 \x20 -h|--help           Print this help.\n\
 \x20 --verbose           Print additional information such as profiles and settings.\n\
 \x20 --frame-stats       Log GPU frame-timing p50/p99 periodically (this rebuild only).\n\
-\x20 --dump-settings     Print defaults, presets, fonts and value lists as TOML, then exit.\n\
+\x20 --dump-settings     Print defaults, presets, bundled fonts and value lists as TOML, then exit.\n\
+\x20 --dump-system-fonts Print this machine's monospace font families as TOML, then exit.\n\
 \x20 --settings          Open the settings window instead of a terminal.\n"
     )
 }
@@ -155,6 +163,7 @@ where
             "--verbose" => opts.verbose = true,
             "--frame-stats" => opts.frame_stats = true,
             "--dump-settings" => opts.dump_settings = true,
+            "--dump-system-fonts" => opts.dump_system_fonts = true,
             "--settings" => opts.settings = true,
             "--settings-selftest" => opts.settings_selftest = true,
             "-p" | "--profile" => match args.get(i + 1) {
@@ -255,6 +264,16 @@ mod tests {
     fn dump_settings_flag_parses_and_defaults_off() {
         assert!(!run(&[]).dump_settings);
         assert!(run(&["--dump-settings"]).dump_settings);
+    }
+
+    #[test]
+    fn dump_system_fonts_flag_parses_and_defaults_off() {
+        assert!(!run(&[]).dump_system_fonts);
+        assert!(run(&["--dump-system-fonts"]).dump_system_fonts);
+        // The two dumps are separate answers: asking for the settings does
+        // not ask for the scan.
+        assert!(!run(&["--dump-settings"]).dump_system_fonts);
+        assert!(!run(&["--dump-system-fonts"]).dump_settings);
     }
 
     #[test]

@@ -54,7 +54,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let gpu = headless::Gpu::new().expect("headless wgpu device");
-    let entry = term::fonts()
+    let entry = term::bundled_fonts()
         .first()
         .expect("at least one bundled font")
         .clone();

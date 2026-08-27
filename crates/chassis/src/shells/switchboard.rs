@@ -867,7 +867,7 @@ fn serif_line_height(pixel_size: f64) -> f64 {
 
 /// The natural height of one stamped numeral's text.
 fn numeral_line_height() -> f64 {
-    term::fonts::font_by_name("IOSEVKA")
+    term::fonts::font_by_name("IOSEVKA", term::fonts::FontSource::Bundled)
         .and_then(|e| {
             term::fonts::metrics::scaled_metrics(e.data(), row::NUMERAL_PIXEL_SIZE as u32)
         })

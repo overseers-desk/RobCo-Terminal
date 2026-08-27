@@ -32,7 +32,7 @@
 use crt_burnin::headless::GpuLock;
 use term::atlas::Rasterization;
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
-use term::fonts::{font_by_name, FontEntry};
+use term::fonts::{font_by_name, FontEntry, FontSource};
 use term::gpu::Gpu;
 use term::{ascii_charset, FontContext};
 
@@ -40,7 +40,8 @@ use term::{ascii_charset, FontContext};
 /// is the low-resolution half of the catalogue and the harder half to
 /// rasterise a stranger into.
 fn terminess() -> &'static FontEntry {
-    font_by_name("TERMINESS_SCALED").expect("TERMINESS_SCALED in the catalogue")
+    font_by_name("TERMINESS_SCALED", FontSource::Bundled)
+        .expect("TERMINESS_SCALED in the catalogue")
 }
 
 fn pixel_size(entry: &FontEntry) -> f32 {
