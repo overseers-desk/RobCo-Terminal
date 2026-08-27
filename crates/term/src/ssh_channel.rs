@@ -164,6 +164,21 @@ impl<T: DcsTap> SshChannel<T> {
         out
     }
 
+    /// Put bytes on this channel's grid without them ever touching the wire:
+    /// the path a question asked on the glass, and the echo of what is typed
+    /// into it, take.
+    ///
+    /// Two things follow from local bytes being local. `lived` does not
+    /// move -- a prompt is the connection asking, not the connection having
+    /// lived, so a refusal that arrives after one still leaves the row under
+    /// the unlived law and the user still gets to read why. And the DCS tap
+    /// never sees them: control mode is a remote program's envelope, and
+    /// nothing typed at this glass may open one. That is the same reasoning
+    /// `SshEvent::Notice` runs on, and the same one line of body.
+    pub fn feed(&mut self, bytes: &[u8]) {
+        self.processor.advance(&mut self.term, bytes);
+    }
+
     /// Send bytes to the remote side.
     ///
     /// The same swallow the PTY session has: while the tap says control
@@ -354,6 +369,31 @@ mod tests {
         );
         assert!(viewport_text(s.term())[0].contains("refused"));
         assert!(!s.pump().eof, "and stays not-ended: the user closes it");
+    }
+
+    #[test]
+    fn fed_bytes_land_on_the_grid_without_reaching_the_wire_or_the_tap() {
+        let wire = FakeWire::default();
+        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        s.feed(b"password: ");
+        assert!(viewport_text(s.term())[0].starts_with("password:"));
+        assert!(wire.sent.lock().unwrap().is_empty(), "a question is not a keystroke");
+        // A control-mode envelope typed at the glass opens nothing: the tap
+        // is fed by the wire alone.
+        s.feed(b"\x1bP1000p%begin\x1b\\");
+        assert_eq!(s.tap().hooks, 0);
+        assert_eq!(s.tap().body_bytes, 0);
+    }
+
+    #[test]
+    fn feeding_does_not_make_a_connection_lived() {
+        let wire = FakeWire::default();
+        wire.events.lock().unwrap().push_back(SshEvent::Eof);
+        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        s.feed(b"passphrase for id_ed25519: ");
+        let pumped = s.pump();
+        assert!(!pumped.eof, "a prompt is not the connection having lived");
+        assert!(viewport_text(s.term())[0].contains("passphrase"));
     }
 
     #[test]
