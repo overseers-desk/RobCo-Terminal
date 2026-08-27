@@ -24,18 +24,36 @@ namespace eval ::rcsettings::dump {
     # of what a user has to know.
     variable ForcedBinary ""
 
+    # What a terminal is called on this platform. Windows resolves an
+    # executable by extension, so the sibling looked for there is
+    # robco-term.exe; nowhere else carries a suffix. Looking for the bare
+    # name on Windows is how the sibling arm silently never matched, which
+    # left every launch to PATH.
+    proc exe_suffix {} {
+        return [expr {$::tcl_platform(platform) eq "windows" ? ".exe" : ""}]
+    }
+
     # Where the binary is looked for, in order. The result is a full path
     # (or a name auto_execok resolved), never a bare guess: the error
     # message below repeats this list, so keep the two in step.
+    #
+    # Embedded in the terminal's own executable there is no sibling to find:
+    # the terminal is this process, and the C entry point says so by setting
+    # ::rcsettings::embedded(terminal) before any script runs. That answer
+    # comes first because it is the only one that cannot be wrong.
     proc candidates {} {
         variable ForcedBinary
         set out {}
         if {$ForcedBinary ne ""} {
             lappend out $ForcedBinary
         }
+        if {[info exists ::rcsettings::embedded(terminal)]
+            && $::rcsettings::embedded(terminal) ne ""} {
+            lappend out $::rcsettings::embedded(terminal)
+        }
         set exe [info nameofexecutable]
         if {$exe ne ""} {
-            lappend out [file join [file dirname $exe] robco-term]
+            lappend out [file join [file dirname $exe] robco-term[exe_suffix]]
         }
         set found [auto_execok robco-term]
         if {$found ne ""} {
@@ -56,8 +74,13 @@ namespace eval ::rcsettings::dump {
     proc describe_search {} {
         set exe [info nameofexecutable]
         set where {}
-        lappend where "robco-term beside this interpreter\
-            ([file join [file dirname $exe] robco-term])"
+        if {[info exists ::rcsettings::embedded(terminal)]
+            && $::rcsettings::embedded(terminal) ne ""} {
+            lappend where "the terminal this window is embedded in\
+                ($::rcsettings::embedded(terminal))"
+        }
+        lappend where "robco-term[exe_suffix] beside this interpreter\
+            ([file join [file dirname $exe] robco-term[exe_suffix]])"
         lappend where "robco-term on PATH\
             ([expr {[info exists ::env(PATH)] ? $::env(PATH) : "PATH not set"}])"
         return "cannot find the robco-term binary. Looked for:\

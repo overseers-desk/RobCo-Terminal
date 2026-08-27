@@ -1,0 +1,98 @@
+# Where the app looks for the terminal, and in what order.
+#
+# No robco-term is needed here and none is run: what these tests hold is the
+# list of places, which is the half that was wrong on Windows. The sibling
+# candidate was the bare name `robco-term`, and Windows resolves an
+# executable by its extension, so beside a robco-term.exe the sibling arm
+# matched nothing and every launch fell through to PATH.
+#
+# The platform is parameterised rather than taken from the host: the list has
+# to be asserted on Windows from a Linux runner, and dump.tcl reads
+# ::tcl_platform(platform) afresh on each call so that a test can stand the
+# namespace on either platform for the length of one body.
+
+package require tcltest 2.5
+namespace import ::tcltest::*
+
+source [file join [file dirname [info script]] helpers.tcl]
+source [file join $::libdir dump.tcl]
+
+# Run one body with the platform, and the embedded terminal, set to what the
+# test is about, and put both back afterwards however the body ends.
+proc as_platform {platform script} {
+    set old $::tcl_platform(platform)
+    set had [info exists ::rcsettings::embedded(terminal)]
+    if {$had} { set was $::rcsettings::embedded(terminal) }
+    set ::tcl_platform(platform) $platform
+    set code [catch {uplevel 1 $script} result opts]
+    set ::tcl_platform(platform) $old
+    if {$had} {
+        set ::rcsettings::embedded(terminal) $was
+    } else {
+        unset -nocomplain ::rcsettings::embedded(terminal)
+    }
+    return -options $opts $result
+}
+
+# The sibling candidate, whichever position it is in.
+proc sibling {} {
+    set dir [file dirname [info nameofexecutable]]
+    foreach path [::rcsettings::dump::candidates] {
+        if {[file dirname $path] eq $dir} { return [file tail $path] }
+    }
+    return ""
+}
+
+test suffix-1.1 {windows names its executables with an extension} -body {
+    as_platform windows { ::rcsettings::dump::exe_suffix }
+} -result .exe
+
+test suffix-1.2 {every other platform carries none} -body {
+    as_platform unix { ::rcsettings::dump::exe_suffix }
+} -result {}
+
+test sibling-2.1 {the sibling looked for on windows is robco-term.exe} -body {
+    as_platform windows { sibling }
+} -result robco-term.exe
+
+test sibling-2.2 {and elsewhere the bare name} -body {
+    as_platform unix { sibling }
+} -result robco-term
+
+test embedded-3.1 {an embedded terminal is the first place looked} -body {
+    as_platform windows {
+        set ::rcsettings::embedded(terminal) {C:\Program Files\RobCo\robco-term.exe}
+        lindex [::rcsettings::dump::candidates] 0
+    }
+} -result {C:\Program Files\RobCo\robco-term.exe}
+
+test embedded-3.2 {the sibling stays behind it} -body {
+    as_platform windows {
+        set ::rcsettings::embedded(terminal) {C:\Program Files\RobCo\robco-term.exe}
+        file tail [lindex [::rcsettings::dump::candidates] 1]
+    }
+} -result robco-term.exe
+
+test embedded-3.3 {unembedded, the sibling leads} -body {
+    as_platform unix {
+        unset -nocomplain ::rcsettings::embedded(terminal)
+        file tail [lindex [::rcsettings::dump::candidates] 0]
+    }
+} -result robco-term
+
+test describe-4.1 {the error names the extension it looked for} -body {
+    as_platform windows {
+        string match {*robco-term.exe beside this interpreter*} \
+            [::rcsettings::dump::describe_search]
+    }
+} -result 1
+
+test describe-4.2 {and names the embedded terminal when there is one} -body {
+    as_platform windows {
+        set ::rcsettings::embedded(terminal) {C:\RobCo\robco-term.exe}
+        string match {*embedded in (C:\\RobCo\\robco-term.exe)*} \
+            [::rcsettings::dump::describe_search]
+    }
+} -result 1
+
+cleanupTests
