@@ -1,0 +1,379 @@
+//! The drawn half of selection: `selection_tests.rs` proves the engine picks
+//! the right cells, this proves the glass shows them.
+//!
+//! Measured in pixels off a real device, like every other picture claim in
+//! this crate, because that is the claim: a selection nobody can see is the
+//! bug (#12, #20), and a state assertion would have passed throughout it.
+//!
+//! What is pinned down here:
+//!
+//! * a marked run comes out as **inverse video** -- the plate in the phosphor
+//!   colour, the glyph in the background -- which is the only highlight a tube
+//!   with no alpha ever had;
+//! * the rest of the frame is **untouched**, and clearing the selection puts
+//!   the screen back **bit for bit**, so the highlight is a property of the
+//!   marked cells and not a wash over the picture;
+//! * a change of selection repaints **the rows it crossed and no others**, the
+//!   same narrowing the cursor's own line already gets;
+//! * a cell that arrives with its glyph and its plate already the same colour
+//!   -- which the monochrome scheme reaches whenever a program paints a
+//!   background, since the whole palette collapses to one phosphor -- still
+//!   reads once marked, because there is no second colour to reach for and the
+//!   glyph goes to the dim end of the one there is.
+
+use rio_vt::ansi::CursorShape;
+use rio_vt::crosswords::grid::Dimensions;
+use rio_vt::crosswords::Crosswords;
+use rio_vt::event::{VoidListener, WindowId};
+use rio_vt::performer::handler::Processor;
+
+use crt_burnin::headless::GpuLock;
+use term::atlas::Rasterization;
+use term::color::Scheme;
+use term::fonts::font_by_name;
+use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
+use term::gpu::{Gpu, Image};
+use term::render::{GridRenderer, Marked};
+use term::selection::Selection;
+use term::viewport::ScrollPosition;
+use term::{ascii_charset, FontContext, DEFAULT_THRESHOLD};
+
+const COLS: usize = 40;
+const ROWS: usize = 6;
+const SCROLLBACK: usize = 200;
+
+/// The shipped appliance's own colours: one phosphor for every glyph, opaque
+/// black behind it (`crates/app/src/window.rs`).
+const PHOSPHOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+const BEHIND: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+
+#[derive(Clone, Copy)]
+struct Size;
+
+impl Dimensions for Size {
+    fn total_lines(&self) -> usize {
+        ROWS
+    }
+    fn screen_lines(&self) -> usize {
+        ROWS
+    }
+    fn columns(&self) -> usize {
+        COLS
+    }
+}
+
+/// The device under the machine-wide GPU lock, on the terms `scrollback.rs`
+/// and `preedit.rs` already take it: a machine with no adapter says so rather
+/// than passing vacuously.
+fn gpu() -> Option<(Gpu, GpuLock)> {
+    let lock = GpuLock::acquire().expect("the GPU lock");
+    match Gpu::new() {
+        Ok(gpu) => Some((gpu, lock)),
+        Err(e) => {
+            if std::env::var("ROBCO_SKIP_GPU_TESTS").is_ok() {
+                eprintln!("skipping: no wgpu adapter ({e})");
+                None
+            } else {
+                panic!("no wgpu adapter: {e}");
+            }
+        }
+    }
+}
+
+fn renderer(gpu: &Gpu, scheme: &Scheme) -> (GridRenderer, FontContext) {
+    let terminess = font_by_name("TERMINESS_SCALED").expect("TERMINESS_SCALED in the catalogue");
+    let resolved = sizing::resolve(terminess, &SizingRequest::default(), ScalePolicy::Floor);
+    let mut font = FontContext::new(terminess);
+    let atlas = font.build_atlas(
+        &gpu.device,
+        &gpu.queue,
+        &resolved,
+        &ascii_charset(),
+        Rasterization::Binary {
+            threshold: DEFAULT_THRESHOLD,
+        },
+    );
+    let renderer = GridRenderer::new(&gpu.device, &gpu.queue, atlas, COLS, ROWS, scheme.clone());
+    (renderer, font)
+}
+
+fn terminal() -> (Crosswords<VoidListener>, Processor) {
+    let term = Crosswords::new(
+        Size,
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0u64),
+        0,
+        SCROLLBACK,
+    );
+    (term, Processor::default())
+}
+
+/// A run of cells on one line, as the pointer would have left it: the
+/// selection plus the absolute line the top of the screen is showing, which
+/// with no history scrolled back is line zero.
+fn marked(from: usize, to: usize, row: usize) -> Marked {
+    let mut selection = Selection::new(COLS);
+    selection.set_start(from, row, false);
+    selection.set_end(to, row);
+    Marked {
+        selection,
+        top_line: 0,
+    }
+}
+
+/// The cell rectangle of `(col, row)` in the rendered image, at scale 1.
+fn cell_rect(renderer: &GridRenderer, col: usize, row: usize) -> (u32, u32, u32, u32) {
+    let cell = renderer.atlas().cell;
+    (
+        col as u32 * cell.width,
+        row as u32 * cell.height,
+        cell.width,
+        cell.height,
+    )
+}
+
+/// How many pixels of a rectangle are lit, and how many are dark: a cell in
+/// inverse video has the two counts of the same cell drawn normally swapped,
+/// give or take nothing, because the swap is exactly what inversion is.
+fn lit_and_dark(image: &Image, rect: (u32, u32, u32, u32)) -> (usize, usize) {
+    let (x0, y0, w, h) = rect;
+    let (mut lit, mut dark) = (0, 0);
+    for y in y0..y0 + h {
+        for x in x0..x0 + w {
+            if image.pixel(x, y)[0] > 128 {
+                lit += 1;
+            } else {
+                dark += 1;
+            }
+        }
+    }
+    (lit, dark)
+}
+
+/// Whether a rectangle is all one colour: what a cell whose glyph and plate
+/// have collapsed to the same phosphor looks like.
+fn is_flat(image: &Image, rect: (u32, u32, u32, u32)) -> bool {
+    let (x0, y0, w, h) = rect;
+    let first = image.pixel(x0, y0);
+    (y0..y0 + h).all(|y| (x0..x0 + w).all(|x| image.pixel(x, y) == first))
+}
+
+/// Every pixel outside `rects` is the same in both images.
+fn identical_outside(a: &Image, b: &Image, rects: &[(u32, u32, u32, u32)]) {
+    for y in 0..a.height {
+        for x in 0..a.width {
+            let inside = rects
+                .iter()
+                .any(|(rx, ry, rw, rh)| x >= *rx && x < rx + rw && y >= *ry && y < ry + rh);
+            if inside {
+                continue;
+            }
+            assert_eq!(
+                a.pixel(x, y),
+                b.pixel(x, y),
+                "the frame changed at ({x},{y}), outside the marked run"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_marked_run_is_drawn_in_inverse_video_and_nothing_else_moves() {
+    let Some((gpu, _lock)) = gpu() else { return };
+    let scheme = Scheme::monochrome(PHOSPHOR, BEHIND);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
+    let mut viewport = ScrollPosition::default();
+    let (mut term, mut processor) = terminal();
+
+    // Row 0 carries the word; the cursor lands on row 1 and stays out of it.
+    processor.advance(&mut term, b"HELLO WORLD\r\n");
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+    );
+    let plain = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+
+    // "HELLO": columns 0 to 4 of the top line.
+    let run = marked(0, 4, 0);
+    let rects: Vec<_> = (0..=4).map(|col| cell_rect(&renderer, col, 0)).collect();
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        Some(&run),
+    );
+    let highlighted = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+
+    assert_ne!(
+        plain.pixels, highlighted.pixels,
+        "a marked run left the screen exactly as it found it: nothing was drawn"
+    );
+    identical_outside(&plain, &highlighted, &rects);
+
+    // Cell by cell, the lit and the dark counts trade places: the plate is now
+    // the phosphor and the glyph is the hole in it.
+    for (col, rect) in rects.iter().enumerate() {
+        let (was_lit, was_dark) = lit_and_dark(&plain, *rect);
+        let (now_lit, now_dark) = lit_and_dark(&highlighted, *rect);
+        assert!(
+            was_lit > 0 && was_dark > 0,
+            "test setup: column {col} of \"HELLO\" should have both glyph and background pixels"
+        );
+        assert_eq!(
+            (now_lit, now_dark),
+            (was_dark, was_lit),
+            "column {col} is not the inverse of what it was"
+        );
+    }
+
+    // Clearing puts the screen back, bit for bit.
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+    );
+    let cleared = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+    assert_eq!(
+        plain.pixels, cleared.pixels,
+        "clearing the selection left the highlight on the glass"
+    );
+}
+
+#[test]
+fn a_selection_repaints_the_rows_it_crossed_and_no_others() {
+    let Some((gpu, _lock)) = gpu() else { return };
+    let scheme = Scheme::monochrome(PHOSPHOR, BEHIND);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
+    let mut viewport = ScrollPosition::default();
+    let (mut term, mut processor) = terminal();
+
+    processor.advance(&mut term, b"ALPHA\r\nBETA\r\nGAMMA\r\n");
+    // Settle: the first sync after construction is allowed to be full.
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+    );
+
+    let run = marked(0, 4, 1);
+    let stats = renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        Some(&run),
+    );
+    assert!(!stats.full, "marking a run repainted the whole screen");
+    assert_eq!(
+        stats.marked_rows, 1,
+        "one line marked should repaint one row, not {}",
+        stats.marked_rows
+    );
+
+    // The same selection again is no change at all.
+    let stats = renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        Some(&run),
+    );
+    assert_eq!(
+        stats.rows_updated, 0,
+        "an unchanged selection repainted rows"
+    );
+
+    // Dragging down a line. Two rows, not one and not the screen: a selection
+    // is a run over the whole grid, so crossing onto the next line takes the
+    // rest of the first line with it, and both have changed.
+    let mut grown = marked(0, 4, 1);
+    grown.selection.set_end(4, 2);
+    let stats = renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        Some(&grown),
+    );
+    assert_eq!(
+        stats.marked_rows, 2,
+        "extending onto one more line repainted {} of {ROWS} rows",
+        stats.marked_rows
+    );
+
+    // Letting go of it: both rows come back.
+    let stats = renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+    );
+    assert_eq!(
+        stats.marked_rows, 2,
+        "clearing a two-line selection repainted {} rows",
+        stats.marked_rows
+    );
+}
+
+#[test]
+fn a_cell_the_phosphor_already_collapsed_still_reads_when_marked() {
+    let Some((gpu, _lock)) = gpu() else { return };
+    let scheme = Scheme::monochrome(PHOSPHOR, BEHIND);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
+    let mut viewport = ScrollPosition::default();
+    let (mut term, mut processor) = terminal();
+
+    // A red background under a white foreground. Under the monochrome scheme
+    // the whole palette is the one phosphor, so both ends of the cell arrive
+    // the same colour and the glyph is already invisible: a plain swap would
+    // mark it invisibly too.
+    processor.advance(&mut term, b"\x1b[41mX\x1b[0m\r\n");
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+    );
+    let plain = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+    let rect = cell_rect(&renderer, 0, 0);
+    assert!(
+        is_flat(&plain, rect),
+        "test setup: the collapsed cell should be one flat plate before it is marked"
+    );
+
+    let run = marked(0, 0, 0);
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        Some(&run),
+    );
+    let highlighted = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+    assert!(
+        !is_flat(&highlighted, rect),
+        "a marked cell whose glyph and plate had collapsed to one phosphor came out \
+         one flat colour again: the mark cannot be seen"
+    );
+}

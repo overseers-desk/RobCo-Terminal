@@ -255,13 +255,13 @@ tmux; the core passes the conformance suite bar the 8-bit cases xterm fails.
 
 Known gaps, so you find them here rather than by hitting them. Anything but
 printable ASCII (box drawing, icons, accents, CJK, emoji) draws a blank cell,
-with no box and no log line. A selection can be made and copied, but it is
-never drawn. Font size has no keyboard binding, only a config key. The cursor
-does not blink, and the icon is a placeholder. Built-in SSH authenticates with
-public keys alone (a configured or default key file must be unencrypted; the
-agent covers the rest), reads none of `~/.ssh/config`, and refuses an
-unknown host key rather than asking, so a password-only host or a config alias
-stops at a printed refusal; `docs/ssh.md` carries the full contract.
+with no box and no log line. Font size has no keyboard binding, only a config
+key. The cursor does not blink, and the icon is a placeholder. Built-in SSH
+authenticates with public keys alone (a configured or default key file must be
+unencrypted; the agent covers the rest), reads none of `~/.ssh/config`, and
+refuses an unknown host key rather than asking, so a password-only host or a
+config alias stops at a printed refusal; `docs/ssh.md` carries the full
+contract.
 
 MIT licensed, in `LICENSE`. The bundled faces keep their own licences,
 beside each one under `crates/term/assets/fonts/`.

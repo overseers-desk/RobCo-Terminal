@@ -13,6 +13,7 @@ mod preedit;
 mod rio_grid_tests;
 mod scrollback;
 mod search_tests;
+mod selection_paint;
 mod selection_tests;
 mod system_fonts;
 mod transcript;

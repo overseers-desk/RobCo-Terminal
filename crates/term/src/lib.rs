@@ -73,7 +73,7 @@ pub use fonts::{font_by_name, fonts, FontEntry};
 pub use gpu::{Gpu, Image, Target};
 pub use grid::{GridView, ScriptedGrid};
 pub use hotspots::{HotSpot, HotSpotType, UrlFilterChain, UrlType};
-pub use render::{GridRenderer, SyncStats};
+pub use render::{GridRenderer, Marked, SyncStats};
 // The two grid-to-text answers, both at the root because both are asked
 // from outside: `live_text` is what the program below has written on the
 // screen, `viewport_text` is what the user is looking at. They differ the

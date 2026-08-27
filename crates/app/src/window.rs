@@ -86,9 +86,9 @@ use term::rio_vt::crosswords::Mode;
 use term::selection::{self, SelectionController};
 use ssh_link::{Ask, AskDesk, Answer, Link, Question, SshTarget};
 use term::{
-    CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, ResolvedFont,
-    RioGrid, Scheme, ScrollPosition, Session, SessionConfig, SshChannel, Target, TmuxPane,
-    Viewport,
+    CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, Marked,
+    ResolvedFont, RioGrid, Scheme, ScrollPosition, Session, SessionConfig, SshChannel, Target,
+    TmuxPane, Viewport,
 };
 use tmux_cc::{PaneId, SessionId};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -2639,6 +2639,15 @@ impl TerminalSurface {
         let column_pieces = shown
             .map(|cabinet| cabinet.furniture(&strips))
             .unwrap_or_default();
+        // What the pointer has marked, taken before the glass is borrowed for
+        // the same reason the division above is: `top_line` reads the session
+        // and the renderer is about to be held mutably. A selection that has
+        // been cleared, or was never made, leaves this `None` and the glass
+        // shows no highlight at all.
+        let marked = self.selection.selection.is_valid().then(|| Marked {
+            selection: self.selection.selection.clone(),
+            top_line: self.top_line(),
+        });
 
         let Some(gpu) = self.gpu.as_mut() else { return };
         let Some(mut frame) = gpu.acquire() else {
@@ -2673,6 +2682,7 @@ impl TerminalSurface {
             &mut glass.font,
             session.term_mut(),
             &mut self.scroll,
+            marked.as_ref(),
         );
         // What the input method is composing goes into the grid, at the
         // cursor, before the grid is drawn, so it runs through the CRT chain

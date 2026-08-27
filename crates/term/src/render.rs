@@ -26,6 +26,7 @@ use crate::atlas::{FontContext, GlyphAtlas};
 use crate::cells::{Cell, CellGrid, CursorShape, CursorState};
 use crate::color::{Rgba, Scheme};
 use crate::gpu::{Gpu, Image, Target, TARGET_FORMAT};
+use crate::selection::Selection;
 
 /// One quad. All integers: the CPU decides the exact pixels, the GPU only
 /// fills them in.
@@ -108,6 +109,84 @@ pub struct SyncStats {
     pub rows_updated: usize,
     /// Rows rewritten only because the cursor entered or left them.
     pub cursor_rows: usize,
+    /// Rows rewritten only because the selection entered or left them.
+    pub marked_rows: usize,
+}
+
+/// What the pointer has marked, as the renderer is told it once a frame.
+///
+/// The renderer is handed a copy of the range and never the controller that
+/// produced it: the drag anchor, the word mode and the swap detection are the
+/// window layer's business, and a renderer holding them would be a second
+/// place to ask what is selected. This is the whole of what painting needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Marked {
+    /// The range, in the absolute grid coordinates [`Selection`] works in.
+    pub selection: Selection,
+    /// The absolute index of the line the top row of the screen is showing.
+    /// It is what turns a screen row into the absolute y
+    /// [`Selection::is_selected`] asks about, and it is the caller's because
+    /// the renderer has no idea how far back the view is scrolled.
+    pub top_line: usize,
+}
+
+/// Is this row and column of the screen inside the marked range?
+///
+/// A free function rather than a method because the row-invalidation below
+/// asks it of the *old* marking and the new one in the same breath.
+fn marked_at(marked: Option<&Marked>, row: usize, col: usize) -> bool {
+    marked.is_some_and(|m| m.selection.is_selected(col, m.top_line + row))
+}
+
+/// Whether a row is marked differently than it was: the damage a change of
+/// selection makes.
+fn marking_differs(
+    before: Option<&Marked>,
+    after: Option<&Marked>,
+    row: usize,
+    cols: usize,
+) -> bool {
+    (0..cols).any(|col| marked_at(before, row, col) != marked_at(after, row, col))
+}
+
+/// Inverse video for one marked cell.
+///
+/// A phosphor terminal had no alpha to tint a highlight with: it swapped the
+/// glyph and the plate, and so does this. Two things the plain swap does not
+/// survive, both of which the cursor already answers on its own cell:
+///
+/// * a transparent plate is no plate at all, so a swapped-in transparent
+///   colour falls back to the scheme's background made opaque -- the same
+///   rule `cells::vt::cell_from_square` applies to SGR 7 and
+///   `render::vt::cursor_state` applies to the character under the block;
+/// * the shipped monochrome scheme collapses the whole palette to one
+///   phosphor colour, so a cell that already painted its own background
+///   arrives here with the glyph and the plate the same colour and comes out
+///   of the swap still the same colour, which would mark it invisibly. There
+///   is no second colour to reach for in a monochrome scheme, so the glyph
+///   goes to the dim end of the one there is.
+fn inverted(cell: Cell, scheme: &Scheme) -> Cell {
+    let opaque = |mut color: Rgba| {
+        if color[3] == 0.0 {
+            color = scheme.background;
+            color[3] = 1.0;
+        }
+        color
+    };
+    let mut fg = opaque(cell.bg);
+    let bg = opaque(cell.fg);
+    if fg[..3] == bg[..3] {
+        fg = crate::color::dim(fg, scheme.dim_factor);
+    }
+    Cell {
+        fg,
+        bg,
+        // The plate would swallow a line drawn in the colour it is painted
+        // in, so the decorations follow the glyph rather than keeping the
+        // colour SGR 58 gave them.
+        line_color: fg,
+        ..cell
+    }
 }
 
 pub struct GridRenderer {
@@ -135,6 +214,11 @@ pub struct GridRenderer {
     grid: CellGrid,
     instances: Vec<Instance>,
     cursor: Option<CursorState>,
+    /// What the pointer has marked, as of the last [`vt::sync`]. Painted into
+    /// the cells themselves (see [`Self::build_row`]) rather than over the
+    /// finished picture, so the highlight bends with the curvature and glows
+    /// with the phosphor like everything else on the tube.
+    marked: Option<Marked>,
     /// What an input method is composing right now, drawn at the cursor and
     /// belonging to no cell of the grid. See [`GridRenderer::set_preedit`].
     preedit: String,
@@ -280,6 +364,7 @@ impl GridRenderer {
             grid,
             instances,
             cursor: None,
+            marked: None,
             preedit: String::new(),
             scale: 1,
             origin: [0, 0],
@@ -619,7 +704,15 @@ impl GridRenderer {
         let cell_h = self.atlas.cell.height as i32;
         let baseline = self.atlas.cell.baseline;
         for col in 0..self.cols {
-            let cell = self.grid.cells[row * self.cols + col];
+            let mut cell = self.grid.cells[row * self.cols + col];
+            // The selection is drawn here, at the one point the cell's
+            // background is already being decided, and as a change to the
+            // cell rather than a quad laid over it: an overlay would ride on
+            // top of the finished picture, outside the curvature and the
+            // phosphor, and sit on the glass instead of behind it.
+            if marked_at(self.marked.as_ref(), row, col) {
+                cell = inverted(cell, &self.scheme);
+            }
             let x = col as i32 * cell_w;
             let y = row as i32 * cell_h;
 
@@ -885,7 +978,15 @@ pub mod vt {
         ///    scrolled in from history.
         /// 3. `TermDamage::Full` rebuilds everything.
         /// 4. Otherwise only the damaged lines are rebuilt, plus the line the
-        ///    cursor left and the line it arrived on.
+        ///    cursor left and the line it arrived on, plus any line whose
+        ///    cells have just been marked or unmarked.
+        ///
+        /// `marked` is what the pointer has selected, this frame, or `None`
+        /// for a screen with no selection on it. It is a per-frame argument
+        /// rather than state the renderer is given once because that is what
+        /// it is: the window layer owns the gesture and hands down the range
+        /// it has arrived at, and a frame that passes `None` takes the
+        /// highlight off the glass with no separate call to remember.
         pub fn sync<L: EventListener>(
             &mut self,
             device: &wgpu::Device,
@@ -893,6 +994,7 @@ pub mod vt {
             font: &mut FontContext,
             term: &mut Crosswords<L>,
             viewport: &mut ScrollPosition,
+            marked: Option<&Marked>,
         ) -> SyncStats {
             let mut stats = SyncStats::default();
 
@@ -916,6 +1018,20 @@ pub mod vt {
 
             let cursor = cursor_state(term, &self.scheme);
             let previous = self.cursor;
+
+            // Which rows the selection moved across, asked while the old
+            // marking is still here to compare against. A row the selection
+            // has left needs rebuilding as much as one it has entered: the
+            // highlight is painted into the cells, so the cells have to be
+            // built again to come back.
+            let marked_rows: Vec<usize> = if self.marked.as_ref() == marked {
+                Vec::new()
+            } else {
+                (0..self.render_rows())
+                    .filter(|&row| marking_differs(self.marked.as_ref(), marked, row, self.cols))
+                    .collect()
+            };
+            self.marked = marked.cloned();
 
             // The spare row under the screen shows the line after the last
             // one on screen, which exists only while the view is scrolled
@@ -951,6 +1067,12 @@ pub mod vt {
                         rows_to_update.push(state.row);
                         stats.cursor_rows += 1;
                     }
+                }
+            }
+            for row in marked_rows {
+                if !rows_to_update.contains(&row) {
+                    rows_to_update.push(row);
+                    stats.marked_rows += 1;
                 }
             }
             rows_to_update.sort_unstable();
