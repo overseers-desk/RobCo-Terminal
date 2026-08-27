@@ -1,7 +1,9 @@
 # The settings window
 
 Right-clicking the glass opens `robco-settings`, a separate program shipped
-in every official package beside `robco-term`. It is the graphical face of
+in every official package beside `robco-term`. On macOS the same window is
+also under the application menu, at **Settings…** or `Cmd`+`,`, where a Mac
+looks for it. It is the graphical face of
 [the config file](config.md): four tabs (General, Screen, Chassis, SSH), a
 preset picker at the head of each look axis, sliders and pickers for every
 key the build reads, a marker on each value the file pins away from its
@@ -57,8 +59,10 @@ goes there too. A launch that shows nothing has left a reason behind.
 ## How it relates to the terminal
 
 The two are separate processes with the config file between them; there is
-no other channel. The terminal spawns the app on right-click (a sibling
-binary first, then `$PATH`) and declines to spawn a second while one runs.
+no other channel. The terminal spawns the app on right-click, or on the
+macOS menu's Settings item, which names the focused window and reaches the
+same spawn (a sibling binary first, then `$PATH`); a second is declined
+while one runs.
 The app knows the schema the way its coder does: the defaults, the preset
 diffs, the font catalogue and the enum value lists are literal data in
 `settings/lib/model.tcl`, so the window opens without running or parsing

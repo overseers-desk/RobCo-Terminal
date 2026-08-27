@@ -55,9 +55,28 @@ it again, which is what you want after something else has taken the
 clipboard. Middle-click pastes, as `Ctrl`+`Shift`+`V` does; holding `Ctrl`
 while you middle-click forces bracketed paste onto a program that did not
 ask for it. Hold `Ctrl`+`Alt` while you drag to select a rectangle instead
-of a run of lines. Right-click opens the settings window
+of a run of lines, and `Ctrl` alone (`Cmd` on macOS) to copy a wrapped
+command as one unbroken run. Right-click opens the settings window
 ([docs/settings-gui.md](settings-gui.md)); a program tracking the mouse
 (vim, htop) receives the button instead, as it does the others.
+
+On macOS `Ctrl`+click is the right-click, as it is in every Mac terminal,
+so it opens the settings window and reaches a mouse-tracking program the
+same way the button itself does. That is why `Cmd` and not `Ctrl` holds
+the unbroken copy there.
+
+## The menu bar, on macOS
+
+| Key | What it does |
+|---|---|
+| `Cmd`+`,` | Open the settings window |
+| `Cmd`+`H` | Hide the application |
+| `Cmd`+`Q` | Close the terminal |
+
+macOS draws a menu bar for every application, and these are its items'
+shortcuts rather than keys the glass reads: the menu takes them before the
+grid sees them. Nothing here exists on Linux or Windows, which draw no such
+bar.
 
 ## Scrollback
 

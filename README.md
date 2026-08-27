@@ -175,7 +175,8 @@ window goes to your real desktop instead of the virtual display.
 Just run `robco-term`. There is no configuration to do first, and no config
 file exists until you write one.
 
-When you do want to change something, right-click the glass. That opens
+When you do want to change something, right-click the glass (on a Mac,
+`Ctrl`+click or `Cmd`+`,`). That opens
 the settings window, a small companion program every binary package
 carries (on Windows it lives inside the terminal's own exe), with the
 presets, sliders and pickers for everything the glass and the cabinet
