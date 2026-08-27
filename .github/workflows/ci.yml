@@ -122,10 +122,38 @@ jobs:
           ./target/release/robco-term --dump-settings > /dev/null
       - name: build the self-contained settings image
         run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
+      # The download a Mac user expects: an app with a name and an icon,
+      # inside the disk image they drag to Applications. The runner is the
+      # only machine here that has hdiutil and codesign, so this is also
+      # the only place the bundle can be assembled at all.
+      - name: assemble the app bundle and its disk image
+        run: |
+          image=$(ls settings/dist/robco-settings-*-macos-* | head -1)
+          test -n "$image"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          bash packaging/macos/bundle.sh --terminal target/release/robco-term \
+            --settings "$image" --version "$version" --out-dir dist
+      # The disk image opens, the app inside it is the one Info.plist
+      # describes, and its executable runs: what can be proved without a
+      # human at the screen. The first launch of a downloaded copy is
+      # Gatekeeper's business and is checked on real hardware instead.
+      - name: the disk image carries the app it claims
+        run: |
+          dmg=$(ls dist/*.dmg | head -1)
+          mount=$(mktemp -d)
+          hdiutil attach "$dmg" -mountpoint "$mount" -nobrowse -quiet
+          app="$mount/RobCo Terminal.app"
+          test -d "$app"
+          test -L "$mount/Applications"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist"
+          codesign --verify --deep --strict "$app"
+          "$app/Contents/MacOS/robco-term" --version
+          "$app/Contents/MacOS/robco-settings" --version
+          hdiutil detach "$mount" -quiet
       - uses: actions/upload-artifact@v4
         with:
           name: robco-term-macos-arm64
-          path: target/release/robco-term
+          path: dist/*.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: robco-settings-macos-arm64
