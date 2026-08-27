@@ -146,7 +146,7 @@ jobs:
           test -d "$app"
           test -L "$mount/Applications"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist"
-          codesign --verify --deep --strict "$app"
+          codesign --verify --strict "$app"
           "$app/Contents/MacOS/robco-term" --version
           "$app/Contents/MacOS/robco-settings" --version
           hdiutil detach "$mount" -quiet

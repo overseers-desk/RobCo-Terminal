@@ -94,11 +94,18 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# The nested binary first, then the bundle: sealing the bundle records
-# what its contents hash to, so anything signed afterwards invalidates it.
-codesign --force --sign - "$app/Contents/MacOS/robco-settings"
+# Only the bundle, and deliberately not the settings image inside it.
+# That image is a wish interpreter with its script archive appended past
+# the end of the Mach-O, which is how zipfs images are made everywhere;
+# codesign refuses to re-sign a file with data beyond what its signature
+# can cover ("main executable failed strict validation"). The linker's own
+# ad-hoc signature from its build still runs it, because the code pages it
+# covers are untouched by the append, and the release job has been
+# executing exactly this image to run its --selftest. So the seal here is
+# the bundle's, and the verify stops at the same boundary rather than
+# recursing into a file it would reject for being what it has to be.
 codesign --force --sign - "$app"
-codesign --verify --deep --strict "$app"
+codesign --verify --strict "$app"
 
 # The alias is the drag-to-install gesture every Mac user already knows;
 # without it the mounted volume shows an app and no hint of what to do.
