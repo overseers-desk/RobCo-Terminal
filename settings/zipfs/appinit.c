@@ -31,7 +31,7 @@
 static const char *RobcoDiagFile = NULL;
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(ROBCO_EMBEDDED_SETTINGS)
 #include <windows.h>
 #include <stdio.h>
 
@@ -93,6 +93,13 @@ static int RobcoSettings_AppInit(Tcl_Interp *interp) {
     return TCL_OK;
 }
 
+/*
+ * The standalone image's entry, and only its: embedded in the terminal,
+ * the Rust binary owns `main` and this one may not exist beside it
+ * (LNK2005 if it does), so the embedded compile keeps only the entry
+ * below.
+ */
+#ifndef ROBCO_EMBEDDED_SETTINGS
 int main(int argc, char **argv) {
 #ifdef _WIN32
     BorrowParentConsole();
@@ -106,6 +113,7 @@ int main(int argc, char **argv) {
     Tk_Main(argc, argv, RobcoSettings_AppInit);
     return 0;
 }
+#endif
 
 #ifdef ROBCO_EMBEDDED_SETTINGS
 /*
