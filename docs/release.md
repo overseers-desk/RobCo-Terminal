@@ -19,7 +19,7 @@ cargo run -p xtask -- dist --out-dir dist --settings-binary <path the script pri
 dpkg-buildpackage -us -uc -b
 ```
 
-`dist/` holds the tarball; the `.deb` and `-dbgsym` `.ddeb` land in the parent directory, dpkg-buildpackage's convention. Point the build script's `BUILD_DIR` at disk, not the RAM-backed `/tmp`. Run `lintian` on the `.changes` before shipping the deb; the accepted findings are the two missing manual pages.
+`dist/` holds the tarball; the `.deb` lands in the parent directory, dpkg-buildpackage's convention, with a `-dbgsym` `.ddeb` beside it that is a build side effect and not a release asset. Point the build script's `BUILD_DIR` at disk, not the RAM-backed `/tmp`. Run `lintian` on the `.changes` before shipping the deb; the accepted findings are the two missing manual pages.
 
 ## Publish
 
@@ -27,8 +27,7 @@ dpkg-buildpackage -us -uc -b
 git tag v<VERSION> && git push origin refs/tags/v<VERSION>
 gh release create v<VERSION> --title "RobCo Terminal <VERSION>" -F <notes file> \
   dist/robco-term-<VERSION>-linux-x86_64.tar.gz \
-  ../robco-term_<VERSION>_amd64.deb \
-  ../robco-term-dbgsym_<VERSION>_amd64.ddeb
+  ../robco-term_<VERSION>_amd64.deb
 ```
 
 The tag push above also triggers `.github/workflows/release.yml`, which carries both non-Linux platforms and waits for the release to exist before uploading, so run `gh release create` promptly after the push rather than long after it. Its `windows` job builds the embedded-settings exe, proves the payload with `--settings-selftest`, and uploads `robco-term-<VERSION>-windows-x86_64.exe`. Its `macos` job builds the terminal and the self-contained settings image on `macos-latest`, runs the image's own `--selftest`, bundles both into `RobCo Terminal.app` via `packaging/macos/bundle.sh`, and uploads `robco-term-<VERSION>-macos-arm64.dmg` (Apple Silicon; an Intel or universal build is unbuilt). Both are unsigned: Windows meets SmartScreen once, and macOS refuses the first launch until the user opens it from the context menu or clears the quarantine attribute, which the notes have to say. Nothing to fetch or stamp by hand for either; check the workflow run finished before moving on to Verify below.
