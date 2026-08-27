@@ -8,7 +8,9 @@ Rust 1.96.1 or newer (developed on 1.97.1), and a C++ compiler for the terminal 
 
 ## Platforms
 
-The stack was chosen for the three desktop markets: the terminal core speaks ConPTY, the GPU layer covers Metal and D3D from the same shader source, and the config paths are implemented for all three. The terminal cannot be cross-compiled from Linux, because the C++ dependency needs a native toolchain; `.github/workflows/ci.yml` proves the Windows build on every push instead, the one proof a Linux box cannot make itself. macOS has no job yet.
+The stack was chosen for the three desktop markets: the terminal core speaks ConPTY, the GPU layer covers Metal and D3D from the same shader source, and the config paths are implemented for all three. The terminal cannot be cross-compiled from Linux, because the C++ dependency needs a native toolchain; `.github/workflows/ci.yml` proves the Windows build on every push instead, the one proof a Linux box cannot make itself. Its `settings-windows` job proves the other Windows half the same way, running `settings/zipfs/build-selfcontained.ps1` to build `robco-settings.exe`. Push a version tag and `.github/workflows/release.yml` builds both, zips them together, and attaches the zip to that tag's release. macOS has no job yet.
+
+A local Windows build needs Rust and a C++ compiler for the terminal, plus `nasm` for `ring`'s assembly, same as the rest of this page; `cargo build --release -p robco-app` produces `robco-term.exe`. `robco-settings.exe` needs its own toolchain instead of Tcl/Tk installed anywhere: Visual Studio with the C++ toolset (for `nmake` and `cl`, found via `vswhere`), plus `tar` and `curl` (both in Windows 10 1803 and later). `settings/zipfs/build-selfcontained.ps1` runs the from-source Tcl/Tk build and the link itself; its header has the full account, the Windows twin of `build-selfcontained.sh` below.
 
 ## What is inside the binary
 

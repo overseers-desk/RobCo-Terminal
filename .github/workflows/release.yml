@@ -1,0 +1,65 @@
+# Ships the Windows half of a tagged release. Pushing a `v*` tag is the only
+# trigger, so this never touches a tag already cut: v0.1.0 carries its
+# Linux assets alone, exactly as they were published, and stays that way.
+#
+# The two exes are co-dependent on Windows in a way they are not on Linux:
+# the terminal looks up a fixed `robco-settings.exe` beside its own binary
+# (crates/app/src/window.rs, SETTINGS_BINARY) rather than at an installed
+# path, so a release that hands them out as two separate downloads counts on
+# a stranger to put them in the same folder unprompted. Zipping them
+# together at the archive root makes that co-location the only shape the
+# download can take.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p robco-app
+      - name: build the self-contained settings image
+        shell: pwsh
+        run: ./settings/zipfs/build-selfcontained.ps1
+      - name: stage both exes at the workspace root under their fixed names
+        shell: pwsh
+        run: |
+          $built = Get-ChildItem -Path settings/dist -Filter 'robco-settings-*.exe' | Select-Object -First 1
+          if (-not $built) { throw 'no robco-settings-*.exe produced under settings/dist' }
+          Copy-Item $built.FullName 'robco-settings.exe' -Force
+          Copy-Item target/release/robco-term.exe 'robco-term.exe' -Force
+      - name: zip both exes at the archive root
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $zip = "robco-term-$version-windows-x86_64.zip"
+          Compress-Archive -Path robco-term.exe, robco-settings.exe -DestinationPath $zip -Force
+          "ZIP_PATH=$zip" >> $env:GITHUB_ENV
+      # docs/release.md's Publish step creates the release in the same
+      # breath as the tag push that triggers this job, so the release
+      # usually exists by the time the build above finishes; the wait below
+      # covers the case where this job wins that race.
+      - name: attach the zip to this tag's release, once one exists
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          for ($i = 0; $i -lt 20; $i++) {
+              gh release view $tag *> $null
+              if ($LASTEXITCODE -eq 0) { break }
+              Start-Sleep -Seconds 15
+          }
+          gh release upload $tag "$env:ZIP_PATH" --clobber

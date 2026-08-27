@@ -35,3 +35,33 @@ jobs:
         with:
           name: robco-term-windows-x86_64
           path: target/release/robco-term.exe
+
+  # A parallel job, not a step tacked onto `windows`: the settings image is
+  # a separate toolchain (MSVC + nmake against a from-source Tcl/Tk, no
+  # Rust at all) with its own way to fail, and folding it into `windows`
+  # would let a settings-build break hide behind a green terminal build.
+  # This is also the first time build-selfcontained.ps1 has run anywhere;
+  # a green run here is the first proof its Windows twin of
+  # build-selfcontained.sh actually works, not just reads plausibly.
+  settings-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the self-contained settings image
+        shell: pwsh
+        run: ./settings/zipfs/build-selfcontained.ps1
+      # build.tcl names the image robco-settings-<version>-windows-<arch>.exe
+      # (settings/dist/, the version stamped from settings/robco-settings);
+      # the terminal looks for a fixed `robco-settings.exe` beside itself
+      # (crates/app/src/window.rs, SETTINGS_BINARY), so the artifact carries
+      # that name instead.
+      - name: name the image robco-settings.exe, the name the terminal looks for
+        shell: pwsh
+        run: |
+          $built = Get-ChildItem -Path settings/dist -Filter 'robco-settings-*.exe' | Select-Object -First 1
+          if (-not $built) { throw 'no robco-settings-*.exe produced under settings/dist' }
+          Copy-Item $built.FullName 'settings/dist/robco-settings.exe' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: robco-settings-windows-x86_64
+          path: settings/dist/robco-settings.exe
