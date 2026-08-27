@@ -2238,9 +2238,15 @@ impl TerminalSurface {
         true
     }
 
-    /// `Ctrl+Shift+T`. A new channel goes to the bank on view: on home the
-    /// lowest free slot with a shell in it, on an attachment another window of
-    /// that session, which is its gateway's to give.
+    /// `Ctrl+Shift+T`. A new channel is another of whatever the bank on view
+    /// is: on an SSH bank another channel of that connection, on a tmux
+    /// attachment another window of that session, which is its gateway's to
+    /// give, and on a bank this program manages itself whatever a fresh
+    /// window would open on -- the `[ssh]` table's default connection where
+    /// there is one, dialled on a bank of its own, and otherwise a shell in
+    /// the lowest free slot. The default is what "where sessions start"
+    /// means, and it means the same thing for the second session as for the
+    /// first.
     pub fn new_channel(&mut self) {
         // On an SSH bank, another of what you are looking at is another
         // channel of that connection, resolved locally: channel numbering
@@ -2251,6 +2257,18 @@ impl TerminalSurface {
             self.open_ssh_channel(view);
             self.channel_changed();
             return;
+        }
+        // A tmux attachment answers for its own bank, so the default has no
+        // say there: the channel asked for below is a window of that
+        // session. Only where this program is the manager is the question
+        // "what does a session start as" the config's to answer -- and a
+        // default naming a vanished row, or none at all, is a local shell.
+        if !self.channels.manager_of(view).is_some_and(Manager::is_tmux) {
+            if let Some(req) = crate::ssh::default_request(&self.live_config()) {
+                self.connect_ssh(&req);
+                self.channel_changed();
+                return;
+            }
         }
         let (config, size) = (self.session_config.clone(), self.viewport.term_size());
         if let Some(bank) = self.channels.new_channel(|| spawn(&config, size)) {

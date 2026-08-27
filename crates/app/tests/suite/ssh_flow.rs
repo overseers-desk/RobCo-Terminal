@@ -685,3 +685,42 @@ fn no_config_file_moves_nothing_and_says_nothing() {
     assert!(!glass.contains("config"), "{glass:?}");
     assert!(!glass.contains("cannot honour"), "{glass:?}");
 }
+
+/// `Ctrl+Shift+T` on a local bank asks for another of what a window opens
+/// on, and where the `[ssh]` table names a default that is a connection.
+/// The trust verdict is the real policy's and this host is unknown to it;
+/// what is asserted is where the channel went, which the dial decides
+/// before any key is presented.
+#[test]
+fn a_new_channel_on_a_local_bank_follows_the_configured_default() {
+    let far = far_side();
+    let mut s = surface();
+    assert_eq!(s.channels().current_bank(), 0);
+
+    // No default: the second channel is a second shell at home, which is
+    // the terminal an empty `[ssh]` table leaves standing.
+    s.new_channel();
+    assert_eq!(s.channels().current_bank(), 0);
+    assert_eq!(s.channels().rows().iter().filter(|r| r.bank == 0).count(), 2);
+
+    let mut cfg = config::Config::default();
+    cfg.ssh.hosts.push(config::SshHost {
+        host: "127.0.0.1".into(),
+        user: "overseer".into(),
+        port: far.port,
+        key: String::new(),
+    });
+    cfg.ssh.default = "127.0.0.1".into();
+    s.set_config(cfg);
+
+    s.new_channel();
+    let bank = s.channels().current_bank();
+    assert_ne!(bank, 0, "the default stands as its own bank");
+    assert_eq!(s.channels().current().unwrap().title, "overseer@127.0.0.1");
+    assert_eq!(s.channels().current_channel(), 1);
+    assert_eq!(
+        s.channels().rows().iter().filter(|r| r.bank == 0).count(),
+        2,
+        "the home bank kept the shells it had and gained none"
+    );
+}
