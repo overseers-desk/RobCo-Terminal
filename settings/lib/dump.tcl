@@ -15,7 +15,8 @@ source [file join [file dirname [info script]] toml.tcl]
 
 namespace eval ::rcsettings::dump {
     namespace export locate load load_text defaults default has_default \
-        table_keys preset_names preset has_preset fonts enum enum_names
+        table_keys preset_names preset has_preset fonts enum enum_names \
+        system_fonts system_fonts_text
 
     # A binary the suites point this namespace at, so a test can run the
     # real --dump-settings against a build tree. It is empty in every run
@@ -165,6 +166,40 @@ namespace eval ::rcsettings::dump {
         }
         dict set data values $values
         return $data
+    }
+
+    # The installed system faces, a second and optional exec: unlike
+    # --dump-settings, an empty machine is a legal answer and not a broken
+    # one, so there is no required-table check here to fail it on.
+    proc system_fonts {{path ""}} {
+        if {$path eq ""} { set path [locate] }
+        set ch [file tempfile errpath]
+        close $ch
+        set failed [catch {exec -- $path --dump-system-fonts 2> $errpath} out]
+        set said [string trim [::rcsettings::toml::read_file $errpath]]
+        file delete -- $errpath
+        if {$failed} {
+            error "running \"$path --dump-system-fonts\" failed: $out\
+                [expr {$said eq "" ? "" : "\n$said"}]"
+        }
+        return [system_fonts_text $out]
+    }
+
+    # The parse step alone, so tests can feed a canned dump. {name text}
+    # pairs, same shape as `fonts`, and an empty list when the array is
+    # absent altogether: a machine with nothing installed is not an error.
+    proc system_fonts_text {text} {
+        set parsed [::rcsettings::toml::parse $text]
+        set arrays [dict get $parsed arrays]
+        set fonts {}
+        if {[dict exists $arrays fonts]} {
+            foreach entry [dict get $arrays fonts] {
+                lappend fonts [list \
+                    [::rcsettings::toml::plain [dict get $entry name]] \
+                    [::rcsettings::toml::plain [dict get $entry text]]]
+            }
+        }
+        return $fonts
     }
 
     # The elements of a TOML array of strings, whose raw text the parser

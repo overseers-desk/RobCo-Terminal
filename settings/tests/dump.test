@@ -95,4 +95,37 @@ test describe-4.2 {and names the embedded terminal when there is one} -body {
     }
 } -result 1
 
+# ---------------------------------------------------- --dump-system-fonts --
+#
+# Unlike --dump-settings, an empty machine is a legal answer here, so the
+# parse step carries no required-table check to fail it. These exercise the
+# parse alone against canned text, the same split load/load_text keeps.
+
+test sysfonts-5.1 {a well-formed dump becomes {name text} pairs, in order} -body {
+    ::rcsettings::dump::system_fonts_text {[[fonts]]
+name = "SystemMono"
+text = "System Mono"
+
+[[fonts]]
+name = "Consolas"
+text = "Consolas"
+}
+} -result {{SystemMono {System Mono}} {Consolas Consolas}}
+
+test sysfonts-5.2 {no [[fonts]] array at all is an empty list, not an error} -body {
+    ::rcsettings::dump::system_fonts_text "# nothing installed\n"
+} -result {}
+
+test sysfonts-5.3 {an empty document is an empty list too} -body {
+    ::rcsettings::dump::system_fonts_text ""
+} -result {}
+
+test sysfonts-5.4 {an entry missing name or text is a parse error} -body {
+    catch {
+        ::rcsettings::dump::system_fonts_text {[[fonts]]
+text = "Nope"
+}
+    }
+} -result 1
+
 cleanupTests

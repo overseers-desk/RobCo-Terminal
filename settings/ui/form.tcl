@@ -24,13 +24,14 @@ package require Tcl 9
 package require Tk
 
 namespace eval ::rcsettings::ui::form {
-    namespace export init page refresh_table refresh_all
+    namespace export init page refresh_table refresh_all \
+        maybe_fetch_system_fonts
 
     # table -> list of {group-title rows}, where rows is a flat list of
     # {key kind label argument} quadruples. Keys the docs mark as read by
     # nothing in this build are absent on purpose: general.show_menubar,
-    # general.use_custom_command, general.custom_command, screen.font_source
-    # and screen.blinking_cursor would be four controls that move nothing and
+    # general.use_custom_command, general.custom_command and
+    # screen.blinking_cursor would be three controls that move nothing and
     # one that lies about a cursor that does not blink. The `name` key of the
     # two axes is absent too, being the preset picker at the head of the page
     # rather than a row.
@@ -71,10 +72,11 @@ namespace eval ::rcsettings::ui::form {
                 rasterization    enum "Rasterization"    {}
             }
             {Type} {
-                font_name    font  "Font"         {}
-                font_width   scale "Font width"   {0.3 2.0}
-                line_spacing frac  "Line spacing" {}
-                margin       frac  "Margin"       {}
+                font_name    font        "Font"         {}
+                font_source  source_bool "Also offer installed system fonts" {}
+                font_width   scale       "Font width"   {0.3 2.0}
+                line_spacing frac        "Line spacing" {}
+                margin       frac        "Margin"       {}
             }
             {Moulding, shown when the chassis is not} {
                 frame_size      frac  "Frame size"   {}
@@ -118,6 +120,16 @@ namespace eval ::rcsettings::ui::form {
 
     variable StatusCmd ""
     variable WroteCmd ""
+
+    # The installed-system-fonts catalogue: empty and unfetched until the
+    # user asks for it (screen.font_source set to system_fonts) on a tab
+    # whose picker would show it. Fetched is what tells "nothing installed"
+    # apart from "never asked"; Fetching guards the one blocking exec against
+    # a second tab visit landing while the first is still running, and is the
+    # thing an error resets so the next visit tries again.
+    variable SystemFonts {}
+    variable SystemFontsFetched 0
+    variable SystemFontsFetching 0
 }
 
 # $statuscmd is called with a message and a boolean saying whether it is an
@@ -306,6 +318,16 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
                 -onvalue 1 -offvalue 0 -text "" \
                 -command [list ::rcsettings::ui::form::on_toggle $id]
         }
+        source_bool {
+            # Not a plain bool: the key it writes is a string enum of two
+            # names, not a TOML boolean, because the terminal's dump tells
+            # the two apart by which flag printed the font catalogue and a
+            # true/false could not carry that.
+            set w $g.ctl_$key
+            ttk::checkbutton $w -variable ::rcsettings::ui::form::Value($id) \
+                -onvalue system_fonts -offvalue bundled_fonts -text "" \
+                -command [list ::rcsettings::ui::form::on_toggle $id]
+        }
         enum - font {
             set names [expr {$kind eq "font"
                 ? [font_keys] : [::rcsettings::dump::enum [::rcsettings::model::dump] $key]}]
@@ -348,15 +370,74 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
 
 # The font catalogue, as the dump lists it: the persisted key and the label
 # the terminal shows for it, which are not the same string for the bundled
-# faces (TERMINESS_SCALED prints as "Terminess").
+# faces (TERMINESS_SCALED prints as "Terminess"). The installed system faces,
+# once fetched, are appended after the bundled ones rather than merged by
+# name: a system install sharing a bundled face's own name is still a
+# different key, and only position (not the printed words) tells the two
+# apart, the same reasoning on_pick already relies on.
 proc ::rcsettings::ui::form::font_keys {} {
-    return [lmap f [::rcsettings::dump::fonts [::rcsettings::model::dump]] \
+    variable SystemFonts
+    set out [lmap f [::rcsettings::dump::fonts [::rcsettings::model::dump]] \
         {lindex $f 0}]
+    foreach f $SystemFonts { lappend out [lindex $f 0] }
+    return $out
 }
 
 proc ::rcsettings::ui::form::font_labels {} {
-    return [lmap f [::rcsettings::dump::fonts [::rcsettings::model::dump]] \
+    variable SystemFonts
+    set out [lmap f [::rcsettings::dump::fonts [::rcsettings::model::dump]] \
         {lindex $f 1}]
+    foreach f $SystemFonts { lappend out [lindex $f 1] }
+    return $out
+}
+
+# ----------------------------------------------------- system font fetch --
+
+# Called on a notebook tab change (with the table the newly-selected tab
+# shows) and from the checkbox's own toggle. A no-op unless all three hold:
+# nobody has fetched yet, the box is actually checked, and the page looking
+# at a font picker is the one now showing. The exec is blocking, like every
+# other write in this file, so the status line is what tells the user
+# something is happening before it lands.
+proc ::rcsettings::ui::form::maybe_fetch_system_fonts {table} {
+    variable SystemFonts
+    variable SystemFontsFetched
+    variable SystemFontsFetching
+    if {$SystemFontsFetched || $SystemFontsFetching} { return }
+    if {[::rcsettings::model::effective screen font_source] ne "system_fonts"} {
+        return
+    }
+    if {$table ni {screen chassis}} { return }
+    set SystemFontsFetching 1
+    say "reading installed fonts…"
+    if {[catch {::rcsettings::dump::system_fonts} fonts]} {
+        say "cannot read installed fonts: $fonts" 1
+        set SystemFontsFetching 0
+        return
+    }
+    set SystemFonts $fonts
+    set SystemFontsFetched 1
+    set SystemFontsFetching 0
+    update_font_combos
+}
+
+# The two pickers whose list is the merged catalogue: screen.font_name and
+# chassis.bank_font_name. Their -values move in place, and each is
+# re-resolved against the wider list, which is how a persisted system face
+# shown as "missing" under the bundled-only list resolves the moment the
+# merge gives it back its name.
+proc ::rcsettings::ui::form::update_font_combos {} {
+    variable Rows
+    set names [font_keys]
+    set shown [font_labels]
+    foreach id {screen.font_name chassis.bank_font_name} {
+        if {![dict exists $Rows $id]} { continue }
+        set row [dict get $Rows $id]
+        dict set row names $names
+        dict set Rows $id $row
+        [dict get $row control] configure -values $shown
+        refresh_row $id
+    }
 }
 
 # ------------------------------------------------------------ what a row does --
@@ -447,6 +528,10 @@ proc ::rcsettings::ui::form::on_toggle {id} {
     variable Value
     if {$Repainting} { return }
     set_value $id $Value($id)
+    # The checkbox only ever sits on the Screen page, so opting in while
+    # looking at it is opting in while the tab the fetch is gated on is
+    # already the one showing: no need to ask the notebook which tab this is.
+    if {$id eq "screen.font_source"} { maybe_fetch_system_fonts screen }
 }
 
 proc ::rcsettings::ui::form::on_pick {id} {
@@ -528,6 +613,13 @@ proc ::rcsettings::ui::form::refresh_row {id} {
             }
             bool {
                 set Value($id) [expr {$value eq "true" ? 1 : 0}]
+                [dict get $row readout] configure -text ""
+            }
+            source_bool {
+                # The effective value is already one of the checkbutton's
+                # two on/off strings, so it goes into the variable plain,
+                # unlike bool's 0/1 translation.
+                set Value($id) $value
                 [dict get $row readout] configure -text ""
             }
             enum - font {

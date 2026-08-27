@@ -127,6 +127,11 @@ proc ::rcsettings::ui::app::build {} {
     # own page rather than a fourth entry in the form's layout.
     .nb add [::rcsettings::ui::ssh_page::page .nb] -text "SSH"
 
+    # Landing on Screen or Chassis is one of the three gates the system font
+    # fetch is behind, so every tab change is a chance for it to run; the
+    # proc itself is the one that decides whether the other two gates hold.
+    bind .nb <<NotebookTabChanged>> [list ::rcsettings::ui::app::on_tab_changed]
+
     grid .nb      -row 0 -column 0 -sticky nsew
     grid .sep     -row 1 -column 0 -sticky ew
     grid .buttons -row 2 -column 0 -sticky ew
@@ -136,6 +141,20 @@ proc ::rcsettings::ui::app::build {} {
 
     rest
     bind . <FocusIn> [list ::rcsettings::ui::app::on_focus %W]
+}
+
+# The table name a page's own widget path carries, or "" for a tab (SSH)
+# that is not one of the form's three pages and so never gates the fetch.
+proc ::rcsettings::ui::app::current_table {} {
+    set w [.nb select]
+    foreach table {general screen chassis} {
+        if {$w eq ".nb.page_$table"} { return $table }
+    }
+    return ""
+}
+
+proc ::rcsettings::ui::app::on_tab_changed {} {
+    ::rcsettings::ui::form::maybe_fetch_system_fonts [current_table]
 }
 
 # ------------------------------------------------------------ status line --

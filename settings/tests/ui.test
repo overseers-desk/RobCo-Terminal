@@ -19,6 +19,7 @@ namespace import ::tcltest::*
 
 source [file join [file dirname [info script]] helpers.tcl]
 source [file join $::libdir dump.tcl]
+source [file join $::libdir model.tcl]
 force_test_binary
 
 set ::uidir [file normalize [file join [file dirname [info script]] .. ui]]
@@ -32,12 +33,12 @@ if {[testConstraint tk]} {
 testConstraint schema [expr {
     [testConstraint tk] && ![catch {::rcsettings::dump::load} ::dumpdata]}]
 
-# The keys the form deliberately does not show, and why. The first five are
+# The keys the form deliberately does not show, and why. The first four are
 # what docs/config.md marks as read by nothing in this build; `name` is the
 # preset picker at the head of the page rather than a row of its own.
 set ::unshown {
     general {show_menubar use_custom_command custom_command}
-    screen  {font_source blinking_cursor name}
+    screen  {blinking_cursor name}
     chassis {name}
 }
 
@@ -109,7 +110,8 @@ test layout-2.1 {each row's widget matches the type of the key it writes} -const
     # The model formats an edited value after the type of the dump's default,
     # so a checkbutton on a float key would write 1 into a key the terminal
     # reads as a fraction. The kinds and the TOML types have to agree.
-    set want {frac float scale float int int bool bool color string enum string font string}
+    set want {frac float scale float int int bool bool color string enum string \
+        font string source_bool string}
     set wrong {}
     foreach row [layout_rows] {
         lassign $row table key kind
@@ -244,5 +246,209 @@ test colour-1.1 {a colour is narrowed to the file's three bytes} -constraints {
         [::rcsettings::ui::form::hex "#3333ffff6666"] \
         [::rcsettings::ui::form::hex "#000"]] " "
 } -result {#33ff66 #33ff66 #000000}
+
+# ------------------------------------------ font_source and its fetch --
+#
+# screen.font_source draws as a checkbutton (source_bool) rather than the
+# plain bool kind, because the key it writes is a two-name string enum, not
+# a TOML boolean. What has to hold: the row renders and writes through the
+# same set_value path every other row uses, and the lazy fetch it gates
+# fires exactly when the docs say it should - not before the box is
+# checked, not on a tab whose pickers do not read the list, and never a
+# second time.
+#
+# The exec itself is not run here: --dump-system-fonts is a sibling change
+# this suite's own binary may not carry yet, and what these tests are about
+# is the gating around the call, not the call. So ::rcsettings::dump::
+# system_fonts is swapped for a stub for the length of one body, the same
+# shape force_test_binary gives dump.tcl's own exec.
+proc with_stub_system_fonts {pairs script} {
+    rename ::rcsettings::dump::system_fonts ::rcsettings::dump::system_fonts_real
+    proc ::rcsettings::dump::system_fonts {{path ""}} [list return $pairs]
+    set code [catch {uplevel 1 $script} result opts]
+    rename ::rcsettings::dump::system_fonts {}
+    rename ::rcsettings::dump::system_fonts_real ::rcsettings::dump::system_fonts
+    return -options $opts $result
+}
+
+if {[testConstraint schema]} {
+    set ::sfdir [file join [temporaryDirectory] ui-sysfonts-[pid]]
+    set ::sfpath [file join $::sfdir config.toml]
+}
+
+proc sf_init {text} {
+    file mkdir $::sfdir
+    ::rcsettings::toml::atomic_write $::sfpath $text
+    ::rcsettings::model::init $::dumpdata $::sfpath
+}
+
+# The three module variables the fetch is gated on and remembers into,
+# put back to their fresh-window state so one test's fetch cannot answer
+# for the next.
+proc sf_reset_state {} {
+    set ::rcsettings::ui::form::SystemFonts {}
+    set ::rcsettings::ui::form::SystemFontsFetched 0
+    set ::rcsettings::ui::form::SystemFontsFetching 0
+}
+
+test sourcebool-6.1 {the row renders the effective string, unquoted} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\n"
+    sf_reset_state
+    toplevel .t61
+    wm withdraw .t61
+    ::rcsettings::ui::form::page .t61 screen
+    set v $::rcsettings::ui::form::Value(screen.font_source)
+    destroy .t61
+    set v
+} -result bundled_fonts
+
+test sourcebool-6.2 {a pinned system_fonts value renders checked} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
+    sf_reset_state
+    toplevel .t62
+    wm withdraw .t62
+    ::rcsettings::ui::form::page .t62 screen
+    set v $::rcsettings::ui::form::Value(screen.font_source)
+    destroy .t62
+    set v
+} -result system_fonts
+
+test sourcebool-6.3 {toggling it writes system_fonts through set_value} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\n"
+    sf_reset_state
+    toplevel .t63
+    wm withdraw .t63
+    ::rcsettings::ui::form::page .t63 screen
+    set ::rcsettings::ui::form::Value(screen.font_source) system_fonts
+    with_stub_system_fonts {} {
+        ::rcsettings::ui::form::on_toggle screen.font_source
+    }
+    set pinned [::rcsettings::model::pinned screen font_source]
+    set eff [::rcsettings::model::effective screen font_source]
+    destroy .t63
+    list $pinned $eff
+} -result {1 system_fonts}
+
+test sourcebool-6.4 {toggling back off removes the key, the minimal edit} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
+    sf_reset_state
+    toplevel .t64
+    wm withdraw .t64
+    ::rcsettings::ui::form::page .t64 screen
+    set ::rcsettings::ui::form::Value(screen.font_source) bundled_fonts
+    ::rcsettings::ui::form::on_toggle screen.font_source
+    set pinned [::rcsettings::model::pinned screen font_source]
+    destroy .t64
+    set pinned
+} -result 0
+
+# update_font_combos reaches into the Rows the last-built Screen and Chassis
+# pages registered, font_name and bank_font_name among them, so a fetch that
+# actually runs needs live pages behind those two rows to write back into.
+proc sf_build_pages {name} {
+    toplevel $name
+    wm withdraw $name
+    ::rcsettings::ui::form::page $name screen
+    ::rcsettings::ui::form::page $name chassis
+}
+
+test fetch-7.1 {no fetch while the box reads bundled_fonts} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\n"
+    sf_reset_state
+    sf_build_pages .t71
+    with_stub_system_fonts {{Stub Stub}} {
+        ::rcsettings::ui::form::maybe_fetch_system_fonts screen
+    }
+    set fetched $::rcsettings::ui::form::SystemFontsFetched
+    destroy .t71
+    set fetched
+} -result 0
+
+test fetch-7.2 {no fetch on a tab whose pickers do not read the list} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
+    sf_reset_state
+    sf_build_pages .t72
+    with_stub_system_fonts {{Stub Stub}} {
+        ::rcsettings::ui::form::maybe_fetch_system_fonts general
+    }
+    set fetched $::rcsettings::ui::form::SystemFontsFetched
+    destroy .t72
+    set fetched
+} -result 0
+
+test fetch-7.3 {checked and on Screen or Chassis fetches, once} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
+    sf_reset_state
+    sf_build_pages .t73
+    with_stub_system_fonts {{Stub {The Stub}}} {
+        ::rcsettings::ui::form::maybe_fetch_system_fonts chassis
+    }
+    set first [list $::rcsettings::ui::form::SystemFontsFetched \
+        $::rcsettings::ui::form::SystemFonts]
+    # A later visit, even with a different stub answer, must not refetch.
+    with_stub_system_fonts {{Other {Other Face}}} {
+        ::rcsettings::ui::form::maybe_fetch_system_fonts screen
+    }
+    set second [list $::rcsettings::ui::form::SystemFontsFetched \
+        $::rcsettings::ui::form::SystemFonts]
+    destroy .t73
+    list $first $second
+} -result {{1 {{Stub {The Stub}}}} {1 {{Stub {The Stub}}}}}
+
+test fetch-7.4 {an error surfaces and resets the guard for a later retry} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
+    sf_reset_state
+    sf_build_pages .t74
+    rename ::rcsettings::dump::system_fonts ::rcsettings::dump::system_fonts_real
+    proc ::rcsettings::dump::system_fonts {{path ""}} { error "no fonts for you" }
+    ::rcsettings::ui::form::maybe_fetch_system_fonts screen
+    set after1 [list $::rcsettings::ui::form::SystemFontsFetched \
+        $::rcsettings::ui::form::SystemFontsFetching]
+    rename ::rcsettings::dump::system_fonts {}
+    rename ::rcsettings::dump::system_fonts_real ::rcsettings::dump::system_fonts
+    with_stub_system_fonts {{Stub Stub}} {
+        ::rcsettings::ui::form::maybe_fetch_system_fonts screen
+    }
+    set after2 [list $::rcsettings::ui::form::SystemFontsFetched \
+        $::rcsettings::ui::form::SystemFonts]
+    destroy .t74
+    list $after1 $after2
+} -result {{0 0} {1 {{Stub Stub}}}}
+
+test fetch-7.5 {a fetch that lands updates both font combos' values} -constraints {
+    schema
+} -body {
+    sf_init "\[screen\]\nfont_source = \"system_fonts\"\n"
+    sf_reset_state
+    sf_build_pages .t75
+    with_stub_system_fonts {{SysFace {A System Face}}} {
+        ::rcsettings::ui::form::maybe_fetch_system_fonts screen
+    }
+    set screen_values [.t75.page_screen.canvas.body.g3.ctl_font_name cget -values]
+    set chassis_values [.t75.page_chassis.canvas.body.g1.ctl_bank_font_name cget -values]
+    destroy .t75
+    list [expr {"A System Face" in $screen_values}] \
+        [expr {"A System Face" in $chassis_values}]
+} -result {1 1}
+
+if {[testConstraint schema]} {
+    file delete -force $::sfdir
+}
 
 cleanupTests
