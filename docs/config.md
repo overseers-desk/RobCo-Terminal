@@ -255,7 +255,7 @@ spawning).
 | Key | Default | What it does |
 |---|---|---|
 | `default` | `""` | The `host` of the `[[ssh.host]]` row new sessions start on. Empty means localhost, today's behaviour unchanged; a value matching no row is logged at launch and behaves as empty. Written by hand, or by the picker's checkbox (`docs/ssh.md`), which is the only thing in the program that sets it. A typed destination ticked there appends its `[[ssh.host]]` row and moves this key in the same edit, so a default and the row it names cannot arrive apart. |
-| `host` | `[]` | The server rows, written as `[[ssh.host]]` tables. Each carries `host` (the destination), `user` (empty means the invoking user's name), `port` (22 unless said otherwise), and `key` (a key file path, stored and shown before the transport honours it; authentication is by agent, per `docs/ssh.md`). |
+| `host` | `[]` | The server rows, written as `[[ssh.host]]` tables. Each carries `host` (the destination), `user` (empty leaves the account to `~/.ssh/config`, then to the invoking user's name), `port` (22 unless said otherwise, and 22 is a gap the config file may fill), and `key` (a key file path, tried ahead of the agent, `~/` meaning home). What a row leaves unsaid is what `~/.ssh/config` is allowed to fill, and what it says outranks that file: `docs/ssh.md` carries the whole precedence. |
 
 ```toml
 [ssh]

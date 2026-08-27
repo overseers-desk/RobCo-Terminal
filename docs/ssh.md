@@ -37,7 +37,7 @@ Type `tmux -CC` on an SSH channel and the attachment arrives exactly as it does 
 
 ## Authentication
 
-Public keys, from three sources, in intent order: the key a `[[ssh.host]]` row names (`key`, with `~/` expanded to home), the ssh-agent (`SSH_AUTH_SOCK` on Unix; the OpenSSH Authentication Agent's named pipe, then Pageant, on Windows), and, only when no key is named, the default files `ssh` itself would try: `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`. Agent identities are tried in the order the agent lists them, silently; in the common case you never see an authentication message at all.
+Public keys, from three sources, in intent order: the keys the configuration names for this destination (a `[[ssh.host]]` row's `key`, with `~/` expanded to home, or every `IdentityFile` line `~/.ssh/config` gives the host, tried in the order the file lists them), the ssh-agent (`SSH_AUTH_SOCK` on Unix; the OpenSSH Authentication Agent's named pipe, then Pageant, on Windows), and, only when no key is named at all, the default files `ssh` itself would try: `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`. Agent identities are tried in the order the agent lists them, silently; in the common case you never see an authentication message at all.
 
 An encrypted key file is asked about on the channel's own glass. The passphrase is typed there and never echoed, not even as asterisks: a count of asterisks is a length, and a length is something about your passphrase. Three wrong ones give that key up and the sequence moves on. `Esc` withdraws the question, and withdrawing ends the whole attempt rather than moving to the next method: declining to connect is an answer about connecting.
 
@@ -49,6 +49,20 @@ Password asks for `user@host's password`, never echoed, three tries, `permission
 
 Both are skipped when the server does not offer them, which is what the opening `none` probe is for and what every rejection since has refreshed. A key-only server never asks you for anything. A lost cause closes with a line naming what the server would have accepted.
 
-## `~/.ssh/config` is not read
+## `~/.ssh/config`
 
-Not any of it, deliberately. Honouring `HostName` while ignoring `ProxyJump` connects, confidently, to the wrong place; `HostKeyAlias` silently changes which `known_hosts` entry applies. The file is worth reading only whole, and reading it whole is open work (#14).
+The file is read whole or not at all. Honouring `HostName` while passing over `ProxyJump` connects, confidently, to the wrong place; `HostKeyAlias` silently changes which `known_hosts` entry a key is checked against. Both failures look like success from the glass, so there are two outcomes here and no third: either the block matching your destination yields nothing this build cannot carry out, and every word of it is taken, or it carries one word this build cannot carry out, and the whole file's counsel is set aside out loud.
+
+It is read once, on the way to the wire, and asked only about the destination you are dialling. `%USERPROFILE%\.ssh\config` is where it is read on Windows, the same home directory the default key files come from. A file that is not there, or that the terminal may not open, says nothing and costs nothing: an appliance whose user has no `~/.ssh/config` starts, looks and behaves like one built without a reader for it.
+
+**Honoured**: `HostName`, `User`, `Port`, `IdentityFile`. All the `IdentityFile` lines the matched blocks give, in the file's own order, `~/` expanded, each landing where a `[[ssh.host]]` row's `key` lands: the named-key stage, tried ahead of the agent, with the passphrase asked for on the glass if the key is encrypted.
+
+**Precedence** is `ssh`'s own. A field spelled on the `[[ssh.host]]` row or in the `--ssh` destination outranks the file: a user before the `@`, a port after the `:`, a row's `key`. The file fills only what was left unsaid, which includes the name `$USER` would otherwise supply and the port 22 would. `HostName` is the exception that is not one: it replaces the host you spelled, because `Host` names a lookup rather than a machine, and that is what the file is being read for.
+
+**Refused, out loud**: anything that decides where a connection goes, whom it authenticates as, which identity it offers, which key it trusts, or what the far side runs, and that this build cannot carry out. `ProxyJump`, `ProxyCommand`, `HostKeyAlias`, `UserKnownHostsFile`, `LocalForward`, `RemoteCommand`, `IdentityAgent`, `Ciphers` and their kind, plus the boolean settings whose one honourable value is the behaviour this build already has: `ForwardAgent no` costs nothing, `ForwardAgent yes` is a promise this build cannot keep, and `StrictHostKeyChecking` is honoured at `ask` and nowhere else, because asking is what the host-key policy above does. The refusal names the directive on the channel's own glass, and the connection then proceeds to the literal destination, exactly as if the file did not exist. `HostName` beside a refused directive is not taken either: half a block is the failure this rule exists to prevent.
+
+`Include` and `Match` are refused wherever in the file they stand, matched block or not. An `Include` means the file in front of the reader is not the whole file; a `Match` block is invisible to the parser, which would fold its directives into the `Host` block above it. Either way what would be read is not what you wrote.
+
+Tuning and cosmetics decide none of those things and are passed over in silence, as `ssh` passes over a setting for a feature it was built without: `ServerAliveInterval`, `LogLevel`, `VisualHostKey` and the like.
+
+A file that exists and does not parse is a notice on the glass and a connection to the literal destination, never a crash and never a blocked window. The parse is `russh-config`'s, the same family as the pinned russh, so the `Host` patterns, their negations and the merge order are one library's reading of OpenSSH's rules rather than this repository's guess at them. What that library hands back is only what it knows how to name, though, and a directive it has never heard of is dropped without a word, so the matched block is read here as text as well and every directive in it is held against the list above before any of the parse is believed.
