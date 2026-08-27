@@ -1,3 +1,17 @@
+robco-term (0.1.2) unstable; urgency=medium
+
+  * The private key a [[ssh.host]] row names is offered on every window's
+    connection, the startup default's included.
+  * A PuTTY .ppk key file is refused by name, with the puttygen
+    conversion spelled out on the glass, instead of a bare read error.
+  * On a local screen, a new tab dials the configured default connection,
+    the same way a fresh window does.
+  * The font list is the bundled catalogue unless "Also offer installed
+    system fonts" is ticked, and the machine's fonts are read only when a
+    font picker is on screen. The settings window opens without the scan.
+
+ -- Weiwu Zhang <a@colourful.land>  Thu, 27 Aug 2026 11:32:58 +0000
+
 robco-term (0.1.1) unstable; urgency=medium
 
   * Built-in SSH grows its operator surface: passwords, key passphrases
