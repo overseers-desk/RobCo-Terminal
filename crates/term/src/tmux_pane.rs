@@ -24,7 +24,7 @@
 //!   their grid a live [`crate::session::ReplyListener`], so a DA or CPR asked
 //!   of them is answered on the pump that parsed it. A pane's grid gets the
 //!   detached one: its answers would have to leave as `send-keys` on the
-//!   gateway's control wire, a different mechanism through a queue this type
+//!   gateway's control stream, a different mechanism through a queue this type
 //!   does not own, and the program asking is anyway talking to tmux's own
 //!   terminal rather than to this one.
 
