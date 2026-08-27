@@ -9,5 +9,12 @@ robco-term (0.1.1) unstable; urgency=medium
   * Terminal queries (device attributes, cursor position and kin) are
     answered, and idle SSH connections send keepalives once a minute.
 
- -- The Overseer <noreply@colourful.land>  Thu, 27 Aug 2026 15:12:12 +1000
+ -- Weiwu Zhang <a@colourful.land>  Thu, 27 Aug 2026 15:12:12 +1000
 
+
+robco-term (0.1.0) unstable; urgency=medium
+
+  * First Debian packaging: the terminal, its desktop entry and icon, and
+    the Tcl/Tk settings window running on the distribution's tcl9.0/tk9.0.
+
+ -- Weiwu Zhang <a@colourful.land>  Wed, 26 Aug 2026 16:14:02 +0000
