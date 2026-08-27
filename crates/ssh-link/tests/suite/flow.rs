@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ssh_link::russh::keys::{ssh_key, Algorithm, PrivateKey, PublicKeyOrCertificate};
-use ssh_link::test_server::{mint, serve_agent, serve_echo};
+use ssh_link::test_server::{mint, serve_agent, serve_echo, serve_with, AuthPlan};
 use ssh_link::{Answer, Asker, ChannelHandle, HostPolicy, Link, SshTarget, WireEvent};
 
 /// A policy for the transport tests: scripted verdict, recorded evidence.
@@ -343,6 +343,95 @@ async fn an_encrypted_key_opens_on_a_passphrase_and_a_cancel_ends_the_attempt() 
     assert!(
         !log.iter().any(|e| matches!(e, WireEvent::Data(_))),
         "a cancelled question opened a shell: {log:?}"
+    );
+}
+
+/// A password server: wrong once, then right, then a run of three wrong
+/// ones that closes the row.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_password_is_asked_for_retried_and_finally_given_up_on() {
+    let (port, _seen) = serve_with(
+        vec![ed25519()],
+        AuthPlan::Password {
+            user: "overseer".into(),
+            password: "tumblers".into(),
+            refuse_first: 0,
+        },
+    )
+    .await;
+
+    let (asker, desk) = ssh_link::ask::desk();
+    let hand = deskhand(desk, vec![Some("wrong"), Some("tumblers")]);
+    let (_link, mut handle) =
+        Link::connect(target(port), Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+        })
+    })
+    .await
+    .unwrap();
+    let prompts = hand.join().unwrap();
+    assert_eq!(prompts.len(), 2, "{prompts:?}");
+    assert!(prompts[0].contains("overseer@127.0.0.1's password"), "{prompts:?}");
+    assert!(text_of(&log).contains("permission denied, please try again"), "{log:?}");
+    assert!(text_of(&log).contains("authenticated as overseer (password)"), "{log:?}");
+    // A key-only method was never reached for: the server offers password
+    // alone, so nothing here went looking for an agent.
+    assert!(!text_of(&log).contains("agent"), "{log:?}");
+
+    // Three wrong ones and the row closes with the summary naming what the
+    // server would have taken.
+    let (asker, desk) = ssh_link::ask::desk();
+    let hand = deskhand(desk, vec![Some("no"), Some("nope"), Some("never")]);
+    let (_link, mut handle) =
+        Link::connect(target(port), Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| matches!(e, WireEvent::Eof))
+    })
+    .await
+    .unwrap();
+    let prompts = hand.join().unwrap();
+    assert_eq!(prompts.len(), 3, "three tries, no more: {prompts:?}");
+    assert!(text_of(&log).contains("authentication failed; the server offers"), "{log:?}");
+    assert!(text_of(&log).contains("Password"), "{log:?}");
+}
+
+/// The server composes the questions and this asks them in its order,
+/// with its own echo flag on each.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_servers_challenge_is_asked_in_its_own_order() {
+    let (port, _seen) = serve_with(
+        vec![ed25519()],
+        AuthPlan::KeyboardInteractive {
+            answers: vec!["A-2472".into(), "tumblers".into()],
+        },
+    )
+    .await;
+
+    let (asker, desk) = ssh_link::ask::desk();
+    let hand = deskhand(desk, vec![Some("A-2472"), Some("tumblers")]);
+    let (_link, mut handle) =
+        Link::connect(target(port), Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+        })
+    })
+    .await
+    .unwrap();
+    let prompts = hand.join().unwrap();
+    assert_eq!(
+        prompts,
+        vec!["Employee number: ".to_string(), "Passphrase: ".to_string()],
+        "the server's prompts, in the server's order"
+    );
+    // Its framing went on the wire ahead of them.
+    assert!(text_of(&log).contains("Vault-Tec Overseer Terminal"), "{log:?}");
+    assert!(text_of(&log).contains("Two questions before the door opens."), "{log:?}");
+    assert!(
+        text_of(&log).contains("authenticated as overseer (keyboard-interactive)"),
+        "{log:?}"
     );
 }
 

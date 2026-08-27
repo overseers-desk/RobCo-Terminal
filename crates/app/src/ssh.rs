@@ -302,8 +302,12 @@ impl KnownHosts {
         key: &ssh_link::russh::keys::PublicKey,
         ask: &Asker,
     ) -> Result<(), String> {
-        let refused =
-            || format!("the host key {} for {host} was not accepted; connection refused", sha256(key));
+        let refused = || {
+            format!(
+                "the host key {} for {host} was not accepted; connection refused",
+                sha256(key)
+            )
+        };
         let Some(path) = &self.learn_into else {
             return Err(format!(
                 "no host key is recorded for {host} (key: {}) and there is no known_hosts \

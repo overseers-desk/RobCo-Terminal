@@ -35,7 +35,13 @@ Public keys, from three sources, in intent order: the key a `[[ssh.host]]` row n
 
 An encrypted key file is asked about on the channel's own glass. The passphrase is typed there and never echoed, not even as asterisks: a count of asterisks is a length, and a length is something about your passphrase. Three wrong ones give that key up and the sequence moves on. `Esc` withdraws the question, and withdrawing ends the whole attempt rather than moving to the next method: declining to connect is an answer about connecting.
 
-Password and keyboard-interactive authentication wait on the same surface. A lost cause closes with a line naming what the server would have accepted.
+Then the prompted methods, in `ssh`'s own `PreferredAuthentications` order: keyboard-interactive, then password.
+
+Keyboard-interactive is the server's own challenge. It composes the questions and this asks them in its order, one at a time, with the echo flag it set on each: an employee number or a one-time code appears as you type it, a passphrase does not. A challenge can have several rounds, and the server ends them by accepting or refusing.
+
+Password asks for `user@host's password`, never echoed, three tries, `permission denied, please try again` between them.
+
+Both are skipped when the server does not offer them, which is what the opening `none` probe is for and what every rejection since has refreshed. A key-only server never asks you for anything. A lost cause closes with a line naming what the server would have accepted.
 
 ## `~/.ssh/config` is not read
 

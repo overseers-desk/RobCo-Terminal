@@ -14,7 +14,7 @@ use app::ssh::{KnownHosts, SshRequest};
 use app::window::TerminalSurface;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use ssh_link::russh::keys::{Algorithm, PrivateKey};
-use ssh_link::test_server::{mint, serve_agent, serve_echo};
+use ssh_link::test_server::{mint, serve_agent, serve_echo, serve_with, AuthPlan};
 use term::{viewport_text, CellSize, SessionConfig, Viewport};
 
 /// One far side for the whole suite: an echo server whose host key the
@@ -50,6 +50,35 @@ fn far_side() -> &'static FarSide {
             seen,
             _dir: dir,
         }
+    })
+}
+
+/// A second far side, wanting a password and offering nothing else: what
+/// proves the prompted half of authentication end to end on the glass.
+struct PasswordSide {
+    _rt: tokio::runtime::Runtime,
+    port: u16,
+    host_key_line: String,
+}
+
+fn password_side() -> &'static PasswordSide {
+    static SIDE: OnceLock<PasswordSide> = OnceLock::new();
+    SIDE.get_or_init(|| {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let host_key: PrivateKey = mint(Algorithm::Ed25519);
+        let host_public = host_key.public_key().to_openssh().expect("openssh form");
+        let (port, _seen) = rt.block_on(serve_with(
+            vec![host_key],
+            AuthPlan::Password {
+                user: "overseer".into(),
+                password: "tumblers".into(),
+                refuse_first: 0,
+            },
+        ));
+        PasswordSide { _rt: rt, port, host_key_line: format!("[127.0.0.1]:{port} {host_public}") }
     })
 }
 
@@ -261,6 +290,43 @@ fn a_first_key_accepted_on_the_glass_is_recorded_and_the_connection_goes_on() {
         recorded.contains(&format!("[127.0.0.1]:{}", far.port)),
         "nothing was recorded: {recorded:?}"
     );
+}
+
+/// A password asked for by the server, typed on the glass, and gone.
+///
+/// The last assertion is the invariant's teeth: the whole point of doing
+/// this on the terminal's own grid rather than in a native dialog is that
+/// the grid is a thing the user can read, so what is on it has to be
+/// exactly what they may see. A password is not.
+#[test]
+fn a_password_typed_on_the_glass_reaches_the_wire_and_never_the_glass() {
+    let far = password_side();
+    let mut s = surface();
+    s.connect_ssh_with(
+        &request(far.port),
+        Box::new(KnownHosts::over(vec![known_hosts(&[&far.host_key_line])])),
+    );
+
+    // Wrong first, so the retry line and a second prompt are on the glass
+    // too, and both secrets have to be absent from it at the end.
+    pump_until(&mut s, "the password question", |s| glass_contains(s, "password"));
+    type_line(&mut s, "sarsaparilla");
+    pump_until(&mut s, "the retry line", |s| glass_contains(s, "permission denied"));
+    type_line(&mut s, "tumblers");
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+
+    let glass = s.viewport_text().join("\n");
+    assert!(
+        !glass.contains("tumblers"),
+        "the password is on the glass: {glass:?}"
+    );
+    assert!(
+        !glass.contains("sarsaparilla"),
+        "the wrong password is on the glass: {glass:?}"
+    );
+    // Not even a count of it: an asterisk row would be a length.
+    assert!(!glass.contains("***"), "{glass:?}");
+    assert!(glass.contains("authenticated as overseer (password)"), "{glass:?}");
 }
 
 /// The chord, as the keyboard hands it to the surface.

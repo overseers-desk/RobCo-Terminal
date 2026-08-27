@@ -228,7 +228,10 @@ mod tests {
             line.key(&named(NamedKey::Escape), None),
             (Stroke::Cancel, b"\r\n".to_vec())
         );
-        assert_eq!(line.key(&named(NamedKey::ArrowLeft), None), (Stroke::Ignored, Vec::<u8>::new()));
+        assert_eq!(
+            line.key(&named(NamedKey::ArrowLeft), None),
+            (Stroke::Ignored, Vec::<u8>::new())
+        );
         assert_eq!(
             line.key(&named(NamedKey::Tab), Some("\t")),
             (Stroke::Ignored, Vec::<u8>::new()),

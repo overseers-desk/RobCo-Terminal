@@ -23,6 +23,13 @@
 //! trust is. See [`ask`] for why the channel underneath is std's and not
 //! tokio's, and for the ordering that keeps a question behind the notice
 //! explaining it.
+//!
+//! The auth sequence in `thread` is `ssh`'s: public keys first (the named
+//! key, the agent, the default files), then keyboard-interactive, then
+//! password. Which of them are tried at all is the server's to say. The
+//! opening `none` probe brings back the method list, every rejection
+//! refreshes it, and a method the server does not offer is never
+//! attempted, so a key-only server produces no questions at all.
 
 pub mod ask;
 mod channel;

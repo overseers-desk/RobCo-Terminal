@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use russh::keys::ssh_key;
 use russh::keys::{Algorithm, PrivateKey};
-use russh::server::{self, Auth, Msg, Session};
-use russh::{Channel, ChannelId, MethodSet};
+use russh::server::{self, Auth, Msg, Response, Session};
+use russh::{Channel, ChannelId, MethodKind, MethodSet};
 
 /// What the far side saw, for assertions that need it.
 #[derive(Default)]
@@ -22,11 +22,52 @@ pub struct Seen {
     pub received: Vec<u8>,
 }
 
-/// The test shell: accepts one authorized key, replies to pty and shell
-/// requests, prints `ready`, echoes everything, and treats a lone 0x04 as
-/// "exit with status 7".
+/// How the far side decides who gets in. One plan per server, because a
+/// real sshd's `PasswordAuthentication`/`PubkeyAuthentication` is a
+/// configuration and not a per-request whim, and because a client that is
+/// meant to skip the methods a server does not offer can only be caught
+/// doing otherwise by a server that offers exactly one.
+pub enum AuthPlan {
+    /// One authorized public key.
+    Key(ssh_key::PublicKey),
+    /// One account and its password. `refuse_first` rejects that many
+    /// attempts before it starts checking, which is how a test sees the
+    /// retry line without needing two different passwords.
+    Password { user: String, password: String, refuse_first: usize },
+    /// A two-prompt challenge: an employee number that echoes and a
+    /// passphrase that does not, answered in that order.
+    KeyboardInteractive { answers: Vec<String> },
+}
+
+impl AuthPlan {
+    /// What the server advertises, which is what the client's method
+    /// skipping is judged against. `none` is in every set because the
+    /// client's opening probe is a `none` request.
+    fn methods(&self) -> MethodSet {
+        let kinds: &[MethodKind] = match self {
+            AuthPlan::Key(_) => &[MethodKind::None, MethodKind::PublicKey],
+            AuthPlan::Password { .. } => &[MethodKind::None, MethodKind::Password],
+            AuthPlan::KeyboardInteractive { .. } => {
+                &[MethodKind::None, MethodKind::KeyboardInteractive]
+            }
+        };
+        MethodSet::from(kinds)
+    }
+
+    /// A rejection that leaves the same methods on offer, which is what a
+    /// real sshd does: a wrong password does not stop it wanting one.
+    fn refuse(&self) -> Auth {
+        Auth::Reject { proceed_with_methods: Some(self.methods()), partial_success: false }
+    }
+}
+
+/// The test shell: authenticates by its [`AuthPlan`], replies to pty and
+/// shell requests, prints `ready`, echoes everything, and treats a lone
+/// 0x04 as "exit with status 7".
 pub struct Echo {
-    authorized: ssh_key::PublicKey,
+    plan: Arc<AuthPlan>,
+    /// Password attempts refused so far, against the plan's `refuse_first`.
+    refused: usize,
     seen: Arc<Mutex<Seen>>,
 }
 
@@ -38,13 +79,55 @@ impl server::Handler for Echo {
         _user: &str,
         key: &ssh_key::PublicKey,
     ) -> Result<Auth, Self::Error> {
-        if *key == self.authorized {
+        match &*self.plan {
+            AuthPlan::Key(authorized) if key == authorized => Ok(Auth::Accept),
+            plan => Ok(plan.refuse()),
+        }
+    }
+
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        let AuthPlan::Password { user: account, password: secret, refuse_first } = &*self.plan
+        else {
+            return Ok(self.plan.refuse());
+        };
+        if self.refused < *refuse_first {
+            self.refused += 1;
+            return Ok(self.plan.refuse());
+        }
+        if user == account && password == secret {
             Ok(Auth::Accept)
         } else {
-            Ok(Auth::Reject {
-                proceed_with_methods: Some(MethodSet::empty()),
-                partial_success: false,
-            })
+            Ok(self.plan.refuse())
+        }
+    }
+
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        _user: &str,
+        _submethods: &str,
+        response: Option<Response<'a>>,
+    ) -> Result<Auth, Self::Error> {
+        let AuthPlan::KeyboardInteractive { answers } = &*self.plan else {
+            return Ok(self.plan.refuse());
+        };
+        let Some(response) = response else {
+            return Ok(Auth::Partial {
+                name: "Vault-Tec Overseer Terminal".into(),
+                instructions: "Two questions before the door opens.".into(),
+                prompts: vec![
+                    ("Employee number: ".into(), true),
+                    ("Passphrase: ".into(), false),
+                ]
+                .into(),
+            });
+        };
+        let given: Vec<String> = response
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .collect();
+        if given == *answers {
+            Ok(Auth::Accept)
+        } else {
+            Ok(self.plan.refuse())
         }
     }
 
@@ -122,21 +205,27 @@ pub fn mint(algorithm: Algorithm) -> PrivateKey {
     PrivateKey::random(&mut rand::rng(), algorithm).unwrap()
 }
 
-/// Serve [`Echo`] on loopback with the given host keys, forever. Answers
-/// the port and the far side's log. Must be called on a tokio runtime.
-pub async fn serve_echo(
+/// Serve [`Echo`] on loopback with the given host keys, forever, under
+/// the given plan. Answers the port and the far side's log. Must be
+/// called on a tokio runtime.
+pub async fn serve_with(
     host_keys: Vec<PrivateKey>,
-    authorized: ssh_key::PublicKey,
+    plan: AuthPlan,
 ) -> (u16, Arc<Mutex<Seen>>) {
     let seen = Arc::new(Mutex::new(Seen::default()));
-    let config = Arc::new(server::Config { keys: host_keys, ..Default::default() });
+    let plan = Arc::new(plan);
+    let config = Arc::new(server::Config {
+        keys: host_keys,
+        methods: plan.methods(),
+        ..Default::default()
+    });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let far = seen.clone();
     tokio::spawn(async move {
         loop {
             let Ok((stream, _)) = listener.accept().await else { break };
-            let handler = Echo { authorized: authorized.clone(), seen: far.clone() };
+            let handler = Echo { plan: plan.clone(), refused: 0, seen: far.clone() };
             let config = config.clone();
             tokio::spawn(async move {
                 let _ = server::run_stream(config, stream, handler).await;
@@ -144,6 +233,14 @@ pub async fn serve_echo(
         }
     });
     (port, seen)
+}
+
+/// The same under the key plan, which is what most of the suite wants.
+pub async fn serve_echo(
+    host_keys: Vec<PrivateKey>,
+    authorized: ssh_key::PublicKey,
+) -> (u16, Arc<Mutex<Seen>>) {
+    serve_with(host_keys, AuthPlan::Key(authorized)).await
 }
 
 /// An agent on a Unix socket in `dir`, holding one identity. Answers the

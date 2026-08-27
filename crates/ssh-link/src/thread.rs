@@ -18,16 +18,17 @@ use russh::keys::agent::client::AgentClient;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::PublicKeyOrCertificate;
 use russh::client::AuthResult;
-use russh::ChannelMsg;
+use russh::{ChannelMsg, MethodKind, MethodSet};
 use tokio::sync::mpsc;
 
 use crate::channel::{ChannelCmd, WireEvent, EVENT_QUEUE};
 use crate::{Answer, Asker, ChannelHandle, HostPolicy, SshTarget};
 
-/// How many times a passphrase may be got wrong before a key file is given
-/// up on and the next method tried. `ssh`'s own `NumberOfPasswordPrompts`,
-/// and the same number for the same reason: enough for a typo, few enough
-/// that a wrong key does not become an interrogation.
+/// How many times a secret may be got wrong -- a key file's passphrase, a
+/// password -- before that method is given up on and the next one tried.
+/// `ssh`'s own `NumberOfPasswordPrompts`, and the same number for the same
+/// reason: enough for a typo, few enough that a wrong guess does not
+/// become an interrogation.
 const PASSPHRASE_TRIES: usize = 3;
 
 /// The end of an authentication attempt. Three answers rather than two,
@@ -360,35 +361,178 @@ async fn authenticate(
     wire: &ChannelWire,
     ask: &Asker,
 ) -> Authenticated {
-    // Not an auth attempt that could succeed: the reply's method list is
-    // what makes the closing refusal name what the server would take.
-    let offered = match handle.authenticate_none(target.user.clone()).await {
+    // Not an auth attempt that could succeed: it is the probe whose reply
+    // says what the server would take. That list is kept as a value and
+    // refreshed from every rejection, because it is what decides which of
+    // the methods below are tried at all. A server that wants a key will
+    // not be satisfied by a password, and asking for one would be this
+    // program inventing a question nobody asked.
+    let mut offered = match handle.authenticate_none(target.user.clone()).await {
         Ok(AuthResult::Success) => return Authenticated::Yes,
-        Ok(AuthResult::Failure { remaining_methods, .. }) => format!("{remaining_methods:?}"),
+        Ok(AuthResult::Failure { remaining_methods, .. }) => remaining_methods,
         Err(e) => {
             notice(wire, format!("authentication failed: {e}")).await;
             return Authenticated::No;
         }
     };
-    if let Some(path) = &target.key_file {
-        match try_key_file(handle, target, wire, ask, path).await {
-            Authenticated::No => {}
-            end => return end,
-        }
-    }
-    match agent_auth(handle, target, wire).await {
-        Authenticated::No => {}
-        end => return end,
-    }
-    if target.key_file.is_none() {
-        for path in default_key_files() {
-            match try_key_file(handle, target, wire, ask, &path).await {
+    if offered.contains(&MethodKind::PublicKey) {
+        if let Some(path) = &target.key_file {
+            match try_key_file(handle, target, wire, ask, &mut offered, path).await {
                 Authenticated::No => {}
                 end => return end,
             }
         }
+        match agent_auth(handle, target, wire, &mut offered).await {
+            Authenticated::No => {}
+            end => return end,
+        }
+        if target.key_file.is_none() {
+            for path in default_key_files() {
+                match try_key_file(handle, target, wire, ask, &mut offered, &path).await {
+                    Authenticated::No => {}
+                    end => return end,
+                }
+            }
+        }
     }
-    notice(wire, format!("authentication failed; the server offers {offered}")).await;
+    // Then the prompted methods, in `ssh`'s own PreferredAuthentications
+    // order: keyboard-interactive before password, because the server
+    // composes the questions in the first and gets only a password in the
+    // second, so the first is the one that can carry a second factor.
+    if offered.contains(&MethodKind::KeyboardInteractive) {
+        match challenge(handle, target, wire, ask, &mut offered).await {
+            Authenticated::No => {}
+            end => return end,
+        }
+    }
+    if offered.contains(&MethodKind::Password) {
+        match password(handle, target, wire, ask, &mut offered).await {
+            Authenticated::No => {}
+            end => return end,
+        }
+    }
+    notice(wire, format!("authentication failed; the server offers {offered:?}")).await;
+    Authenticated::No
+}
+
+/// The server's own challenge: it composes the questions, this asks them
+/// in the order given, and the echo flag on each is what says whether the
+/// answer may appear on the glass.
+///
+/// One round is the common case (a password prompt by another name) and
+/// several are legal: a one-time code after a password, a PIN after a
+/// touch. The loop is the protocol's rather than a retry -- the server
+/// decides how many rounds there are, and ends them by succeeding or
+/// failing.
+async fn challenge(
+    handle: &mut client::Handle<Handler>,
+    target: &SshTarget,
+    wire: &ChannelWire,
+    ask: &Asker,
+    offered: &mut MethodSet,
+) -> Authenticated {
+    use russh::client::KeyboardInteractiveAuthResponse as Step;
+    let mut step = match handle
+        .authenticate_keyboard_interactive_start(target.user.clone(), None)
+        .await
+    {
+        Ok(step) => step,
+        Err(e) => {
+            notice(wire, format!("the server's challenge failed: {e}")).await;
+            return Authenticated::No;
+        }
+    };
+    loop {
+        match step {
+            Step::Success => {
+                notice(
+                    wire,
+                    format!("authenticated as {} (keyboard-interactive)", target.user),
+                )
+                .await;
+                return Authenticated::Yes;
+            }
+            Step::Failure { remaining_methods, .. } => {
+                *offered = remaining_methods;
+                notice(wire, "the server did not accept the challenge").await;
+                return Authenticated::No;
+            }
+            Step::InfoRequest { name, instructions, prompts } => {
+                // The server's framing, when it sent any, goes on the wire
+                // before the questions it frames: the ordering the desk
+                // depends on, applied to somebody else's words.
+                for line in [name.trim(), instructions.trim()] {
+                    if !line.is_empty() {
+                        notice(wire, line).await;
+                    }
+                }
+                let mut answers = Vec::with_capacity(prompts.len());
+                for prompt in prompts {
+                    // The server says whether this one may be seen. A
+                    // one-time code or an employee number is ordinary text;
+                    // anything it wants hidden is a secret here too.
+                    let kind = if prompt.echo { Answer::Text } else { Answer::Secret };
+                    let asking = ask.clone();
+                    let question = prompt.prompt.clone();
+                    let answer = tokio::task::spawn_blocking(move || asking.ask(question, kind))
+                        .await
+                        .ok()
+                        .flatten();
+                    match answer {
+                        Some(text) => answers.push(text),
+                        None => return Authenticated::Cancelled,
+                    }
+                }
+                step = match handle.authenticate_keyboard_interactive_respond(answers).await {
+                    Ok(next) => next,
+                    Err(e) => {
+                        notice(wire, format!("the server's challenge failed: {e}")).await;
+                        return Authenticated::No;
+                    }
+                };
+            }
+        }
+    }
+}
+
+/// The last method, and the plainest: the account's password, asked for
+/// under the name the account is spelled with so it is clear which door
+/// the answer opens.
+async fn password(
+    handle: &mut client::Handle<Handler>,
+    target: &SshTarget,
+    wire: &ChannelWire,
+    ask: &Asker,
+    offered: &mut MethodSet,
+) -> Authenticated {
+    let question = format!("{}@{}'s password: ", target.user, target.host);
+    for attempt in 0..PASSPHRASE_TRIES {
+        if attempt > 0 {
+            // `ssh`'s own words, on the wire before the question they are
+            // about, so the user reads why they are being asked again.
+            notice(wire, "permission denied, please try again").await;
+        }
+        let asking = ask.clone();
+        let prompt = question.clone();
+        let answer = tokio::task::spawn_blocking(move || asking.ask(prompt, Answer::Secret))
+            .await
+            .ok()
+            .flatten();
+        let Some(secret) = answer else {
+            return Authenticated::Cancelled;
+        };
+        match handle.authenticate_password(target.user.clone(), secret).await {
+            Ok(AuthResult::Success) => {
+                notice(wire, format!("authenticated as {} (password)", target.user)).await;
+                return Authenticated::Yes;
+            }
+            Ok(AuthResult::Failure { remaining_methods, .. }) => *offered = remaining_methods,
+            Err(e) => {
+                notice(wire, format!("password authentication failed: {e}")).await;
+                return Authenticated::No;
+            }
+        }
+    }
     Authenticated::No
 }
 
@@ -418,6 +562,7 @@ async fn try_key_file(
     target: &SshTarget,
     wire: &ChannelWire,
     ask: &Asker,
+    offered: &mut MethodSet,
     path: &std::path::Path,
 ) -> Authenticated {
     use russh::keys::{load_secret_key, Error as KeysError, PrivateKeyWithHashAlg};
@@ -480,7 +625,8 @@ async fn try_key_file(
             .await;
             Authenticated::Yes
         }
-        Ok(AuthResult::Failure { .. }) => {
+        Ok(AuthResult::Failure { remaining_methods, .. }) => {
+            *offered = remaining_methods;
             notice(wire, format!("the server did not accept {}", path.display())).await;
             Authenticated::No
         }
@@ -504,6 +650,7 @@ async fn agent_auth(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
+    offered: &mut MethodSet,
 ) -> Authenticated {
     let agent = match AgentClient::connect_env().await {
         Ok(agent) => agent,
@@ -512,7 +659,7 @@ async fn agent_auth(
             return Authenticated::No;
         }
     };
-    sign_with(handle, target, wire, agent).await
+    sign_with(handle, target, wire, offered, agent).await
 }
 
 /// This platform's agents: the OpenSSH Authentication Agent service on its
@@ -523,13 +670,14 @@ async fn agent_auth(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
+    offered: &mut MethodSet,
 ) -> Authenticated {
     const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
     if let Ok(agent) = AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE).await {
-        return sign_with(handle, target, wire, agent).await;
+        return sign_with(handle, target, wire, offered, agent).await;
     }
     match AgentClient::connect_pageant().await {
-        Ok(agent) => sign_with(handle, target, wire, agent).await,
+        Ok(agent) => sign_with(handle, target, wire, offered, agent).await,
         Err(_) => {
             notice(
                 wire,
@@ -546,6 +694,7 @@ async fn sign_with<S>(
     handle: &mut client::Handle<Handler>,
     target: &SshTarget,
     wire: &ChannelWire,
+    offered: &mut MethodSet,
     mut agent: AgentClient<S>,
 ) -> Authenticated
 where
@@ -585,7 +734,10 @@ where
                 notice(wire, format!("authenticated as {} ({comment})", target.user)).await;
                 return Authenticated::Yes;
             }
-            Ok(AuthResult::Failure { .. }) => continue,
+            Ok(AuthResult::Failure { remaining_methods, .. }) => {
+                *offered = remaining_methods;
+                continue;
+            }
             Err(e) => {
                 notice(wire, format!("agent signing failed: {e}")).await;
                 return Authenticated::No;
