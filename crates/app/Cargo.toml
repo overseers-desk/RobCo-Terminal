@@ -113,6 +113,7 @@ objc2 = "0.5.2"
 objc2-foundation = { version = "0.2.2", features = ["NSString", "NSThread"] }
 objc2-app-kit = { version = "0.2.2", features = [
     "NSApplication",
+    "NSEvent",
     "NSMenu",
     "NSMenuItem",
     "NSResponder",

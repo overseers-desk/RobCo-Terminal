@@ -71,6 +71,7 @@ the unbroken copy there.
 |---|---|
 | `Cmd`+`,` | Open the settings window |
 | `Cmd`+`H` | Hide the application |
+| `Cmd`+`Option`+`H` | Hide every other application |
 | `Cmd`+`Q` | Close the terminal |
 
 macOS draws a menu bar for every application, and these are its items'

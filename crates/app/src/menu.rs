@@ -3,8 +3,10 @@
 //! macOS puts an application's menu on the screen rather than in its window,
 //! and expects Command-comma to open its settings; a Mac reaches for the
 //! menu bar for the things that belong to the program rather than to what is
-//! on the glass. This is that menu and nothing more: About, Settings, Hide,
-//! Show All and Quit.
+//! on the glass. This is that menu: About, Settings, Services, Hide, Hide
+//! Others, Show All and Quit. Every item but Settings is one a Mac
+//! application is expected to carry, and all of them but Settings and Quit
+//! are answered by AppKit itself.
 //!
 //! It opens nothing and closes nothing itself. Settings and Quit post a
 //! [`ShellEvent`] and stop there, because both are decisions the menu cannot
@@ -23,7 +25,9 @@ mod platform {
     use objc2::rc::Retained;
     use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, Sel};
     use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
-    use objc2_app_kit::{NSApplication, NSMenu, NSMenuItem, NSRunningApplication};
+    use objc2_app_kit::{
+        NSApplication, NSEventModifierFlags, NSMenu, NSMenuItem, NSRunningApplication,
+    };
     use objc2_foundation::{ns_string, MainThreadMarker, NSString};
     use winit::event_loop::{EventLoopBuilder, EventLoopProxy};
     use winit::platform::macos::EventLoopBuilderExtMacOS;
@@ -151,11 +155,27 @@ mod platform {
             Some(sel!(robcoOpenSettings:)),
             ns_string!(","),
         );
+        // The system's own menu of what other applications offer to do with a
+        // selection. AppKit fills it; this hands it the empty submenu to fill.
+        let services_menu = NSMenu::new(mtm);
+        let services = item(mtm, ns_string!("Services"), None, ns_string!(""));
+        services.setSubmenu(Some(&services_menu));
         let hide = item(
             mtm,
             &ns_string!("Hide ").stringByAppendingString(&name),
             Some(sel!(hide:)),
             ns_string!("h"),
+        );
+        let hide_others = item(
+            mtm,
+            ns_string!("Hide Others"),
+            Some(sel!(hideOtherApplications:)),
+            ns_string!("h"),
+        );
+        // The one item whose shortcut is not Command alone.
+        hide_others.setKeyEquivalentModifierMask(
+            NSEventModifierFlags::NSEventModifierFlagOption
+                | NSEventModifierFlags::NSEventModifierFlagCommand,
         );
         let show_all = item(
             mtm,
@@ -181,12 +201,18 @@ mod platform {
         app_menu.addItem(&NSMenuItem::separatorItem(mtm));
         app_menu.addItem(&settings);
         app_menu.addItem(&NSMenuItem::separatorItem(mtm));
+        app_menu.addItem(&services);
+        app_menu.addItem(&NSMenuItem::separatorItem(mtm));
         app_menu.addItem(&hide);
+        app_menu.addItem(&hide_others);
         app_menu.addItem(&show_all);
         app_menu.addItem(&NSMenuItem::separatorItem(mtm));
         app_menu.addItem(&quit);
         app_item.setSubmenu(Some(&app_menu));
 
+        // SAFETY: a menu built here and held by the menu bar below, which is
+        // what AppKit fills once it is named.
+        unsafe { app.setServicesMenu(Some(&services_menu)) };
         app.setMainMenu(Some(&menubar));
 
         // A menu item holds its target weakly, AppKit declaring the property
