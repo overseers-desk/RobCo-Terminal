@@ -176,8 +176,8 @@ Just run `robco-term`. There is no configuration to do first, and no config
 file exists until you write one.
 
 When you do want to change something, right-click the glass. That opens
-the settings window, a small companion program shipped in every binary
-package, with the presets, sliders and pickers for everything the glass
+the settings window, a small companion program every binary package
+carries (on Windows it lives inside the terminal's own exe), with the presets, sliders and pickers for everything the glass
 and the cabinet do; each change lands the moment you make it, and Cancel
 puts everything back. Underneath, all it does is edit one TOML file the
 terminal watches, so the editor path is just as good: open the file, change
@@ -240,7 +240,7 @@ it also says which keys this terminal leaves alone.
 it: `-e <cmd>` runs a command instead of your shell and swallows every
 argument after itself, so put it last; `--program` does the same for a plain
 program with no arguments; `--workdir` sets the starting directory;
-`--fullscreen` and `--profile` do what they say; `--default-settings`
+`--fullscreen`, `--profile` and `--settings` do what they say; `--default-settings`
 starts from the built-in defaults without reading your config file; and
 `--dump-settings` prints the defaults, presets, fonts and value lists as
 TOML for external tools, the settings window among them.

@@ -1,6 +1,6 @@
 # Release checklist
 
-The procedure that cut v0.1.0, kept current so the next cut repeats it instead of rediscovering it. Artifacts are named `robco-term-<VERSION>-<platform>-<arch>` bare where a user runs them directly, and by each package format's own convention otherwise: a `.zip` on Windows, because the settings window ships as a second exe, `robco-settings.exe`, that the terminal looks for beside its own binary by that fixed name (`crates/app/src/window.rs`, `SETTINGS_BINARY`); a bare download would count on a stranger to put both files in the same folder unprompted.
+The procedure that cut v0.1.0, kept current so the next cut repeats it instead of rediscovering it. Artifacts are named `robco-term-<VERSION>-<platform>-<arch>` bare where a user runs them directly, and by each package format's own convention otherwise. The Windows artifact is one bare `.exe`: the settings window and a static Tcl/Tk ride inside the terminal binary, and right-click re-executes that same file with `--settings`.
 
 ## Before tagging
 
@@ -31,7 +31,7 @@ gh release create v<VERSION> --title "RobCo Terminal <VERSION>" -F <notes file> 
   ../robco-term-dbgsym_<VERSION>_amd64.ddeb
 ```
 
-The tag push above also triggers `.github/workflows/release.yml`: it builds `robco-term.exe` and `robco-settings.exe`, zips the pair as `robco-term-<VERSION>-windows-x86_64.zip`, and uploads that to this same release once one exists, so run `gh release create` promptly after the push rather than long after it. The pair is unsigned and meets SmartScreen once. Nothing to fetch or stamp by hand for Windows; check the workflow run finished before moving on to Verify below.
+The tag push above also triggers `.github/workflows/release.yml`: it builds the embedded-settings exe, proves its payload with `--settings-selftest`, and uploads `robco-term-<VERSION>-windows-x86_64.exe` to this same release once one exists, so run `gh release create` promptly after the push rather than long after it. The exe is unsigned and meets SmartScreen once. Nothing to fetch or stamp by hand for Windows; check the workflow run finished before moving on to Verify below.
 
 Write the notes for the stranger on the releases page: what each asset is, what it needs, and what is honestly untested. A recut (assets or notes corrected after publish) keeps the version number: `gh release upload`/`delete-asset`/`edit` against the same tag.
 
