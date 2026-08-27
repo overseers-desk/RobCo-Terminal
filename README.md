@@ -70,9 +70,7 @@ the whole contract, including what it does not read (`~/.ssh/config`).
 **Linux, today.** X11 is what is wired and measured; on Wayland the window
 runs.
 
-**Windows compiles, and has not yet been run.** Nobody has launched the
-binary on real Windows hardware: treat it as compiled, not shipped. macOS
-has not been attempted.
+**Windows, today.** macOS has not been attempted.
 
 You need a GPU the graphics layer can reach. It picks a backend on its own,
 and reports which one it chose in the first lines of its log. `WGPU_BACKEND`
