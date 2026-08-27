@@ -73,7 +73,10 @@ test dump-1.5 {the error names what was looked for and where} -body {
     # variable the app no longer reads would send the user somewhere that
     # cannot help them.
     set msg [::rcsettings::dump::describe_search]
-    expr {[string match "*robco-term beside this interpreter*" $msg]
+    # The sibling is named with the platform's suffix (.exe on Windows),
+    # and this suite runs there too, inside the shipped exe's selftest.
+    set sibling "robco-term[::rcsettings::dump::exe_suffix]"
+    expr {[string match "*$sibling beside this interpreter*" $msg]
           && [string match "*robco-term on PATH*" $msg]
           && ![string match "*ROBCO_TERM*" $msg]}
 } -result 1
