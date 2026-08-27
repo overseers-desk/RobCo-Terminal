@@ -109,6 +109,33 @@ fn press_drag_release_selects_the_dragged_run() {
     assert_eq!(surface.last_selection(), Some("hello world"));
 }
 
+/// Control with the left button is macOS's secondary click, so there the
+/// same gesture never marks anything: the press goes where a right press
+/// goes, which is the settings application, and the drag that follows has no
+/// selection to extend. Everywhere else Control is just a modifier held over
+/// an ordinary drag, and the run comes back joined.
+///
+/// Driven through the real `mouse_pressed`/`mouse_released` rather than the
+/// routing table one crate down, because the substitution that makes the two
+/// platforms differ lives here.
+#[test]
+fn a_control_drag_marks_nothing_on_macos_and_copies_a_run_elsewhere() {
+    let mut surface = surface("printf 'hello world\\n'", 24);
+    wait_for_screen(&mut surface, "hello world");
+
+    let control = ModifiersState::CONTROL;
+    surface.mouse_pressed(MouseButton::Left, at(0, 0), control);
+    surface.cursor_moved(at(11, 0), control);
+    surface.mouse_released(MouseButton::Left, at(11, 0), control);
+
+    let expected = if cfg!(target_os = "macos") {
+        None
+    } else {
+        Some("hello world")
+    };
+    assert_eq!(surface.last_selection(), expected);
+}
+
 /// A drag that stops short of the end of the word stops short in the
 /// text too: the selection is the cells the pointer crossed, not the
 /// word it started in.

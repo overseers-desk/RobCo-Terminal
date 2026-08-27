@@ -607,6 +607,14 @@ pub struct TerminalSurface {
     pointer_cell: (usize, usize),
     /// The left button is down and a move extends the selection.
     dragging: bool,
+    /// The left press that is down was Control-held and became a secondary
+    /// click ([`pointer::control_click_is_secondary`]), so the release that
+    /// closes it is a secondary release too.
+    ///
+    /// Held rather than recomputed because the modifiers are read afresh at
+    /// the release: a Control let go while the button is still down would
+    /// otherwise send a program a right press and a left release.
+    secondary_press: bool,
     /// When and where the last left press landed, for the double click.
     last_click: Option<(Instant, (usize, usize))>,
     /// What the last completed selection said. The clipboard is the real
@@ -940,6 +948,7 @@ impl TerminalSurface {
             selection: SelectionController::new(columns),
             pointer_cell: (0, 0),
             dragging: false,
+            secondary_press: false,
             last_click: None,
             last_selection: None,
             wheel_pixels: 0.0,
@@ -3626,6 +3635,18 @@ impl Surface for TerminalSurface {
         position: PhysicalPosition<f64>,
         modifiers: ModifiersState,
     ) {
+        // macOS's secondary click, before anything reads the button: Control
+        // with the left button is a right press for the whole window, the
+        // seam and the bank's strips included, exactly as the right button
+        // itself is. Everywhere else this is the button that arrived.
+        let mods = modifiers_from(modifiers);
+        let button = if button == MouseButton::Left && pointer::control_click_is_secondary(mods) {
+            self.secondary_press = true;
+            MouseButton::Right
+        } else {
+            button
+        };
+
         // The seam first: a press it took is the cabinet's and must not also
         // mark the screen (`chassis::cabinet`'s wiring sketch). The bank's own
         // windows come next, for the same reason and in the same order: the
@@ -3637,7 +3658,6 @@ impl Surface for TerminalSurface {
         let Some(button) = pointer_button(button) else {
             return;
         };
-        let mods = modifiers_from(modifiers);
         let cell = self.cell_at(position);
         self.pointer_cell = cell;
 
@@ -3682,6 +3702,16 @@ impl Surface for TerminalSurface {
         position: PhysicalPosition<f64>,
         modifiers: ModifiersState,
     ) {
+        // The other half of the press's substitution, and the reason it is
+        // remembered rather than recomputed: the press went out as a right
+        // one, so this release does too, whether or not Control is still
+        // down.
+        let button = if button == MouseButton::Left && std::mem::take(&mut self.secondary_press) {
+            MouseButton::Right
+        } else {
+            button
+        };
+
         if self.seam_press && button == MouseButton::Left {
             self.seam_released();
             return;

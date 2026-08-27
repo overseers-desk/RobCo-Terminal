@@ -4,7 +4,8 @@
 
 use term::grid::{GridView, ScriptedGrid};
 use term::pointer::{
-    column_selection_mode, on_press, preserve_line_breaks, Button, Modifiers, PointerAction,
+    column_selection_mode, control_click_is_secondary, on_press, preserve_line_breaks, Button,
+    Modifiers, PointerAction,
     PointerContext,
 };
 use term::selection::{char_class, Selection, SelectionController, TripleClickMode, Window};
@@ -74,14 +75,28 @@ fn a_multi_line_selection_round_trips_with_its_line_breaks() {
     assert_eq!(c.release(&g).as_deref(), Some("first\nsecond\nthird"));
 }
 
+/// The modifiers a drag is held with to copy a wrapped run unbroken:
+/// Command on macOS, where Control is the secondary click, and Control
+/// everywhere else.
+fn join_lines() -> Modifiers {
+    if cfg!(target_os = "macos") {
+        Modifiers {
+            meta: true,
+            ..Modifiers::NONE
+        }
+    } else {
+        Modifiers {
+            control: true,
+            ..Modifiers::NONE
+        }
+    }
+}
+
 #[test]
-fn ctrl_drops_the_line_breaks_so_a_wrapped_command_pastes_as_one() {
+fn the_join_lines_chord_makes_a_wrapped_command_paste_as_one() {
     let g = ScriptedGrid::new(COLS, &["make -j8 ", "--target release"]).wrap(&[0]);
     let mut c = SelectionController::new(COLS);
-    c.preserve_line_breaks = preserve_line_breaks(Modifiers {
-        control: true,
-        ..Modifiers::NONE
-    });
+    c.preserve_line_breaks = preserve_line_breaks(join_lines());
 
     c.press(0, 0);
     c.drag_to(&g, win(&g), 16, 1);
@@ -352,10 +367,7 @@ fn a_left_press_on_a_link_anchors_and_activates() {
 #[test]
 fn the_copy_modifiers_match_the_recorded_chords() {
     assert!(preserve_line_breaks(Modifiers::NONE));
-    assert!(!preserve_line_breaks(Modifiers {
-        control: true,
-        ..Modifiers::NONE
-    }));
+    assert!(!preserve_line_breaks(join_lines()));
     assert!(
         preserve_line_breaks(Modifiers {
             control: true,
@@ -369,4 +381,23 @@ fn the_copy_modifiers_match_the_recorded_chords() {
         alt: true,
         ..Modifiers::NONE
     }));
+}
+
+/// Control with the left button is macOS's secondary click and nothing
+/// anywhere else, so the two platforms disagree about this press on purpose.
+#[test]
+fn control_with_the_left_button_is_the_secondary_click_on_macos() {
+    let control = Modifiers {
+        control: true,
+        ..Modifiers::NONE
+    };
+    assert_eq!(control_click_is_secondary(control), cfg!(target_os = "macos"));
+    assert!(
+        !control_click_is_secondary(Modifiers {
+            alt: true,
+            ..control
+        }),
+        "Ctrl+Alt drags a rectangle on every platform, macOS included"
+    );
+    assert!(!control_click_is_secondary(Modifiers::NONE));
 }

@@ -17,8 +17,9 @@
 /// one keyboard under the user's hands, and the keyboard encoder, the
 /// mouse reporter and the routing table below all read the same state.
 /// `crates/app` reaches it as `app::input::Modifiers`. The rules here
-/// consult only Shift, Control and Alt; `meta` is carried because the
-/// keytab's CSI modifier parameter counts it.
+/// consult Shift, Control and Alt everywhere, and Meta on macOS, where
+/// Control is the secondary click and the unbroken copy moves to Command;
+/// the keytab's CSI modifier parameter counts Meta as well.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Modifiers {
     pub shift: bool,
@@ -177,10 +178,29 @@ pub fn on_press(
     }
 }
 
-/// `_preserveLineBreaks`, set from the press modifiers: Ctrl without Alt
-/// copies a wrapped selection as one unbroken run.
+/// Whether Control with the left button is this platform's secondary click.
+///
+/// macOS delivers a Control-click as a left press carrying the Control flag,
+/// and converts it to a secondary click only for a view that hands AppKit an
+/// `NSMenu`. A drawn grid never does, so every Mac terminal makes the
+/// conversion itself and this one is no exception. Alt is excluded because
+/// Ctrl+Alt is the rectangle drag, which keeps its meaning there.
+pub fn control_click_is_secondary(modifiers: Modifiers) -> bool {
+    cfg!(target_os = "macos") && modifiers.control && !modifiers.alt
+}
+
+/// `_preserveLineBreaks`, set from the press modifiers: the drag that copies
+/// a wrapped selection as one unbroken run.
+///
+/// Command holds it on macOS, where Control is the secondary click
+/// ([`control_click_is_secondary`]) and cannot also mean this; Ctrl without
+/// Alt holds it everywhere else.
 pub fn preserve_line_breaks(modifiers: Modifiers) -> bool {
-    !(modifiers.control && !modifiers.alt)
+    if cfg!(target_os = "macos") {
+        !modifiers.meta
+    } else {
+        !(modifiers.control && !modifiers.alt)
+    }
 }
 
 /// `_columnSelectionMode`: Ctrl+Alt makes the drag rectangular.
