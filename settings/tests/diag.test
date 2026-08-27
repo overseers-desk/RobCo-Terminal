@@ -1,0 +1,126 @@
+# The log a failure lands in when there is no console to print it to.
+#
+# What these tests hold is that something is written and where: the Windows
+# bug behind this namespace was a launch that failed silently, so the
+# assertion worth making is that after a failure there is a file with the
+# reason in it.
+
+package require tcltest 2.5
+namespace import ::tcltest::*
+
+source [file join [file dirname [info script]] helpers.tcl]
+source [file join $::libdir diag.tcl]
+
+# The path is decided once per process, so a test that wants a different one
+# clears the decision first. Nothing in the app does this; a run has one log.
+proc use_log {path} {
+    set ::rcsettings::diag::Path ""
+    set ::rcsettings::embedded(diagfile) $path
+}
+
+proc slurp {path} {
+    set ch [open $path r]
+    set text [read $ch]
+    close $ch
+    return $text
+}
+
+set ::logdir [file join [::tcltest::configure -tmpdir] diag-[pid]]
+file mkdir $::logdir
+
+# The echo goes to a file for the length of this suite, both so that it can
+# be read back and so that a run of the whole suite is not spattered with
+# the diagnostics these tests are deliberately provoking.
+set ::console [file join $::logdir console.txt]
+set ::rcsettings::diag::Console [open $::console w]
+
+test path-1.1 {an embedded terminal names the log} -body {
+    use_log [file join $::logdir named.log]
+    ::rcsettings::diag::path
+} -result [file join $::logdir named.log]
+
+test path-1.2 {the log's directory is made on the way past} -setup {
+    set deep [file join $::logdir made here settings.log]
+} -body {
+    use_log $deep
+    ::rcsettings::diag::path
+    file isdirectory [file dirname $deep]
+} -result 1
+
+test path-1.3 {unembedded, the log sits under the state directory} -setup {
+    set had [info exists ::env(XDG_STATE_HOME)]
+    if {$had} { set was $::env(XDG_STATE_HOME) }
+    set ::env(XDG_STATE_HOME) [file join $::logdir state]
+} -body {
+    set ::rcsettings::diag::Path ""
+    unset -nocomplain ::rcsettings::embedded(diagfile)
+    ::rcsettings::diag::path
+} -cleanup {
+    if {$had} { set ::env(XDG_STATE_HOME) $was } else { unset ::env(XDG_STATE_HOME) }
+} -result [file join $::logdir state robco-term settings.log]
+
+test record-2.1 {a record carries the kind, the message and the stack} -setup {
+    set log [file join $::logdir record.log]
+    file delete -force $log
+    use_log $log
+} -body {
+    catch {error "the vault door is shut"} err
+    ::rcsettings::diag::record startup $err
+    set text [slurp $log]
+    list [string match {*\[startup\]*} $text] \
+        [string match {*the vault door is shut*} $text] \
+        [string match {*while executing*} $text]
+} -result {1 1 1}
+
+test record-2.2 {a second record joins the first rather than replacing it} -setup {
+    set log [file join $::logdir twice.log]
+    file delete -force $log
+    use_log $log
+} -body {
+    ::rcsettings::diag::record startup "first" "-"
+    ::rcsettings::diag::record startup "second" "-"
+    set text [slurp $log]
+    list [string match {*first*} $text] [string match {*second*} $text]
+} -result {1 1}
+
+test record-2.3 {a record is echoed to the console as well as filed} -body {
+    ::rcsettings::diag::record startup "on the console too" "-"
+    string match {*on the console too*} [slurp $::console]
+} -result 1
+
+test record-2.4 {an unwritable log is not itself a failure} -setup {
+    use_log [file join $::logdir no such directory here settings.log]
+    # Defeat the directory the path proc makes, so the open cannot succeed.
+    file delete -force [file join $::logdir no]
+    set ::rcsettings::diag::Path [file join $::logdir no such settings.log]
+} -body {
+    ::rcsettings::diag::record startup "nowhere to put this"
+} -result {}
+
+# fatal ends the process, so it is tested in one: what matters is the exit
+# status and that the reason survived into the file, which is exactly what a
+# user would send back after a launch that showed them nothing.
+test fatal-3.1 {fatal writes the reason and leaves with a failure status} -setup {
+    set log [file join $::logdir fatal.log]
+    file delete -force $log
+    set script [file join $::logdir fatal.tcl]
+    set ch [open $script w]
+    puts $ch [string map [list @LIB@ [file join $::libdir diag.tcl] @LOG@ $log] {
+        source {@LIB@}
+        set ::rcsettings::embedded(diagfile) {@LOG@}
+        ::rcsettings::diag::fatal "The settings window could not start." \
+            "no robco-term anywhere"
+    }]
+    close $ch
+} -body {
+    # The child echoes its record to stderr, which is the point of it; here
+    # that goes to a file so a suite run stays quiet.
+    set status [catch {
+        exec [info nameofexecutable] $script 2> [file join $::logdir fatal.err]
+    } out]
+    set text [slurp $log]
+    list $status [string match {*could not start*} $text] \
+        [string match {*no robco-term anywhere*} $text]
+} -result {1 1 1}
+
+::tcltest::cleanupTests

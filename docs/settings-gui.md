@@ -44,6 +44,16 @@ make deliberately, put to the person who owns the answer.
 Comments, formatting and keys the app does not know stay byte-identical
 through every edit; the tests in `settings/tests/` hold it to that.
 
+A failure the window cannot continue past is written to a log as well as
+shown and printed, because the shipped Windows image has no console to
+print to and a message box needs a Tk that may be the thing that failed.
+The log is `$XDG_STATE_HOME/robco-term/settings.log`, or
+`%LOCALAPPDATA%\robco-term\settings.log` on Windows, or the same pair of
+names under the temporary directory where neither variable is set; a window
+embedded in the terminal writes to the log the terminal names instead, so
+the two accounts of one run stay together. Every uncaught background error
+goes there too. A launch that shows nothing has left a reason behind.
+
 ## How it relates to the terminal
 
 The two are separate processes with the config file between them; there is

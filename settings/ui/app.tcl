@@ -43,16 +43,17 @@ proc ::rcsettings::ui::app::start {} {
     wm withdraw .
     styles
 
+    # Both of these are shown and recorded rather than only shown: the window
+    # is withdrawn at this point, and a message box that cannot be drawn -
+    # a display that went away, an image whose Tk failed to load - would
+    # otherwise take the reason with it.
     if {[catch {::rcsettings::dump::load} dumpdata]} {
-        tk_messageBox -icon error -title "RobCo Terminal Settings" \
-            -message "Cannot read the terminal's settings schema." \
-            -detail $dumpdata
-        exit 1
+        ::rcsettings::diag::fatal \
+            "Cannot read the terminal's settings schema." $dumpdata
     }
     if {[catch {::rcsettings::model::init $dumpdata} err]} {
-        tk_messageBox -icon error -title "RobCo Terminal Settings" \
-            -message "Cannot read the configuration file." -detail $err
-        exit 1
+        ::rcsettings::diag::fatal \
+            "Cannot read the configuration file." $err
     }
 
     snapshot

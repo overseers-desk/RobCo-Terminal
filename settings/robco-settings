@@ -15,8 +15,17 @@ package require Tcl 9
 set ROBCO_SETTINGS_VERSION 0.1.1
 set ROOT [file dirname [file normalize [info script]]]
 
-foreach lib {toml.tcl dump.tcl model.tcl} {
+foreach lib {diag.tcl toml.tcl dump.tcl model.tcl} {
     source [file join $ROOT lib $lib]
+}
+
+# An error nobody catches has to reach the user somehow, and on Windows the
+# shipped image has no console to print it to: started from Explorer it would
+# otherwise appear to do nothing at all. Every uncaught background error is
+# recorded, and the one failure the whole window rests on - starting - is
+# caught here rather than left to the interpreter's own report.
+proc bgerror {message} {
+    ::rcsettings::diag::record bgerror $message
 }
 
 if {[lsearch -exact $argv --version] >= 0 || [lsearch -exact $argv -v] >= 0} {
@@ -28,4 +37,6 @@ foreach ui {form.tcl ssh_page.tcl preset_dialog.tcl app.tcl} {
     source [file join $ROOT ui $ui]
 }
 
-::rcsettings::ui::app::start
+if {[catch {::rcsettings::ui::app::start} err]} {
+    ::rcsettings::diag::fatal "The settings window could not start." $err
+}
