@@ -135,12 +135,15 @@ int RobcoSettingsEmbedded_Main(int argc, char **argv, const void *zip,
     RobcoDiagFile = diagfile;
 
     /*
-     * Nothing is appended to this executable - the archive is a section of
-     * it, mounted by hand below - but the hook is what performs
-     * Tcl_FindExecutable and the encoding initialisation that everything
-     * after depends on, and with nothing to find it does no more than that.
+     * Not TclZipfs_AppHook: its static-build arm goes hunting for a script
+     * library archive attached to the executable or the library file, and
+     * panics by the library's own name ("Cannot find tcl90s.lib") when
+     * there is none. This executable carries the archive as a section of
+     * its image instead, mounted by hand below, so the hook's one needed
+     * job - Tcl_FindExecutable and the encoding initialisation it brings -
+     * is done directly.
      */
-    TclZipfs_AppHook(&argc, &argv);
+    Tcl_FindExecutable(argc > 0 ? argv[0] : NULL);
 
     if (TclZipfs_MountBuffer(NULL, zip, ziplen, "//zipfs:/app", 1) != TCL_OK) {
         /*
