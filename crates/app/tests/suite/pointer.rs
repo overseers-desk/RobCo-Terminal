@@ -136,6 +136,29 @@ fn a_control_drag_marks_nothing_on_macos_and_copies_a_run_elsewhere() {
     assert_eq!(surface.last_selection(), expected);
 }
 
+/// A window that loses focus never sees the button come up, so the press
+/// that was in the air is over: the ordinary press after it is ordinary at
+/// both ends. Without the reset, the next release would go out as a right
+/// one, on macOS where the substitution happens and nowhere else.
+#[test]
+fn a_press_interrupted_by_losing_focus_does_not_colour_the_next_one() {
+    let mut surface = surface("printf 'hello world\\n'", 24);
+    wait_for_screen(&mut surface, "hello world");
+
+    // Away from the cell the drag below starts on: two presses on one cell
+    // inside the double-click window are a double click, which is a different
+    // gesture and not what this is about.
+    surface.mouse_pressed(MouseButton::Left, at(20, 0), ModifiersState::CONTROL);
+    surface.focus_changed(false);
+    surface.focus_changed(true);
+
+    surface.mouse_pressed(MouseButton::Left, at(0, 0), none());
+    surface.cursor_moved(at(11, 0), none());
+    surface.mouse_released(MouseButton::Left, at(11, 0), none());
+
+    assert_eq!(surface.last_selection(), Some("hello world"));
+}
+
 /// A drag that stops short of the end of the word stops short in the
 /// text too: the selection is the cells the pointer crossed, not the
 /// word it started in.

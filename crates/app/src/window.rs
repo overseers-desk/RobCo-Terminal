@@ -3639,10 +3639,11 @@ impl Surface for TerminalSurface {
         position: PhysicalPosition<f64>,
         modifiers: ModifiersState,
     ) {
-        // macOS's secondary click, before anything reads the button: Control
-        // with the left button is a right press for the whole window, the
-        // seam and the bank's strips included, exactly as the right button
-        // itself is. Everywhere else this is the button that arrived.
+        // macOS's secondary click, before anything downstream reads the
+        // button: Control with the left button is a right press for the whole
+        // window, the seam and the bank's strips included, exactly as the
+        // right button itself is. Everywhere else this is the button that
+        // arrived.
         let mods = modifiers_from(modifiers);
         let button = if button == MouseButton::Left && pointer::control_click_is_secondary(mods) {
             self.secondary_press = true;
@@ -3828,6 +3829,10 @@ impl Surface for TerminalSurface {
             // same call the button makes and not a flag cleared here.
             self.dragging = false;
             self.seam_released();
+            // And the press that was a secondary click is over with it: a
+            // flag left standing would turn the next window's first ordinary
+            // press into a right release.
+            self.secondary_press = false;
             // A window that goes away under a half-typed chord commits it
             // rather than holding the digits for whenever it comes back.
             self.chord_modifier = false;
