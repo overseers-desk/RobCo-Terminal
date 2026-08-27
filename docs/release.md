@@ -31,7 +31,7 @@ gh release create v<VERSION> --title "RobCo Terminal <VERSION>" -F <notes file> 
   ../robco-term-dbgsym_<VERSION>_amd64.ddeb
 ```
 
-The tag push above also triggers `.github/workflows/release.yml`: it builds `robco-term.exe` and `robco-settings.exe`, zips the pair as `robco-term-<VERSION>-windows-x86_64.zip`, and uploads that to this same release once one exists, so run `gh release create` promptly after the push rather than long after it. The pair is unsigned and meets SmartScreen once. Nothing to fetch or stamp by hand for Windows anymore; check the workflow run finished before moving on to Verify below.
+The tag push above also triggers `.github/workflows/release.yml`: it builds `robco-term.exe` and `robco-settings.exe`, zips the pair as `robco-term-<VERSION>-windows-x86_64.zip`, and uploads that to this same release once one exists, so run `gh release create` promptly after the push rather than long after it. The pair is unsigned and meets SmartScreen once. Nothing to fetch or stamp by hand for Windows; check the workflow run finished before moving on to Verify below.
 
 Write the notes for the stranger on the releases page: what each asset is, what it needs, and what is honestly untested. A recut (assets or notes corrected after publish) keeps the version number: `gh release upload`/`delete-asset`/`edit` against the same tag.
 
@@ -47,4 +47,4 @@ A release the page does not show is not released, whatever was built.
 
 ## Open
 
-The Windows half is automatic now (`.github/workflows/release.yml`). The Linux half above, the tarball and the `.deb`, is still built and uploaded by hand; carrying questlog's `release-images` pattern the rest of the way would automate that half too.
+The Windows half is automatic (`.github/workflows/release.yml`). The Linux half above, the tarball and the `.deb`, is still built and uploaded by hand; carrying questlog's `release-images` pattern the rest of the way would automate that half too.
