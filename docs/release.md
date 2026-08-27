@@ -19,7 +19,7 @@ cargo run -p xtask -- dist --out-dir dist --settings-binary <path the script pri
 dpkg-buildpackage -us -uc -b
 ```
 
-`dist/` holds the tarball; the `.deb` lands in the parent directory, dpkg-buildpackage's convention, with a `-dbgsym` `.ddeb` beside it that is a build side effect and not a release asset. Point the build script's `BUILD_DIR` at disk, not the RAM-backed `/tmp`. Run `lintian` on the `.changes` before shipping the deb; the accepted findings are the two missing manual pages.
+`dist/` holds the tarball; the `.deb` lands in the parent directory, dpkg-buildpackage's convention, with a `-dbgsym` `.ddeb` beside it that is a build side effect and not a release asset. Point the build script's `BUILD_DIR` at disk, not the RAM-backed `/tmp`. Run `lintian` on the `.changes` before shipping the deb; the accepted findings are the two missing manual pages, and `bad-distribution-in-changes-file unstable` on a lintian whose distribution vocabulary is Ubuntu's rather than Debian's.
 
 ## Publish
 
