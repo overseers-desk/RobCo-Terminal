@@ -79,6 +79,8 @@ How much of the surveyed category serves each pain, and how. The absences are st
 
 **P11, weight.** Native Rust, C and Zig terminals escape it; the Electron trio, Warp's AI and accounts, and iTerm2's memory and AI features carry it. cool-retro-term (Qt, 121 dependencies) and Hyper (Electron) are the heavy ones among the terminals that ship a look.
 
+**P14, distribution and trust, and P15, key agents.** Neither is served by the terminals in this file, and neither is a failing of theirs: both are pains of the Windows remote-access field, where the client is downloaded from the open web rather than from a distribution's archive and where three incompatible agent protocols sit side by side. That field is surveyed in `windows-ssh-clients.md`, and the supply notes for these two pains live there. What is worth carrying back here is that a package-manager listing is near-universal in that field while it is optional in this one, because a Linux terminal arrives through an archive whose provenance is already settled.
+
 ## What the pairing costs the field
 
 The products that ship a look are weak on exactly the functional pains, and the strong functional terminals ship no look. cool-retro-term has no tabs, no splits, an open X11-only complaint and an unbearable-latency reputation. Hyper is Electron and last released in July 2024. Windows Terminal is functional and Windows-only. Nothing in the surveyed set is both.

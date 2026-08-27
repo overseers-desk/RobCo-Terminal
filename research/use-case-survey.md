@@ -2,7 +2,7 @@
 
 Snapshot taken August 2026. Re-snapshot trigger: a mainstream terminal shipping tmux control mode on Linux, a new retro/CRT terminal reaching the top tier, or six months elapsed.
 
-Sources: Hacker News (launch and comparison threads of cool-retro-term, Ghostty, WezTerm, Alacritty, kitty, Rio, foot, Contour, Warp, Tabby, Hyper, Zutty; the typing-latency threads), the issue trackers of cool-retro-term, Ghostty, WezTerm, kitty, Alacritty, Rio, Contour, Zellij and tmux, Reddit (r/commandline, r/linux, r/unixporn, r/archlinux, r/KittyTerminal, r/wezterm, r/Fedora, r/tmux, r/selfhosted, r/zellij, r/ClaudeCode, r/ClaudeAI, r/rust, r/kde), Lobsters, The Register forums, and developer blogs.
+Sources: Hacker News (launch and comparison threads of cool-retro-term, Ghostty, WezTerm, Alacritty, kitty, Rio, foot, Contour, Warp, Tabby, Hyper, Zutty; the typing-latency threads; the PuTTY distribution and fork threads), the issue trackers of cool-retro-term, Ghostty, WezTerm, kitty, Alacritty, Rio, Contour, Zellij and tmux, Reddit (r/commandline, r/linux, r/unixporn, r/archlinux, r/KittyTerminal, r/wezterm, r/Fedora, r/tmux, r/selfhosted, r/zellij, r/ClaudeCode, r/ClaudeAI, r/rust, r/kde, r/sysadmin, r/networking, r/homelab, r/windows, r/1Password, r/yubikey), Stack Exchange (Stack Overflow, Server Fault), Lobsters, The Register forums, and developer blogs.
 
 This file is the index for the folder. It defines the pain taxonomy: the distinct pains people voice about living with a desktop terminal emulator, numbered once here. `voices.md` maps each quote to a pain number, `competitive-landscape.md` records what the field supplies for each, and `status.md` records which RobCo Terminal covers. The numbers are stable identifiers, not a ranking.
 
@@ -21,6 +21,8 @@ This file is the index for the folder. It defines the pain taxonomy: the distinc
 - **P11 Weight, bloat, and creep.** Electron memory against a 250-kilobyte native terminal; feature bloat; AI features, forced accounts, telemetry, and pricing models arriving in what was a free local tool.
 - **P12 Maintainer conduct.** A maintainer who closes the tmux question with "don't", refuses a font option, or answers a security report brusquely, named across unrelated threads as the reason for leaving.
 - **P13 Choosing at all.** Thirty-four terminals to evaluate, a paradox of choice, "whatever ships with the distro is fine" at the top of every thread, no trusted up-to-date comparison, and a name that repels adoption.
+- **P14 Distribution and trust.** A squatted or SEO-outranking putty.org held by a rival vendor for decades, mirror sites serving a credential-stealing trojanized build, no code signing on the official binary, and a project-run 2025 domain migration that itself read as a phishing risk to the audience it was meant to reassure.
+- **P15 Key agent and modern authentication.** Pageant's roughly 8KB key store stalling past ~25 loaded keys, concurrent agent authentications serializing instead of running in parallel, a `.ppk` format that blocks migration to a password manager's own SSH agent, and FIDO2 or smartcard keys that PuTTY and its agent-aware siblings still fail to "see."
 
 ## Demand by pain
 
@@ -41,6 +43,8 @@ Demand is the frequency and intensity with which the pain is voiced in the corpu
 | P11 Bloat and creep | High; Warp threads, Electron memory, iTerm2 AI | §11 | Native terminals escape it |
 | P12 Maintainers | Moderate; three unrelated threads name the same maintainer | §12 | Not a feature |
 | P13 Choosing | High by score (top comments at 121–230), low by intensity | §13 | Not a feature |
+| P14 Distribution and trust | High and recent: six posts 2015–2025, two of them at 480 and 506 score/points, the newest triggered by the project's own August 2025 domain change | §14 | `windows-ssh-clients.md`: a package-manager listing is near-universal in that field, and the clients that reach users through the Microsoft Store are signed as a condition of it |
+| P15 Key agent and modern auth | Moderate but steady: four posts 2014–2025, each a distinct failure mode (blocking auth, key-store limit, format lock-in, FIDO2 non-support) | §15 | `windows-ssh-clients.md`: three incompatible agent protocols on one platform, bridged by third-party tools rather than solved by any vendor; one surveyed client speaks both of the two that matter |
 
 ## Caveats on reading demand
 
@@ -48,6 +52,8 @@ Demand is the frequency and intensity with which the pain is voiced in the corpu
 - **The retro-look corpus is one product's.** Almost every quote about CRT terminals is about cool-retro-term, so its bugs (Qt, performance, Wayland) read as the category's limits. The demand for the look in a fast terminal is voiced on other products' trackers, where it is a minority request with a maintainer's answer attached.
 - **Control mode demand is one issue's.** The 731 reactions sit on one Ghostty issue; the Linux-wide demand is inferred from that, from the open requests elsewhere, and from a few Reddit threads asking "anybody know of any Linux or Windows terminal" with it, not from a spread of voices.
 - **Latency is argued, not measured, by most voices.** The corpus holds one OBS recording and a few published benchmarks; the rest is felt. The counter-segment (P13) answers every latency claim with "I never noticed", at higher scores.
+- **The PuTTY entries carry a different population than the rest of this file.** P14, P15, and the added P3, P5, and P8 entries are drawn from Reddit's Windows-sysadmin, network-engineer, and homelab subreddits and from Stack Exchange, not from the Linux and developer venues the rest of this survey draws on. A poster there is more often running someone else's infrastructure under someone else's procurement rules than choosing a terminal for its own sake, so distribution trust and credential-agent limits surface as live pain in a way they never do for a `.deb` install of kitty.
+- **Spiceworks was not reached; r/ITCareerQuestions was searched and found nothing.** A fetch tool could not load community.spiceworks.com, so Spiceworks carries no evidence either way. r/ITCareerQuestions returned results on "putty" but none of them a complaint or an opinion, only the tool named in resumes and skills lists: a venue searched clean, not a venue missed.
 
 ## Sources
 
@@ -64,3 +70,12 @@ Demand is the frequency and intensity with which the pain is voiced in the corpu
 - Reddit, r/linux "GPU based terminal and is there really an advantage", https://old.reddit.com/r/linux/comments/1ibs1nq/
 - Lobsters, "Rio Terminal: a hardware-accelerated GPU terminal emulator", https://lobste.rs/s/7a4lle/
 - Jeff Quast, "State of Terminal Emulators in 2025", https://www.jeffquast.com/post/state-of-terminal-emulation-2025/
+- HN, "Downloading PuTTY Safely Is Nearly Impossible", https://news.ycombinator.com/item?id=9577861
+- HN, "PuTTY has a new website", https://news.ycombinator.com/item?id=44919891
+- HN, "Hijacking Trust? Bitvise Under Fire for Controlling Domain of FOSS Project PuTTY", https://news.ycombinator.com/item?id=44579265
+- HN, "KiTTY – A fork of PuTTY 0.67 with many additional features", https://news.ycombinator.com/item?id=12942989
+- Reddit, r/sysadmin "Replacements for PuTTY (Managing 100+ machines)", https://old.reddit.com/r/sysadmin/comments/1eysgc7/
+- Reddit, r/sysadmin "Putty, keep an eye on your downloads", https://old.reddit.com/r/sysadmin/comments/1luctyn/
+- Reddit, r/homelab "How are people sharing SSH client configs across PCs?", https://old.reddit.com/r/homelab/comments/1pn4tj2/
+- Stack Overflow, "How to export/import PuTTY sessions list?", https://stackoverflow.com/questions/13023920/
+- Server Fault, "How to make PuTTY settings persistent?", https://serverfault.com/questions/12295/

@@ -191,6 +191,12 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 > Context: maintainer: "scanline and pixel mode look terrible when the number of 'virtual pixels' is too close to the number of 'real pixels'". Open: the effect fights text density.
 > Maps to: P3, P4
 
+> "How about the fact that it's awful? Can you seriously compare PuTTY with even the most lacklustre terminal available on OS X or Linux? It's an atrocity of UX design straight out of the Windows 95 era. Their home page is also the epitome of not caring about user experience even to the slightest degree."
+> — astrodust, Hacker News, May 2015
+> https://news.ycombinator.com/item?id=9577861
+> Context: on PuTTY's own look and its download page, in the "Downloading PuTTY Safely Is Nearly Impossible" thread; not a CRT-shader complaint, the plain 1990s Win32 chrome itself read as bad UX to a Windows-adjacent audience the retro-look corpus otherwise misses.
+> Maps to: P3
+
 > "Lipstick on a pig."
 > — u/cybereality, r/commandline, January 2020 (score 34)
 > https://old.reddit.com/r/commandline/comments/emjo8p/microsofts_windows_terminal_is_getting_retrostyle/
@@ -345,6 +351,18 @@ Venues use their own engagement figure: Reddit and HN scores, GitHub reaction co
 > "I suffer from the same problem of too many terminal windows and browser tabs, and honestly it doesn't seem to help me much. It just dilutes my attention."
 > — meowface, Hacker News, ~2014
 > https://news.ycombinator.com/item?id=7998521
+> Maps to: P5
+
+> "it really bugs me how the main window closes after I open a session to something. I'm searching for a solution or alternative. Anyone know of good alternatives? Something with a tabbed interface would be nice."
+> — u/PeterPanLives, r/sysadmin, August 2016 (score 155)
+> https://old.reddit.com/r/sysadmin/comments/4zzwdr/alternatives_to_putty/
+> Context: PuTTY's one-session-per-window model, cited in "Alternatives to Putty?" as the reason to leave it; 194 comments, nearly all naming a wrapper or a competitor that adds tabs.
+> Maps to: P5
+
+> "I have loads of machines to manage and putting them in PuTTY is a pain in the rear, trying to manage the inventory. You can't even group them together."
+> — u/IT_ISNT101, r/sysadmin, August 2024 (score 67)
+> https://old.reddit.com/r/sysadmin/comments/1eysgc7/replacements_for_putty_managing_100_machines/
+> Context: "Replacements for PuTTY (Managing 100+ machines)"; 216 comments, none defending PuTTY's own session handling at that scale.
 > Maps to: P5
 
 > "I looked at alacritty but I really like using terminal tabs and the alacritty dev is really really against them and I found the dev's attitude to be more than a bit abrasive."
@@ -518,6 +536,17 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 ---
 
 ## 8. Configuration → P8
+> "Some PuTTY settings are valid only for the current session, and when I start it again, they are at the default value again. How can I change the default values?"
+> — Jader Dias, Server Fault, May 2009 (score 108)
+> https://serverfault.com/questions/12295/how-to-make-putty-settings-persistent
+> Maps to: P8
+
+> "Is there a way to do this? Or I have to take manually every record from Registry?"
+> — s.webbandit, Stack Overflow, October 2012 (score 888)
+> https://stackoverflow.com/questions/13023920/how-to-export-import-putty-sessions-list
+> Context: "How to export/import PuTTY sessions list?"; 1,496,040 views, 16 answers, none of them a built-in PuTTY feature.
+> Maps to: P8
+
 > "headsup, pretty sure one still has to recompile foot to change their font or font size. yeah it's that minimalistic."
 > — rektide, Hacker News, December 2021
 > https://news.ycombinator.com/item?id=29559078
@@ -561,6 +590,12 @@ No verbatim complaint found for tab-bar or status-bar visual clutter as such; th
 > — sjsadowski, Lobsters, September 2025
 > https://lobste.rs/s/7a4lle/rio_terminal_hardware_accelerated_gpu#c_sjsadowski
 > Maps to: P8, P11
+
+> "I'm really over launching Putty and finding that 'oh, that host hasn't been added to this machine's list yet' and having to dog the details out of my wiki."
+> — u/prototype__, r/homelab, December 2025 (score 87)
+> https://old.reddit.com/r/homelab/comments/1pn4tj2/how_are_people_sharing_ssh_client_configs_across/
+> Context: "How are people sharing SSH client configs across PCs?"; top reply (u/burgerg, score 135): "Your main mistake is using putty :) Just install WSL, or something like git bash, and put your ~/.ssh in a git repo, and setup a git server in your homelab."
+> Maps to: P8
 
 ---
 
@@ -781,6 +816,72 @@ The kitty and Alacritty entries under §3, §4 and §6 carry the same pain; it i
 > — u/Inevitable_Mistake32, r/ClaudeAI, February 2026 (score 3)
 > https://old.reddit.com/r/ClaudeAI/comments/1rb4jvs/i_got_tired_of_managing_10_terminal_tabs_for_my/
 > Maps to: P13, P5
+
+---
+
+## 14. Distribution and trust → P14
+> "This is not just a rant. As of two days ago, there is a hostile version of PuTTY in the wild."
+> — Animats, Hacker News, May 2015
+> https://news.ycombinator.com/item?id=9577861
+> Context: mirror sites serving a trojanized PuTTY build that steals login credentials, in the "Downloading PuTTY Safely Is Nearly Impossible" thread (264 points).
+> Maps to: P14
+
+> "Granted, it doesn't help in this particular case that the author of PuTTY continues to insist on using some random host with a userdir-style URL, so it's really easy for the fakes to look more legitimate to someone who doesn't know better."
+> — u/w0lrah, r/networking, May 2015 (score 53)
+> https://old.reddit.com/r/networking/comments/36vpfy/trojanized_putty_is_stealing_login_information/
+> Context: "Trojanized Putty is stealing login information."
+> Maps to: P14
+
+> "Within a half hour of someone using the infected putty, the attackers gained AD creds and created their own admin account. Along with locking a ton of accounts."
+> — u/gangaskan, r/sysadmin, July 2025 (score 480)
+> https://old.reddit.com/r/sysadmin/comments/1luctyn/putty_keep_an_eye_on_your_downloads/
+> Context: "Putty, keep an eye on your downloads," recounting a colleague's department getting infected via a fake PuTTY download; 204 comments.
+> Maps to: P14
+
+> "There's software called PuTTY, and non-technical or less technical people, or even technical people who are running on autopilot, might reasonably expect that it's hosted on putty.org."
+> — ColinWright, Hacker News, July 2025
+> https://news.ycombinator.com/item?id=44579265
+> Context: "Hijacking Trust? Bitvise Under Fire for Controlling Domain of FOSS Project PuTTY" (76 points); putty.org has been held by a competing commercial SSH vendor for decades and outranks the project's own site on some search engines.
+> Maps to: P14
+
+> "I work in OPs and use Putty daily. For people like me, finding and downloading the correct app is simple. For non-technicals, this just seems like the perfect way to download malware and destroy a company's reputation."
+> — IT4MD, Hacker News, August 2025
+> https://news.ycombinator.com/item?id=44919891
+> Context: "PuTTY has a new website" (506 points, 283 comments), on the project's August 2025 move to putty.software.
+> Maps to: P14
+
+> "Just went to download a newer version of Putty, and went to putty.org like I have for years, but now it's a page of some guy talking about how covid isn't real and the vaccines are bull or something like that."
+> — u/insufficient_funds, r/sysadmin, October 2025 (score 1)
+> https://old.reddit.com/r/sysadmin/comments/1oe33y4/puttyorg_is_not_related_to_putty/
+> Context: "Putty.org is not related to PuTTY?"
+> Maps to: P14
+
+---
+
+## 15. Key agent and modern authentication → P15
+> "Notice that while all these 10 connections are authenticating - your terminal freezes, and you can't type in anything. When using openssh client from Linux host, the problem doesn't exist, so it's not a problem of protocol or server."
+> — u/depesz, r/windows, December 2014 (score 18)
+> https://old.reddit.com/r/windows/comments/2nxrhk/looking_for_ssh_client_with_good_agent_support/
+> Context: "Looking for SSH client with good Agent support"; ten concurrent Pageant-authenticated SSH connections opened from within tmux freeze the PuTTY terminal until they resolve, one at a time.
+> Maps to: P15
+
+> "The ssh-agent equivalent for Windows that ships with PuTTY (pageant) has a limited amount of memory reserved to store the actual keys (8kb) which causes it to stop responding when more than 25 keys or so are used."
+> — Mahn, Hacker News, November 2016
+> https://news.ycombinator.com/item?id=12942989
+> Context: "KiTTY – A fork of PuTTY 0.67 with many additional features" (166 points); the same reply says the bug went unfixed for years because "they have no GitHub, no easy way to collaborate on the source, and the developers don't reply emails."
+> Maps to: P15, P12
+
+> "I'm on Windows and I've been using PuTTY to create SSH-keys, and then Pageant to 'load them' and make them 'available'(?) to things like `git`, WinSCP, SourceTree, Visual Studio Code, and so on. This has worked very well for me so far."
+> — u/svish, r/1Password, October 2022 (score 5)
+> https://old.reddit.com/r/1Password/comments/y37uu7/moving_sshkeys_from_putty_to_1password_possible/
+> Context: "Moving SSH-keys from PuTTY to 1Password possible?"; the PuTTY-format `.ppk` keys Pageant holds turn out not to carry over, and a reply notes older PuTTY keys can fail 1Password's minimum key-exponent check.
+> Maps to: P15
+
+> "None of them works for my case. Neither WinSCP nor PuTTY pick up a FIDO key that I add to them. They simply don't 'see' the agent and then proceed to a keyfile."
+> — u/Simon-RedditAccount, r/yubikey, November 2025 (score 2)
+> https://old.reddit.com/r/yubikey/comments/1oo26e8/ssh_agent_on_windows_that_works_with_nonresident/
+> Context: "SSH agent on Windows that works with non-resident FIDO2 key, stored on Yubikey?"; tried after SK-SSH-Agent and the putty-cac fork's own Pageant build.
+> Maps to: P15
 
 ---
 
