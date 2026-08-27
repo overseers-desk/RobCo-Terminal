@@ -16,6 +16,12 @@
 //! surface and rio-vt session, behind the `shell::Surface` seam, with the
 //! settings handle watching the config file alongside.
 
+// A GUI-subsystem binary, or Windows allocates a console window beside the
+// cabinet just to hold the startup log. Piped stdio still works, so
+// `--dump-settings` keeps feeding the settings window; what a double-click
+// loses is the log, and the crash file is the trace that remains there.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use std::process::ExitCode;
 use std::sync::Arc;
 
