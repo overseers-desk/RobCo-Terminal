@@ -19,6 +19,21 @@ publish = false
 name = "robco-term"
 path = "src/main.rs"
 
+# The settings window, linked into this binary instead of shipped beside it:
+# one exe for Windows, where a directory of files beside the terminal is a
+# thing users lose. Off by default, and a build without it is the build this
+# repository has always produced -- same code paths, same spawn of the
+# companion `robco-settings`, no C compiler needed. Turning it on is only
+# meaningful on Windows and only after `settings/zipfs/build-selfcontained.ps1
+# -Embed` has laid out the Tcl/Tk libraries and the payload zip the build
+# script reads out of the environment.
+[features]
+default = []
+embedded-settings = []
+
+[target.'cfg(windows)'.build-dependencies]
+cc = "1"
+
 [lib]
 name = "app"
 path = "src/lib.rs"

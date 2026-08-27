@@ -48,6 +48,10 @@
 //!   what `~/.ssh/config` is allowed to say about a destination before the
 //!   connection is dialled.
 //! - [`settings`] -- `robco-config` behind a typed, live-reloading handle.
+//! - [`settings_embed`] -- the settings window when it is inside this binary
+//!   rather than beside it: the Windows single-exe build's seam onto the
+//!   linked-in Tcl/Tk interpreter. Every other build carries the same entry
+//!   point as a refusal, so no caller writes a `cfg`.
 
 pub mod badge;
 pub mod bank;
@@ -69,6 +73,7 @@ pub mod paths;
 pub mod picker;
 pub mod prompt;
 pub mod settings;
+pub mod settings_embed;
 pub mod shell;
 pub mod ssh;
 pub mod ssh_config;
