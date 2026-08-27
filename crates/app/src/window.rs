@@ -1097,7 +1097,14 @@ impl TerminalSurface {
                     user,
                     host: row.host.clone(),
                     port: row.port,
-                    key: crate::ssh::key_path(&row.key),
+                    keys: crate::ssh::key_path(&row.key),
+                    // What the row left blank is what `~/.ssh/config` is
+                    // allowed to fill, the reading `crate::ssh` states.
+                    unsaid: crate::ssh::Unsaid {
+                        user: row.user.is_empty(),
+                        port: row.port == 22,
+                    },
+                    notice: None,
                 };
                 self.connect_ssh(&req);
                 self.retire_picker(slot);
@@ -1193,8 +1200,17 @@ impl TerminalSurface {
 
     /// Open an SSH connection as a new bank, its first channel on the air.
     /// The trust policy is the program's own (`crate::ssh::KnownHosts`).
+    ///
+    /// This is where `~/.ssh/config` is asked about the destination, and
+    /// the only place: every road to a connection -- the command line, the
+    /// configured default, both arms of the picker -- arrives here, and a
+    /// file read once on the way to the wire cannot disagree with itself.
+    /// What the file could not be honoured over comes back as the
+    /// request's own notice and is said on the channel's glass below.
     pub fn connect_ssh(&mut self, req: &SshRequest) {
-        self.connect_ssh_with(req, Box::new(KnownHosts::new()));
+        let mut req = req.clone();
+        req.consult_ssh_config();
+        self.connect_ssh_with(&req, Box::new(KnownHosts::new()));
     }
 
     /// Another channel on an SSH bank's connection, from its own link.
@@ -1245,12 +1261,19 @@ impl TerminalSurface {
             port: req.port,
             term: term_name,
             size: (size.cols() as u16, size.rows() as u16, pix_w, pix_h),
-            key_file: req.key.clone(),
+            key_files: req.keys.clone(),
         };
         // The connection's line to the person at the glass. It is built
         // here, before the thread starts, so no question can be asked
         // before there is a desk to receive it.
         let (asker, desk) = ssh_link::ask::desk();
+        // A counsel refused is the first thing said about this connection,
+        // and it goes by the desk rather than the wire because it was
+        // decided before there was a wire. The glass cannot tell the two
+        // carriers apart, which is the point of `notice_bytes`.
+        if let Some(notice) = &req.notice {
+            asker.say(notice.clone());
+        }
         let (link, handle) = match Link::connect(target, policy, asker) {
             Ok(pair) => pair,
             Err(e) => {

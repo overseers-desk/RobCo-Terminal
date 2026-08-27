@@ -7,6 +7,12 @@
 //! command line, how a notice looks on the glass, and above all what this
 //! program trusts.
 //!
+//! What `~/.ssh/config` is allowed to say about a destination is next
+//! door, in [`crate::ssh_config`]; this module holds the precedence, which
+//! is `ssh`'s own: an explicit field on the `[[ssh.host]]` row or in the
+//! `--ssh` spelling outranks the file, and the file fills only what was
+//! left unsaid ([`Unsaid`]).
+//!
 //! # Host keys, three outcomes
 //!
 //! * **Match**: the presented key is recorded for the host -- connect.
@@ -43,11 +49,35 @@ use term::ssh_channel::{SshEvent, SshWire};
 
 /// The environment variable that names the invoking user on this
 /// platform: what `ssh` itself falls back on when no user is spelled.
-pub(crate) const USER_VAR: &str = if cfg!(windows) { "USERNAME" } else { "USER" };
+///
+/// Public because a test that means to leave a user unsaid has to know
+/// which name the fallback will read, and there is one right answer per
+/// platform rather than one per test.
+pub const USER_VAR: &str = if cfg!(windows) { "USERNAME" } else { "USER" };
 
 /// The invoking user per [`USER_VAR`], an empty value read as unset.
 pub(crate) fn invoking_user() -> Option<String> {
     std::env::var(USER_VAR).ok().filter(|u| !u.is_empty())
+}
+
+/// Which of a destination's fields the operator actually spelled, as
+/// against the ones this filled in for them.
+///
+/// It is what `~/.ssh/config` is measured against: the file fills what was
+/// left unsaid and never outranks what was said, which is the precedence
+/// `ssh` itself applies to its own command line. Everything said by
+/// default, which is what [`Default`] gives, is a destination the file may
+/// only translate (`HostName`) and never re-address.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Unsaid {
+    /// No user in the spelling and none in the row: the name in `user` is
+    /// the invoking user's, and a file naming one outranks it.
+    pub user: bool,
+    /// No port in the spelling, or a `[[ssh.host]]` row's own default. The
+    /// row's port is 22 whether the file said so or said nothing, and the
+    /// config crate reads an absent port as "ssh's own", so 22 there is
+    /// this program filling a gap rather than the operator naming a port.
+    pub port: bool,
 }
 
 /// A destination as the command line spells it: `[user@]host[:port]`.
@@ -56,54 +86,149 @@ pub struct SshRequest {
     pub user: String,
     pub host: String,
     pub port: u16,
-    /// The private key the `[[ssh.host]]` row names, `~`-expanded. `None`
-    /// leaves the transport to the agent and the default key files.
-    pub key: Option<std::path::PathBuf>,
+    /// The private keys to offer ahead of the agent: the one a
+    /// `[[ssh.host]]` row names (`~`-expanded), or the `IdentityFile`
+    /// list `~/.ssh/config` gives for this destination. Empty leaves the
+    /// transport to the agent and the default key files.
+    pub keys: Vec<std::path::PathBuf>,
+    /// What the operator left for something else to fill.
+    pub unsaid: Unsaid,
+    /// What the resolution has to say about this destination on the
+    /// channel's own glass, said the moment the channel stands. Set when
+    /// `~/.ssh/config` had counsel this build could not honour, which is
+    /// the one thing about a connection's address the user has to be told
+    /// out loud (see [`crate::ssh_config`]).
+    pub notice: Option<String>,
 }
 
-/// A row's `key` as a path: empty is `None`, and a leading `~/` is the
-/// invoking user's home, the one spelling `ssh` accepts that the
+/// A row's `key` as a path list: empty names nothing, and a leading `~/`
+/// is the invoking user's home, the one spelling `ssh` accepts that the
 /// filesystem does not.
-pub(crate) fn key_path(row_key: &str) -> Option<std::path::PathBuf> {
+pub(crate) fn key_path(row_key: &str) -> Vec<std::path::PathBuf> {
     if row_key.is_empty() {
-        return None;
+        return Vec::new();
     }
     if let Some(rest) = row_key.strip_prefix("~/") {
         if let Some(home) = std::env::home_dir() {
-            return Some(home.join(rest));
+            return vec![home.join(rest)];
         }
     }
-    Some(std::path::PathBuf::from(row_key))
+    vec![std::path::PathBuf::from(row_key)]
 }
 
 impl SshRequest {
     /// Parse `[user@]host[:port]`. The user defaults to the invoking
     /// user's name and the port to 22, which is what the same spelling
-    /// means to `ssh` itself.
+    /// means to `ssh` itself -- and both defaults are recorded as unsaid,
+    /// because a default is a gap `~/.ssh/config` is entitled to fill.
+    ///
+    /// No file is opened here. This is also what validates a `--ssh`
+    /// argument and a destination typed into the picker, and neither of
+    /// those is a connection: the file is asked once, on the way to the
+    /// wire.
     pub fn parse(spec: &str) -> Result<Self, String> {
         let (user, rest) = match spec.split_once('@') {
-            Some((user, rest)) if !user.is_empty() => (user.to_string(), rest),
+            Some((user, rest)) if !user.is_empty() => (Some(user.to_string()), rest),
             Some(_) => return Err(format!("no user before the '@' in '{spec}'")),
-            None => match invoking_user() {
-                Some(user) => (user, spec),
-                None => return Err(format!("no user in '{spec}' and {USER_VAR} is unset")),
-            },
+            None => (None, spec),
         };
         let (host, port) = match rest.rsplit_once(':') {
             Some((host, port)) => {
                 let port = port
                     .parse::<u16>()
                     .map_err(|_| format!("'{port}' is not a port number"))?;
-                (host, port)
+                (host, Some(port))
             }
-            None => (rest, 22),
+            None => (rest, None),
         };
         if host.is_empty() {
             return Err(format!("no host in '{spec}'"));
         }
-        // The spelling carries no key; a `[[ssh.host]]` row is where one
-        // is named.
-        Ok(Self { user: user.to_string(), host: host.to_string(), port, key: None })
+        let unsaid = Unsaid { user: user.is_none(), port: port.is_none() };
+        let user = match user.or_else(invoking_user) {
+            Some(user) => user,
+            // Nothing spelled and nothing in the environment. The file may
+            // yet name a user, but a destination that reaches the wire
+            // without one is not a destination, and the error is owed to
+            // whoever typed the spelling rather than deferred to a file
+            // they may not have.
+            None => return Err(format!("no user in '{spec}' and {USER_VAR} is unset")),
+        };
+        // The spelling carries no key; a `[[ssh.host]]` row and the
+        // config file's `IdentityFile` are where one is named.
+        Ok(Self {
+            user,
+            host: host.to_string(),
+            port: port.unwrap_or(22),
+            keys: Vec::new(),
+            unsaid,
+            notice: None,
+        })
+    }
+
+    /// The destination spelled the way [`parse`](Self::parse) reads one,
+    /// leaving unsaid what was unsaid.
+    ///
+    /// A window opened by the single-instance listener carries its
+    /// destination across as this string, so what the operator did not say
+    /// has to survive the round trip: spelling in the invoking user's name
+    /// here would have `~/.ssh/config` answering a question nobody asked.
+    pub fn spec(&self) -> String {
+        let mut spec = String::new();
+        if !self.unsaid.user {
+            spec.push_str(&self.user);
+            spec.push('@');
+        }
+        spec.push_str(&self.host);
+        if !self.unsaid.port {
+            spec.push_str(&format!(":{}", self.port));
+        }
+        spec
+    }
+
+    /// Take what `~/.ssh/config` has to say about this destination.
+    ///
+    /// Whole or not at all: counsel this build can honour is applied to
+    /// every field the operator left unsaid, and counsel it cannot is
+    /// taken nowhere and said out loud instead, the connection going where
+    /// the destination was spelled. `HostName` is the exception that is
+    /// not one -- it replaces a host that *was* said, because `Host` names
+    /// a lookup rather than a machine, which is the whole reason the file
+    /// is read.
+    pub fn take_counsel(&mut self, counsel: crate::ssh_config::Counsel) {
+        match counsel {
+            crate::ssh_config::Counsel::Silent => {}
+            crate::ssh_config::Counsel::Refused(notice) => self.notice = Some(notice),
+            crate::ssh_config::Counsel::Says(says) => {
+                if let Some(host_name) = says.host_name {
+                    self.host = host_name;
+                }
+                if self.unsaid.user {
+                    if let Some(user) = says.user {
+                        self.user = user;
+                        self.unsaid.user = false;
+                    }
+                }
+                if self.unsaid.port {
+                    if let Some(port) = says.port {
+                        self.port = port;
+                        self.unsaid.port = false;
+                    }
+                }
+                if self.keys.is_empty() {
+                    self.keys = says.identity_files;
+                }
+            }
+        }
+    }
+
+    /// The same over the user's own file, which is where the connect path
+    /// asks it: once, with the destination as the operator spelled it.
+    pub fn consult_ssh_config(&mut self) {
+        let Some(path) = crate::ssh_config::home_file() else {
+            return;
+        };
+        self.take_counsel(crate::ssh_config::read(&path, &self.host));
     }
 }
 
@@ -140,7 +265,13 @@ pub fn default_request(cfg: &config::Config) -> Option<SshRequest> {
         user,
         host: row.host.clone(),
         port: row.port,
-        key: key_path(&row.key),
+        keys: key_path(&row.key),
+        // An empty `user` is the row leaving the account to be filled, and
+        // an absent `port` reaches here as 22 (the config crate reads it
+        // as "ssh's own"): both are gaps, and a gap is `~/.ssh/config`'s to
+        // fill. A row that names either outranks the file for that field.
+        unsaid: Unsaid { user: row.user.is_empty(), port: row.port == 22 },
+        notice: None,
     })
 }
 
@@ -416,7 +547,14 @@ mod tests {
         let full = run("overseer@vault:2222").unwrap();
         assert_eq!(
             full,
-            SshRequest { user: "overseer".into(), host: "vault".into(), port: 2222, key: None }
+            SshRequest {
+                user: "overseer".into(),
+                host: "vault".into(),
+                port: 2222,
+                keys: Vec::new(),
+                unsaid: Unsaid::default(),
+                notice: None,
+            }
         );
         assert_eq!(run("overseer@vault").unwrap().port, 22);
         std::env::set_var(USER_VAR, "resident");
@@ -426,12 +564,77 @@ mod tests {
         assert!(run("vault:notaport").is_err());
     }
 
+    /// What was not spelled has to still read as unspelled after a round
+    /// trip through the string a new window is handed, or the file would
+    /// be outranked by a default nobody typed.
+    #[test]
+    fn a_spelling_survives_the_round_trip_carrying_what_it_left_out() {
+        std::env::set_var(USER_VAR, "resident");
+        for spec in ["overseer@vault:2222", "overseer@vault", "vault:2222", "vault"] {
+            let req = run(spec).unwrap();
+            assert_eq!(req.spec(), spec);
+            assert_eq!(run(&req.spec()).unwrap(), req);
+        }
+        assert_eq!(run("vault").unwrap().unsaid, Unsaid { user: true, port: true });
+        assert_eq!(
+            run("overseer@vault:22").unwrap().unsaid,
+            Unsaid { user: false, port: false },
+            "a port that was typed was said, 22 or not"
+        );
+    }
+
     #[test]
     fn a_rows_key_becomes_a_path_and_tilde_means_home() {
-        assert_eq!(key_path(""), None);
-        assert_eq!(key_path("/etc/key"), Some(std::path::PathBuf::from("/etc/key")));
+        assert!(key_path("").is_empty());
+        assert_eq!(key_path("/etc/key"), vec![std::path::PathBuf::from("/etc/key")]);
         let home = std::env::home_dir().unwrap();
-        assert_eq!(key_path("~/.ssh/id_gw"), Some(home.join(".ssh").join("id_gw")));
+        assert_eq!(key_path("~/.ssh/id_gw"), vec![home.join(".ssh").join("id_gw")]);
+    }
+
+    /// The precedence, field by field: the file fills a gap and never
+    /// overrules a word the operator said, except `HostName`, which is
+    /// what a `Host` block is for.
+    #[test]
+    fn the_file_fills_what_was_left_unsaid_and_nothing_that_was_said() {
+        use crate::ssh_config::{Counsel, Says};
+        let says = || {
+            Counsel::Says(Says {
+                host_name: Some("10.0.0.5".into()),
+                user: Some("filed".into()),
+                port: Some(2222),
+                identity_files: vec![std::path::PathBuf::from("/keys/filed")],
+            })
+        };
+        std::env::set_var(USER_VAR, "resident");
+
+        let mut bare = run("vault").unwrap();
+        bare.take_counsel(says());
+        assert_eq!(bare.host, "10.0.0.5");
+        assert_eq!(bare.user, "filed", "the file outranks the invoking user's name");
+        assert_eq!(bare.port, 2222);
+        assert_eq!(bare.keys, vec![std::path::PathBuf::from("/keys/filed")]);
+        assert_eq!(bare.notice, None);
+
+        let mut spelled = run("overseer@vault:24").unwrap();
+        spelled.keys = vec![std::path::PathBuf::from("/keys/named")];
+        spelled.take_counsel(says());
+        assert_eq!(spelled.host, "10.0.0.5", "a Host block names a lookup, not a machine");
+        assert_eq!(spelled.user, "overseer");
+        assert_eq!(spelled.port, 24);
+        assert_eq!(spelled.keys, vec![std::path::PathBuf::from("/keys/named")]);
+
+        // A refusal moves nothing at all and carries the notice instead.
+        let mut refused = run("vault").unwrap();
+        refused.take_counsel(Counsel::Refused("ProxyJump".into()));
+        assert_eq!(refused.host, "vault");
+        assert_eq!(refused.port, 22);
+        assert_eq!(refused.notice.as_deref(), Some("ProxyJump"));
+
+        // And silence is silence.
+        let mut quiet = run("vault").unwrap();
+        let before = quiet.clone();
+        quiet.take_counsel(Counsel::Silent);
+        assert_eq!(quiet, before);
     }
 
     #[test]
@@ -452,18 +655,32 @@ mod tests {
                 user: "overseer".into(),
                 host: "vault".into(),
                 port: 2222,
-                key: None
+                keys: Vec::new(),
+                unsaid: Unsaid::default(),
+                notice: None,
             })
         );
 
         cfg.ssh.default = "gone".into();
         assert_eq!(default_request(&cfg), None, "a stale default costs a log line, not a window");
 
-        // A bare row takes the invoking user's name.
+        // A bare row takes the invoking user's name, and says so: a name
+        // filled in here is a gap the config file may fill instead.
         cfg.ssh.default = "vault".into();
         cfg.ssh.hosts[0].user = String::new();
         std::env::set_var(USER_VAR, "resident");
-        assert_eq!(default_request(&cfg).unwrap().user, "resident");
+        let req = default_request(&cfg).unwrap();
+        assert_eq!(req.user, "resident");
+        assert_eq!(req.unsaid, Unsaid { user: true, port: false });
+        assert_eq!(req.spec(), "vault:2222", "the round trip keeps the gap a gap");
+
+        // And a row that names neither leaves both to be filled.
+        cfg.ssh.hosts[0].port = 22;
+        assert_eq!(
+            default_request(&cfg).unwrap().unsaid,
+            Unsaid { user: true, port: true },
+            "an absent port reaches the row as 22, which is this program filling it"
+        );
     }
 
     fn key(alg: Algorithm) -> PrivateKey {

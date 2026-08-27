@@ -44,6 +44,9 @@
 //! - [`picker`] / [`prompt`] -- the two things the glass asks the user: which
 //!   destination, and the answer to a question the connection raised. Both
 //!   are pure state over keys, painted through a channel's own parser.
+//! - [`ssh`] / [`ssh_config`] -- the SSH policy this program applies, and
+//!   what `~/.ssh/config` is allowed to say about a destination before the
+//!   connection is dialled.
 //! - [`settings`] -- `robco-config` behind a typed, live-reloading handle.
 
 pub mod badge;
@@ -68,6 +71,7 @@ pub mod prompt;
 pub mod settings;
 pub mod shell;
 pub mod ssh;
+pub mod ssh_config;
 pub mod tmux;
 pub mod window;
 pub mod workarea;

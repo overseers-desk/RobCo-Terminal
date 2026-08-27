@@ -430,6 +430,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
+dependencies = [
+ "memchr",
+ "serde_core",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1588,6 +1598,19 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "globset"
+version = "0.4.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07c34a9410465b45bd9787443bc7370f37735bad04b0f0cd57ff1a3186c98988"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
 
 [[package]]
 name = "glow"
@@ -3609,6 +3632,7 @@ dependencies = [
  "bytemuck",
  "directories",
  "env_logger",
+ "globset",
  "libc",
  "librashader",
  "log",
@@ -3623,6 +3647,7 @@ dependencies = [
  "robco-ssh-link",
  "robco-term",
  "robco-tmux-cc",
+ "russh-config",
  "serde_json",
  "signal-hook 0.3.18",
  "tempfile",
@@ -3831,6 +3856,20 @@ dependencies = [
  "typenum",
  "universal-hash",
  "zeroize",
+]
+
+[[package]]
+name = "russh-config"
+version = "0.58.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "993346101d4741a59c82bafc6b645c52ce3e7b0820f13e4b5d48cdb591e3d955"
+dependencies = [
+ "futures",
+ "globset",
+ "log",
+ "thiserror 2.0.20",
+ "tokio",
+ "whoami",
 ]
 
 [[package]]
@@ -4631,6 +4670,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
@@ -4895,6 +4935,12 @@ checksum = "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487"
 dependencies = [
  "wit-bindgen",
 ]
+
+[[package]]
+name = "wasite"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
 
 [[package]]
 name = "wasm-bindgen"
@@ -5256,6 +5302,17 @@ dependencies = [
  "naga-types",
  "raw-window-handle",
  "static_assertions",
+ "web-sys",
+]
+
+[[package]]
+name = "whoami"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d4a4db5077702ca3015d3d02d74974948aba2ad9e12ab7df718ee64ccd7e97d"
+dependencies = [
+ "libredox",
+ "wasite",
  "web-sys",
 ]
 

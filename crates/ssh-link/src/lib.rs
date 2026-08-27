@@ -25,7 +25,7 @@
 //! explaining it.
 //!
 //! The auth sequence in `thread` is `ssh`'s: public keys first (the named
-//! key, the agent, the default files), then keyboard-interactive, then
+//! keys, the agent, the default files), then keyboard-interactive, then
 //! password. Which of them are tried at all is the server's to say. The
 //! opening `none` probe brings back the method list, every rejection
 //! refreshes it, and a method the server does not offer is never
@@ -54,10 +54,13 @@ pub struct SshTarget {
     pub term: String,
     /// Initial pty geometry: cols, rows, pixel width, pixel height.
     pub size: (u16, u16, u16, u16),
-    /// The private key the configuration names for this destination,
-    /// tried ahead of the agent. `None` tries the agent and then the
-    /// default key files `ssh` itself would (see `thread::default_key_files`).
-    pub key_file: Option<std::path::PathBuf>,
+    /// The private keys the caller names for this destination, tried in
+    /// this order and ahead of the agent. A list rather than one file
+    /// because that is what names a key here: a `[[ssh.host]]` row's
+    /// single `key`, or the whole `IdentityFile` sequence `~/.ssh/config`
+    /// gives a host. Empty tries the agent and then the default key files
+    /// `ssh` itself would (see `thread::default_key_files`).
+    pub key_files: Vec<std::path::PathBuf>,
 }
 
 /// The caller's host-key trust policy, consulted on the connection thread.

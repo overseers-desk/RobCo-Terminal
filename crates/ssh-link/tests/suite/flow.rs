@@ -68,7 +68,7 @@ fn target(port: u16) -> SshTarget {
         port,
         term: "xterm-256color".into(),
         size: (80, 24, 720, 432),
-        key_file: None,
+        key_files: Vec::new(),
     }
 }
 
@@ -139,7 +139,7 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     .unwrap();
     let policy = Scripted::verdict(Ok(()));
     let mut with_key = target(port);
-    with_key.key_file = Some(key_path.clone());
+    with_key.key_files = vec![key_path.clone()];
     let (_key_link, mut handle) =
         Link::connect(with_key, Box::new(policy), Asker::closed()).unwrap();
     let log = tokio::task::spawn_blocking(move || {
@@ -162,7 +162,7 @@ async fn a_connection_lives_and_dies_on_the_glass() {
     .unwrap();
     let policy = Scripted::verdict(Ok(()));
     let mut with_sealed = target(port);
-    with_sealed.key_file = Some(sealed_path);
+    with_sealed.key_files = vec![sealed_path];
     let (_sealed_link, mut handle) =
         Link::connect(with_sealed, Box::new(policy), Asker::closed()).unwrap();
     let log = tokio::task::spawn_blocking(move || {
@@ -307,7 +307,7 @@ async fn an_encrypted_key_opens_on_a_passphrase_and_a_cancel_ends_the_attempt() 
     let (asker, desk) = ssh_link::ask::desk();
     let hand = deskhand(desk, vec![Some("wrong"), Some("tumblers")]);
     let mut sealed_target = target(port);
-    sealed_target.key_file = Some(path.clone());
+    sealed_target.key_files = vec![path.clone()];
     let (_link, mut handle) =
         Link::connect(sealed_target, Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
     let log = tokio::task::spawn_blocking(move || {
@@ -329,7 +329,7 @@ async fn an_encrypted_key_opens_on_a_passphrase_and_a_cancel_ends_the_attempt() 
     let (asker, desk) = ssh_link::ask::desk();
     let hand = deskhand(desk, vec![None]);
     let mut sealed_target = target(port);
-    sealed_target.key_file = Some(path);
+    sealed_target.key_files = vec![path];
     let (_link, mut handle) =
         Link::connect(sealed_target, Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
     let log = tokio::task::spawn_blocking(move || {

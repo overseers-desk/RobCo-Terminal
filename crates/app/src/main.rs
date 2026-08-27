@@ -282,10 +282,10 @@ fn main() -> ExitCode {
     shell_config.fullscreen = options.fullscreen;
     // The flag outranks the config's default connection; both feed the
     // same field every window this process opens reads.
-    shell_config.ssh = options.ssh.clone().or_else(|| {
-        app::ssh::default_request(&initial_config)
-            .map(|r| format!("{}@{}:{}", r.user, r.host, r.port))
-    });
+    shell_config.ssh = options
+        .ssh
+        .clone()
+        .or_else(|| app::ssh::default_request(&initial_config).map(|r| r.spec()));
     shell_config.bank_width = bank_width;
     shell_config.bank_minimum = bank_minimum;
     // At scale factor 1, which is the unit the default window size is quoted

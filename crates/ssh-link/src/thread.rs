@@ -345,11 +345,11 @@ async fn drive(channel: russh::Channel<client::Msg>, mut wire: ChannelWire) {
     let _ = wire.events.send(WireEvent::Eof).await;
 }
 
-/// Publickey auth, in intent order: the key the configuration names, then
-/// whatever agent is running, then (only when no key was named) the
-/// default key files `ssh` itself would try. Each stage's failure puts its
-/// reason on the wire, and the summary that closes a lost cause names what
-/// the server offers.
+/// Publickey auth, in intent order: the keys the configuration names, in
+/// the order it names them, then whatever agent is running, then (only
+/// when no key was named at all) the default key files `ssh` itself would
+/// try. Each stage's failure puts its reason on the wire, and the summary
+/// that closes a lost cause names what the server offers.
 ///
 /// A cancellation anywhere in the sequence ends it where it stands. The
 /// method after the one the user just declined would ask them something
@@ -376,7 +376,7 @@ async fn authenticate(
         }
     };
     if offered.contains(&MethodKind::PublicKey) {
-        if let Some(path) = &target.key_file {
+        for path in &target.key_files {
             match try_key_file(handle, target, wire, ask, &mut offered, path).await {
                 Authenticated::No => {}
                 end => return end,
@@ -386,7 +386,7 @@ async fn authenticate(
             Authenticated::No => {}
             end => return end,
         }
-        if target.key_file.is_none() {
+        if target.key_files.is_empty() {
             for path in default_key_files() {
                 match try_key_file(handle, target, wire, ask, &mut offered, &path).await {
                     Authenticated::No => {}

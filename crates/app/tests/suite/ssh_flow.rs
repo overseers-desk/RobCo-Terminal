@@ -14,7 +14,7 @@ use app::settings::SettingsHandle;
 use app::ssh::{KnownHosts, SshRequest};
 use app::window::TerminalSurface;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use ssh_link::russh::keys::{Algorithm, PrivateKey};
+use ssh_link::russh::keys::{ssh_key, Algorithm, PrivateKey};
 use ssh_link::test_server::{mint, serve_agent, serve_echo, serve_with, AuthPlan};
 use term::{viewport_text, CellSize, SessionConfig, Viewport};
 
@@ -96,7 +96,30 @@ fn surface() -> TerminalSurface {
 }
 
 fn request(port: u16) -> SshRequest {
-    SshRequest { user: "overseer".into(), host: "127.0.0.1".into(), port, key: None }
+    SshRequest::parse(&format!("overseer@127.0.0.1:{port}")).expect("the spelling")
+}
+
+/// The invoking user's name, which is what a destination with no user in
+/// it falls back on -- and what `~/.ssh/config` gets to outrank.
+fn invoking_user_is(name: &str) {
+    std::env::set_var(app::ssh::USER_VAR, name);
+}
+
+/// A destination spelled as an operator would spell it, put through the
+/// same reading the connect path uses, against a `~/.ssh/config` written
+/// for the occasion.
+///
+/// The file is named rather than found: the connect path asks the user's
+/// own home for it, and a suite that moved `HOME` under the process to be
+/// asked about would be reaching into every other test in the binary.
+fn dial(spec: &str, config: &str) -> SshRequest {
+    let dir = tempfile::tempdir().expect("scratch dir");
+    let path = dir.path().join("config");
+    std::fs::write(&path, config).expect("fixture");
+    let mut req = SshRequest::parse(spec).expect("the spelling");
+    req.take_counsel(app::ssh_config::read(&path, &req.host));
+    std::mem::forget(dir);
+    req
 }
 
 fn known_hosts(lines: &[&str]) -> PathBuf {
@@ -120,6 +143,17 @@ fn pump_until(surface: &mut TerminalSurface, what: &str, pred: impl Fn(&Terminal
         std::thread::sleep(Duration::from_millis(15));
     }
     panic!("timed out waiting for {what}\nglass: {:?}", surface.viewport_text());
+}
+
+/// The glass with the grid's own hard wrap taken back out. A notice long
+/// enough to fold is still one sentence, and a test looking for a phrase
+/// in it should not have to know where the fold fell.
+fn glass_unwrapped(surface: &TerminalSurface) -> String {
+    surface
+        .channels()
+        .current()
+        .map(|row| viewport_text(row.session.term()).join(""))
+        .unwrap_or_default()
 }
 
 fn glass_contains(surface: &TerminalSurface, word: &str) -> bool {
@@ -474,4 +508,180 @@ fn a_typed_destination_dials_and_the_tick_writes_the_row_and_the_default() {
         written,
         "an untouched checkbox writes nothing"
     );
+}
+
+/// A third far side, authorizing one key and nothing else: what proves an
+/// `IdentityFile` the config file named reaches the named-key stage of
+/// authentication, where a `[[ssh.host]]` row's own `key` goes.
+struct KeySide {
+    _rt: tokio::runtime::Runtime,
+    port: u16,
+    host_key_line: String,
+    /// The private key, on disk, for an `IdentityFile` line to point at.
+    key_file: PathBuf,
+}
+
+fn key_side() -> &'static KeySide {
+    static SIDE: OnceLock<KeySide> = OnceLock::new();
+    SIDE.get_or_init(|| {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let dir = tempfile::tempdir().expect("scratch dir");
+        let identity = mint(Algorithm::Ed25519);
+        let host_key: PrivateKey = mint(Algorithm::Ed25519);
+        let host_public = host_key.public_key().to_openssh().expect("openssh form");
+        let (port, _seen) = rt.block_on(serve_with(
+            vec![host_key],
+            AuthPlan::Key(identity.public_key().clone()),
+        ));
+        let key_file = dir.path().join("id_named");
+        std::fs::write(
+            &key_file,
+            identity.to_openssh(ssh_key::LineEnding::LF).expect("openssh form").as_bytes(),
+        )
+        .expect("fixture");
+        // The file outlives this helper; a test process's scratch is the
+        // OS's to sweep.
+        std::mem::forget(dir);
+        KeySide {
+            _rt: rt,
+            port,
+            host_key_line: format!("[127.0.0.1]:{port} {host_public}"),
+            key_file,
+        }
+    })
+}
+
+/// The file's counsel, taken: an alias that is a name for nothing on this
+/// machine reaches a server on loopback, under an account the operator
+/// never spelled, on a port they never spelled either.
+#[test]
+fn a_config_alias_puts_the_connection_where_the_file_says_it_is() {
+    let far = far_side();
+    invoking_user_is("resident");
+    let req = dial(
+        "vault",
+        &format!(
+            "Host vault\n  HostName 127.0.0.1\n  Port {}\n  User overseer\n  \
+             ServerAliveInterval 60\n",
+            far.port
+        ),
+    );
+    assert_eq!(req.host, "127.0.0.1", "HostName is where the destination is");
+    assert_eq!(req.port, far.port);
+    assert_eq!(req.user, "overseer", "the file outranks the invoking user's name");
+
+    let mut s = surface();
+    s.connect_ssh_with(
+        &req,
+        Box::new(KnownHosts::over(vec![known_hosts(&[&far.host_key_line])])),
+    );
+    assert_eq!(s.channels().current().unwrap().title, "overseer@127.0.0.1");
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+    // A file that was followed is a file nothing was said about, and the
+    // tuning directive beside the counsel decided nothing, so it cost no
+    // word either.
+    let glass = glass_unwrapped(&s);
+    assert!(!glass.contains("cannot honour"), "{glass:?}");
+}
+
+/// The other half of the precedence: a user the operator spelled is the
+/// user that reaches the wire, whatever the file would rather.
+#[test]
+fn a_user_the_operator_spelled_outranks_the_files() {
+    let far = password_side();
+    let req = dial(
+        &format!("overseer@vault:{}", far.port),
+        "Host vault\n  HostName 127.0.0.1\n  User intruder\n  Port 24\n",
+    );
+    assert_eq!(req.host, "127.0.0.1", "the alias still translates");
+    assert_eq!(req.user, "overseer");
+    assert_eq!(req.port, far.port, "a port that was spelled is the port");
+
+    let mut s = surface();
+    s.connect_ssh_with(
+        &req,
+        Box::new(KnownHosts::over(vec![known_hosts(&[&far.host_key_line])])),
+    );
+    // The far side accepts that password for that account and no other,
+    // so the greeting is the assertion: it authenticated as overseer.
+    pump_until(&mut s, "the password question", |s| glass_contains(s, "password"));
+    type_line(&mut s, "tumblers");
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+    assert!(glass_contains(&s, "authenticated as overseer (password)"));
+}
+
+/// `IdentityFile` lands where a `[[ssh.host]]` row's `key` lands: the
+/// named-key stage, tried ahead of the agent.
+#[test]
+fn an_identity_file_the_file_names_authenticates_the_connection() {
+    let far = key_side();
+    invoking_user_is("resident");
+    let req = dial(
+        &format!("127.0.0.1:{}", far.port),
+        &format!("Host 127.0.0.1\n  IdentityFile {}\n", far.key_file.display()),
+    );
+    assert_eq!(req.keys, vec![far.key_file.clone()]);
+
+    let mut s = surface();
+    s.connect_ssh_with(
+        &req,
+        Box::new(KnownHosts::over(vec![known_hosts(&[&far.host_key_line])])),
+    );
+    pump_until(&mut s, "the key the file named to be accepted", |s| {
+        glass_contains(s, "authenticated as resident")
+    });
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+}
+
+/// The loud refusal, end to end: a block carrying `ProxyJump` yields
+/// nothing at all -- not even the `HostName` beside it -- the reason is on
+/// the channel's own glass, and the connection goes where the destination
+/// was spelled.
+#[test]
+fn a_directive_this_build_cannot_honour_is_refused_out_loud_and_the_dial_goes_as_spelled() {
+    let far = far_side();
+    let req = dial(
+        &format!("overseer@127.0.0.1:{}", far.port),
+        "Host 127.0.0.1\n  HostName 10.255.255.1\n  Port 24\n  ProxyJump gate\n",
+    );
+    assert_eq!(req.host, "127.0.0.1", "the HostName beside the refusal is not taken either");
+    assert_eq!(req.port, far.port);
+
+    let mut s = surface();
+    s.connect_ssh_with(
+        &req,
+        Box::new(KnownHosts::over(vec![known_hosts(&[&far.host_key_line])])),
+    );
+    pump_until(&mut s, "the refusal on the glass", |s| glass_contains(s, "ProxyJump"));
+    let notice = glass_unwrapped(&s);
+    assert!(notice.contains("cannot honour"), "{notice:?}");
+    assert!(notice.contains("as spelled"), "{notice:?}");
+    // And having refused the counsel, it connects: the destination as
+    // spelled is a real server, and 10.255.255.1 is not.
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+}
+
+/// The other invariant this feature has to keep: a terminal whose user has
+/// no `~/.ssh/config` is a terminal that never had one read.
+#[test]
+fn no_config_file_moves_nothing_and_says_nothing() {
+    let far = far_side();
+    let spelled = request(far.port);
+    let mut consulted = spelled.clone();
+    let dir = tempfile::tempdir().expect("scratch dir");
+    consulted.take_counsel(app::ssh_config::read(&dir.path().join("config"), "127.0.0.1"));
+    assert_eq!(consulted, spelled, "a file that is not there moves no field of a request");
+
+    let mut s = surface();
+    s.connect_ssh_with(
+        &consulted,
+        Box::new(KnownHosts::over(vec![known_hosts(&[&far.host_key_line])])),
+    );
+    pump_until(&mut s, "the remote shell's greeting", |s| glass_contains(s, "ready"));
+    let glass = glass_unwrapped(&s);
+    assert!(!glass.contains("config"), "{glass:?}");
+    assert!(!glass.contains("cannot honour"), "{glass:?}");
 }
