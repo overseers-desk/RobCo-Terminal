@@ -120,7 +120,7 @@ jobs:
       # purpose: Control with the left button is the secondary click here and
       # a selection everywhere else, so the arm that says so runs nowhere but
       # this runner.
-      - run: cargo test --release -p robco-app --test suite pointer::
+      - run: "cargo test --release -p robco-app --test suite pointer::"
       - name: the binary answers from the command line
         run: |
           ./target/release/robco-term --version
