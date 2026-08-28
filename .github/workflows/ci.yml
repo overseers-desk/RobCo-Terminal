@@ -231,8 +231,6 @@ jobs:
         run: |
           dpkg-deb -f ../robco-term_*_amd64.deb Depends
           mv ../robco-term_*_amd64.deb dist/
-      # Every green run leaves a deb and a tarball a traveller can install
-      # from, without reaching the development machine.
       - uses: actions/upload-artifact@v4
         with:
           name: robco-term-linux-x86_64

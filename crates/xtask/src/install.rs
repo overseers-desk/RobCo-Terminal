@@ -233,8 +233,8 @@ fn lay_out_settings_scripts(root: &Path) -> Result<Vec<PathBuf>> {
             // else, and a copy that names the extensions it knows ships a
             // launcher that cannot start the day one arrives it has not
             // heard of: `lib/tomledit-1.0.tm` was left out of 0.1.4 that
-            // way, and the terminal spawns the launcher with its stderr
-            // closed, so the right press did nothing and said nothing.
+            // way, and the installed launcher died on the line that sources
+            // it.
             if !path.is_file() {
                 continue;
             }

@@ -48,7 +48,12 @@ mkdir -p "$SRC" "$STAGE" "$RUNTIME"
 echo "build dir: $BUILD_DIR"
 
 fetch() {
-    # fetch URL OUTFILE: download and verify it untars
+    # fetch URL OUTFILE: download and verify it untars.
+    #
+    # --retry-all-errors as well as --retry, because the failure seen here is
+    # a transfer that closes mid-stream: curl calls that error 18, and plain
+    # --retry covers timeouts and transient HTTP statuses rather than a
+    # truncated body.
     local url="$1" out="$2"
     curl -fsSL --retry 3 --retry-all-errors -o "$SRC/$out" "$url"
     tar tzf "$SRC/$out" >/dev/null
