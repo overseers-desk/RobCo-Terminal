@@ -185,7 +185,7 @@ namespace eval ::rcsettings::model {
         {COZETTE_SCALED Cozette}
         {UNSCII_8_SCALED {Unscii 8}}
         {UNSCII_8_THIN_SCALED {Unscii 8 Thin}}
-        {UNSCII_16_SCALED {Unscii 16}}
+        {UNIFONT Unifont}
         {APPLE_II_SCALED {Apple ][}}
         {ATARI_400_SCALED {Atari 400-800}}
         {COMMODORE_64_SCALED {Commodore 64}}

@@ -65,9 +65,14 @@ fn say(text: &str) {
 
 /// Catalogue entries as the dump carries them: the key settings persist and
 /// the label a menu shows for it, and nothing else either dump needs.
+///
+/// A face with no label is one the catalogue carries to cover another's gaps.
+/// The dump is what the settings window builds its font list from, so an
+/// unlabelled face has nothing to contribute to it.
 fn listings(fonts: &[term::FontEntry]) -> Vec<config::dump::FontListing> {
     fonts
         .iter()
+        .filter(|f| !f.text.is_empty())
         .map(|f| config::dump::FontListing {
             name: f.name.to_string(),
             text: f.text.to_string(),

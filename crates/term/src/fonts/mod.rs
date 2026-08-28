@@ -18,7 +18,7 @@
 //! the filtering rules read to tell the two halves apart.
 //!
 //! There are two catalogues, not one, and which one a caller gets is an
-//! argument rather than a default: [`bundled_fonts`] is the 24 faces this
+//! argument rather than a default: [`bundled_fonts`] is every face this
 //! binary carries and never touches the machine, [`system_fonts`] is those
 //! plus whatever the machine has and is the only function here that walks
 //! a font directory. A profile asking for bundled faces therefore never
@@ -72,7 +72,9 @@ struct BundledFont {
 pub struct FontEntry {
     /// Stable key, e.g. `"TERMINESS_SCALED"`. What settings persist.
     pub name: &'static str,
-    /// Menu label, e.g. `"Terminess"`.
+    /// Menu label, e.g. `"Terminess"`. Empty for a face carried only to
+    /// cover another's gaps, which is what keeps it out of every list a
+    /// user chooses from.
     pub text: &'static str,
     /// The bundled resource path, `:/fonts/<dir>/<file>`, used as the
     /// entry's stable identifier.
@@ -153,19 +155,19 @@ macro_rules! bundled {
 const BUNDLED: &[BundledFont] = &[
     bundled!("TERMINESS_SCALED", "Terminess", "terminus", "TerminessNerdFontMono-Regular.ttf", 1.0, 12, true, ""),
     bundled!("BIGBLUE_TERMINAL_SCALED", "BigBlue Terminal", "bigblue-terminal", "BigBlueTerm437NerdFontMono-Regular.ttf", 1.0, 12, true, ""),
-    bundled!("EXCELSIOR_SCALED", "Fixedsys Excelsior", "fixedsys-excelsior", "FSEX301-L2.ttf", 1.0, 16, true, "UNSCII_16_SCALED"),
-    bundled!("GREYBEARD_SCALED", "Greybeard", "greybeard", "Greybeard-16px.ttf", 1.0, 16, true, "UNSCII_16_SCALED"),
+    bundled!("EXCELSIOR_SCALED", "Fixedsys Excelsior", "fixedsys-excelsior", "FSEX301-L2.ttf", 1.0, 16, true, "UNIFONT"),
+    bundled!("GREYBEARD_SCALED", "Greybeard", "greybeard", "Greybeard-16px.ttf", 1.0, 16, true, "UNIFONT"),
     bundled!("COMMODORE_PET_SCALED", "Commodore PET", "pet-me", "PetMe.ttf", 0.5, 8, true, "UNSCII_8_SCALED"),
     bundled!("GOHU_11_SCALED", "Gohu 11", "gohu", "GohuFont11NerdFontMono-Regular.ttf", 1.0, 11, true, ""),
     bundled!("COZETTE_SCALED", "Cozette", "cozette", "CozetteVector.ttf", 1.0, 13, true, ""),
     bundled!("UNSCII_8_SCALED", "Unscii 8", "unscii", "unscii-8.ttf", 0.5, 8, true, "UNSCII_8_SCALED"),
     bundled!("UNSCII_8_THIN_SCALED", "Unscii 8 Thin", "unscii", "unscii-8-thin.ttf", 0.5, 8, true, "UNSCII_8_SCALED"),
-    bundled!("UNSCII_16_SCALED", "Unscii 16", "unscii", "unscii-16-full.ttf", 1.0, 16, true, "UNSCII_16_SCALED"),
+    bundled!("UNIFONT", "Unifont", "unifont", "unifont.otf", 1.0, 16, true, "UNIFONT_UPPER"),
     bundled!("APPLE_II_SCALED", "Apple ][", "apple2", "PrintChar21.ttf", 0.5, 8, true, "UNSCII_8_SCALED"),
     bundled!("ATARI_400_SCALED", "Atari 400-800", "atari-400-800", "AtariClassic-Regular.ttf", 0.5, 8, true, "UNSCII_8_SCALED"),
     bundled!("COMMODORE_64_SCALED", "Commodore 64", "pet-me", "PetMe64.ttf", 0.5, 8, true, "UNSCII_8_SCALED"),
     bundled!("IBM_EGA_8x8", "IBM EGA 8x8", "oldschool-pc-fonts", "PxPlus_IBM_EGA_8x8.ttf", 0.5, 8, true, "UNSCII_8_SCALED"),
-    bundled!("IBM_VGA_8x16", "IBM VGA 8x16", "oldschool-pc-fonts", "PxPlus_IBM_VGA_8x16.ttf", 1.0, 16, true, "UNSCII_16_SCALED"),
+    bundled!("IBM_VGA_8x16", "IBM VGA 8x16", "oldschool-pc-fonts", "PxPlus_IBM_VGA_8x16.ttf", 1.0, 16, true, "UNIFONT"),
     bundled!("TERMINESS", "Terminess", "terminus", "TerminessNerdFontMono-Regular.ttf", 1.0, 32, false, ""),
     bundled!("HACK", "Hack", "hack", "HackNerdFontMono-Regular.ttf", 1.0, 32, false, ""),
     bundled!("FIRA_CODE", "Fira Code", "fira-code", "FiraCodeNerdFontMono-Regular.ttf", 1.0, 32, false, ""),
@@ -174,6 +176,7 @@ const BUNDLED: &[BundledFont] = &[
     bundled!("IBM_3278", "IBM 3278", "ibm-3278", "3270NerdFontMono-Regular.ttf", 1.0, 32, false, ""),
     bundled!("SOURCE_CODE_PRO", "Source Code Pro", "source-code-pro", "SauceCodeProNerdFontMono-Regular.ttf", 1.0, 32, false, ""),
     bundled!("DEPARTURE_MONO_SCALED", "Departure Mono", "departure-mono", "DepartureMonoNerdFontMono-Regular.otf", 1.0, 11, true, ""),
+    bundled!("UNIFONT_UPPER", "", "unifont", "unifont_upper.otf", 1.0, 16, true, ""),
     bundled!("OPENDYSLEXIC", "OpenDyslexic", "opendyslexic", "OpenDyslexicMNerdFontMono-Regular.otf", 1.0, 32, false, ""),
 ];
 
@@ -318,7 +321,34 @@ pub fn font_by_name_or(
 /// The bundled low-resolution faces, the list the LED and tape displays
 /// letter themselves from.
 pub fn low_resolution_fonts() -> impl Iterator<Item = &'static FontEntry> {
-    bundled_fonts().iter().filter(|f| f.low_resolution)
+    bundled_fonts()
+        .iter()
+        .filter(|f| f.low_resolution && !f.text.is_empty())
+}
+
+/// The bundled faces that cover `name`'s gaps, nearest first, following each
+/// face's own fallback in turn.
+///
+/// The catalogue states one hop per row, so a face reaching a second one does
+/// it by naming a face that names another: `UNIFONT_UPPER`, which carries the
+/// codepoints above U+FFFF, is reached through `UNIFONT` rather than listed
+/// again on every face behind it.
+/// A row naming itself, which is how a face says it is the end of its own
+/// chain, stops the walk, as does a name already collected.
+pub fn fallback_faces(name: &str) -> Vec<&'static FontEntry> {
+    let mut chain = Vec::new();
+    let mut next = font_by_name(name, FontSource::Bundled).map(|f| f.fallback_name);
+    while let Some(step) = next.filter(|s| !s.is_empty() && *s != name) {
+        if chain.iter().any(|f: &&FontEntry| f.name == step) {
+            break;
+        }
+        let Some(entry) = font_by_name(step, FontSource::Bundled) else {
+            break;
+        };
+        chain.push(entry);
+        next = Some(entry.fallback_name);
+    }
+    chain
 }
 
 /// The faces offered for a given source and rasterization mode. Modern
@@ -334,7 +364,8 @@ pub fn filtered_fonts(
             FontSource::Bundled => !f.is_system,
             FontSource::System => f.is_system,
         };
-        matches_source && (f.is_system || modern == !f.low_resolution)
+        let offered = f.is_system || !f.text.is_empty();
+        matches_source && offered && (f.is_system || modern == !f.low_resolution)
     })
 }
 
@@ -367,15 +398,16 @@ mod tests {
         // The bundled catalogue is pinned exactly, and carries nothing off
         // the machine.
         let bundled = bundled();
-        assert_eq!(bundled.len(), 24);
+        assert_eq!(bundled.len(), 25);
         assert_eq!(bundled[0].name, "TERMINESS_SCALED");
         assert_eq!(bundled.last().unwrap().name, "OPENDYSLEXIC");
         assert!(bundled.iter().all(|f| !f.is_system));
-        // System entries are appended, never interleaved: the first 24 of the
-        // system catalogue are the bundled 24 in declared order.
+        // System entries are appended, never interleaved: the head of the
+        // system catalogue is the bundled catalogue in declared order.
         let system = system_fonts();
-        assert!(system[..24].iter().all(|f| !f.is_system));
-        assert_eq!(system[..24], bundled[..]);
+        let n = bundled.len();
+        assert!(system[..n].iter().all(|f| !f.is_system));
+        assert_eq!(system[..n], bundled[..]);
         // The default font name.
         assert!(font_by_name("TERMINESS_SCALED", FontSource::Bundled).is_some());
         // The settings default for the channel-bank lettering.
@@ -391,7 +423,12 @@ mod tests {
         let legacy: Vec<_> = filtered_fonts(FontSource::Bundled, 0)
             .map(|f| f.name)
             .collect();
-        assert_eq!(modern.len() + legacy.len(), bundled().len());
+        // Every face a user can choose is in exactly one half. UNIFONT_UPPER
+        // is in neither: it carries no label, so nothing offers it, and it
+        // reaches the glass only as another face's fallback.
+        let offered = bundled().iter().filter(|f| !f.text.is_empty()).count();
+        assert_eq!(modern.len() + legacy.len(), offered);
+        assert!(!modern.contains(&"UNIFONT_UPPER") && !legacy.contains(&"UNIFONT_UPPER"));
         assert!(modern.contains(&"HACK"));
         assert!(!modern.contains(&"UNSCII_8_SCALED"));
         assert!(legacy.contains(&"UNSCII_8_SCALED"));

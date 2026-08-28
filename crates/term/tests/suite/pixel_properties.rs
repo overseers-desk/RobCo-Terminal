@@ -267,7 +267,12 @@ fn property_1_control_the_measurement_can_see_antialiasing() {
 #[test]
 fn property_1_premise_a_low_resolution_face_needs_no_threshold() {
     let Some((gpu, _lock)) = gpu() else { return };
-    for spec in fonts::bundled_fonts().iter().filter(|f| f.low_resolution) {
+    // Every low-resolution face a user can select. A face carried only to
+    // cover another's gaps has no menu label and no ASCII to draw.
+    for spec in fonts::bundled_fonts()
+        .iter()
+        .filter(|f| f.low_resolution && !f.text.is_empty())
+    {
         let resolved = sizing::resolve(spec, &SizingRequest::default(), ScalePolicy::Floor);
         assert_eq!(
             resolved.raster_pixel_size, spec.pixel_size,
