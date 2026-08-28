@@ -1,3 +1,11 @@
+robco-term (0.1.5) unstable; urgency=medium
+
+  * PuTTY private keys work as they are: a [[ssh.host]] row may name a
+    .ppk file (v2 or v3, encrypted or not), and an encrypted one asks
+    for its passphrase on the glass like any other key.
+
+ -- Weiwu Zhang <a@colourful.land>  Fri, 28 Aug 2026 10:15:23 +0000
+
 robco-term (0.1.4) unstable; urgency=medium
 
   * On macOS the settings window is reached the way a Mac reaches things:

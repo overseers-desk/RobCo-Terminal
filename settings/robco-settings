@@ -12,7 +12,7 @@
 
 package require Tcl 9
 
-set ROBCO_SETTINGS_VERSION 0.1.4
+set ROBCO_SETTINGS_VERSION 0.1.5
 set ROOT [file dirname [file normalize [info script]]]
 
 foreach lib {diag.tcl tomledit-1.0.tm model.tcl} {
