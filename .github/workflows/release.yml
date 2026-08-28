@@ -122,14 +122,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             debhelper lintian libx11-dev libxext-dev libxft-dev \
-            libfontconfig1-dev libxss-dev zlib1g-dev
+            libfontconfig1-dev libxss-dev zlib1g-dev xvfb
       - name: build the self-contained settings image
         run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
+      # Under Xvfb: the selftest loads Tk, and Tk on X11 will not
+      # initialise without a display, so a headless runner fails the one
+      # check that asks whether Tk registered. The macOS runner has a
+      # window server and needs no such wrapper.
       - name: prove the image
         run: |
           image=$(ls settings/dist/robco-settings-*-linux-* | head -1)
           test -n "$image"
-          "$image" --selftest | tee selftest.txt
+          xvfb-run -a "$image" --selftest | tee selftest.txt
           grep -q 'settings selftest ok' selftest.txt
       - name: roll the tarball
         run: |
