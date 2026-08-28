@@ -211,24 +211,26 @@ jobs:
         run: |
           image=$(ls settings/dist/robco-settings-*-linux-* | head -1)
           cargo run -p xtask -- dist --out-dir dist --settings-binary "$image"
-      # dpkg-buildpackage writes beside the source tree, its own
-      # convention; the deb moves into dist/ because an upload reaches
-      # nothing above the workspace. The dbgsym .ddeb stays where it fell:
-      # it is a side effect of the split, not an asset.
+      # dpkg-buildpackage writes beside the source tree, its own convention.
       - name: build the Debian package
-        run: |
-          dpkg-buildpackage -us -uc -b
-          mv ../robco-term_*_amd64.deb dist/
-      # The floor, read back out of the package that carries it. A libc6
-      # version here above the oldest supported release is the bug this
-      # job exists to keep out, and the log is where it shows.
-      - name: read the dependencies back out of the package
-        run: dpkg-deb -f dist/robco-term_*_amd64.deb Depends
+        run: dpkg-buildpackage -us -uc -b
       # The release checklist's own lintian step, with the findings it
       # accepts named: two missing manual pages, and a distribution
-      # vocabulary that is Ubuntu's rather than Debian's.
+      # vocabulary that is Ubuntu's rather than Debian's. It reads the
+      # .changes file, which names the deb as a sibling, so it runs while
+      # the two still sit together.
       - name: lintian
         run: lintian --suppress-tags no-manual-page,bad-distribution-in-changes-file ../robco-term_*.changes
+      # The floor, read back out of the package that carries it. A libc6
+      # version here above the oldest supported release is the bug this
+      # job exists to keep out, and the log is where it shows. The deb
+      # then moves into dist/, because an upload reaches nothing above the
+      # workspace; the dbgsym .ddeb stays where it fell, a side effect of
+      # the symbol split rather than an asset.
+      - name: read the dependencies back out, and collect the package
+        run: |
+          dpkg-deb -f ../robco-term_*_amd64.deb Depends
+          mv ../robco-term_*_amd64.deb dist/
       # Every green run leaves a deb and a tarball a traveller can install
       # from, without reaching the development machine.
       - uses: actions/upload-artifact@v4

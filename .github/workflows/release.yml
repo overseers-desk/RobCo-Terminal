@@ -140,13 +140,15 @@ jobs:
           image=$(ls settings/dist/robco-settings-*-linux-* | head -1)
           cargo run -p xtask -- dist --out-dir dist --settings-binary "$image"
       - name: build the Debian package
-        run: |
-          dpkg-buildpackage -us -uc -b
-          mv ../robco-term_*_amd64.deb dist/
-      - name: read the dependencies back out of the package
-        run: dpkg-deb -f dist/robco-term_*_amd64.deb Depends
+        run: dpkg-buildpackage -us -uc -b
+      # lintian reads the .changes, which names the deb as a sibling, so
+      # it runs before the deb moves into the workspace for upload.
       - name: lintian
         run: lintian --suppress-tags no-manual-page,bad-distribution-in-changes-file ../robco-term_*.changes
+      - name: read the dependencies back out, and collect the package
+        run: |
+          dpkg-deb -f ../robco-term_*_amd64.deb Depends
+          mv ../robco-term_*_amd64.deb dist/
       - name: attach the tarball and the deb to this tag's release, once one exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
