@@ -79,8 +79,13 @@ impl server::Handler for Echo {
         _user: &str,
         key: &ssh_key::PublicKey,
     ) -> Result<Auth, Self::Error> {
+        // The key's material alone: a comment is metadata, and a key that
+        // travelled through a commented file (a ppk's `Comment:` header)
+        // is still the key the plan authorised.
         match &*self.plan {
-            AuthPlan::Key(authorized) if key == authorized => Ok(Auth::Accept),
+            AuthPlan::Key(authorized) if key.key_data() == authorized.key_data() => {
+                Ok(Auth::Accept)
+            }
             plan => Ok(plan.refuse()),
         }
     }

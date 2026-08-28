@@ -80,9 +80,17 @@ fn wait_for(handle: &mut ChannelHandle, mut hit: impl FnMut(&WireEvent) -> bool)
     while std::time::Instant::now() < deadline {
         while let Some(event) = handle.try_event() {
             let done = hit(&event);
+            let ended = !done && matches!(event, WireEvent::Eof);
             log.push(event);
             if done {
                 return log;
+            }
+            // Eof is terminal, and a dead handle repeats it on every poll
+            // (channel.rs's "no row outlives its wire"): a wait that is
+            // not for Eof must end here, or the log grows Eofs until the
+            // test binary is the process the OOM killer picks.
+            if ended {
+                panic!("the connection ended before the matching event; saw: {log:?}");
             }
         }
         std::thread::sleep(Duration::from_millis(5));
@@ -537,3 +545,132 @@ async fn the_recorded_algorithm_leads_the_negotiation() {
         "the server led with a key the policy never asked for"
     );
 }
+
+/// A committed test fixture, by name. The `.ppk` files were written once
+/// by `puttygen` (putty-tools 0.83): an OpenSSH key converted with
+/// `-O private` at `--ppk-param version=3` (and `version=2` for the RSA
+/// one), the sealed one with `--new-passphrase` naming `atomic-cafe` and
+/// `memory=1024,passes=1`: puttygen's default Argon2 cost is calibrated
+/// to ~100ms of release-speed hashing, which a debug build multiplies
+/// into seconds per attempt, and this suite's retry case pays it four
+/// times against a ten-second deadline.
+fn fixture(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
+
+/// The identity inside a fixture, read the way the transport reads it.
+fn fixture_key(name: &str, passphrase: Option<&str>) -> PrivateKey {
+    let text = std::fs::read_to_string(fixture(name)).unwrap();
+    ssh_link::russh::keys::decode_secret_key(&text, passphrase).unwrap()
+}
+
+/// A PuTTY key file is one more format the loader reads: v3 and v2 alike
+/// authenticate with nobody asked anything.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ppk_key_authenticates_like_any_other() {
+    for name in ["ed25519_plain.ppk", "rsa_v2_plain.ppk"] {
+        let identity = fixture_key(name, None);
+        let (port, _seen) = serve_echo(vec![ed25519()], identity.public_key().clone()).await;
+        let mut with_key = target(port);
+        with_key.key_files = vec![fixture(name)];
+        let (_link, mut handle) =
+            Link::connect(with_key, Box::new(Scripted::verdict(Ok(()))), Asker::closed())
+                .unwrap();
+        let log = tokio::task::spawn_blocking(move || {
+            wait_for(&mut handle, |e| {
+                matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+            })
+        })
+        .await
+        .unwrap();
+        assert!(
+            text_of(&log).contains("authenticated as overseer"),
+            "{name}: {log:?}"
+        );
+        assert!(
+            !text_of(&log).contains("passphrase"),
+            "{name} asked for a passphrase: {log:?}"
+        );
+    }
+}
+
+/// An encrypted ppk is asked about like an encrypted OpenSSH key: the
+/// wrong passphrase is named as such, the right one gets in, and three
+/// misses leave the file locked.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_encrypted_ppk_opens_on_its_passphrase() {
+    let identity = fixture_key("ed25519_sealed.ppk", Some("atomic-cafe"));
+    let (port, _seen) = serve_echo(vec![ed25519()], identity.public_key().clone()).await;
+
+    let (asker, desk) = ssh_link::ask::desk();
+    let hand = deskhand(desk, vec![Some("wrong"), Some("atomic-cafe")]);
+    let mut sealed_target = target(port);
+    sealed_target.key_files = vec![fixture("ed25519_sealed.ppk")];
+    let (_link, mut handle) =
+        Link::connect(sealed_target, Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Data(d) if d.windows(5).any(|w| w == b"ready"))
+        })
+    })
+    .await
+    .unwrap();
+    let prompts = hand.join().unwrap();
+    assert_eq!(prompts.len(), 2, "{prompts:?}");
+    assert!(prompts[0].contains("passphrase for"), "{prompts:?}");
+    assert!(prompts[0].contains("ed25519_sealed.ppk"), "{prompts:?}");
+    assert!(text_of(&log).contains("that passphrase did not open"), "{log:?}");
+    assert!(text_of(&log).contains("authenticated as overseer"), "{log:?}");
+
+    // Three misses: the file is reported locked rather than asked about a
+    // fourth time. The sequence then moves on; the lock line is the claim
+    // under test, so the wait ends on it.
+    let (asker, desk) = ssh_link::ask::desk();
+    let hand = deskhand(desk, vec![Some("no"), Some("nope"), Some("never")]);
+    let mut sealed_target = target(port);
+    sealed_target.key_files = vec![fixture("ed25519_sealed.ppk")];
+    let (_link, mut handle) =
+        Link::connect(sealed_target, Box::new(Scripted::verdict(Ok(()))), asker).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Notice(t) if t.contains("stays locked"))
+        })
+    })
+    .await
+    .unwrap();
+    hand.join().unwrap();
+    assert!(text_of(&log).contains("ed25519_sealed.ppk stays locked"), "{log:?}");
+}
+
+/// A ppk header on an unreadable body is an unreadable file, not a
+/// passphrase question: the header says `none`, so there is nothing to ask.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_broken_unencrypted_ppk_is_named_unreadable_with_no_question() {
+    let dir = tempfile::tempdir().unwrap();
+    let identity = ed25519();
+    let (port, _seen) = serve_echo(vec![ed25519()], identity.public_key().clone()).await;
+    let _ = identity;
+    let path = dir.path().join("broken.ppk");
+    std::fs::write(
+        &path,
+        "PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: none\nComment: broken\n",
+    )
+    .unwrap();
+    let mut with_key = target(port);
+    with_key.key_files = vec![path];
+    let (_link, mut handle) =
+        Link::connect(with_key, Box::new(Scripted::verdict(Ok(()))), Asker::closed()).unwrap();
+    let log = tokio::task::spawn_blocking(move || {
+        wait_for(&mut handle, |e| {
+            matches!(e, WireEvent::Notice(t) if t.contains("could not read"))
+        })
+    })
+    .await
+    .unwrap();
+    assert!(!text_of(&log).contains("passphrase"), "{log:?}");
+    assert!(!text_of(&log).contains("cancelled"), "{log:?}");
+}
+
+
