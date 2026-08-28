@@ -228,7 +228,14 @@ fn lay_out_settings_scripts(root: &Path) -> Result<Vec<PathBuf>> {
             std::fs::read_dir(&from).with_context(|| format!("reading {}", from.display()))?
         {
             let path = entry?.path();
-            if path.extension().is_none_or(|e| e != "tcl") {
+            // Every regular file in these two directories, whatever it is
+            // named. They hold the settings program's runtime and nothing
+            // else, and a copy that names the extensions it knows ships a
+            // launcher that cannot start the day one arrives it has not
+            // heard of: `lib/tomledit-1.0.tm` was left out of 0.1.4 that
+            // way, and the terminal spawns the launcher with its stderr
+            // closed, so the right press did nothing and said nothing.
+            if !path.is_file() {
                 continue;
             }
             let target = dest.join(path.file_name().expect("a read_dir entry has a name"));
