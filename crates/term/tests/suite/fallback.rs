@@ -250,3 +250,29 @@ fn appending_past_the_allocated_height_grows_the_texture_and_says_so() {
         opening_height
     );
 }
+
+/// A face whose catalogue row names a fallback reaches it without reading the
+/// machine, and reaches through it to the face that one names in turn.
+///
+/// Fixedsys Excelsior carries neither 中 nor 🔥. Unifont covers the first and
+/// its plane-1 companion the second, so both are answers this binary carries,
+/// identical on a bare container and a loaded desktop. `system_fonts_loaded`
+/// staying false is the whole assertion: it is the evidence that the machine
+/// was never asked.
+#[test]
+fn a_bundled_fallback_answers_before_the_machine_is_asked() {
+    let entry = font_by_name("EXCELSIOR_SCALED", FontSource::Bundled)
+        .expect("EXCELSIOR_SCALED in the catalogue");
+    let px = pixel_size(entry);
+    let mut font = FontContext::new(entry);
+
+    for (text, name) in [("\u{4e2d}", "CJK, U+4E2D"), ("\u{1f525}", "emoji, U+1F525")] {
+        let glyphs = font.covering_glyphs(text, px);
+        assert_eq!(glyphs.len(), 1, "{name} shaped to {} glyphs", glyphs.len());
+        assert_ne!(glyphs[0].1, 0, "{name} is covered by no bundled face");
+        assert!(
+            !font.system_fonts_loaded(),
+            "{name} sent the atlas to the machine's fonts"
+        );
+    }
+}

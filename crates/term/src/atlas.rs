@@ -462,6 +462,11 @@ pub struct FontContext {
     scale_context: ScaleContext,
     pub font_id: fontdb::ID,
     pub family: String,
+    /// The catalogue name of the selected face, which is where its fallback
+    /// chain is written down.
+    name: &'static str,
+    /// Whether the face's bundled fallbacks have been read into the database.
+    bundled_fallbacks: bool,
     /// Whether the machine's own fonts have been read into the database. See
     /// [`Self::covering_glyphs`] for when that happens and why it waits.
     system_fonts: bool,
@@ -526,6 +531,8 @@ impl FontContext {
             scale_context: ScaleContext::new(),
             font_id,
             family,
+            name: spec.name,
+            bundled_fallbacks: false,
             system_fonts: false,
         }
     }
@@ -550,24 +557,44 @@ impl FontContext {
     /// where the answer comes from.
     ///
     /// A glyph id of 0 is the face saying it has no glyph for that character,
-    /// and it is what pulls in the machine's own fonts: the database is built
-    /// holding the one selected face, and everything cosmic-text can fall back
-    /// to arrives on the first character that needs falling back. Loading it
-    /// up front would put a font enumeration, its file reads and its parse in
-    /// front of the first frame of every session, including every session that
-    /// never leaves ASCII.
+    /// and it is what widens the database. Two widenings stand behind the
+    /// selected face, taken in turn: the bundled faces its catalogue row names
+    /// as covering its gaps, then the machine's own fonts. The bundled ones go
+    /// first because they are chosen, compiled in and the same everywhere,
+    /// where what a machine has installed is neither known nor identical
+    /// between two of them.
+    ///
+    /// Both wait for a character that needs them. Doing either up front would
+    /// put megabytes of parsing, and for the machine an enumeration and its
+    /// file reads, in front of the first frame of every session, including
+    /// every session that never leaves ASCII.
     pub fn covering_glyphs(&mut self, text: &str, pixel_size: f32) -> Vec<(fontdb::ID, u16, f32)> {
-        let shaped = self.shape(text, pixel_size);
-        if self.system_fonts || !shaped.iter().any(|(_, glyph_id, _)| *glyph_id == 0) {
+        let mut shaped = self.shape(text, pixel_size);
+        let uncovered = |s: &[(fontdb::ID, u16, f32)]| s.iter().any(|(_, id, _)| *id == 0);
+        if !self.bundled_fallbacks && uncovered(&shaped) {
+            self.bundled_fallbacks = true;
+            for face in crate::fonts::fallback_faces(self.name) {
+                self.font_system
+                    .db_mut()
+                    .load_font_data(face.data().to_vec());
+                log::debug!(
+                    "{:?} is not covered by {}; {} is loaded now",
+                    text,
+                    self.family,
+                    face.name
+                );
+            }
+            shaped = self.shape(text, pixel_size);
+        }
+        if self.system_fonts || !uncovered(&shaped) {
             return shaped;
         }
         self.system_fonts = true;
         self.font_system.db_mut().load_system_fonts();
         log::debug!(
-            "{:?} is not covered by {}; the machine's fonts are loaded now, {} \
-             faces of them",
+            "{:?} is covered by no bundled face; the machine's fonts are loaded \
+             now, {} faces of them",
             text,
-            self.family,
             self.font_system.db().len()
         );
         self.shape(text, pixel_size)
@@ -822,9 +849,8 @@ mod tests {
 
         // And that what it stood up is the bundled default, not an empty
         // shell that will produce blank glyphs forever.
-        let fallback =
-            crate::fonts::font_by_name(FALLBACK_FACE, crate::fonts::FontSource::Bundled)
-                .expect("the bundled fallback");
+        let fallback = crate::fonts::font_by_name(FALLBACK_FACE, crate::fonts::FontSource::Bundled)
+            .expect("the bundled fallback");
         assert_eq!(
             context.family, fallback.family,
             "the fallback face is not the one the atlas fell back to"

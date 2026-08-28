@@ -147,46 +147,6 @@ pub fn compute_font(entry: &FontEntry, req: &SizingRequest) -> ComputedFont {
     }
 }
 
-/// The chain a missing glyph walks: the face's own fallback first, then the
-/// platform's monospace default. The shaper takes it as a list.
-pub fn fallback_chain(computed: &ComputedFont) -> Vec<String> {
-    let mut chain = Vec::new();
-    if !computed.fallback_family.is_empty() {
-        chain.push(computed.fallback_family.clone());
-    }
-    chain.push(platform_monospace().to_string());
-    chain
-}
-
-/// Windows names Consolas. It is the ClearType Font Collection face
-/// Microsoft's own typography page lists as shipping with Windows Vista,
-/// Windows Server 2008, and every release since: 7, 8, 8.1, 10, 11
-/// (https://learn.microsoft.com/en-us/typography/font-list/consolas).
-/// Vista is the version floor; nothing this project targets runs older.
-///
-/// Cascadia Mono was weighed and passed over. It installs alongside
-/// Windows Terminal, not with Windows itself: the font file arrives with
-/// that app, pulled from the Microsoft Store after first boot on Windows
-/// 11, and is simply missing from an image where that install hasn't
-/// happened, from Windows Server, or from an offline enterprise build.
-/// Windows Terminal being the default terminal app on Windows 11 doesn't
-/// change this; "default app" still means "installed later from the
-/// Store," not "part of the OS image."
-///
-/// Courier New reaches back further than either, present since Windows
-/// 3.x, but it is a legacy bitmap-era face with thin Unicode coverage:
-/// the wrong family to stand in for whatever glyph the bundled face is
-/// missing.
-const fn platform_monospace() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "Menlo"
-    } else if cfg!(target_os = "windows") {
-        "Consolas"
-    } else {
-        "Monospace"
-    }
-}
-
 /// The full seam: metadata plus knobs in, renderer permissions out.
 pub fn resolve(entry: &FontEntry, req: &SizingRequest, policy: ScalePolicy) -> ResolvedFont {
     let computed = compute_font(entry, req);
