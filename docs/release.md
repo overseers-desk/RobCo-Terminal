@@ -44,6 +44,20 @@ gh release view v<VERSION> --json assets --jq '.assets[].name'
 
 A release the page does not show is not released, whatever was built.
 
+## Point the cask at it
+
+A Mac installs this through Homebrew as well as by hand, so the tap has to
+be told the release exists. In `overseers-desk/homebrew-od`, one edit to
+`Casks/robco-term.rb`: the `version`, and the `sha256` of the disk image
+this release published.
+
+```bash
+gh release download v<VERSION> -p '*-macos-arm64.dmg' -O - | sha256sum
+```
+
+Until that edit lands, `brew install --cask robco-term` installs the
+release before this one.
+
 ## Open
 
 The Windows and macOS halves are automatic (`.github/workflows/release.yml`). The Linux half above, the tarball and the `.deb`, is still built and uploaded by hand; carrying questlog's `release-images` pattern the rest of the way would automate that half too. On macOS, signing and notarisation and an Intel or universal build are open. Notarisation needs one thing first: it demands a signature on every Mach-O in the bundle, and the settings image carries its script archive past the end of its own, which `codesign` will not sign at any depth. That archive has to move into `Contents/Resources` beside a plain interpreter, or the settings program has to be embedded in the terminal the way the Windows build embeds it, before a Developer ID can be applied at all.
