@@ -523,6 +523,31 @@ pub struct DistArgs {
 /// `--settings-binary` is required here, not optional as it is for `install`:
 /// this is what a user downloads, and an official package with no settings
 /// window is a bug, not a smaller install.
+/// Takes the debug information out of the staged binary, leaving the tarball
+/// carrying what the program is made of and nothing else.
+///
+/// This is the other package routes' behaviour written down for the one route
+/// that lacked it: `dh_strip` does it for the deb, and the Windows and macOS
+/// artifacts never carried debug information at all. The developer's own
+/// `target/release` copy keeps the line tables the release profile asks for;
+/// what ships does not.
+///
+/// `-S` is the strip-debug flag on both GNU binutils and macOS. A failure here
+/// stops the build rather than shipping the unstripped copy, because a tarball
+/// that quietly carries a few hundred megabytes of DWARF is the thing this
+/// exists to prevent.
+fn strip_debug(binary: &Path) -> Result<()> {
+    let status = std::process::Command::new("strip")
+        .arg("-S")
+        .arg(binary)
+        .status()
+        .with_context(|| format!("running strip on {}", binary.display()))?;
+    if !status.success() {
+        bail!("strip on {} exited with {status}", binary.display());
+    }
+    Ok(())
+}
+
 pub fn dist(args: DistArgs) -> Result<()> {
     let Some(settings_binary) = args.settings_binary else {
         bail!(
@@ -541,6 +566,7 @@ pub fn dist(args: DistArgs) -> Result<()> {
         .context("creating the dist staging directory")?;
     let root = staging.path().join(&stem);
     lay_out(&root, &binary, Some(&settings_binary))?;
+    strip_debug(&root.join("bin").join(NAME))?;
     check_installed(&root.join("bin").join(NAME), &version)?;
 
     let tarball = archive(staging.path(), &stem, &args.out_dir, mtime)?;

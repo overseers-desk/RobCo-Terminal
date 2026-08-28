@@ -18,5 +18,12 @@ override_dh_auto_install:
 override_dh_auto_clean:
 
 # dwz does not understand the DWARF rustc emits at this scale; dh_strip
-# still strips and splits the dbgsym package without it.
+# still strips the binary without it.
 override_dh_dwz:
+
+# Debug information is not part of what this project distributes, so the
+# build makes none to distribute. dh_strip still strips the binary; what it
+# no longer does is package the symbols it took out as a separate .ddeb that
+# every build wrote and no release carried.
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
