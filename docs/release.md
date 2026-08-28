@@ -11,11 +11,9 @@ The procedure that cut v0.1.0, kept current so the next cut repeats it instead o
 
 ## Where the Linux artifacts come from
 
-The tag push builds them. `release.yml`'s `linux` job builds the settings window's self-contained image, rolls the tarball, runs `dpkg-buildpackage`, and attaches both files to the release; the `-dbgsym` `.ddeb` beside the deb is a build side effect and stays behind. It also runs `lintian`, suppressing the findings this project accepts: the two missing manual pages, and `bad-distribution-in-changes-file` on a lintian whose distribution vocabulary is Ubuntu's rather than Debian's. A finding outside that list fails the job.
+The tag push builds them: `release.yml`'s `linux` job builds the settings image, rolls the tarball, runs `dpkg-buildpackage`, and attaches both files, leaving the `-dbgsym` `.ddeb` behind. Its `lintian` step suppresses the findings this project accepts, the two missing manual pages and `bad-distribution-in-changes-file`, and fails on any other.
 
-The job runs on `ubuntu-24.04`, and the pin is the decision that says who can install the result. A binary asks for the glibc it was linked against and runs on every later one, so the oldest system a deb installs on is the system that built it; `dh_shlibdeps` reads that out of the binary and writes it into `Depends`. Moving the pin forward drops the releases below it. `tcl9.0` and `tk9.0` are declared by hand in `debian/control` and are absent from 24.04, which sets the true floor at Ubuntu 25.04 whatever the runner is.
-
-Building either artifact by hand is still a developer route, and [BUILD.md](../BUILD.md) holds it.
+The job is pinned to `ubuntu-24.04`: a deb installs only where glibc is at least the build host's, so the pin is the decision about who can install the release, and moving it forward drops the systems below it. `tcl9.0`, absent before 25.04, puts the practical floor there. [BUILD.md](../BUILD.md) holds the by-hand route.
 
 ## Publish
 
