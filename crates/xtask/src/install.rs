@@ -4,7 +4,7 @@
 //! All three lay out the same three files. `install` writes them into a prefix
 //! the caller names, `dist` writes them into a staging directory and rolls it
 //! into a versioned `tar.gz`, and `stage-deb` writes them under the staging
-//! root `debian/rules` hands it, where debhelper takes over (strip, dbgsym,
+//! root `debian/rules` hands it, where debhelper takes over (strip,
 //! `${shlibs:Depends}`, the doc files) and `dpkg-buildpackage` writes the
 //! `.deb` into the parent directory. One
 //! [`lay_out`] means the three can never disagree about what an installation
@@ -625,8 +625,8 @@ pub struct StageDebArgs {
 
 /// `xtask stage-deb`: the install layout plus the settings sources, into
 /// the staging root `debian/rules` names. Everything Debian-specific past
-/// the layout (strip and the dbgsym split, `${shlibs:Depends}`, the
-/// changelog and copyright installation, modes and ownership) is
+/// the layout (strip, `${shlibs:Depends}`, the changelog and copyright
+/// installation, modes and ownership) is
 /// debhelper's, which is the point of packaging with it.
 pub fn stage_deb(args: StageDebArgs) -> Result<()> {
     let version = version()?;

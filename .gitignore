@@ -2,7 +2,6 @@
 **/target
 /dist/
 debian/robco-term/
-debian/robco-term-dbgsym/
 debian/.debhelper/
 debian/files
 debian/debhelper-build-stamp
