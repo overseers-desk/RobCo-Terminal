@@ -3485,7 +3485,15 @@ impl TerminalSurface {
                     log::debug!("the settings application is already up");
                     return;
                 }
-                Ok(Some(_)) => self.settings_app = None,
+                // Reaped. A status that is not success is the trace of a
+                // window that never reached the screen, and the next right
+                // press is where it can still be said.
+                Ok(Some(status)) => {
+                    if !status.success() {
+                        log::warn!("the settings application exited with {status}");
+                    }
+                    self.settings_app = None;
+                }
                 // The status cannot be read, so whether it is still running is
                 // unknown. Forgetting the handle and starting another one is
                 // the wrong half of that guess to take: a second window is
@@ -3499,16 +3507,21 @@ impl TerminalSurface {
 
         let (program, args) = settings_command();
 
-        // Detached from this terminal's own stdio: the settings application is
-        // a window and not a job of the shell running here, and a child that
-        // inherited stdin would be reading the keystrokes meant for the
-        // terminal's own child.
+        // Detached from this terminal's own input: a child that inherited
+        // stdin would be reading the keystrokes meant for the terminal's own
+        // child, and its stdout has nothing to say to anyone.
+        //
+        // Its stderr is the exception, and passes through to whatever
+        // launched this terminal. A settings program that dies in its own
+        // startup is the one failure this code cannot see: the spawn
+        // succeeded, so nothing below reports it, and a closed stderr turns
+        // a legible complaint from the interpreter into a right press that
+        // did nothing at all.
         let mut command = std::process::Command::new(&program);
         command
             .args(args)
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+            .stdout(std::process::Stdio::null());
         // The window asks this terminal for what only a terminal can answer
         // (the machine's faces it can render), so the spawner names itself
         // rather than leaving the child to guess among the binaries a PATH
