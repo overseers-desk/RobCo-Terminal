@@ -714,8 +714,13 @@ impl Glass {
         let size = viewport.term_size();
         // White on black, and the phosphor nowhere in it: the chain's last
         // pass converts a grey into the profile's two colours, so a grid
-        // drawn in amber here would be tinted twice.
-        let scheme = Scheme::monochrome([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0]);
+        // drawn in amber here would be tinted twice. The palette rides
+        // through to that pass as the colours the program asked for, and the
+        // pass weighs each into one brightness. A background colour therefore
+        // lights its cell as much as the colour was bright, which is what a
+        // monochrome monitor did with a colour signal; flattening the palette
+        // here would light every one of them fully and swallow the text.
+        let scheme = Scheme::full_color([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0]);
         let mut renderer = GridRenderer::new(
             &gpu.device,
             &gpu.queue,

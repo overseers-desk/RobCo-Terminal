@@ -165,6 +165,24 @@ mod tests {
         assert_eq!(p[255], rgb(238, 238, 238));
     }
 
+    /// The scheme the appliance runs keeps every palette entry's own colour,
+    /// so a program that paints a background gets a cell lit as far as that
+    /// colour was bright and no further. Collapsing the palette to the
+    /// foreground instead lights every background fully, which fills the
+    /// glass and hides the text drawn on it: `whiptail`'s backdrop is this
+    /// blue, and it is meant to arrive almost dark.
+    ///
+    /// The weighing is `rgb2grey` in the chain's last pass, so this asserts
+    /// the colours reach it, not what it makes of them.
+    #[test]
+    fn the_appliance_scheme_carries_a_background_colour_at_its_own_brightness() {
+        let white = rgb(255, 255, 255);
+        let scheme = Scheme::full_color(white, [0.0, 0.0, 0.0, 1.0]);
+        let blue = scheme.resolve(AnsiColor::Named(NamedColor::Blue));
+        assert_eq!(blue, rgb(0, 0, 238));
+        assert_ne!(blue, scheme.foreground);
+    }
+
     #[test]
     fn monochrome_scheme_cannot_produce_a_third_colour() {
         let fg = rgb(255, 176, 0);
