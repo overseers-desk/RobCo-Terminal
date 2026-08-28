@@ -160,9 +160,15 @@ pub mod vt {
             };
         }
 
-        let mut fg = scheme.resolve(style.fg);
+        let bold = style.flags.contains(StyleFlags::BOLD);
+        let styled_fg = if bold {
+            crate::color::brightened(style.fg)
+        } else {
+            style.fg
+        };
+        let mut fg = scheme.resolve(styled_fg);
         let mut bg = scheme.resolve(style.bg);
-        if style.flags.contains(StyleFlags::DIM) && !style.flags.contains(StyleFlags::BOLD) {
+        if style.flags.contains(StyleFlags::DIM) && !bold {
             fg = crate::color::dim(fg, scheme.dim_factor);
         }
         if style.flags.contains(StyleFlags::INVERSE) {
@@ -179,10 +185,21 @@ pub mod vt {
                 fg[3] = 1.0;
             }
         }
+        // Whichever end of the cell the beam ends up drawing is the one
+        // lifted, so an inverted cell's glyph is lifted and its plate is
+        // not. A colour that weighs almost nothing on one phosphor -- blue
+        // weighs four percent -- would otherwise be text nobody can read.
+        fg = crate::color::lift(fg, scheme.foreground, crate::color::GLYPH_LIFT);
         let hidden = style.flags.contains(StyleFlags::HIDDEN);
         let line_color = style
             .underline_color
-            .map(|c| scheme.resolve(c))
+            .map(|c| {
+                crate::color::lift(
+                    scheme.resolve(c),
+                    scheme.foreground,
+                    crate::color::GLYPH_LIFT,
+                )
+            })
             .unwrap_or(fg);
 
         Cell {

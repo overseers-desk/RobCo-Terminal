@@ -112,6 +112,43 @@ impl Scheme {
     }
 }
 
+/// How far a glyph's colour is carried toward the phosphor before it is
+/// drawn, in 0..=1. Zero draws the colour at its own weight, which puts
+/// blue at four percent of the beam and off the screen; one draws every
+/// glyph at full strength, which is one colour for all text.
+///
+/// The plate is not lifted. A background stands at the weight its colour
+/// earns, which is what lets a dialog's panel read as a panel.
+///
+/// Blue is what the number is set against, being the darkest entry the
+/// table holds: a half lift puts it at half the beam, which reads, while
+/// the eight still stand in the order they were written in. Above about
+/// two thirds they start to close on one colour.
+pub const GLYPH_LIFT: f32 = 0.5;
+
+/// Carry a colour `amount` of the way toward `toward`.
+pub fn lift(c: Rgba, toward: Rgba, amount: f32) -> Rgba {
+    let mix = |a: f32, b: f32| a + (b - a) * amount;
+    [
+        mix(c[0], toward[0]),
+        mix(c[1], toward[1]),
+        mix(c[2], toward[2]),
+        c[3],
+    ]
+}
+
+/// SGR 1's second job. Bold picks a heavier face, and it also moves a base
+/// ANSI colour to its bright twin, which is what the second eight were cut
+/// for. The twins sit at 8..16 of the same table, so the move is an index
+/// away.
+pub fn brightened(color: AnsiColor) -> AnsiColor {
+    match color {
+        AnsiColor::Named(named) if (named as usize) < 8 => AnsiColor::Indexed(named as u8 + 8),
+        AnsiColor::Indexed(i) if i < 8 => AnsiColor::Indexed(i + 8),
+        other => other,
+    }
+}
+
 pub fn dim(c: Rgba, factor: f32) -> Rgba {
     [c[0] * factor, c[1] * factor, c[2] * factor, c[3]]
 }
@@ -186,6 +223,37 @@ mod tests {
         let blue = scheme.resolve(AnsiColor::Named(NamedColor::Blue));
         assert_eq!(blue, rgb(0, 0, 238));
         assert_ne!(blue, scheme.foreground);
+    }
+
+    /// SGR 1 moves a base colour to its bright twin. Blue is where this
+    /// pays: (0, 0, 238) weighs four percent of the beam, its twin
+    /// (92, 92, 255) weighs ten times that, and a bold-blue prompt path is
+    /// the difference between a line and a gap.
+    #[test]
+    fn bold_moves_a_base_colour_to_its_bright_twin() {
+        let scheme = Scheme::full_color(rgb(255, 255, 255), [0.0, 0.0, 0.0, 1.0]);
+        let plain = scheme.resolve(AnsiColor::Named(NamedColor::Blue));
+        let bold = scheme.resolve(brightened(AnsiColor::Named(NamedColor::Blue)));
+        assert_eq!(plain, rgb(0, 0, 238));
+        assert_eq!(bold, rgb(92, 92, 255));
+        // The eight above the base set are already bright, and a 256-colour
+        // index outside the first eight names itself.
+        assert_eq!(brightened(AnsiColor::Indexed(9)), AnsiColor::Indexed(9));
+        assert_eq!(brightened(AnsiColor::Indexed(200)), AnsiColor::Indexed(200));
+    }
+
+    /// The lift carries a glyph colour toward the phosphor without erasing
+    /// the differences between colours: the order the eight stand in is the
+    /// order they still stand in afterwards.
+    #[test]
+    fn the_lift_raises_a_glyph_colour_without_flattening_it() {
+        let white = rgb(255, 255, 255);
+        let lifted = |c: Rgba| lift(c, white, 0.5);
+        assert_eq!(lifted(rgb(0, 0, 0)), [0.5, 0.5, 0.5, 1.0]);
+        assert_eq!(lifted(white), white);
+        let blue = lifted(rgb(0, 0, 238));
+        let green = lifted(rgb(0, 205, 0));
+        assert!(blue[2] > green[2] && green[1] > blue[1]);
     }
 
     #[test]
