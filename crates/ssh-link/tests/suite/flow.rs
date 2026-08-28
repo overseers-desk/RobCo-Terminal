@@ -552,8 +552,8 @@ async fn the_recorded_algorithm_leads_the_negotiation() {
 /// one), the sealed one with `--new-passphrase` naming `atomic-cafe` and
 /// `memory=1024,passes=1`: puttygen's default Argon2 cost is calibrated
 /// to ~100ms of release-speed hashing, which a debug build multiplies
-/// into seconds per attempt, and this suite's retry case pays it four
-/// times against a ten-second deadline.
+/// into seconds per attempt, and the lockout connection below makes four
+/// load attempts against a ten-second deadline.
 fn fixture(name: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
@@ -672,5 +672,3 @@ async fn a_broken_unencrypted_ppk_is_named_unreadable_with_no_question() {
     assert!(!text_of(&log).contains("passphrase"), "{log:?}");
     assert!(!text_of(&log).contains("cancelled"), "{log:?}");
 }
-
-

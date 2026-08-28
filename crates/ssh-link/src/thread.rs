@@ -582,8 +582,8 @@ fn ppk_encrypted(path: &std::path::Path) -> Option<bool> {
 /// One key file against the server, asking for its passphrase if it has
 /// one. russh reads OpenSSH, PKCS#8, PKCS#1/SEC1 and PuTTY ppk (v2 and
 /// v3) alike; a DSA ppk parses but cannot sign, because the build leaves
-/// the legacy `dsa` algorithm out, and the server refuses it like any
-/// wrong key.
+/// the legacy `dsa` algorithm out, so signing fails locally with an
+/// unsupported-algorithm error before anything reaches the server.
 ///
 /// The ask runs on a blocking task rather than on this one. A human types
 /// at a human's pace, and this runtime is a single thread that is also
@@ -598,8 +598,6 @@ async fn try_key_file(
     path: &std::path::Path,
 ) -> Authenticated {
     use russh::keys::{load_secret_key, Error as KeysError, PrivateKeyWithHashAlg};
-    // Read once, outside the loop: the file does not change between
-    // passphrase attempts.
     let ppk_wants_passphrase = ppk_encrypted(path) == Some(true);
     let mut passphrase: Option<String> = None;
     let mut asked = 0usize;
