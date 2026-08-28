@@ -159,12 +159,11 @@ fn marking_differs(
 ///   colour falls back to the scheme's background made opaque -- the same
 ///   rule `cells::vt::cell_from_square` applies to SGR 7 and
 ///   `render::vt::cursor_state` applies to the character under the block;
-/// * the shipped monochrome scheme collapses the whole palette to one
-///   phosphor colour, so a cell that already painted its own background
-///   arrives here with the glyph and the plate the same colour and comes out
-///   of the swap still the same colour, which would mark it invisibly. There
-///   is no second colour to reach for in a monochrome scheme, so the glyph
-///   goes to the dim end of the one there is.
+/// * a cell whose glyph and plate are already the same colour, which a
+///   program gets by naming one colour for both, comes out of the swap still
+///   the same colour and would be marked invisibly. There is no second
+///   colour to reach for, so the glyph goes to the dim end of the one there
+///   is.
 fn inverted(cell: Cell, scheme: &Scheme) -> Cell {
     let opaque = |mut color: Rgba| {
         if color[3] == 0.0 {

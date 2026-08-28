@@ -16,8 +16,8 @@
 //! * a change of selection repaints **the rows it crossed and no others**, the
 //!   same narrowing the cursor's own line already gets;
 //! * a cell that arrives with its glyph and its plate already the same colour
-//!   -- which the monochrome scheme reaches whenever a program paints a
-//!   background, since the whole palette collapses to one phosphor -- still
+//!   -- which a program reaches by naming one colour for both, and which the
+//!   flat scheme these tests build reaches for any colour at all -- still
 //!   reads once marked, because there is no second colour to reach for and the
 //!   glyph goes to the dim end of the one there is.
 
@@ -342,10 +342,10 @@ fn a_cell_the_phosphor_already_collapsed_still_reads_when_marked() {
     let mut viewport = ScrollPosition::default();
     let (mut term, mut processor) = terminal();
 
-    // A red background under a white foreground. Under the monochrome scheme
-    // the whole palette is the one phosphor, so both ends of the cell arrive
-    // the same colour and the glyph is already invisible: a plain swap would
-    // mark it invisibly too.
+    // A red background under a white foreground. The flat scheme this test
+    // builds answers every palette entry with the one colour, so both ends of
+    // the cell arrive the same colour and the glyph is already invisible: a
+    // plain swap would mark it invisibly too.
     processor.advance(&mut term, b"\x1b[41mX\x1b[0m\r\n");
     renderer.sync(
         &gpu.device,

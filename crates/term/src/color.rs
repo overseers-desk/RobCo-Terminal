@@ -1,13 +1,16 @@
 //! Colour resolution: rio-vt hands out `AnsiColor`, the renderer wants four
 //! floats.
 //!
-//! The CRT pipeline that will sit downstream of this renderer is monochrome by
-//! design (the whole grid is painted in one phosphor colour and the shader
-//! chain does the rest), so the default scheme here is exactly that:
-//! `Scheme::monochrome`. The full palette exists anyway, because a terminal
-//! that silently discards SGR colours fails half the conformance suite and
-//! every `ls --color`, and because the phosphor decision belongs to the CRT
-//! shader passes rather than to the glyph path.
+//! The phosphor decision belongs to the CRT passes downstream, not to the
+//! glyph path, so what leaves here is the colour the program asked for.
+//! `Scheme::full_color` is what the appliance runs on: the chain's last pass
+//! weighs each colour into one brightness and mixes the profile's two
+//! colours by it, and a palette flattened before that pass would arrive as
+//! one level and light every cell alike. Discarding SGR colours here would
+//! also fail half the conformance suite and every `ls --color`.
+//!
+//! `Scheme::monochrome` is the flat scheme, one colour for glyph and plate
+//! alike, which the pixel-comparison tests want and nothing else does.
 
 use rio_vt::config::colors::{AnsiColor, ColorRgb, NamedColor};
 
@@ -43,9 +46,10 @@ impl Default for Scheme {
 }
 
 impl Scheme {
-    /// One phosphor colour for every glyph, one for every background. SGR
-    /// colours still change *which* of the two a cell gets (through INVERSE),
-    /// they just cannot introduce a third colour.
+    /// One colour for every glyph, one for every background. SGR colours
+    /// still change *which* of the two a cell gets (through INVERSE), they
+    /// just cannot introduce a third. A scheme with nothing to measure but
+    /// shape, which is what the pixel comparisons ask for.
     pub fn monochrome(foreground: Rgba, background: Rgba) -> Self {
         Self {
             foreground,
@@ -56,8 +60,9 @@ impl Scheme {
         }
     }
 
-    /// The ordinary 256-colour terminal palette, for when the phosphor is not
-    /// being enforced (screenshots, conformance runs, `ls --color`).
+    /// The ordinary 256-colour terminal palette, and what the appliance runs
+    /// on. Each colour reaches the chain as itself and is weighed there, so
+    /// a background arrives as a cell lit as far as that colour was bright.
     pub fn full_color(foreground: Rgba, background: Rgba) -> Self {
         Self {
             foreground,
