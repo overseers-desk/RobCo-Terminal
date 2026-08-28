@@ -68,6 +68,7 @@ namespace eval ::rcsettings::model {
             custom_command {""}
             led_characters 12
             chassis_shown true
+            grapheme_clustering false
         }
         screen {
             name {"Default Amber"}

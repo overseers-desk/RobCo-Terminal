@@ -50,6 +50,7 @@ fn scripted() -> SessionConfig {
             ("ENV".to_string(), String::new()),
         ],
         scrollback: 1000,
+        grapheme_clustering: false,
     }
 }
 

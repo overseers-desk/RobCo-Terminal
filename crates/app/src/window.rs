@@ -1068,9 +1068,10 @@ impl TerminalSurface {
         }
         let size = self.viewport.term_size();
         let scrollback = self.session_config.scrollback;
+        let clustering = self.grapheme_clustering();
         let slot = self.channels.first_free(0);
         let opened = self.channels.open_channel(0, slot, || {
-            Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback)))
+            Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback, clustering)))
         });
         if !opened {
             log::warn!("no free home slot for the destination picker");
@@ -1134,7 +1135,7 @@ impl TerminalSurface {
                 }
                 // The replacement stands before the page goes, so closing
                 // the page is never closing the last channel.
-                let (config, size) = (self.session_config.clone(), self.viewport.term_size());
+                let (config, size) = (self.session_now(), self.viewport.term_size());
                 self.channels.open_first_free(|| spawn(&config, size));
                 self.retire_picker(slot);
                 true
@@ -1257,11 +1258,13 @@ impl TerminalSurface {
             }
         };
         let scrollback = self.session_config.scrollback;
+        let clustering = self.grapheme_clustering();
         let wire = WireAdapter::new(handle);
         self.channels.open_ssh_channel(bank, move || {
             Some(ChannelSession::Ssh(SshChannel::new(
                 size,
                 scrollback,
+                clustering,
                 ControlModeTap::default(),
                 Box::new(wire),
             )))
@@ -1309,11 +1312,13 @@ impl TerminalSurface {
             }
         };
         let scrollback = self.session_config.scrollback;
+        let clustering = self.grapheme_clustering();
         let wire = WireAdapter::new(handle);
         let bank = self.channels.open_ssh_bank(&req.user, &req.host, req.port, move || {
             Some(ChannelSession::Ssh(SshChannel::new(
                 size,
                 scrollback,
+                clustering,
                 ControlModeTap::default(),
                 Box::new(wire),
             )))
@@ -1584,7 +1589,7 @@ impl TerminalSurface {
                 log::warn!("tmux: {FOUND_BANK_CAP} banks already stand for sessions found on their servers; {name} gets none");
                 return;
             }
-            let mut config = self.session_config.clone();
+            let mut config = self.session_now();
             config.program = Some(tmux_binary(pid));
             let args = ["-S", &socket, "-CC", "attach-session", "-t", id.as_str()];
             config.args = args.iter().map(|a| a.to_string()).collect();
@@ -1680,10 +1685,11 @@ impl TerminalSurface {
                 GatewayEvent::WindowAdded { window, pane, name } => {
                     let size = self.viewport.term_size();
                     let scrollback = self.session_config.scrollback;
+                    let clustering = self.grapheme_clustering();
                     let opened =
                         self.channels
                             .open_tmux_window(bank, &window, &pane, &name, || {
-                                Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback)))
+                                Some(ChannelSession::TmuxPane(TmuxPane::new(size, scrollback, clustering)))
                             });
                     if opened {
                         gateway.attach_window(&window, &pane);
@@ -2254,7 +2260,7 @@ impl TerminalSurface {
                 return;
             }
         }
-        let (config, size) = (self.session_config.clone(), self.viewport.term_size());
+        let (config, size) = (self.session_now(), self.viewport.term_size());
         if let Some(bank) = self.channels.new_channel(|| spawn(&config, size)) {
             // The model set the bank's `new_window_pending` flag; the window
             // tmux answers with will take the air when it lands
@@ -2470,7 +2476,7 @@ impl TerminalSurface {
     /// The hit test is the furniture's: the window *is* the key, and
     /// only whoever drew it knows where it is.
     pub fn press_strip(&mut self, channel: u32) {
-        let (config, size) = (self.session_config.clone(), self.viewport.term_size());
+        let (config, size) = (self.session_now(), self.viewport.term_size());
         let pager = self.pager.clone();
         pager.press(&mut self.channels, channel, || spawn(&config, size));
         self.channel_changed();
@@ -2508,6 +2514,27 @@ impl TerminalSurface {
     /// set it either way without having to know which it built.
     pub fn set_config(&mut self, config: Config) {
         self.base = config;
+    }
+
+    /// Whether a channel opened now measures text by grapheme cluster
+    /// (mode 2027), as the settings stand at this moment.
+    ///
+    /// Read here rather than carried from startup, so an edit in the
+    /// settings window reaches the next channel opened without a restart.
+    /// A channel already on the air keeps the policy it was built with,
+    /// because its screen was drawn under that policy and the program
+    /// filling it counted columns the same way.
+    fn grapheme_clustering(&self) -> bool {
+        self.live_config().general.grapheme_clustering
+    }
+
+    /// The session a channel opened now should run: this process's, with
+    /// the width policy taken from the settings as they stand.
+    fn session_now(&self) -> SessionConfig {
+        SessionConfig {
+            grapheme_clustering: self.grapheme_clustering(),
+            ..self.session_config.clone()
+        }
     }
 
     /// Attach the live settings handle the pointer's inverse-distortion

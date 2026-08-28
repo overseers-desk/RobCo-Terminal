@@ -35,6 +35,34 @@ use crate::size::TermSize;
 /// The VT state machine and grid in one type, as rio-vt models it.
 pub type Term = Crosswords<ReplyListener>;
 
+/// A fresh grid of `size`, the one place a channel's grid is built.
+///
+/// Local, SSH and tmux channels face the same glass, so they take the same
+/// grid: the same cursor, the same window id, and the same answer to how
+/// wide a character is. `grapheme_clustering` is DEC private mode 2027, and
+/// it decides whether a grapheme cluster occupies one slot or each of its
+/// code points occupies its own. Off, the layout is `wcwidth`'s, which is
+/// what a program padding a table counted on when it wrote the row. An
+/// application that wants clusters asks for them with `CSI ? 2027 h`, and
+/// a reset returns to whatever is passed here.
+pub(crate) fn new_term(
+    size: TermSize,
+    scrollback: usize,
+    grapheme_clustering: bool,
+    listener: ReplyListener,
+) -> Term {
+    let mut term = Crosswords::new(
+        size,
+        CursorShape::Block,
+        listener,
+        WindowId::from(0u64),
+        0,
+        scrollback,
+    );
+    term.set_grapheme_clustering(grapheme_clustering);
+    term
+}
+
 /// Where a grid parks the answers it owes, between the parse that made them
 /// and the pump that sends them. See [`ReplyListener`].
 pub type Replies = Arc<Mutex<Vec<u8>>>;
@@ -128,6 +156,9 @@ pub struct SessionConfig {
     pub env: Vec<(String, String)>,
     /// Scrollback lines retained above the screen.
     pub scrollback: usize,
+    /// Whether the grid measures by grapheme cluster (mode 2027) rather
+    /// than by code point. See [`new_term`].
+    pub grapheme_clustering: bool,
 }
 
 impl Default for SessionConfig {
@@ -138,6 +169,7 @@ impl Default for SessionConfig {
             working_directory: None,
             env: vec![("TERM".to_string(), "xterm-256color".to_string())],
             scrollback: 10_000,
+            grapheme_clustering: false,
         }
     }
 }
@@ -207,13 +239,11 @@ impl<T: DcsTap> Session<T> {
         )?;
 
         let replies = Replies::default();
-        let term = Crosswords::new(
+        let term = new_term(
             size,
-            CursorShape::Block,
-            ReplyListener::new(&replies),
-            WindowId::from(0u64),
-            0,
             config.scrollback,
+            config.grapheme_clustering,
+            ReplyListener::new(&replies),
         );
 
         Ok(Self {
@@ -641,6 +671,39 @@ impl<T: DcsTap> Session<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Where the cell after `[<warning sign><variation selector>` falls,
+    /// which is the whole of what mode 2027 decides for a channel.
+    fn column_of_x(grapheme_clustering: bool) -> usize {
+        let mut term = new_term(
+            TermSize::new(20, 5, 9, 18),
+            100,
+            grapheme_clustering,
+            ReplyListener::detached(),
+        );
+        let mut processor = Processor::default();
+        processor.advance(&mut term, "[\u{26a0}\u{fe0f} X]".as_bytes());
+        crate::viewport_text(&term)[0]
+            .chars()
+            .position(|c| c == 'X')
+            .expect("the row holds an X")
+    }
+
+    /// A program padding a table counts columns with `wcwidth`, where a
+    /// variation selector adds nothing. The grid it writes into agrees,
+    /// or every column after the emoji sits one place right of where the
+    /// program put it.
+    #[test]
+    fn a_variation_selector_takes_no_column_of_its_own() {
+        assert_eq!(column_of_x(false), 3);
+    }
+
+    /// The other half of the same switch: asked for clusters, the grid
+    /// gives the pair one two-column slot, as ghostty and kitty do.
+    #[test]
+    fn grapheme_clustering_widens_the_emoji_it_is_asked_for() {
+        assert_eq!(column_of_x(true), 4);
+    }
 
     /// The listener alone, without a PTY under it: what it catches, what it
     /// lets past, and that a detached one is the no-op it claims to be.

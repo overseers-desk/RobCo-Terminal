@@ -154,6 +154,7 @@ fn shell() -> SessionConfig {
         working_directory: None,
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 500,
+        grapheme_clustering: false,
     }
 }
 

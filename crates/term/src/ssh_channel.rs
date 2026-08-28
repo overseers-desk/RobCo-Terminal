@@ -21,9 +21,6 @@
 
 use std::time::Instant;
 
-use rio_vt::ansi::CursorShape;
-use rio_vt::crosswords::Crosswords;
-use rio_vt::event::WindowId;
 use rio_vt::performer::handler::Processor;
 
 use crate::dcs::{DcsParser, DcsTap};
@@ -86,16 +83,20 @@ pub struct SshChannel<T: DcsTap> {
 
 impl<T: DcsTap> SshChannel<T> {
     /// An empty screen of the glass's geometry, listening on the wire.
-    pub fn new(size: TermSize, scrollback: usize, tap: T, wire: Box<dyn SshWire>) -> Self {
+    pub fn new(
+        size: TermSize,
+        scrollback: usize,
+        grapheme_clustering: bool,
+        tap: T,
+        wire: Box<dyn SshWire>,
+    ) -> Self {
         let replies = Replies::default();
         Self {
-            term: Crosswords::new(
+            term: crate::session::new_term(
                 size,
-                CursorShape::Block,
-                ReplyListener::new(&replies),
-                WindowId::from(0u64),
-                0,
                 scrollback,
+                grapheme_clustering,
+                ReplyListener::new(&replies),
             ),
             processor: Processor::default(),
             dcs: DcsParser::new(tap),
@@ -310,7 +311,7 @@ mod tests {
             .lock()
             .unwrap()
             .push_back(SshEvent::Data(b"hello \x1b[1mworld\x1b[0m".to_vec()));
-        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let mut s = SshChannel::new(size(), 100, false, NoopTap::default(), Box::new(wire.clone()));
 
         let pumped = s.pump();
         assert_eq!(pumped.bytes, 19);
@@ -331,7 +332,7 @@ mod tests {
             .lock()
             .unwrap()
             .push_back(SshEvent::Data(b"\x1b[c\x1b[6n".to_vec()));
-        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let mut s = SshChannel::new(size(), 100, false, NoopTap::default(), Box::new(wire.clone()));
 
         s.pump();
         assert_eq!(
@@ -344,7 +345,7 @@ mod tests {
     #[test]
     fn a_resize_reflows_the_grid_and_tells_the_far_side() {
         let wire = FakeWire::default();
-        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let mut s = SshChannel::new(size(), 100, false, NoopTap::default(), Box::new(wire.clone()));
         s.resize(TermSize::new(40, 10, 9, 18));
         assert_eq!(s.term().grid.columns(), 40);
         assert_eq!(*wire.resizes.lock().unwrap(), vec![(40, 10)]);
@@ -361,7 +362,7 @@ mod tests {
             q.push_back(SshEvent::Notice(b"[ssh: refused]".to_vec()));
             q.push_back(SshEvent::Eof);
         }
-        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let mut s = SshChannel::new(size(), 100, false, NoopTap::default(), Box::new(wire.clone()));
         let pumped = s.pump();
         assert!(
             !pumped.eof,
@@ -374,7 +375,7 @@ mod tests {
     #[test]
     fn fed_bytes_land_on_the_grid_without_reaching_the_wire_or_the_tap() {
         let wire = FakeWire::default();
-        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let mut s = SshChannel::new(size(), 100, false, NoopTap::default(), Box::new(wire.clone()));
         s.feed(b"password: ");
         assert!(viewport_text(s.term())[0].starts_with("password:"));
         assert!(wire.sent.lock().unwrap().is_empty(), "a question is not a keystroke");
@@ -389,7 +390,7 @@ mod tests {
     fn feeding_does_not_make_a_connection_lived() {
         let wire = FakeWire::default();
         wire.events.lock().unwrap().push_back(SshEvent::Eof);
-        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let mut s = SshChannel::new(size(), 100, false, NoopTap::default(), Box::new(wire.clone()));
         s.feed(b"passphrase for id_ed25519: ");
         let pumped = s.pump();
         assert!(!pumped.eof, "a prompt is not the connection having lived");
@@ -405,7 +406,7 @@ mod tests {
             q.push_back(SshEvent::ExitStatus(1));
             q.push_back(SshEvent::Eof);
         }
-        let mut s = SshChannel::new(size(), 100, NoopTap::default(), Box::new(wire.clone()));
+        let mut s = SshChannel::new(size(), 100, false, NoopTap::default(), Box::new(wire.clone()));
         let pumped = s.pump();
         assert!(pumped.eof);
         assert_eq!(pumped.bytes, 3);

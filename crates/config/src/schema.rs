@@ -56,6 +56,16 @@ pub struct GeneralSettings {
     /// Whether the chassis casting/bezel/bank is drawn around the screen at
     /// all. The user's own setting, not a profile's.
     pub chassis_shown: bool,
+    /// Whether the grid measures text by grapheme cluster (DEC private
+    /// mode 2027) rather than one column per code point.
+    ///
+    /// Off, because the programs that draw tables in a terminal measure
+    /// with `wcwidth`: whiptail, tmux and a shell's line editor all place
+    /// U+26A0 followed by a variation selector in one column, and a grid
+    /// that gives it two puts every column after it one place right. A
+    /// program that wants cluster widths can still ask for them at
+    /// runtime with `CSI ? 2027 h`.
+    pub grapheme_clustering: bool,
 }
 
 /// Which family of rasterization the shader pipeline applies to glyphs,
@@ -202,6 +212,7 @@ impl Default for GeneralSettings {
             custom_command: String::new(),
             led_characters: 12,
             chassis_shown: true,
+            grapheme_clustering: false,
         }
     }
 }

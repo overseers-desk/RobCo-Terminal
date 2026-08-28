@@ -32,6 +32,7 @@ fn config() -> SessionConfig {
             ("ENV".to_string(), String::new()),
         ],
         scrollback: 1000,
+        grapheme_clustering: false,
     }
 }
 
@@ -239,6 +240,7 @@ fn a_paste_far_past_the_ttys_buffer_reaches_the_child_whole() {
         working_directory: None,
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
+        grapheme_clustering: false,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), NoopTap::default()).expect("spawn");
@@ -289,6 +291,7 @@ fn a_child_that_never_reads_bounds_the_queue_instead_of_growing_it() {
         working_directory: None,
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
+        grapheme_clustering: false,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), NoopTap::default()).expect("spawn");
@@ -348,6 +351,7 @@ fn control_mode_opening_takes_the_queued_input_with_it() {
         working_directory: None,
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
+        grapheme_clustering: false,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), ControlModeTap::default()).expect("spawn");
@@ -462,6 +466,7 @@ fn a_query_from_the_child_is_answered_on_the_wire() {
         working_directory: None,
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
+        grapheme_clustering: false,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), NoopTap::default()).expect("spawn");

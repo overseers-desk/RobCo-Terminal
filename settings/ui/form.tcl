@@ -46,6 +46,7 @@ namespace eval ::rcsettings::ui::form {
                 burn_in_quality    frac  "Burn-in quality"      {}
                 led_characters     int   "LED characters"       {1 40}
                 chassis_shown      bool  "Draw the chassis"     {}
+                grapheme_clustering bool "Grapheme clustering"  {}
             }
         }
         screen {

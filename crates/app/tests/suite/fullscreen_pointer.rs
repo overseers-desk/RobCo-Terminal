@@ -102,6 +102,7 @@ fn stream(prefix: &str, width: u32, height: u32, scale: f64) -> SessionConfig {
             ("ENV".to_string(), String::new()),
         ],
         scrollback: 1000,
+        grapheme_clustering: false,
     }
 }
 

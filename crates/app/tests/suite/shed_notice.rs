@@ -46,6 +46,7 @@ fn surface() -> TerminalSurface {
                 ("ENV".to_string(), String::new()),
             ],
             scrollback: 1000,
+            grapheme_clustering: false,
         },
         viewport,
     )

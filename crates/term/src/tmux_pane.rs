@@ -30,9 +30,6 @@
 
 use std::time::Instant;
 
-use rio_vt::ansi::CursorShape;
-use rio_vt::crosswords::Crosswords;
-use rio_vt::event::WindowId;
 use rio_vt::performer::handler::Processor;
 
 use crate::dcs::DcsTap;
@@ -57,15 +54,13 @@ impl TmuxPane {
     /// once per client (`refresh-client -C`, the client-size law in
     /// `app::channels`' module doc), so pane and glass agree except for
     /// split windows, which the channel model does not draw.
-    pub fn new(size: TermSize, scrollback: usize) -> Self {
+    pub fn new(size: TermSize, scrollback: usize, grapheme_clustering: bool) -> Self {
         Self {
-            term: Crosswords::new(
+            term: crate::session::new_term(
                 size,
-                CursorShape::Block,
-                ReplyListener::detached(),
-                WindowId::from(0u64),
-                0,
                 scrollback,
+                grapheme_clustering,
+                ReplyListener::detached(),
             ),
             processor: Processor::default(),
             size,
@@ -281,7 +276,7 @@ mod tests {
 
     #[test]
     fn fed_bytes_land_on_the_grid_and_input_queues_until_drained() {
-        let mut s = TmuxPane::new(size(), 100);
+        let mut s = TmuxPane::new(size(), 100, false);
         s.feed(b"hello \x1b[1mworld\x1b[0m");
         assert!(viewport_text(s.term())[0].starts_with("hello world"));
 
@@ -293,7 +288,7 @@ mod tests {
 
     #[test]
     fn a_resize_reflows_the_grid_alone() {
-        let mut s = TmuxPane::new(size(), 100);
+        let mut s = TmuxPane::new(size(), 100, false);
         s.feed(b"abc");
         s.resize(TermSize::new(40, 10, 9, 18));
         assert_eq!(s.term().grid.columns(), 40);
