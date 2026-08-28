@@ -36,6 +36,12 @@ pub struct Gpu {
     /// enabled or not (see `frame_stats::Instrument`'s doc): a run that never
     /// passes `--frame-stats` pays nothing for it on the frame path.
     stats: frame_stats::Instrument,
+    /// A reconfigure the swapchain is owed but cannot be given yet: the
+    /// surface handed out an image that is drawable but stale, and wgpu
+    /// forbids configuring a surface while an image of it is outstanding.
+    /// [`Gpu::acquire`] pays it at the top of the next frame, when nothing
+    /// is held.
+    stale_swapchain: bool,
 }
 
 impl Gpu {
@@ -151,6 +157,7 @@ impl Gpu {
             adapter_name: info.name,
             backend: format!("{:?}", info.backend),
             stats,
+            stale_swapchain: false,
         })
     }
 
@@ -186,6 +193,9 @@ impl Gpu {
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
+        // This configure is the one a pending stale swapchain was waiting
+        // for, so the next frame does not repeat it.
+        self.stale_swapchain = false;
     }
 
     pub fn size(&self) -> (u32, u32) {
@@ -209,6 +219,12 @@ impl Gpu {
     /// only real path it is the glyph grid into an offscreen target and then
     /// the CRT chain from that target into `frame.view`.
     pub fn acquire(&mut self) -> Option<Frame> {
+        // The debt a `Suboptimal` frame left behind. Here rather than there
+        // because there the image was still in hand, and a surface with an
+        // image outstanding is one wgpu refuses to configure.
+        if std::mem::take(&mut self.stale_swapchain) {
+            self.surface.configure(&self.device, &self.config);
+        }
         // wgpu 30 returns an enum here, not a `Result`: acquiring a frame
         // has more outcomes than success and failure, and two of them
         // (`Suboptimal`, `Occluded`) are not errors at all.
@@ -216,9 +232,10 @@ impl Gpu {
         let surface = match self.surface.get_current_texture() {
             Acquired::Success(f) => f,
             // Usable this frame, but the surface no longer matches the
-            // window. Draw it, then reconfigure so the next one is right.
+            // window. Draw it, and note the reconfigure the next frame owes
+            // so the image after this one is right.
             Acquired::Suboptimal(f) => {
-                self.surface.configure(&self.device, &self.config);
+                self.stale_swapchain = true;
                 f
             }
             // A surface goes stale across a resize or a monitor change;
