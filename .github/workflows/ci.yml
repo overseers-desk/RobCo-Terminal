@@ -1,11 +1,21 @@
-# The proofs this repository cannot make locally, all about Windows. The
-# terminal compiles there (the C++ terminal-core dependency needs a native
-# toolchain, so no Linux box can check it); glyph fallback finds a face
-# there for a character the bundled font has no glyph for; and the release
-# exe carries the settings program inside it, so the Tcl/Tk toolchain and
-# the Rust build are one artifact's two halves and cannot usefully be green
-# apart. Shaping needs no GPU and no window, so those tests run anywhere.
-# The rest of the suite runs on the development machines before every push.
+# The proofs this repository cannot make on a development machine, and the
+# Linux packages themselves.
+#
+# Windows: the terminal compiles there (the C++ terminal-core dependency
+# needs a native toolchain, so no Linux box can check it); glyph fallback
+# finds a face there for a character the bundled font has no glyph for; and
+# the release exe carries the settings program inside it, so the Tcl/Tk
+# toolchain and the Rust build are one artifact's two halves and cannot
+# usefully be green apart. Shaping needs no GPU and no window, so those
+# tests run anywhere.
+#
+# Linux: the tarball and the deb are built here rather than by hand,
+# because the glibc a binary is linked against is the oldest system it will
+# install on, and a floor set by whichever machine was to hand is no floor
+# at all. Every green run leaves both files to download, so shipping does
+# not wait on reaching the development machine.
+#
+# The test suite runs on the development machines before every push.
 name: CI
 
 on:
@@ -162,3 +172,64 @@ jobs:
         with:
           name: robco-settings-macos-arm64
           path: settings/dist/robco-settings-*
+
+  # The Linux packages, built on the machine that decides who can install
+  # them. A binary carries the glibc it was linked against and runs on any
+  # later one, never an earlier: a deb built on 26.04 asked for
+  # GLIBC_2.43 and would not unpack on 25.04. The runner is pinned to the
+  # oldest release this project ships to, so the floor is set in one place
+  # and `dh_shlibdeps` copies it out of the binary into the package.
+  # tcl9.0 and tk9.0 are runtime dependencies written by hand in
+  # debian/control, so they need not exist on the build host, and the
+  # floor is not held up to their availability.
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      # debhelper and lintian for the package, the X11 and font headers
+      # for the from-source Tcl/Tk the tarball's settings image links.
+      - name: install the packaging and Tcl/Tk build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            debhelper lintian libx11-dev libxext-dev libxft-dev \
+            libfontconfig1-dev libxss-dev zlib1g-dev
+      - name: build the self-contained settings image
+        run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
+      - name: prove the image
+        run: |
+          image=$(ls settings/dist/robco-settings-*-linux-* | head -1)
+          test -n "$image"
+          "$image" --selftest | tee selftest.txt
+          grep -q 'settings selftest ok' selftest.txt
+      - name: roll the tarball
+        run: |
+          image=$(ls settings/dist/robco-settings-*-linux-* | head -1)
+          cargo run -p xtask -- dist --out-dir dist --settings-binary "$image"
+      # dpkg-buildpackage writes beside the source tree, its own
+      # convention; the deb moves into dist/ because an upload reaches
+      # nothing above the workspace. The dbgsym .ddeb stays where it fell:
+      # it is a side effect of the split, not an asset.
+      - name: build the Debian package
+        run: |
+          dpkg-buildpackage -us -uc -b
+          mv ../robco-term_*_amd64.deb dist/
+      # The floor, read back out of the package that carries it. A libc6
+      # version here above the oldest supported release is the bug this
+      # job exists to keep out, and the log is where it shows.
+      - name: read the dependencies back out of the package
+        run: dpkg-deb -f dist/robco-term_*_amd64.deb Depends
+      # The release checklist's own lintian step, with the findings it
+      # accepts named: two missing manual pages, and a distribution
+      # vocabulary that is Ubuntu's rather than Debian's.
+      - name: lintian
+        run: lintian --suppress-tags no-manual-page,bad-distribution-in-changes-file ../robco-term_*.changes
+      # Every green run leaves a deb and a tarball a traveller can install
+      # from, without reaching the development machine.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: robco-term-linux-x86_64
+          path: |
+            dist/*.tar.gz
+            dist/*.deb

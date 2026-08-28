@@ -1,12 +1,13 @@
-# Ships the Windows and macOS halves of a tagged release. Pushing a `v*` tag is the only
-# trigger, so this never touches a tag already cut: v0.1.0 carries its
-# Linux assets alone, exactly as they were published, and stays that way.
+# Ships every platform's artifacts for a tagged release. Pushing a `v*` tag
+# is the only trigger, so this never touches a tag already cut: a release
+# published before a job existed here keeps the assets it went out with.
 #
-# The asset is one self-contained exe: the settings program's archive and a
-# static Tcl/Tk live inside the terminal binary (`--features
+# The Windows asset is one self-contained exe: the settings program's
+# archive and a static Tcl/Tk live inside the terminal binary (`--features
 # embedded-settings`), and right-click re-executes that same file with
 # `--settings`. There is no second file to co-locate, so the download is
-# bare, the shape every other platform's artifact takes.
+# bare. macOS ships a disk image carrying the app bundle, Linux a deb and a
+# self-contained tarball.
 name: Release
 
 on:
@@ -104,3 +105,50 @@ jobs:
               sleep 15
           done
           gh release upload "$GITHUB_REF_NAME" "$DMG_PATH" --clobber
+
+  # The Linux half: the tarball and the deb, attached to the tag's
+  # release by the same push that builds the other two platforms. The
+  # runner is pinned rather than latest because the glibc a binary is
+  # linked against is the oldest system it will install on, and that
+  # floor belongs to a decision recorded here, not to whichever machine
+  # happened to run the build.
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: install the packaging and Tcl/Tk build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            debhelper lintian libx11-dev libxext-dev libxft-dev \
+            libfontconfig1-dev libxss-dev zlib1g-dev
+      - name: build the self-contained settings image
+        run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
+      - name: prove the image
+        run: |
+          image=$(ls settings/dist/robco-settings-*-linux-* | head -1)
+          test -n "$image"
+          "$image" --selftest | tee selftest.txt
+          grep -q 'settings selftest ok' selftest.txt
+      - name: roll the tarball
+        run: |
+          image=$(ls settings/dist/robco-settings-*-linux-* | head -1)
+          cargo run -p xtask -- dist --out-dir dist --settings-binary "$image"
+      - name: build the Debian package
+        run: |
+          dpkg-buildpackage -us -uc -b
+          mv ../robco-term_*_amd64.deb dist/
+      - name: read the dependencies back out of the package
+        run: dpkg-deb -f dist/robco-term_*_amd64.deb Depends
+      - name: lintian
+        run: lintian --suppress-tags no-manual-page,bad-distribution-in-changes-file ../robco-term_*.changes
+      - name: attach the tarball and the deb to this tag's release, once one exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in $(seq 1 20); do
+              gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
+              sleep 15
+          done
+          gh release upload "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.deb --clobber

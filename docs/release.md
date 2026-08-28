@@ -7,30 +7,24 @@ The procedure that cut v0.1.0, kept current so the next cut repeats it instead o
 - [ ] Version in `[workspace.package]` (root `Cargo.toml`) is the target version. Bumping it is its own decision, made ahead of cutting, not during.
 - [ ] `debian/changelog` has an entry for the target version.
 - [ ] All changes committed and pushed to main.
-- [ ] The release commit's CI run is green: `windows` proves the Windows build, including the settings payload's own `--settings-selftest`, and `macos` proves the terminal and the settings image build there. The release's own Windows exe and macOS disk image are built fresh by `release.yml` when the tag is pushed, not carried over from this run.
+- [ ] The release commit's CI run is green: `windows` proves the Windows build, including the settings payload's own `--settings-selftest`; `macos` proves the terminal and the settings image build there; `linux` builds the tarball and the deb and reads the package's dependencies back out. Every release asset is built fresh by `release.yml` when the tag is pushed, not carried over from this run.
 
-## Build the Linux artifacts
+## Where the Linux artifacts come from
 
-The settings window's self-contained image first, then the tarball that requires it, then the package:
+The tag push builds them. `release.yml`'s `linux` job builds the settings window's self-contained image, rolls the tarball, runs `dpkg-buildpackage`, and attaches both files to the release; the `-dbgsym` `.ddeb` beside the deb is a build side effect and stays behind. It also runs `lintian`, suppressing the findings this project accepts: the two missing manual pages, and `bad-distribution-in-changes-file` on a lintian whose distribution vocabulary is Ubuntu's rather than Debian's. A finding outside that list fails the job.
 
-```bash
-BUILD_DIR=/var/tmp/robco-settings-build bash settings/zipfs/build-selfcontained.sh
-cargo run -p xtask -- dist --out-dir dist --settings-binary <path the script printed>
-dpkg-buildpackage -us -uc -b
-```
+The job runs on `ubuntu-24.04`, and the pin is the decision that says who can install the result. A binary asks for the glibc it was linked against and runs on every later one, so the oldest system a deb installs on is the system that built it; `dh_shlibdeps` reads that out of the binary and writes it into `Depends`. Moving the pin forward drops the releases below it. `tcl9.0` and `tk9.0` are declared by hand in `debian/control` and are absent from 24.04, which sets the true floor at Ubuntu 25.04 whatever the runner is.
 
-`dist/` holds the tarball; the `.deb` lands in the parent directory, dpkg-buildpackage's convention, with a `-dbgsym` `.ddeb` beside it that is a build side effect and not a release asset. Point the build script's `BUILD_DIR` at disk, not the RAM-backed `/tmp`. Run `lintian` on the `.changes` before shipping the deb; the accepted findings are the two missing manual pages, and `bad-distribution-in-changes-file unstable` on a lintian whose distribution vocabulary is Ubuntu's rather than Debian's.
+Building either artifact by hand is still a developer route, and [BUILD.md](../BUILD.md) holds it.
 
 ## Publish
 
 ```bash
 git tag v<VERSION> && git push origin refs/tags/v<VERSION>
-gh release create v<VERSION> --title "RobCo Terminal <VERSION>" -F <notes file> \
-  dist/robco-term-<VERSION>-linux-x86_64.tar.gz \
-  ../robco-term_<VERSION>_amd64.deb
+gh release create v<VERSION> --title "RobCo Terminal <VERSION>" -F <notes file>
 ```
 
-The tag push above also triggers `.github/workflows/release.yml`, which carries both non-Linux platforms and waits for the release to exist before uploading, so run `gh release create` promptly after the push rather than long after it. Its `windows` job builds the embedded-settings exe, proves the payload with `--settings-selftest`, and uploads `robco-term-<VERSION>-windows-x86_64.exe`. Its `macos` job builds the terminal and the self-contained settings image on `macos-latest`, runs the image's own `--selftest`, bundles both into `RobCo Terminal.app` via `packaging/macos/bundle.sh`, and uploads `robco-term-<VERSION>-macos-arm64.dmg` (Apple Silicon; an Intel or universal build is unbuilt). Both are unsigned: Windows meets SmartScreen once, and macOS refuses the first launch until the user opens it from the context menu or clears the quarantine attribute, which the notes have to say. Nothing to fetch or stamp by hand for either; check the workflow run finished before moving on to Verify below.
+The release is created empty: the tag push above triggers `.github/workflows/release.yml`, which carries all three platforms and waits for the release to exist before uploading, so run `gh release create` promptly after the push rather than long after it. Its `windows` job builds the embedded-settings exe, proves the payload with `--settings-selftest`, and uploads `robco-term-<VERSION>-windows-x86_64.exe`. Its `macos` job builds the terminal and the self-contained settings image on `macos-latest`, runs the image's own `--selftest`, bundles both into `RobCo Terminal.app` via `packaging/macos/bundle.sh`, and uploads `robco-term-<VERSION>-macos-arm64.dmg` (Apple Silicon; an Intel or universal build is unbuilt). Its `linux` job uploads `robco-term-<VERSION>-linux-x86_64.tar.gz` and `robco-term_<VERSION>_amd64.deb`. The Windows exe and the disk image are unsigned: Windows meets SmartScreen once, and macOS refuses the first launch until the user opens it from the context menu or clears the quarantine attribute, which the notes have to say. Nothing to fetch or stamp by hand for any of them; check the workflow run finished before moving on to Verify below.
 
 Write the notes for the stranger on the releases page: what each asset is, what it needs, and what is honestly untested. A recut (assets or notes corrected after publish) keeps the version number: `gh release upload`/`delete-asset`/`edit` against the same tag.
 
@@ -60,4 +54,4 @@ release before this one.
 
 ## Open
 
-The Windows and macOS halves are automatic (`.github/workflows/release.yml`). The Linux half above, the tarball and the `.deb`, is still built and uploaded by hand; carrying questlog's `release-images` pattern the rest of the way would automate that half too. On macOS, signing and notarisation and an Intel or universal build are open. Notarisation needs one thing first: it demands a signature on every Mach-O in the bundle, and the settings image carries its script archive past the end of its own, which `codesign` will not sign at any depth. That archive has to move into `Contents/Resources` beside a plain interpreter, or the settings program has to be embedded in the terminal the way the Windows build embeds it, before a Developer ID can be applied at all.
+Every platform's assets are built and attached by `.github/workflows/release.yml`; what remains to do by hand is the tag, the notes, and the cask. On macOS, signing and notarisation and an Intel or universal build are open. Notarisation needs one thing first: it demands a signature on every Mach-O in the bundle, and the settings image carries its script archive past the end of its own, which `codesign` will not sign at any depth. That archive has to move into `Contents/Resources` beside a plain interpreter, or the settings program has to be embedded in the terminal the way the Windows build embeds it, before a Developer ID can be applied at all.
