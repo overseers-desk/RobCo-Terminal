@@ -112,3 +112,30 @@ fn a_match_that_runs_across_a_line_break_reports_both_lines() {
     assert_eq!((hit.start_line, hit.start_column), (0, 10));
     assert_eq!((hit.end_line, hit.end_column), (1, 2));
 }
+
+/// A column is where a character is drawn. On a line holding a wide
+/// character the byte offset, the character index and the column are three
+/// different numbers, and only the last one addresses the cell a highlight
+/// paints.
+#[test]
+fn a_hit_after_a_wide_character_reports_the_column_it_is_drawn_in() {
+    // "漢字 " is two cells each plus a space: the word starts at column 5.
+    let g = ScriptedGrid::new(COLS, &["漢字 error here"]);
+    let re = literal_pattern("error", true);
+    let hit = search(&g, &re, true, 0, 0).expect("a hit");
+    assert_eq!((hit.start_line, hit.start_column), (0, 5));
+    assert_eq!((hit.end_line, hit.end_column), (0, 9));
+}
+
+/// The caret's column is a column on the way in as well: a search started
+/// past the wide characters must not be dragged back over them by counting
+/// their bytes.
+#[test]
+fn the_caret_column_is_measured_in_cells_too() {
+    let g = ScriptedGrid::new(COLS, &["漢 error 漢 error"]);
+    let re = literal_pattern("error", true);
+    let first = search(&g, &re, true, 0, 0).expect("a hit");
+    assert_eq!(first.start_column, 3);
+    let second = search(&g, &re, true, 4, 0).expect("a second hit");
+    assert_eq!(second.start_column, 12);
+}

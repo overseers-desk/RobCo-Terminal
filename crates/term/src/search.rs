@@ -11,11 +11,13 @@
 //! per block with the offset of each line recorded, and the regex run over
 //! that string. Match offsets come back as string positions and are turned
 //! into `(column, line)` by finding which line's recorded offset the position
-//! falls after.
+//! falls after and measuring the display width of the text between the two:
+//! a column is where a character is drawn, which is neither its byte offset
+//! nor its index once a line holds a wide character.
 
 use regex::Regex;
 
-use crate::grid::{write_lines_recording_positions, GridView};
+use crate::grid::{char_width, string_width, write_lines_recording_positions, GridView};
 
 /// At most this many lines are decoded into one string at a time, so a
 /// search never has to hold all of scrollback in memory at once.
@@ -104,28 +106,38 @@ fn search_range(
         // that trailing chunk gets a recorded position too, and is ignored.
         let lines_in_string = line_positions.len().saturating_sub(1);
         let end_position = match end_column {
-            Some(col) if lines_in_string > 0 => line_positions[lines_in_string - 1] + col,
+            Some(col) if lines_in_string > 0 => {
+                offset_at(&text, line_positions[lines_in_string - 1], col)
+            }
             _ => text.len(),
         };
 
-        // `startColumn` is used directly as a string offset. That is correct
-        // here, not a shortcut needing an excuse: the first line of the block
-        // starts at offset 0, and the caret's line is always the block's
-        // first line in the forwards phase.
+        // The caret's column is measured on the block's first line, which is
+        // where the caret sits in both phases: forwards the block starts at
+        // the caret's line, backwards the range ends there.
+        let caret = offset_at(&text, 0, start_column);
         let hit = if forwards {
-            re.find_at(&text, start_column.min(text.len()))
+            re.find_at(&text, caret.min(text.len()))
                 .filter(|m| m.start() < end_position)
         } else {
             let limit = end_position.saturating_sub(1);
             re.find_iter(&text)
                 .take_while(|m| m.start() <= limit)
                 .last()
-                .filter(|m| m.start() >= start_column)
+                .filter(|m| m.start() >= caret)
         };
 
         if let Some(m) = hit {
             let match_start = m.start();
-            let match_end = m.end().saturating_sub(1);
+            // Where the match's last character starts, not the byte after
+            // the match: a highlight wants the cell the match ends on, and
+            // one byte back from the end lands inside a character whenever
+            // that character is not ASCII.
+            let match_end = text[..m.end()]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(match_start);
 
             let start_line_in_string = find_line_number(&line_positions, match_start);
             let end_line_in_string = find_line_number(&line_positions, match_end);
@@ -136,15 +148,37 @@ fn search_range(
             // one; the divergence is invisible below 10,000 lines of history
             // and wrong above it.
             return Some(SearchHit {
-                start_column: match_start - line_positions[start_line_in_string],
+                start_column: column_at(&text, line_positions[start_line_in_string], match_start),
                 start_line: block_start_line + start_line_in_string,
-                end_column: match_end - line_positions[end_line_in_string],
+                end_column: column_at(&text, line_positions[end_line_in_string], match_end),
                 end_line: block_start_line + end_line_in_string,
             });
         }
 
         lines_read += block_size;
     }
+}
+
+/// The grid column `offset` sits at, on the line starting at `line_start`.
+///
+/// The text is one character per cell the grid drew, so the column is the
+/// display width of what precedes the offset on its line.
+fn column_at(text: &str, line_start: usize, offset: usize) -> usize {
+    string_width(&text[line_start..offset])
+}
+
+/// The inverse: where in `text` the caret sitting at `column` on the line
+/// starting at `line_start` is, so a column from the glass can be handed to
+/// a regex that counts bytes.
+fn offset_at(text: &str, line_start: usize, column: usize) -> usize {
+    let mut width = 0usize;
+    for (i, c) in text[line_start..].char_indices() {
+        if c == '\n' || width >= column {
+            return line_start + i;
+        }
+        width += char_width(c).max(0) as usize;
+    }
+    text.len()
 }
 
 /// `HistorySearch::findLineNumberInString`: the last line whose recorded
