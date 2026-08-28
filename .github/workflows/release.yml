@@ -121,7 +121,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            debhelper lintian libx11-dev libxext-dev libxft-dev \
+            build-essential debhelper lintian libx11-dev libxext-dev libxft-dev \
             libfontconfig1-dev libxss-dev zlib1g-dev xvfb
       - name: build the self-contained settings image
         run: BUILD_DIR="$RUNNER_TEMP/robco-settings-build" bash settings/zipfs/build-selfcontained.sh
