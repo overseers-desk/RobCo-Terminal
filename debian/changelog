@@ -1,3 +1,17 @@
+robco-term (0.1.6) unstable; urgency=medium
+
+  * The catalogue's wide 16-pixel face is GNU Unifont, under the SIL Open
+    Font License, covering the whole printable Basic Multilingual Plane
+    and the emoji planes above it. The Unscii 16 it replaces carried a
+    GPL-derived file this package could not distribute under its own MIT
+    terms.
+  * A face whose catalogue row names a fallback now reaches it: the
+    bundled faces answer an uncovered character before the machine's own
+    fonts are read, so a bare container and a loaded desktop draw the
+    same glyph.
+
+ -- Weiwu Zhang <a@colourful.land>  Sat, 29 Aug 2026 09:51:54 +1000
+
 robco-term (0.1.5) unstable; urgency=medium
 
   * PuTTY private keys work as they are: a [[ssh.host]] row may name a
