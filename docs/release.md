@@ -11,7 +11,7 @@ The procedure that cut v0.1.0, kept current so the next cut repeats it instead o
 
 ## Where the Linux artifacts come from
 
-The tag push builds them: `release.yml`'s `linux` job builds the settings image, rolls the tarball, runs `dpkg-buildpackage`, and attaches both files, leaving the `-dbgsym` `.ddeb` behind. Its `lintian` step suppresses the findings this project accepts, the two missing manual pages and `bad-distribution-in-changes-file`, and fails on any other.
+The tag push builds them: `release.yml`'s `linux` job builds the settings image, rolls the tarball, runs `dpkg-buildpackage`, and attaches both files. Its `lintian` step suppresses the findings this project accepts, the two missing manual pages and `bad-distribution-in-changes-file`, and fails on any other.
 
 The job is pinned to `ubuntu-24.04`: a deb installs only where glibc is at least the build host's, so the pin is the decision about who can install the release, and moving it forward drops the systems below it. `tcl9.0`, absent before 25.04, puts the practical floor there. [BUILD.md](../BUILD.md) holds the by-hand route.
 

@@ -225,8 +225,7 @@ jobs:
       # version here above the oldest supported release is the bug this
       # job exists to keep out, and the log is where it shows. The deb
       # then moves into dist/, because an upload reaches nothing above the
-      # workspace; the dbgsym .ddeb stays where it fell, a side effect of
-      # the symbol split rather than an asset.
+      # workspace.
       - name: read the dependencies back out, and collect the package
         run: |
           dpkg-deb -f ../robco-term_*_amd64.deb Depends

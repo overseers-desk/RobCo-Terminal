@@ -95,8 +95,8 @@ the build and packaging detail.
 ## Installing
 
 The [releases page](https://github.com/overseers-desk/RobCo-Terminal/releases)
-carries a `.deb` for Debian and Ubuntu (with a `-dbgsym` package beside it)
-and a self-contained tarball. Every route below builds the same artifacts
+carries a `.deb` for Debian and Ubuntu and a self-contained tarball.
+Every route below builds the same artifacts
 from a checkout.
 
 ```console
@@ -145,8 +145,7 @@ dpkg-deb: building package 'robco-term' in '../robco-term_0.1.0_amd64.deb'.
 
 Then `sudo dpkg -i ../robco-term_0.1.0_amd64.deb`; the artifacts land in the
 parent directory, which is dpkg-buildpackage's convention. It builds without
-root, and a `robco-term-dbgsym` package rides beside it carrying the symbols
-a crash log's frames resolve against. One caveat worth stating: the
+root. One caveat worth stating: the
 dependency versions are the ones on the machine that built the package, so a
 package built on a newer distribution declares bounds an older one cannot
 satisfy. Build it where you will install it.
