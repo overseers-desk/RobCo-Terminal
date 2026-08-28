@@ -550,34 +550,40 @@ fn default_key_files() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-/// The PuTTY private-key format version, if `path`'s first line says so.
+/// Whether `path` is a PuTTY key file, and if so whether it is encrypted:
+/// `Some(true)` wants a passphrase, `Some(false)` does not, `None` is some
+/// other format.
 ///
-/// Only that first line is read: a `.ppk` file announces itself with
-/// `PuTTY-User-Key-File-2:` or `PuTTY-User-Key-File-3:` before anything
-/// else, so there is no need to parse further to tell a foreign format from
-/// a merely broken one. A trailing `\r` is tolerated for a file that has
-/// crossed from Windows.
-///
-/// A crates.io search (2026-08) for a ppk parser came up empty: `osshkeys`
-/// claims PuTTY support in its description but implements none of it, and
-/// `puttykey` is a Ruby gem, not a Rust crate. A future reader who wants to
-/// convert instead of refuse should check the ecosystem again rather than
-/// assume this gap was left on purpose.
-fn ppk_version(path: &std::path::Path) -> Option<u8> {
+/// russh reads ppk like any other key format, but its error type cannot say
+/// "this one is encrypted" for ppk the way `KeyIsEncrypted` says it for the
+/// rest (ssh-key keeps the ppk error variants private, and a wrong
+/// passphrase surfaces as a MAC mismatch besides). The file's own opening
+/// headers answer the question the error cannot: `PuTTY-User-Key-File-N:`
+/// on the first line, `Encryption: aes256-cbc` or `none` on the second.
+/// Only those two lines are read; trailing `\r` is tolerated for a file
+/// that has crossed from Windows.
+fn ppk_encrypted(path: &std::path::Path) -> Option<bool> {
     use std::io::BufRead;
     let file = std::fs::File::open(path).ok()?;
-    let mut line = String::new();
-    std::io::BufReader::new(file).read_line(&mut line).ok()?;
-    let line = line.trim_end_matches(['\r', '\n']);
-    line.strip_prefix("PuTTY-User-Key-File-")?
+    let mut lines = std::io::BufReader::new(file).lines();
+    let version = lines.next()?.ok()?;
+    version
+        .trim_end_matches('\r')
+        .strip_prefix("PuTTY-User-Key-File-")?
         .split(':')
         .next()?
-        .parse()
-        .ok()
+        .parse::<u8>()
+        .ok()?;
+    let encryption = lines.next()?.ok()?;
+    let cipher = encryption.trim_end_matches('\r').strip_prefix("Encryption:")?;
+    Some(cipher.trim() != "none")
 }
 
 /// One key file against the server, asking for its passphrase if it has
-/// one.
+/// one. russh reads OpenSSH, PKCS#8, PKCS#1/SEC1 and PuTTY ppk (v2 and
+/// v3) alike; a DSA ppk parses but cannot sign, because the build leaves
+/// the legacy `dsa` algorithm out, and the server refuses it like any
+/// wrong key.
 ///
 /// The ask runs on a blocking task rather than on this one. A human types
 /// at a human's pace, and this runtime is a single thread that is also
@@ -592,25 +598,9 @@ async fn try_key_file(
     path: &std::path::Path,
 ) -> Authenticated {
     use russh::keys::{load_secret_key, Error as KeysError, PrivateKeyWithHashAlg};
-    // A PuTTY key reads as some russh parse error -- encrypted or not, russh
-    // has no format for it at all -- so it is sniffed once, before the
-    // passphrase state machine below gets a chance to mistake a foreign
-    // format for a locked one of its own. An answer to a passphrase prompt
-    // could not be used here, so asking would only mislead.
-    if let Some(ver) = ppk_version(path) {
-        notice(
-            wire,
-            format!(
-                "{} is a PuTTY key file (format {ver}), which this build cannot read; \
-                 convert it with puttygen {} -O private-openssh -o <new-file>, or \
-                 PuTTYgen's Conversions > Export OpenSSH key",
-                path.display(),
-                path.display()
-            ),
-        )
-        .await;
-        return Authenticated::No;
-    }
+    // Read once, outside the loop: the file does not change between
+    // passphrase attempts.
+    let ppk_wants_passphrase = ppk_encrypted(path) == Some(true);
     let mut passphrase: Option<String> = None;
     let mut asked = 0usize;
     let key = loop {
@@ -619,9 +609,12 @@ async fn try_key_file(
             break attempt.expect("the Ok arm");
         };
         // Two shapes of one situation: the key wants a passphrase and has
-        // not been given one, or it was given one that did not fit. Any
-        // other error with no passphrase in play is an unreadable file.
-        let unlocked = !matches!(e, KeysError::KeyIsEncrypted);
+        // not been given one (`KeyIsEncrypted`, or an encrypted ppk, whose
+        // errors never carry that variant), or it was given one that did
+        // not fit. Any other error with no passphrase in play is an
+        // unreadable file.
+        let unlocked = !matches!(e, KeysError::KeyIsEncrypted)
+            && !(ppk_wants_passphrase && passphrase.is_none());
         if unlocked && passphrase.is_none() {
             notice(wire, format!("could not read {}: {e}", path.display())).await;
             return Authenticated::No;
@@ -857,32 +850,44 @@ mod tests {
         assert_eq!(default, empty);
     }
 
-    /// A ppk file names its own format on the first line; that is the whole
-    /// of what the sniff trusts.
+    /// A ppk file names its format on the first line and its cipher on the
+    /// second; those two lines are the whole of what the peek trusts.
     #[test]
-    fn a_ppk_v2_header_is_recognised() {
+    fn an_encrypted_ppk_header_wants_a_passphrase() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("key.ppk");
-        std::fs::write(&path, "PuTTY-User-Key-File-2: ssh-rsa\nother lines\n").unwrap();
-        assert_eq!(ppk_version(&path), Some(2));
+        std::fs::write(
+            &path,
+            "PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: aes256-cbc\nother lines\n",
+        )
+        .unwrap();
+        assert_eq!(ppk_encrypted(&path), Some(true));
     }
 
     #[test]
-    fn a_ppk_v3_header_is_recognised() {
+    fn an_unencrypted_ppk_header_wants_none() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("key.ppk");
-        std::fs::write(&path, "PuTTY-User-Key-File-3: ssh-ed25519\nother lines\n").unwrap();
-        assert_eq!(ppk_version(&path), Some(3));
+        std::fs::write(
+            &path,
+            "PuTTY-User-Key-File-2: ssh-rsa\nEncryption: none\nother lines\n",
+        )
+        .unwrap();
+        assert_eq!(ppk_encrypted(&path), Some(false));
     }
 
     /// A file crossed from Windows carries a trailing \r on every line; the
-    /// sniff must not let that hide the version digit.
+    /// peek must not let that hide the version digit or the cipher name.
     #[test]
     fn a_crlf_header_is_still_recognised() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("key.ppk");
-        std::fs::write(&path, "PuTTY-User-Key-File-2: ssh-rsa\r\nother lines\r\n").unwrap();
-        assert_eq!(ppk_version(&path), Some(2));
+        std::fs::write(
+            &path,
+            "PuTTY-User-Key-File-3: ssh-rsa\r\nEncryption: aes256-cbc\r\nother lines\r\n",
+        )
+        .unwrap();
+        assert_eq!(ppk_encrypted(&path), Some(true));
     }
 
     /// An OpenSSH key's own first line must not read as a ppk header: the
@@ -892,13 +897,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("id_ed25519");
         std::fs::write(&path, "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n").unwrap();
-        assert_eq!(ppk_version(&path), None);
+        assert_eq!(ppk_encrypted(&path), None);
     }
 
     #[test]
     fn a_missing_file_sniffs_to_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("does-not-exist");
-        assert_eq!(ppk_version(&path), None);
+        assert_eq!(ppk_encrypted(&path), None);
     }
 }
