@@ -208,9 +208,8 @@ pub fn row_furniture(
 
     // The switch plate, `plate_metal` over the folded lane.
     let mut pieces = vec![Piece::shaded(
-        crate::furniture::Pass::Plate,
         plate_rect,
-        crate::furniture::plate_params(&PlateMetalParams {
+        crate::furniture::PieceParams::Plate(PlateMetalParams {
             size_px: [plate_rect.width as f32, plate_rect.height as f32],
             light_dir: metrics::CASTING_LIGHT_DIR,
             base_color: [plate_face.r, plate_face.g, plate_face.b],
@@ -553,9 +552,8 @@ pub fn pager(plastic: Rgba, size: (f64, f64), page_index: i32, page_count: i32) 
                  seam: f32,
                  seed: f32| {
         Piece::shaded(
-            crate::furniture::Pass::Plate,
             rect,
-            crate::furniture::plate_params(&PlateMetalParams {
+            crate::furniture::PieceParams::Plate(PlateMetalParams {
                 size_px: [rect.width as f32, rect.height as f32],
                 light_dir: metrics::CASTING_LIGHT_DIR,
                 base_color: [base.r, base.g, base.b],

@@ -11,7 +11,7 @@
 //! output color is dominated by `letterColor`/`tapeColor` respectively --
 //! checking "letters read as letters, body reads as body", not exact values.
 
-use chassis::params::{record_bytes, tape_record};
+use chassis::params::{record_bytes, TapeMetalParams};
 use gpu::harness::{px_index, render_wgsl_quad, Locked};
 
 fn source() -> String {
@@ -60,31 +60,20 @@ fn tape_label_letter_and_body_read_correctly() {
 
     let tape_color = [0.03, 0.03, 0.05];
     let letter_color = [0.92, 0.92, 0.90];
-    let params: &[(&str, f32)] = &[
-        ("sizePxX", SIZE_W as f32),
-        ("sizePxY", SIZE_H as f32),
-        ("lightDirX", 0.35),
-        ("lightDirY", -0.6),
-        ("tapeColorR", tape_color[0]),
-        ("tapeColorG", tape_color[1]),
-        ("tapeColorB", tape_color[2]),
-        ("tapeColorA", 1.0),
-        ("letterColorR", letter_color[0]),
-        ("letterColorG", letter_color[1]),
-        ("letterColorB", letter_color[2]),
-        ("letterColorA", 1.0),
-        ("glyphRectPxX", 0.0),
-        ("glyphRectPxY", 0.0),
-        ("glyphRectPxZ", SIZE_W as f32),
-        ("glyphRectPxW", SIZE_H as f32),
-        ("bevelPx", 1.5),
-        ("dilatePx", 0.8),
-        ("sheenAmount", 0.6),
-        ("grainAmount", 0.05),
-        ("seed", 0.0),
-    ];
+    let params = TapeMetalParams {
+        size_px: [SIZE_W as f32, SIZE_H as f32],
+        light_dir: [0.35, -0.6],
+        glyph_rect_px: [0.0, 0.0, SIZE_W as f32, SIZE_H as f32],
+        tape_color: [tape_color[0], tape_color[1], tape_color[2], 1.0],
+        letter_color: [letter_color[0], letter_color[1], letter_color[2], 1.0],
+        bevel_px: 1.5,
+        dilate_px: 0.8,
+        sheen_amount: 0.6,
+        grain_amount: 0.05,
+        seed: 0.0,
+    };
 
-    let record = record_bytes(&tape_record(params, [0.0, 0.0, 1.0, 1.0]));
+    let record = record_bytes(&params.record([0.0, 0.0, 1.0, 1.0]));
     let out = render_wgsl_quad(&gpu, &source(), &record, SIZE_W, SIZE_H, &mask);
 
     // Deep letter interior. The shader never outputs `letterColor` raw: deep

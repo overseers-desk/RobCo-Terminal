@@ -500,9 +500,8 @@ pub fn pager(
             hole_h - 14.0 * squeeze,
         );
         pieces.push(Piece::shaded(
-            crate::furniture::Pass::Plate,
             cap,
-            crate::furniture::plate_params(&PlateMetalParams {
+            crate::furniture::PieceParams::Plate(PlateMetalParams {
                 size_px: [cap.width as f32, cap.height as f32],
                 light_dir: [-0.55, -0.85],
                 base_color: [cap_face.r, cap_face.g, cap_face.b],
@@ -697,16 +696,15 @@ fn counter_lamps(cfg: &config::Config, panel: PaintRect, page_label: &str) -> Op
     let colors = crate::furniture::font_color(cfg);
     let colors = crate::displays::led::window_colors(colors, true, false);
     Some(Piece::shaded(
-        crate::furniture::Pass::LedMatrix,
         rect,
-        crate::furniture::led_params(
+        crate::furniture::PieceParams::Led(crate::furniture::led_params(
             grid,
             colors,
             crate::displays::led::glow(false),
             0.12,
             (spill_x, spill_y),
             (grown_w, grown_h),
-        ),
+        )),
         Some(source),
     ))
 }

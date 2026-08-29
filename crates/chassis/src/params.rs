@@ -2,13 +2,11 @@
 //! shell's furniture, the app's chrome) fills in to draw a metal, and what
 //! the shader-oracle test crate's CPU reimplementations take as input.
 //!
-//! The `*_record` functions below are the other half: the parameter blocks
-//! the WGSL bodies under `shaders/wgsl/` declare, in the field order and with
-//! the padding those structs' layouts put there. One statement of each
-//! layout, read by the mount that fills the buffer and by the test that
-//! measures the shader against the CPU oracle.
-
-use crate::frame::Param;
+//! The `record` methods below are the other half: the parameter blocks the
+//! WGSL bodies under `shaders/wgsl/` declare, in the field order and with the
+//! padding those structs' layouts put there. One statement of each layout,
+//! read by the mount that fills the buffer and by the test that measures the
+//! shader against the CPU oracle.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalParams {
@@ -68,6 +66,7 @@ impl ChassisMetalParams {
 }
 
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PlateMetalParams {
     pub size_px: [f32; 2],
     pub light_dir: [f32; 2],
@@ -116,130 +115,162 @@ pub struct FrameMetalParams {
 /// a single number is one thing to keep true.
 pub const PIECE_RECORD_FLOATS: usize = 28;
 
-/// One named uniform out of a piece's list, or zero.
-///
-/// Zero rather than a panic because a missing name is a mount that has not
-/// been finished, not a corrupt one, and the tests below name every field
-/// each record wants.
-fn named(params: &[Param], name: &str) -> f32 {
-    for (n, v) in params {
-        if *n == name {
-            return *v;
-        }
+impl PlateMetalParams {
+    /// The `PlateParams` block `shaders/wgsl/plate_metal.wgsl` declares, in
+    /// that struct's own field order: two `vec2`s, three `vec4` colours, then
+    /// the scalars and the tail padding the std430 stride puts there.
+    ///
+    /// The three colours are opaque; the shader multiplies coverage in
+    /// itself, so the alpha a caller could pass would only ever be one.
+    pub fn record(&self) -> [f32; PIECE_RECORD_FLOATS] {
+        [
+            self.size_px[0],
+            self.size_px[1],
+            self.light_dir[0],
+            self.light_dir[1],
+            self.base_color[0],
+            self.base_color[1],
+            self.base_color[2],
+            1.0,
+            self.highlight_color[0],
+            self.highlight_color[1],
+            self.highlight_color[2],
+            1.0,
+            self.shadow_color[0],
+            self.shadow_color[1],
+            self.shadow_color[2],
+            1.0,
+            self.corner_radius,
+            self.bevel_px,
+            self.metal.grain_amount,
+            self.metal.mottle_amount,
+            self.metal.scratch_amount,
+            self.vignette_strength,
+            self.wear_amount,
+            self.seam_gain,
+            self.seed,
+            0.0,
+            0.0,
+            0.0,
+        ]
     }
-    0.0
 }
 
-/// The `PlateParams` block `shaders/wgsl/plate_metal.wgsl` declares, from the
-/// named list [`crate::furniture::plate_params`] builds.
-pub fn plate_record(p: &[Param]) -> [f32; PIECE_RECORD_FLOATS] {
-    [
-        named(p, "sizePxX"),
-        named(p, "sizePxY"),
-        named(p, "lightDirX"),
-        named(p, "lightDirY"),
-        named(p, "baseColorR"),
-        named(p, "baseColorG"),
-        named(p, "baseColorB"),
-        named(p, "baseColorA"),
-        named(p, "highlightColorR"),
-        named(p, "highlightColorG"),
-        named(p, "highlightColorB"),
-        named(p, "highlightColorA"),
-        named(p, "shadowColorR"),
-        named(p, "shadowColorG"),
-        named(p, "shadowColorB"),
-        named(p, "shadowColorA"),
-        named(p, "cornerRadius"),
-        named(p, "bevelPx"),
-        named(p, "grainAmount"),
-        named(p, "mottleAmount"),
-        named(p, "scratchAmount"),
-        named(p, "vignetteStrength"),
-        named(p, "wearAmount"),
-        named(p, "seamGain"),
-        named(p, "seed"),
-        0.0,
-        0.0,
-        0.0,
-    ]
-}
 
-/// The `LedParams` block `shaders/wgsl/led_matrix.wgsl` declares, from the
-/// named list [`crate::furniture::led_params`] builds.
+/// `led_matrix.wgsl`'s uniforms for one window of lamps.
 ///
-/// `atlas` is where this strip's lamp raster sits in the host's atlas, as
-/// origin and extent in the atlas's own 0..1 coordinates. It is the host's to
-/// supply: the shader asks for its raster in the raster's own coordinates and
-/// the mount decides where that lives.
-pub fn led_record(p: &[Param], atlas: [f32; 4]) -> [f32; PIECE_RECORD_FLOATS] {
-    [
-        named(p, "gridSizeX"),
-        named(p, "gridSizeY"),
-        named(p, "spillMarginX"),
-        named(p, "spillMarginY"),
-        named(p, "spillDeadX"),
-        named(p, "spillDeadY"),
-        0.0,
-        0.0,
-        atlas[0],
-        atlas[1],
-        atlas[2],
-        atlas[3],
-        named(p, "litColorR"),
-        named(p, "litColorG"),
-        named(p, "litColorB"),
-        named(p, "litColorA"),
-        named(p, "dimColorR"),
-        named(p, "dimColorG"),
-        named(p, "dimColorB"),
-        named(p, "dimColorA"),
-        named(p, "panelColorR"),
-        named(p, "panelColorG"),
-        named(p, "panelColorB"),
-        named(p, "panelColorA"),
-        named(p, "dotRadius"),
-        named(p, "threshold"),
-        named(p, "glow"),
-        named(p, "spillStrength"),
-    ]
+/// The two spill fields are fractions of the drawn rectangle, not pixels:
+/// the rectangle stands proud of the lamp grid by the spill margin on each
+/// side, and the shader remaps its texcoords by that fraction.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LedMetalParams {
+    pub grid_size: [f32; 2],
+    pub spill_margin: [f32; 2],
+    pub spill_dead: [f32; 2],
+    pub lit_color: [f32; 4],
+    pub dim_color: [f32; 4],
+    pub panel_color: [f32; 4],
+    pub dot_radius: f32,
+    pub threshold: f32,
+    pub glow: f32,
+    pub spill_strength: f32,
 }
 
-/// The `TapeParams` block `shaders/wgsl/tape_label.wgsl` declares, from the
-/// named list [`crate::furniture::tape_params`] builds. `atlas` is as
-/// [`led_record`]'s.
-pub fn tape_record(p: &[Param], atlas: [f32; 4]) -> [f32; PIECE_RECORD_FLOATS] {
-    [
-        named(p, "sizePxX"),
-        named(p, "sizePxY"),
-        named(p, "lightDirX"),
-        named(p, "lightDirY"),
-        named(p, "glyphRectPxX"),
-        named(p, "glyphRectPxY"),
-        named(p, "glyphRectPxZ"),
-        named(p, "glyphRectPxW"),
-        atlas[0],
-        atlas[1],
-        atlas[2],
-        atlas[3],
-        named(p, "tapeColorR"),
-        named(p, "tapeColorG"),
-        named(p, "tapeColorB"),
-        named(p, "tapeColorA"),
-        named(p, "letterColorR"),
-        named(p, "letterColorG"),
-        named(p, "letterColorB"),
-        named(p, "letterColorA"),
-        named(p, "bevelPx"),
-        named(p, "dilatePx"),
-        named(p, "sheenAmount"),
-        named(p, "grainAmount"),
-        named(p, "seed"),
-        0.0,
-        0.0,
-        0.0,
-    ]
+impl LedMetalParams {
+    /// The `LedParams` block `shaders/wgsl/led_matrix.wgsl` declares, in that
+    /// struct's own field order.
+    ///
+    /// `atlas` is where this strip's lamp raster sits in the host's atlas, as
+    /// origin and extent in the atlas's own 0..1 coordinates. It is the
+    /// host's to supply: the shader asks for its raster in the raster's own
+    /// coordinates and the mount decides where that lives.
+    pub fn record(&self, atlas: [f32; 4]) -> [f32; PIECE_RECORD_FLOATS] {
+        [
+            self.grid_size[0],
+            self.grid_size[1],
+            self.spill_margin[0],
+            self.spill_margin[1],
+            self.spill_dead[0],
+            self.spill_dead[1],
+            0.0,
+            0.0,
+            atlas[0],
+            atlas[1],
+            atlas[2],
+            atlas[3],
+            self.lit_color[0],
+            self.lit_color[1],
+            self.lit_color[2],
+            self.lit_color[3],
+            self.dim_color[0],
+            self.dim_color[1],
+            self.dim_color[2],
+            self.dim_color[3],
+            self.panel_color[0],
+            self.panel_color[1],
+            self.panel_color[2],
+            self.panel_color[3],
+            self.dot_radius,
+            self.threshold,
+            self.glow,
+            self.spill_strength,
+        ]
+    }
 }
+
+
+/// `tape_label.wgsl`'s uniforms for one stamped label.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TapeMetalParams {
+    pub size_px: [f32; 2],
+    pub light_dir: [f32; 2],
+    pub glyph_rect_px: [f32; 4],
+    pub tape_color: [f32; 4],
+    pub letter_color: [f32; 4],
+    pub bevel_px: f32,
+    pub dilate_px: f32,
+    pub sheen_amount: f32,
+    pub grain_amount: f32,
+    pub seed: f32,
+}
+
+impl TapeMetalParams {
+    /// The `TapeParams` block `shaders/wgsl/tape_label.wgsl` declares, in that
+    /// struct's own field order. `atlas` is as [`LedMetalParams::record`]'s.
+    pub fn record(&self, atlas: [f32; 4]) -> [f32; PIECE_RECORD_FLOATS] {
+        [
+            self.size_px[0],
+            self.size_px[1],
+            self.light_dir[0],
+            self.light_dir[1],
+            self.glyph_rect_px[0],
+            self.glyph_rect_px[1],
+            self.glyph_rect_px[2],
+            self.glyph_rect_px[3],
+            atlas[0],
+            atlas[1],
+            atlas[2],
+            atlas[3],
+            self.tape_color[0],
+            self.tape_color[1],
+            self.tape_color[2],
+            self.tape_color[3],
+            self.letter_color[0],
+            self.letter_color[1],
+            self.letter_color[2],
+            self.letter_color[3],
+            self.bevel_px,
+            self.dilate_px,
+            self.sheen_amount,
+            self.grain_amount,
+            self.seed,
+            0.0,
+            0.0,
+            0.0,
+        ]
+    }
+}
+
 
 /// A record's bytes, for a buffer write.
 pub fn record_bytes(record: &[f32; PIECE_RECORD_FLOATS]) -> Vec<u8> {

@@ -52,46 +52,29 @@ fn titled(rows: usize, title: &str) -> chassis::BankStrips {
     strips
 }
 
-fn param(params: &[(&'static str, f32)], name: &str) -> f32 {
-    params
-        .iter()
-        .find(|(n, _)| *n == name)
-        .unwrap_or_else(|| panic!("no uniform named {name}"))
-        .1
+/// The uniforms of a piece the caller knows is a plate. The struct is the
+/// oracle's own input, so the mount's block goes straight to the CPU
+/// reimplementation the pixels are measured against.
+fn plate_params(piece: &chassis::Piece) -> oracle::PlateMetalParams {
+    match piece.params {
+        Some(chassis::PieceParams::Plate(p)) => p,
+        other => panic!("not a plate: {other:?}"),
+    }
 }
 
-/// The plate's oracle struct, read back out of the uniforms the mount pushed,
-/// for the same reason [`oracle_params`] does it for the casting.
-fn plate_params(params: &[(&'static str, f32)]) -> oracle::PlateMetalParams {
-    oracle::PlateMetalParams {
-        size_px: [param(params, "sizePxX"), param(params, "sizePxY")],
-        light_dir: [param(params, "lightDirX"), param(params, "lightDirY")],
-        base_color: [
-            param(params, "baseColorR"),
-            param(params, "baseColorG"),
-            param(params, "baseColorB"),
-        ],
-        highlight_color: [
-            param(params, "highlightColorR"),
-            param(params, "highlightColorG"),
-            param(params, "highlightColorB"),
-        ],
-        shadow_color: [
-            param(params, "shadowColorR"),
-            param(params, "shadowColorG"),
-            param(params, "shadowColorB"),
-        ],
-        corner_radius: param(params, "cornerRadius"),
-        bevel_px: param(params, "bevelPx"),
-        metal: oracle::MetalParams {
-            grain_amount: param(params, "grainAmount"),
-            mottle_amount: param(params, "mottleAmount"),
-            scratch_amount: param(params, "scratchAmount"),
-        },
-        vignette_strength: param(params, "vignetteStrength"),
-        wear_amount: param(params, "wearAmount"),
-        seam_gain: param(params, "seamGain"),
-        seed: param(params, "seed"),
+/// The uniforms of a piece the caller knows is an LED window.
+fn led_params(piece: &chassis::Piece) -> chassis::params::LedMetalParams {
+    match piece.params {
+        Some(chassis::PieceParams::Led(p)) => p,
+        other => panic!("not an LED window: {other:?}"),
+    }
+}
+
+/// The uniforms of a piece the caller knows is a tape label.
+fn tape_params(piece: &chassis::Piece) -> chassis::params::TapeMetalParams {
+    match piece.params {
+        Some(chassis::PieceParams::Tape(p)) => p,
+        other => panic!("not a tape label: {other:?}"),
     }
 }
 
@@ -364,7 +347,7 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     // the result at the recipe's own rectangle.
     let plate = &pieces[0];
     assert_eq!(plate.pass, chassis::Pass::Plate);
-    let plate_oracle = plate_params(&plate.params);
+    let plate_oracle = plate_params(plate);
     let (px, py) = (plate.rect.x as u32, plate.rect.y as u32);
     let (pw, ph) = (plate.rect.width as u32, plate.rect.height as u32);
     // Points on the plate that no strip covers. The strips stand at the
@@ -423,16 +406,14 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     let raster = strip.source.as_ref().expect("a lamp grid");
     let colors =
         chassis::displays::led::window_colors(chassis::furniture::font_color(&cfg), true, true);
-    let grid = (
-        param(&strip.params, "gridSizeX") as u32,
-        param(&strip.params, "gridSizeY") as u32,
-    );
+    let led = led_params(strip);
+    let grid = (led.grid_size[0] as u32, led.grid_size[1] as u32);
     assert_eq!((raster.width, raster.height), grid);
     // The window inside the grown rectangle: the spill margin is a fraction
     // of that rectangle and the lamps live between the two margins.
     let spill = (
-        f64::from(param(&strip.params, "spillMarginX")) * strip.rect.width,
-        f64::from(param(&strip.params, "spillMarginY")) * strip.rect.height,
+        f64::from(led.spill_margin[0]) * strip.rect.width,
+        f64::from(led.spill_margin[1]) * strip.rect.height,
     );
     let win = (
         strip.rect.x + spill.0,
@@ -676,10 +657,11 @@ fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
     // form: a single hand-picked pixel would depend on which glyph the
     // placeholder title happens to be.
     let letter = chassis::displays::tape::letter_color();
-    let gx = label.rect.x + f64::from(param(&label.params, "glyphRectPxX"));
-    let gy = label.rect.y + f64::from(param(&label.params, "glyphRectPxY"));
-    let gw = f64::from(param(&label.params, "glyphRectPxZ"));
-    let gh = f64::from(param(&label.params, "glyphRectPxW"));
+    let glyph = tape_params(label).glyph_rect_px;
+    let gx = label.rect.x + f64::from(glyph[0]);
+    let gy = label.rect.y + f64::from(glyph[1]);
+    let gw = f64::from(glyph[2]);
+    let gh = f64::from(glyph[3]);
     assert!(gw > 1.0 && gh > 1.0, "the label has no glyph box");
     let raster = label.source.as_ref().expect("a punched raster");
     let inked = raster

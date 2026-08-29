@@ -14,7 +14,7 @@
 //! at every point along an edge, which holds only while the spill kernel's
 //! taps are no farther apart than the lamps they read.
 
-use chassis::params::{led_record, record_bytes};
+use chassis::params::{record_bytes, LedMetalParams};
 use gpu::harness::{px_index, render_wgsl_quad_io, Locked};
 
 /// The body with the one-piece glue a rig needs: the parameter block at
@@ -57,36 +57,24 @@ fn led_matrix_lit_and_dark_cells_read_correctly() {
 
     let lit_color = [1.00, 0.55, 0.10];
     let dim_color = [0.20, 0.10, 0.05];
-    let params: &[(&str, f32)] = &[
-        ("gridSizeX", GRID_W as f32),
-        ("gridSizeY", GRID_H as f32),
-        ("litColorR", lit_color[0]),
-        ("litColorG", lit_color[1]),
-        ("litColorB", lit_color[2]),
-        ("litColorA", 1.0),
-        ("dimColorR", dim_color[0]),
-        ("dimColorG", dim_color[1]),
-        ("dimColorB", dim_color[2]),
-        ("dimColorA", 1.0),
-        ("panelColorR", 0.05),
-        ("panelColorG", 0.05),
-        ("panelColorB", 0.05),
-        ("panelColorA", 1.0),
-        ("dotRadius", 0.35),
-        ("threshold", 0.5),
-        ("glow", 0.5),
+    let params = LedMetalParams {
+        grid_size: [GRID_W as f32, GRID_H as f32],
         // Zero margin removes the outer spill band's coordinate remap
         // entirely (`window` becomes exactly 1, `uv == vTexCoord`), so
         // `cell = uv * gridSize` lines up with this test's raw-texcoord cell
         // math without a second transform to account for.
-        ("spillMarginX", 0.0),
-        ("spillMarginY", 0.0),
-        ("spillStrength", 0.6),
-        ("spillDeadX", 0.2),
-        ("spillDeadY", 0.2),
-    ];
+        spill_margin: [0.0, 0.0],
+        spill_dead: [0.2, 0.2],
+        lit_color: [lit_color[0], lit_color[1], lit_color[2], 1.0],
+        dim_color: [dim_color[0], dim_color[1], dim_color[2], 1.0],
+        panel_color: [0.05, 0.05, 0.05, 1.0],
+        dot_radius: 0.35,
+        threshold: 0.5,
+        glow: 0.5,
+        spill_strength: 0.6,
+    };
 
-    let record = record_bytes(&led_record(params, WHOLE));
+    let record = record_bytes(&params.record(WHOLE));
     let out = render_wgsl_quad_io(
         &gpu, &source(), &record, GRID_W, GRID_H, OUT_W, OUT_H, &input,
     );
@@ -145,32 +133,20 @@ fn led_matrix_spill_band_is_flat_along_an_edge_over_a_checkerboard() {
     // A quarter of the output on every side is spill band; the grid sits in
     // the middle half.
     let margin = 0.25f32;
-    let params: &[(&str, f32)] = &[
-        ("gridSizeX", GRID as f32),
-        ("gridSizeY", GRID as f32),
-        ("litColorR", 1.0),
-        ("litColorG", 0.55),
-        ("litColorB", 0.10),
-        ("litColorA", 1.0),
-        ("dimColorR", 0.2),
-        ("dimColorG", 0.1),
-        ("dimColorB", 0.05),
-        ("dimColorA", 1.0),
-        ("panelColorR", 0.05),
-        ("panelColorG", 0.05),
-        ("panelColorB", 0.05),
-        ("panelColorA", 1.0),
-        ("dotRadius", 0.35),
-        ("threshold", 0.5),
-        ("glow", 0.5),
-        ("spillMarginX", margin),
-        ("spillMarginY", margin),
-        ("spillStrength", 0.6),
-        ("spillDeadX", 0.2),
-        ("spillDeadY", 0.2),
-    ];
+    let params = LedMetalParams {
+        grid_size: [GRID as f32, GRID as f32],
+        spill_margin: [margin, margin],
+        spill_dead: [0.2, 0.2],
+        lit_color: [1.0, 0.55, 0.10, 1.0],
+        dim_color: [0.2, 0.1, 0.05, 1.0],
+        panel_color: [0.05, 0.05, 0.05, 1.0],
+        dot_radius: 0.35,
+        threshold: 0.5,
+        glow: 0.5,
+        spill_strength: 0.6,
+    };
 
-    let record = record_bytes(&led_record(params, WHOLE));
+    let record = record_bytes(&params.record(WHOLE));
     let out = render_wgsl_quad_io(&gpu, &source(), &record, GRID, GRID, OUT, OUT, &input);
 
     // Halfway out into the bottom band (v = 0.875), across the columns the

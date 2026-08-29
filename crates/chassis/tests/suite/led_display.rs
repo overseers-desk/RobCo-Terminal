@@ -20,7 +20,7 @@
 
 use chassis::color::str_to_color;
 use chassis::displays::{led, raster};
-use chassis::params::{led_record, record_bytes};
+use chassis::params::{record_bytes, LedMetalParams};
 use gpu::harness::{px_index, render_wgsl_quad_io, Locked};
 
 fn source() -> String {
@@ -65,39 +65,32 @@ fn led_display_composes_the_proven_raster_with_led_matrix() {
         let glow = led::glow(bright);
         let spill_strength = led::spill_strength(powered, bright);
 
-        let params: &[(&str, f32)] = &[
-            ("gridSizeX", r.width as f32),
-            ("gridSizeY", r.height as f32),
-            ("litColorR", colors.lit.r),
-            ("litColorG", colors.lit.g),
-            ("litColorB", colors.lit.b),
-            ("litColorA", colors.lit.a),
-            ("dimColorR", colors.dim.r),
-            ("dimColorG", colors.dim.g),
-            ("dimColorB", colors.dim.b),
-            ("dimColorA", colors.dim.a),
-            ("panelColorR", colors.panel.r),
-            ("panelColorG", colors.panel.g),
-            ("panelColorB", colors.panel.b),
-            ("panelColorA", colors.panel.a),
-            ("dotRadius", led::DOT_RADIUS),
-            ("threshold", led::THRESHOLD),
-            ("glow", glow),
+        let params = LedMetalParams {
+            grid_size: [r.width as f32, r.height as f32],
             // Zero margin, same reasoning as crt-render's led_matrix.rs:
             // it collapses `uv` onto the raw grid coordinate so the test's
             // cell-center sampling lines up with the shader's own math
             // without a second spill-band transform to invert.
-            ("spillMarginX", 0.0),
-            ("spillMarginY", 0.0),
-            ("spillStrength", spill_strength),
-            ("spillDeadX", led::SPILL_DEAD.0),
-            ("spillDeadY", led::SPILL_DEAD.1),
-        ];
+            spill_margin: [0.0, 0.0],
+            spill_dead: [led::SPILL_DEAD.0, led::SPILL_DEAD.1],
+            lit_color: [colors.lit.r, colors.lit.g, colors.lit.b, colors.lit.a],
+            dim_color: [colors.dim.r, colors.dim.g, colors.dim.b, colors.dim.a],
+            panel_color: [
+                colors.panel.r,
+                colors.panel.g,
+                colors.panel.b,
+                colors.panel.a,
+            ],
+            dot_radius: led::DOT_RADIUS,
+            threshold: led::THRESHOLD,
+            glow,
+            spill_strength,
+        };
 
         let px_per_cell = 8;
         let out_w = r.width * px_per_cell;
         let out_h = r.height * px_per_cell;
-        let record = record_bytes(&led_record(params, [0.0, 0.0, 1.0, 1.0]));
+        let record = record_bytes(&params.record([0.0, 0.0, 1.0, 1.0]));
         let out = render_wgsl_quad_io(
             &gpu, &source(), &record, r.width, r.height, out_w, out_h, &input,
         );

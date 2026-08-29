@@ -96,7 +96,7 @@ pub mod strip;
 
 pub use bank::{BankGeometry, ChannelIndicator};
 pub use cabinet::{Cabinet, Display, SeamUpdate};
-pub use furniture::{Pass, Piece};
+pub use furniture::{Pass, Piece, PieceParams};
 pub use layout::{Rect, WindowLayout};
 pub use metrics::{DisplayMetrics, LedMetrics, ShellMetrics, TapeMetrics};
 pub use seam::{SeamContext, SeamCursor, SeamDrag};

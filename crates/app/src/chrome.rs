@@ -108,14 +108,11 @@
 use std::collections::{HashMap, HashSet};
 
 use bytemuck::{Pod, Zeroable};
-use chassis::furniture::{Pass, Piece, Raster};
+use chassis::furniture::{Piece, PieceParams, Raster};
 use chassis::paint::{Align, Face, Fill, Op, TextOp};
 use term::GlyphAtlas;
 
-use chassis::params::{
-    led_record, plate_record, tape_record, ChassisMetalParams, CHASSIS_RECORD_FLOATS,
-    PIECE_RECORD_FLOATS,
-};
+use chassis::params::{ChassisMetalParams, CHASSIS_RECORD_FLOATS, PIECE_RECORD_FLOATS};
 
 /// Which body draws an instance. The fragment stage switches on it, and the
 /// values are the ones the WGSL glue below declares.
@@ -720,20 +717,20 @@ impl Chrome {
                 continue;
             };
             let rect = [dest.0 as f32, dest.1 as f32, dest.2 as f32, dest.3 as f32];
-            let (kind, index) = match piece.pass {
-                Pass::Plate => {
-                    plates.push(plate_record(&piece.params));
+            let (kind, index) = match piece.params {
+                Some(PieceParams::Plate(p)) => {
+                    plates.push(p.record());
                     (KIND_PLATE, plates.len() - 1)
                 }
-                Pass::LedMatrix => {
-                    leds.push(led_record(&piece.params, uv_of(Placed::Source(i))));
+                Some(PieceParams::Led(p)) => {
+                    leds.push(p.record(uv_of(Placed::Source(i))));
                     (KIND_LED, leds.len() - 1)
                 }
-                Pass::TapeLabel => {
-                    tapes.push(tape_record(&piece.params, uv_of(Placed::Source(i))));
+                Some(PieceParams::Tape(p)) => {
+                    tapes.push(p.record(uv_of(Placed::Source(i))));
                     (KIND_TAPE, tapes.len() - 1)
                 }
-                Pass::Painted => {
+                None => {
                     let Some(painting) = piece.paint.as_ref() else {
                         continue;
                     };

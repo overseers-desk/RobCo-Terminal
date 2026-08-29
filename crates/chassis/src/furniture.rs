@@ -5,8 +5,8 @@
 //! bank's footprint; this module is the next question, which is what goes
 //! *inside* that footprint: one shell's plate and rows of `ChannelRow`s,
 //! reduced to what a host with a device needs and nothing more: a rectangle,
-//! the name of the pass to run over it, its uniforms by name, and, for the
-//! two display kits, the glyph raster that pass samples.
+//! the uniforms of the pass to run over it, and, for the two display kits,
+//! the glyph raster that pass samples.
 //!
 //! It draws nothing and owns no device, like the rest of the crate. The mount
 //! is `app::chrome`.
@@ -53,10 +53,9 @@ use crate::bank::BankGeometry;
 use crate::cabinet::Display;
 use crate::color::{self, Rgba};
 use crate::displays::{led, raster, tape};
-use crate::frame::Param;
 use crate::layout::Rect;
 use crate::metrics::{LedMetrics, ShellMetrics, TapeMetrics};
-use crate::params::PlateMetalParams;
+use crate::params::{LedMetalParams, PlateMetalParams, TapeMetalParams};
 use crate::strip::{BankStrips, StripRow};
 
 use config::Config;
@@ -81,6 +80,30 @@ pub enum Pass {
     Painted,
 }
 
+/// One shaded piece's uniforms, in the shape the pass that reads them wants.
+///
+/// The variants stand one to one with the three shader arms of [`Pass`], and
+/// a piece's pass is struck from the variant it carries
+/// ([`Piece::shaded`]), so the block a mount writes cannot name one body and
+/// be filled for another.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PieceParams {
+    Plate(PlateMetalParams),
+    Led(LedMetalParams),
+    Tape(TapeMetalParams),
+}
+
+impl PieceParams {
+    /// Which pass reads these uniforms.
+    pub fn pass(&self) -> Pass {
+        match self {
+            PieceParams::Plate(_) => Pass::Plate,
+            PieceParams::Led(_) => Pass::LedMatrix,
+            PieceParams::Tape(_) => Pass::TapeLabel,
+        }
+    }
+}
+
 /// A glyph raster, widened to the RGBA8 a texture upload wants
 /// ([`crate::displays::raster::to_rgba8`]'s convention: `[a, a, a, a]`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -98,9 +121,8 @@ pub struct Piece {
     /// (see [`crate::cabinet`]'s module doc on which pixel). A host on a
     /// scaled display multiplies by the window's factor.
     pub rect: Rect,
-    /// The pass's uniforms, by the names its `#pragma parameter` lines
-    /// declare.
-    pub params: Vec<Param>,
+    /// The pass's uniforms, or `None` for a [`Pass::Painted`] piece.
+    pub params: Option<PieceParams>,
     /// The texture the pass samples as `Source`, for the two display passes.
     /// `None` for the plate, which is procedural and samples nothing.
     pub source: Option<Raster>,
@@ -114,12 +136,13 @@ pub struct Piece {
 }
 
 impl Piece {
-    /// A piece drawn by one of the three procedural passes.
-    pub fn shaded(pass: Pass, rect: Rect, params: Vec<Param>, source: Option<Raster>) -> Self {
+    /// A piece drawn by one of the three procedural passes, the pass being
+    /// the one the uniforms are for.
+    pub fn shaded(rect: Rect, params: PieceParams, source: Option<Raster>) -> Self {
         Self {
-            pass,
+            pass: params.pass(),
             rect,
-            params,
+            params: Some(params),
             source,
             paint: None,
         }
@@ -131,7 +154,7 @@ impl Piece {
         Self {
             pass: Pass::Painted,
             rect,
-            params: Vec::new(),
+            params: None,
             source: None,
             paint: Some(painting),
         }
@@ -162,43 +185,11 @@ pub fn font_color(cfg: &Config) -> Rgba {
     )
 }
 
-/// `plate_metal.wgsl`'s parameters, by name.
-pub fn plate_params(p: &PlateMetalParams) -> Vec<Param> {
-    vec![
-        ("sizePxX", p.size_px[0]),
-        ("sizePxY", p.size_px[1]),
-        ("lightDirX", p.light_dir[0]),
-        ("lightDirY", p.light_dir[1]),
-        ("baseColorR", p.base_color[0]),
-        ("baseColorG", p.base_color[1]),
-        ("baseColorB", p.base_color[2]),
-        ("baseColorA", 1.0),
-        ("highlightColorR", p.highlight_color[0]),
-        ("highlightColorG", p.highlight_color[1]),
-        ("highlightColorB", p.highlight_color[2]),
-        ("highlightColorA", 1.0),
-        ("shadowColorR", p.shadow_color[0]),
-        ("shadowColorG", p.shadow_color[1]),
-        ("shadowColorB", p.shadow_color[2]),
-        ("shadowColorA", 1.0),
-        ("cornerRadius", p.corner_radius),
-        ("bevelPx", p.bevel_px),
-        ("grainAmount", p.metal.grain_amount),
-        ("mottleAmount", p.metal.mottle_amount),
-        ("scratchAmount", p.metal.scratch_amount),
-        ("vignetteStrength", p.vignette_strength),
-        ("wearAmount", p.wear_amount),
-        ("seamGain", p.seam_gain),
-        ("seed", p.seed),
-    ]
-}
-
-/// `led_matrix.wgsl`'s parameters, by name, for one window.
+/// `led_matrix.wgsl`'s parameters for one window.
 ///
 /// `spill` is the margin in pixels the drawn rectangle stands proud of the
 /// strip on each side; the shader wants it as a fraction of that grown
 /// rectangle, which is why this takes the grown size too.
-#[allow(clippy::too_many_arguments)]
 pub fn led_params(
     grid: (u32, u32),
     colors: led::Colors,
@@ -206,7 +197,7 @@ pub fn led_params(
     spill_strength: f32,
     spill: (f64, f64),
     grown: (f64, f64),
-) -> Vec<Param> {
+) -> LedMetalParams {
     let frac = |margin: f64, size: f64| {
         if size > 0.0 {
             (margin / size) as f32
@@ -214,60 +205,48 @@ pub fn led_params(
             0.0
         }
     };
-    vec![
-        ("gridSizeX", grid.0 as f32),
-        ("gridSizeY", grid.1 as f32),
-        ("litColorR", colors.lit.r),
-        ("litColorG", colors.lit.g),
-        ("litColorB", colors.lit.b),
-        ("litColorA", colors.lit.a),
-        ("dimColorR", colors.dim.r),
-        ("dimColorG", colors.dim.g),
-        ("dimColorB", colors.dim.b),
-        ("dimColorA", colors.dim.a),
-        ("panelColorR", colors.panel.r),
-        ("panelColorG", colors.panel.g),
-        ("panelColorB", colors.panel.b),
-        ("panelColorA", colors.panel.a),
-        ("dotRadius", led::DOT_RADIUS),
-        ("threshold", led::THRESHOLD),
-        ("glow", glow),
-        ("spillMarginX", frac(spill.0, grown.0)),
-        ("spillMarginY", frac(spill.1, grown.1)),
-        ("spillStrength", spill_strength),
-        ("spillDeadX", led::SPILL_DEAD.0),
-        ("spillDeadY", led::SPILL_DEAD.1),
-    ]
+    let rgba = |c: Rgba| [c.r, c.g, c.b, c.a];
+    LedMetalParams {
+        grid_size: [grid.0 as f32, grid.1 as f32],
+        spill_margin: [frac(spill.0, grown.0), frac(spill.1, grown.1)],
+        spill_dead: [led::SPILL_DEAD.0, led::SPILL_DEAD.1],
+        lit_color: rgba(colors.lit),
+        dim_color: rgba(colors.dim),
+        panel_color: rgba(colors.panel),
+        dot_radius: led::DOT_RADIUS,
+        threshold: led::THRESHOLD,
+        glow,
+        spill_strength,
+    }
 }
 
-/// `tape_label.wgsl`'s parameters, by name, for one label of `size` pixels
-/// whose glyph box is `glyph_rect`.
-pub fn tape_params(size: (f64, f64), glyph_rect: (f32, f32, f32, f32)) -> Vec<Param> {
+/// `tape_label.wgsl`'s parameters for one label of `size` pixels whose glyph
+/// box is `glyph_rect`.
+pub fn tape_params(size: (f64, f64), glyph_rect: (f32, f32, f32, f32)) -> TapeMetalParams {
     let tape_color = tape::tape_color();
     let letter_color = tape::letter_color();
-    vec![
-        ("sizePxX", size.0 as f32),
-        ("sizePxY", size.1 as f32),
-        ("lightDirX", tape::DISPLAY_LIGHT_DIR.0),
-        ("lightDirY", tape::DISPLAY_LIGHT_DIR.1),
-        ("tapeColorR", tape_color.r),
-        ("tapeColorG", tape_color.g),
-        ("tapeColorB", tape_color.b),
-        ("tapeColorA", tape_color.a),
-        ("letterColorR", letter_color.r),
-        ("letterColorG", letter_color.g),
-        ("letterColorB", letter_color.b),
-        ("letterColorA", letter_color.a),
-        ("glyphRectPxX", glyph_rect.0),
-        ("glyphRectPxY", glyph_rect.1),
-        ("glyphRectPxZ", glyph_rect.2),
-        ("glyphRectPxW", glyph_rect.3),
-        ("bevelPx", tape::BEVEL_PX),
-        ("dilatePx", tape::DILATE_PX),
-        ("sheenAmount", tape::SHEEN_AMOUNT),
-        ("grainAmount", tape::GRAIN_AMOUNT),
-        ("seed", tape::SEED),
-    ]
+    TapeMetalParams {
+        size_px: [size.0 as f32, size.1 as f32],
+        light_dir: [tape::DISPLAY_LIGHT_DIR.0, tape::DISPLAY_LIGHT_DIR.1],
+        glyph_rect_px: [glyph_rect.0, glyph_rect.1, glyph_rect.2, glyph_rect.3],
+        tape_color: [
+            tape_color.r,
+            tape_color.g,
+            tape_color.b,
+            tape_color.a,
+        ],
+        letter_color: [
+            letter_color.r,
+            letter_color.g,
+            letter_color.b,
+            letter_color.a,
+        ],
+        bevel_px: tape::BEVEL_PX,
+        dilate_px: tape::DILATE_PX,
+        sheen_amount: tape::SHEEN_AMOUNT,
+        grain_amount: tape::GRAIN_AMOUNT,
+        seed: tape::SEED,
+    }
 }
 
 /// The lamp grid one strip's window samples, one texel per lamp.
@@ -375,9 +354,8 @@ pub fn bank_pieces(
     if let Some((rect, params)) = crate::shells::plate_region(cfg.chassis.shell, bank) {
         if rect.width > 0.0 && rect.height > 0.0 {
             pieces.push(Piece::shaded(
-                Pass::Plate,
                 Rect::new(rect.x, rect.y, rect.width, rect.height),
-                plate_params(&params),
+                PieceParams::Plate(params),
                 None,
             ));
         }
@@ -591,16 +569,15 @@ fn led_piece(
 
     let colors = led::window_colors(font_color(cfg), row.open, bright);
     Some(Piece::shaded(
-        Pass::LedMatrix,
         grown,
-        led_params(
+        PieceParams::Led(led_params(
             grid,
             colors,
             led::glow(bright),
             led::spill_strength(row.open, bright),
             (spill_x, spill_y),
             (grown.width, grown.height),
-        ),
+        )),
         Some(source),
     ))
 }
@@ -648,9 +625,8 @@ fn tape_piece(
         rgba: raster::to_rgba8(&r),
     });
     Some(Piece::shaded(
-        Pass::TapeLabel,
         rect,
-        tape_params((label_w, label_h), glyph_rect),
+        PieceParams::Tape(tape_params((label_w, label_h), glyph_rect)),
         // A blank tape has no glyph raster at all; the pass samples nothing
         // inside a zero-area glyph box, so a 1x1 dark texel is enough to bind.
         Some(source.unwrap_or(Raster {
@@ -665,6 +641,14 @@ fn tape_piece(
 mod tests {
     use super::*;
     use crate::Cabinet;
+
+    /// The lamp uniforms of a piece the caller knows is an LED window.
+    fn led_of(p: &Piece) -> LedMetalParams {
+        match p.params {
+            Some(PieceParams::Led(led)) => led,
+            other => panic!("not an LED window: {other:?}"),
+        }
+    }
 
     #[test]
     fn a_press_lands_in_the_window_it_was_drawn_in() {
@@ -740,13 +724,7 @@ mod tests {
             assert_eq!(strip_piece(i).pass, Pass::LedMatrix);
             assert!(strip_piece(i).source.is_some());
         }
-        let spill = |p: &Piece| {
-            p.params
-                .iter()
-                .find(|(n, _)| *n == "spillStrength")
-                .unwrap()
-                .1
-        };
+        let spill = |p: &Piece| led_of(p).spill_strength;
         assert_eq!(spill(strip_piece(0)), 1.0); // powered and bright
         assert_eq!(spill(strip_piece(1)), 0.0); // dark
 
@@ -865,23 +843,16 @@ mod tests {
             "no glyph struck for the page label"
         );
 
-        let param = |name: &str| {
-            counter
-                .params
-                .iter()
-                .find(|(n, _)| *n == name)
-                .unwrap_or_else(|| panic!("no {name} uniform"))
-                .1
-        };
+        let p = led_of(counter);
         // `characters: 2`, every pad at 0.
         let kit = crate::led_metrics(&cfg.chassis.bank_font_name, term::FontSource::Bundled);
-        assert_eq!(param("gridSizeX"), (kit.lamp_cell_width.max(1) * 2) as f32);
-        assert_eq!(param("gridSizeY"), kit.lamp_cell_height.max(1) as f32);
-        // `spillStrength: 0.12`, unlike a channel window's own
+        assert_eq!(p.grid_size[0], (kit.lamp_cell_width.max(1) * 2) as f32);
+        assert_eq!(p.grid_size[1], kit.lamp_cell_height.max(1) as f32);
+        // `spill_strength: 0.12`, unlike a channel window's own
         // `led::spill_strength`.
-        assert_eq!(param("spillStrength"), 0.12);
+        assert_eq!(p.spill_strength, 0.12);
         // The counter's own `bright: false` binding.
-        assert_eq!(param("glow"), led::glow(false));
+        assert_eq!(p.glow, led::glow(false));
 
         // A different page turns different lamps: the raster is the label's
         // own, not a fixture.

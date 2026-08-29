@@ -20,7 +20,7 @@
 //! point outside the centred glyph rectangle is the plastic-color check.
 
 use chassis::displays::{raster, tape};
-use chassis::params::{record_bytes, tape_record};
+use chassis::params::record_bytes;
 use gpu::harness::{px_index, render_wgsl_quad_io, Locked};
 
 fn source() -> String {
@@ -156,31 +156,10 @@ fn tape_display_composes_the_proven_raster_with_tape_label() {
         let out_h = DISPLAY_HEIGHT as u32;
         let rect = tape::glyph_rect_px(out_w as f64, out_h as f64, glyph_w, glyph_h);
 
-        let params: &[(&str, f32)] = &[
-            ("sizePxX", out_w as f32),
-            ("sizePxY", out_h as f32),
-            ("lightDirX", tape::DISPLAY_LIGHT_DIR.0),
-            ("lightDirY", tape::DISPLAY_LIGHT_DIR.1),
-            ("tapeColorR", tape_color.r),
-            ("tapeColorG", tape_color.g),
-            ("tapeColorB", tape_color.b),
-            ("tapeColorA", tape_color.a),
-            ("letterColorR", letter_color.r),
-            ("letterColorG", letter_color.g),
-            ("letterColorB", letter_color.b),
-            ("letterColorA", letter_color.a),
-            ("glyphRectPxX", rect.0),
-            ("glyphRectPxY", rect.1),
-            ("glyphRectPxZ", rect.2),
-            ("glyphRectPxW", rect.3),
-            ("bevelPx", tape::BEVEL_PX),
-            ("dilatePx", tape::DILATE_PX),
-            ("sheenAmount", tape::SHEEN_AMOUNT),
-            ("grainAmount", tape::GRAIN_AMOUNT),
-            ("seed", tape::SEED),
-        ];
+        let params =
+            chassis::furniture::tape_params((out_w as f64, out_h as f64), rect);
 
-        let record = record_bytes(&tape_record(params, [0.0, 0.0, 1.0, 1.0]));
+        let record = record_bytes(&params.record([0.0, 0.0, 1.0, 1.0]));
         let out = render_wgsl_quad_io(
             &gpu, &source(), &record, r.width, r.height, out_w, out_h, &input,
         );

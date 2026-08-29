@@ -38,13 +38,13 @@ pub const COMMON_WGSL: &str = include_str!("../shaders/wgsl/common.wgsl");
 pub const CHASSIS_METAL_WGSL: &str = include_str!("../shaders/wgsl/chassis_metal.wgsl");
 
 /// `wgsl/plate_metal.wgsl`: the raised plate a shell screws over the casting.
-/// Parameter block from [`crate::params::plate_record`]; which region a shell
+/// Parameter block from [`crate::params::PlateMetalParams::record`]; which region a shell
 /// screws it over is [`crate::shells::plate_region`].
 pub const PLATE_METAL_WGSL: &str = include_str!("../shaders/wgsl/plate_metal.wgsl");
 
 /// `wgsl/led_matrix.wgsl`: the lamp grid one channel strip is made of, over
 /// the grid raster [`crate::furniture::led_grid`] composes. Parameter block
-/// from [`crate::params::led_record`].
+/// from [`crate::params::LedMetalParams::record`].
 pub const LED_MATRIX_WGSL: &str = include_str!("../shaders/wgsl/led_matrix.wgsl");
 
 /// `wgsl/vector.wgsl`: the furniture that is drawn rather than shaded, as
@@ -56,7 +56,7 @@ pub const VECTOR_WGSL: &str = include_str!("../shaders/wgsl/vector.wgsl");
 
 /// `wgsl/tape_label.wgsl`: the embossed punch tape the switchboard's strips
 /// carry instead of lamps. Parameter block from
-/// [`crate::params::tape_record`].
+/// [`crate::params::TapeMetalParams::record`].
 pub const TAPE_LABEL_WGSL: &str = include_str!("../shaders/wgsl/tape_label.wgsl");
 
 /// Include files the shader sources above pull in with `#include`. A host

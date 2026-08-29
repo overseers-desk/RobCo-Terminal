@@ -2,7 +2,7 @@
 //! Fully analytic, same reasoning as `chassis_metal.rs` (no `sin` anywhere
 //! in the surface math).
 
-use chassis::params::{plate_record, record_bytes};
+use chassis::params::record_bytes;
 use gpu::harness::{px_index, render_wgsl_quad, Locked};
 use oracle;
 
@@ -49,7 +49,7 @@ fn plate_metal_matches_oracle() {
     };
 
     let input = vec![0u8; (W * H * 4) as usize];
-    let record = record_bytes(&plate_record(&chassis::furniture::plate_params(&params)));
+    let record = record_bytes(&params.record());
     let out = render_wgsl_quad(&gpu, &source(), &record, W, H, &input);
 
     // Interior points only (away from the rounded-rect edge / coverage
