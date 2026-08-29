@@ -150,7 +150,7 @@ fn frame_with_furniture(
         (bank, WINDOW_H),
         (WINDOW_W - bank, WINDOW_H),
         scale_factor,
-        params,
+        Some(params),
         pieces,
     );
 
@@ -487,16 +487,15 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
         dark_colors.dim
     );
 
-    // --- the painted furniture ----------------------------------------
+    // --- the drawn furniture ------------------------------------------
     //
     // A row's numerals and moulding, and one of the plate's screws, are
-    // `Pass::Painted`: no shader, a CPU raster of the vector description that
-    // the mount blits premultiplied. So the proof is the raster itself: every
-    // pixel of it, against the frame it landed on, composited the way the
-    // blend state says. This is what says the mount put the picture at the
-    // piece's own rectangle and at the window's own ratio, and that the
-    // rasteriser and the blit agree about premultiplication (get that wrong
-    // and a half-covered moulding lip reads twice as bright).
+    // `Pass::Painted`: every operation of the description is its own instance
+    // of the same pass, composited source-over in the painting's own order.
+    // So the proof is where the description landed: the row covers its own
+    // band of plate and stops at the piece's rectangle, which is what says
+    // the mount placed the operations at the piece's origin and at the
+    // window's own ratio.
     // The "before" is not the bare casting but the column with everything the
     // plan draws *ahead of* this piece on it (the plate and the screws)
     // because that is what a source-over lands on.
@@ -518,66 +517,50 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     );
     let painted = row_furniture(0);
     assert_eq!(painted.pass, chassis::Pass::Painted);
-    let picture = chassis::paint::rasterize(
-        painted.paint.as_ref().expect("a painted row"),
-        (painted.rect.width as u32, painted.rect.height as u32),
-        1.0,
-    );
     let (rx, ry) = (painted.rect.x as u32, painted.rect.y as u32);
+    let (rw, rh) = (painted.rect.width as u32, painted.rect.height as u32);
+    let moved = |x: u32, y: u32| {
+        let i = px_index(WINDOW_W, x, y);
+        (0..3).any(|c| (with_row[i][c] - before_row[i][c]).abs() > 1.0 / 255.0)
+    };
     let mut struck = 0;
-    let mut clear = 0;
-    for y in 0..picture.height {
-        for x in 0..picture.width {
+    for y in 0..rh {
+        for x in 0..rw {
             if rx + x >= BANK || ry + y >= WINDOW_H {
                 continue;
             }
-            let i = ((y * picture.width + x) * 4) as usize;
-            let src = [
-                f32::from(picture.rgba[i]) / 255.0,
-                f32::from(picture.rgba[i + 1]) / 255.0,
-                f32::from(picture.rgba[i + 2]) / 255.0,
-                f32::from(picture.rgba[i + 3]) / 255.0,
-            ];
-            let under = before_row[px_index(WINDOW_W, rx + x, ry + y)];
-            let got = with_row[px_index(WINDOW_W, rx + x, ry + y)];
-            // The raster is premultiplied, so source-over is `src + dst * (1 -
-            // a)` with no divide anywhere.
-            let expect = |c: usize| src[c] + under[c] * (1.0 - src[3]);
-            let tol = 1.0 / 255.0 + 1e-4;
-            assert!(
-                (got[0] - expect(0)).abs() < tol
-                    && (got[1] - expect(1)).abs() < tol
-                    && (got[2] - expect(2)).abs() < tol,
-                "painted pixel ({x},{y}) of the row at ({rx},{ry}) reads {:?}; \
-                 the raster {src:?} over {under:?} says {:?}",
-                &got[0..3],
-                [expect(0), expect(1), expect(2)]
-            );
-            if src[3] > 0.5 {
+            if moved(rx + x, ry + y) {
                 struck += 1;
-            } else if src[3] == 0.0 {
-                clear += 1;
             }
         }
     }
-    // A row that painted nothing would pass that loop without drawing a thing:
-    // the numeral lane's left margin is bare plate and the moulding is not.
+    // A row that drew nothing, or one whose operations all landed off the
+    // piece, leaves the plate exactly as it found it.
     assert!(
-        struck > 500 && clear > 100,
-        "the row painted {struck} covered pixels and left {clear} bare"
+        struck > 500,
+        "the row moved only {struck} pixels of the plate"
     );
 
-    // One screw, the same way: a screw's picture is drawn as a raster too,
-    // and it is round: the item's corners are outside the countersink and
-    // have to leave the plate showing.
+    // ...and it stays inside its own rectangle: every pixel of the bank the
+    // piece does not cover is what it was before the piece went on.
+    for y in 0..WINDOW_H {
+        for x in 0..BANK {
+            if x >= rx && x < rx + rw && y >= ry && y < ry + rh {
+                continue;
+            }
+            assert!(
+                !moved(x, y),
+                "the row at ({rx},{ry}) {rw}x{rh} reached ({x},{y})"
+            );
+        }
+    }
+
+    // One screw, the same way, and it is round: the item's corners are
+    // outside the countersink and have to leave the plate showing.
     let screw = &pieces[1];
     assert_eq!(screw.pass, chassis::Pass::Painted);
-    let head = chassis::paint::rasterize(
-        screw.paint.as_ref().expect("a painted screw"),
-        (screw.rect.width as u32, screw.rect.height as u32),
-        1.0,
-    );
     let (sx, sy) = (screw.rect.x as u32, screw.rect.y as u32);
+    let (sw, sh) = (screw.rect.width as u32, screw.rect.height as u32);
     let plate_only = frame_with_furniture(
         &gpu,
         &mut column,
@@ -594,20 +577,17 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
         &cabinet.chassis_params(),
         &pieces[..2],
     );
-    assert_eq!(head.rgba[3], 0, "the screw's own corner is not transparent");
     assert_eq!(
         with_screw[px_index(WINDOW_W, sx, sy)],
         plate_only[px_index(WINDOW_W, sx, sy)],
         "the screw's transparent corner changed the plate under it"
     );
-    let mid = ((head.height / 2 * head.width + head.width / 2) * 4) as usize;
-    assert!(head.rgba[mid + 3] > 200, "the screw's head is not opaque");
-    let got = with_screw[px_index(WINDOW_W, sx + head.width / 2, sy + head.height / 2)];
+    let centre = px_index(WINDOW_W, sx + sw / 2, sy + sh / 2);
     assert!(
-        (got[0] - f32::from(head.rgba[mid]) / 255.0).abs() < 1.0 / 255.0 + 1e-4,
-        "the screw's own centre reads {:?}, not the raster's {}",
-        &got[0..3],
-        head.rgba[mid]
+        (0..3).any(|c| (with_screw[centre][c] - plate_only[centre][c]).abs() > 4.0 / 255.0),
+        "the screw's head is not on the plate: {:?} over {:?}",
+        &with_screw[centre][0..3],
+        &plate_only[centre][0..3]
     );
 
     // --- the glass ----------------------------------------------------

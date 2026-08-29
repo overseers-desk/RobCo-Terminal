@@ -42,6 +42,13 @@ pub const PLATE_METAL_WGSL: &str = include_str!("../shaders/wgsl/plate_metal.wgs
 /// from [`crate::params::led_record`].
 pub const LED_MATRIX_WGSL: &str = include_str!("../shaders/wgsl/led_matrix.wgsl");
 
+/// `wgsl/vector.wgsl`: the furniture that is drawn rather than shaded, as
+/// one function per [`crate::paint::Op`] kind over a `VectorParams` value.
+/// The parameter block is `app::chrome`'s vector record; the host also
+/// declares the gradient-stop and polygon-point arrays these read their runs
+/// out of.
+pub const VECTOR_WGSL: &str = include_str!("../shaders/wgsl/vector.wgsl");
+
 /// `wgsl/tape_label.wgsl`: the embossed punch tape the switchboard's strips
 /// carry instead of lamps. Parameter block from
 /// [`crate::params::tape_record`].
@@ -92,6 +99,14 @@ mod tests {
         assert!(PLATE_METAL_WGSL.contains("fn plate_metal("));
         assert!(LED_MATRIX_WGSL.contains("fn led_matrix("));
         assert!(TAPE_LABEL_WGSL.contains("fn tape_label("));
+        for name in [
+            "fn vector_rect(",
+            "fn vector_arc(",
+            "fn vector_polygon(",
+            "fn vector_text(",
+        ] {
+            assert!(VECTOR_WGSL.contains(name), "vector.wgsl is missing {name}");
+        }
         // The two display bodies read their raster through the host's one
         // supplied function rather than a texture of their own.
         for src in [LED_MATRIX_WGSL, TAPE_LABEL_WGSL] {
@@ -104,6 +119,7 @@ mod tests {
             PLATE_METAL_WGSL,
             LED_MATRIX_WGSL,
             TAPE_LABEL_WGSL,
+            VECTOR_WGSL,
         ] {
             assert!(!src.contains("@group"));
             assert!(!src.contains("@vertex"));

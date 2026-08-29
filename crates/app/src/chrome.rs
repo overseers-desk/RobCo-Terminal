@@ -22,20 +22,38 @@
 //! chain per distinct parameter set to work around it.
 //!
 //! One pass is also what keeps the bank's own order. The plan alternates
-//! shaded pieces and painted ones -- a row's moulding is struck over the
+//! shaded pieces and drawn ones -- a row's moulding is struck over the
 //! plate and under nothing, a strip's lamps sit inside the moulding -- so a
-//! mount that drew all the shaded pieces and then all the painted ones would
+//! mount that drew all the shaded pieces and then all the drawn ones would
 //! put a row's chrome over its own lit window. Every piece is an instance
 //! here, in the plan's own order, and the draw is painter's order.
 //!
 //! # The vector half
 //!
-//! A painted piece carries a [`chassis::paint::Painting`], a description
-//! rather than an image, and is struck on the CPU into the raster atlas at
-//! the destination's own size in physical pixels. The description is kept
-//! beside the raster, so a bank standing still strikes nothing: the plan is
-//! rebuilt every frame from the channel model and on all but the frames where
-//! something actually changed the new description equals the old one.
+//! A piece of drawn furniture carries a [`chassis::paint::Painting`], a list
+//! of operations rather than an image, and **each operation is its own
+//! instance**: a rounded rectangle, a gradient, an arc, a filled path or a
+//! line of text, in the order the painting lists them. The fixed-function
+//! blender composites them source-over in that order, which is what one
+//! accumulator used to do on the CPU, so a stack of half-transparent lips
+//! still adds up the same way.
+//!
+//! Gradient stops and polygon points live in storage buffers of their own,
+//! indexed per instance by an offset and a count, so a five-stop moulding
+//! costs the instance nothing and quantises nothing.
+//!
+//! Text is the one thing still struck on the CPU, because a glyph outline is
+//! not a shape the vector vocabulary can name. Each run goes through swash
+//! once ([`chassis::paint::text_raster`]) and is packed into the same atlas
+//! the display kits' rasters use. The cache is keyed on the run and the box
+//! it is aligned in, both of which are measured in the painting's own
+//! coordinates: a piece that moves keeps its numerals, so dragging the seam
+//! re-strikes nothing.
+//!
+//! Compositing for text is single-alpha premultiplied, on a coverage that is
+//! the largest of the three subpixel channels. Where a line lies on the plate
+//! that is the result component-alpha reached anyway, since the seam that
+//! carried the raster to the GPU had one alpha channel to put it in.
 //!
 //! # Which size is which
 //!
@@ -54,8 +72,11 @@
 //! parameter record and the rectangle is an instance attribute, so neither can
 //! be read as the other.
 
+use std::collections::{HashMap, HashSet};
+
 use bytemuck::{Pod, Zeroable};
 use chassis::furniture::{Pass, Piece, Raster};
+use chassis::paint::{Align, Face, Fill, Op, TextOp};
 use chassis::params::{
     led_record, plate_record, tape_record, ChassisMetalParams, CHASSIS_RECORD_FLOATS,
     PIECE_RECORD_FLOATS,
@@ -67,16 +88,23 @@ const KIND_CHASSIS: u32 = 0;
 const KIND_PLATE: u32 = 1;
 const KIND_LED: u32 = 2;
 const KIND_TAPE: u32 = 3;
-const KIND_RASTER: u32 = 4;
+const KIND_RRECT: u32 = 4;
+const KIND_RRECT_LINEAR: u32 = 5;
+const KIND_RRECT_RADIAL: u32 = 6;
+const KIND_ARC: u32 = 7;
+const KIND_POLY: u32 = 8;
+const KIND_TEXT: u32 = 9;
 
 /// One texel of transparent gutter between two rasters in the atlas, so a
 /// piece sampling at exactly the far edge of its own rectangle reads nothing
 /// rather than its neighbour's first lamp.
 const GUTTER: u32 = 1;
 
-/// A painted piece's whole parameter record: the `vec4` its picture's place
-/// in the atlas takes.
-const PICTURE_RECORD_FLOATS: usize = 4;
+/// Floats in one vector record, one gradient stop, and one polygon point:
+/// what [`Chrome::fit`] sizes those three buffers by.
+const VECTOR_RECORD_FLOATS: usize = 44;
+const STOP_RECORD_FLOATS: usize = 8;
+const POINT_RECORD_FLOATS: usize = 2;
 
 /// One rectangle to draw.
 #[repr(C)]
@@ -98,6 +126,55 @@ struct Uniforms {
     _pad: [f32; 2],
 }
 
+/// One drawn operation's parameters, in the **piece's own** device pixels.
+///
+/// `origin` is where that piece's top-left sits on the target, so the
+/// fragment stage subtracts it and is back in the painting's coordinates.
+/// Keeping the arithmetic piece-local rather than target-absolute is what
+/// keeps a radial gradient's two-circle solve inside f32's reach on a tall
+/// column.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+struct VectorRecord {
+    rect: [f32; 4],
+    clip: [f32; 4],
+    color: [f32; 4],
+    border_color: [f32; 4],
+    /// A radial gradient's inner circle as `(x, y, r)`; an arc's centre,
+    /// radius and line width.
+    g0: [f32; 4],
+    /// A radial gradient's outer circle as `(x, y, r)`; an arc's start and
+    /// end angle.
+    g1: [f32; 4],
+    /// A text run's place in the atlas, as origin and extent in 0..1.
+    atlas: [f32; 4],
+    origin: [f32; 2],
+    radius: f32,
+    border_width: f32,
+    clip_radius: f32,
+    opacity: f32,
+    rotation: f32,
+    pivot_x: f32,
+    pivot_y: f32,
+    /// 1 where a linear gradient runs left to right instead of top to bottom.
+    horizontal: f32,
+    span_offset: u32,
+    span_count: u32,
+    has_clip: u32,
+    /// The WGSL struct's array stride rounds up to its 16-byte alignment;
+    /// these three carry the same rounding on this side.
+    _pad: [u32; 3],
+}
+
+/// One stop of a gradient, in the shape the WGSL `GradStop` declares.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+struct StopRecord {
+    color: [f32; 4],
+    position: f32,
+    _pad: [f32; 3],
+}
+
 /// The glue around the shader bodies `chassis::shaders` compiles in: the
 /// bindings, the vertex stage, and the switch on `kind`.
 ///
@@ -109,14 +186,17 @@ const CHROME_WGSL: &str = r#"
 @group(0) @binding(2) var<storage, read> plates: array<PlateParams>;
 @group(0) @binding(3) var<storage, read> leds: array<LedParams>;
 @group(0) @binding(4) var<storage, read> tapes: array<TapeParams>;
-// A painted piece's whole record: where its picture sits in the atlas.
-@group(0) @binding(5) var<storage, read> pictures: array<vec4<f32>>;
-@group(0) @binding(6) var atlas: texture_2d<f32>;
-@group(0) @binding(7) var atlas_sampler: sampler;
+@group(0) @binding(5) var<storage, read> vectors: array<VectorParams>;
+// The runs of gradient stops and polygon points every drawn shape indexes
+// into, so a five-stop moulding costs the instance nothing.
+@group(0) @binding(6) var<storage, read> stops: array<GradStop>;
+@group(0) @binding(7) var<storage, read> points: array<vec2<f32>>;
+@group(0) @binding(8) var atlas: texture_2d<f32>;
+@group(0) @binding(9) var atlas_sampler: sampler;
 
-// The raster read the display bodies ask the host for. Every strip's raster
-// lives in one atlas, so a body's own 0..1 coordinates are mapped through the
-// rectangle its record carries.
+// The raster read the display bodies and the text body ask the host for.
+// Every raster lives in one atlas, so a body's own 0..1 coordinates are
+// mapped through the rectangle its record carries.
 //
 // `textureSampleLevel` rather than `textureSample`: the bodies read their
 // raster inside an early-out branch, and a plain sample may only be taken in
@@ -179,14 +259,80 @@ fn fs(input: VsOut) -> @location(0) vec4<f32> {
     if (input.kind == 3u) {
         return tape_label(input.uv, tapes[input.index]);
     }
+    // The drawn half reads the fragment's own position rather than its `uv`:
+    // a shape's arithmetic is in the piece's pixels, and the instance is only
+    // the box that carries it.
     if (input.kind == 4u) {
-        // The picture is already premultiplied, at one texel per pixel of the
-        // rectangle it is drawn into.
-        return chrome_sample(input.uv, pictures[input.index]);
+        return vector_rect(input.pos.xy, vectors[input.index], 0u);
+    }
+    if (input.kind == 5u) {
+        return vector_rect(input.pos.xy, vectors[input.index], 1u);
+    }
+    if (input.kind == 6u) {
+        return vector_rect(input.pos.xy, vectors[input.index], 2u);
+    }
+    if (input.kind == 7u) {
+        return vector_arc(input.pos.xy, vectors[input.index]);
+    }
+    if (input.kind == 8u) {
+        return vector_polygon(input.pos.xy, vectors[input.index]);
+    }
+    if (input.kind == 9u) {
+        return vector_text(input.pos.xy, vectors[input.index]);
     }
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
 }
 "#;
+
+/// What a struck line of text is keyed on: the run, and the box it is aligned
+/// in, at the device size it was struck for.
+///
+/// Every measure in it is in the painting's own coordinates, which a piece
+/// moving does not change, so a seam drag keeps the twelve numerals it has.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct RunKey {
+    face: u8,
+    face_name: &'static str,
+    pixel_size: u32,
+    letter_spacing: u64,
+    bold: bool,
+    text: String,
+    x: u64,
+    y: u64,
+    width: u64,
+    align: u8,
+}
+
+fn run_key(op: &TextOp, scale: f64) -> RunKey {
+    let (face, face_name) = match op.face {
+        Face::Catalogue(name) => (0u8, name),
+        Face::Sans => (1, ""),
+        Face::Serif => (2, ""),
+    };
+    RunKey {
+        face,
+        face_name,
+        pixel_size: (op.pixel_size * scale).round().max(1.0) as u32,
+        letter_spacing: (op.letter_spacing * scale).to_bits(),
+        bold: op.bold,
+        text: op.text.clone(),
+        x: (op.x * scale).to_bits(),
+        y: (op.y * scale).to_bits(),
+        width: (op.width * scale).to_bits(),
+        align: match op.align {
+            Align::Left => 0,
+            Align::Center => 1,
+            Align::Right => 2,
+        },
+    }
+}
+
+/// One run's mask, and where it lands in the painting it belongs to.
+struct StruckRun {
+    raster: Raster,
+    x: i32,
+    y: i32,
+}
 
 /// The mount: one pipeline, the instance buffer, and one parameter buffer per
 /// kind, each grown to what a frame asked for.
@@ -195,43 +341,40 @@ pub struct Chrome {
     layout: wgpu::BindGroupLayout,
     uniforms: wgpu::Buffer,
     /// One parameter buffer per kind, each grown to what a frame asked for:
-    /// the casting's, then the plate's, the lamp grid's and the tape's.
+    /// the casting's, then the plate's, the lamp grid's, the tape's, the
+    /// drawn shapes', and the two runs those index into.
     castings: wgpu::Buffer,
     plates: wgpu::Buffer,
     leds: wgpu::Buffer,
     tapes: wgpu::Buffer,
-    pictures: wgpu::Buffer,
-    /// How many records each of the five has room for.
-    room: [usize; 5],
+    vectors: wgpu::Buffer,
+    stops: wgpu::Buffer,
+    points: wgpu::Buffer,
+    /// How many records each of the seven has room for.
+    room: [usize; 7],
     instances: wgpu::Buffer,
     /// How many instances the instance buffer has room for.
     capacity: usize,
-    /// Every display piece's raster, in one texture, so one draw covers the
-    /// whole bank. Rebuilt when the shape of the plan changes.
+    /// Every display piece's raster and every struck line of text, in one
+    /// texture, so one draw covers the whole bank.
     atlas: wgpu::Texture,
     atlas_size: (u32, u32),
     sampler: wgpu::Sampler,
     bind_group: wgpu::BindGroup,
-    /// One struck picture per painted piece, held across frames.
-    struck: Vec<Option<Struck>>,
-}
-
-/// A painted piece's picture and the description it was struck from.
-struct Struck {
-    size: (u32, u32),
-    painting: chassis::paint::Painting,
-    raster: Raster,
+    /// The lines of text struck so far, by run.
+    text: HashMap<RunKey, StruckRun>,
 }
 
 impl Chrome {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let source = format!(
-            "{}{}{}{}{}{CHROME_WGSL}",
+            "{}{}{}{}{}{}{CHROME_WGSL}",
             chassis::shaders::COMMON_WGSL,
             chassis::shaders::CHASSIS_METAL_WGSL,
             chassis::shaders::PLATE_METAL_WGSL,
             chassis::shaders::LED_MATRIX_WGSL,
             chassis::shaders::TAPE_LABEL_WGSL,
+            chassis::shaders::VECTOR_WGSL,
         );
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("chassis chrome"),
@@ -255,8 +398,10 @@ impl Chrome {
                 storage_entry(3),
                 storage_entry(4),
                 storage_entry(5),
+                storage_entry(6),
+                storage_entry(7),
                 wgpu::BindGroupLayoutEntry {
-                    binding: 6,
+                    binding: 8,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: false },
@@ -266,7 +411,7 @@ impl Chrome {
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 7,
+                    binding: 9,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                     count: None,
@@ -327,8 +472,8 @@ impl Chrome {
             cache: None,
         });
 
-        let capacity = 32;
-        let room = [1usize, 4, 24, 24, 32];
+        let capacity = 256;
+        let room = [1usize, 4, 24, 24, 256, 128, 64];
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("chassis chrome uniforms"),
             size: std::mem::size_of::<Uniforms>() as u64,
@@ -339,7 +484,9 @@ impl Chrome {
         let plates = make_records(device, "plates", room[1] * PIECE_RECORD_FLOATS);
         let leds = make_records(device, "lamp grids", room[2] * PIECE_RECORD_FLOATS);
         let tapes = make_records(device, "tapes", room[3] * PIECE_RECORD_FLOATS);
-        let pictures = make_records(device, "pictures", room[4] * PICTURE_RECORD_FLOATS);
+        let vectors = make_records(device, "shapes", room[4] * VECTOR_RECORD_FLOATS);
+        let stops = make_records(device, "gradient stops", room[5] * STOP_RECORD_FLOATS);
+        let points = make_records(device, "polygon points", room[6] * POINT_RECORD_FLOATS);
         let instances = make_instances(device, capacity);
         let atlas_size = (1, 1);
         let atlas = make_atlas(device, atlas_size);
@@ -348,13 +495,18 @@ impl Chrome {
             // Nearest, and never anything else: a lamp grid reads exactly one
             // texel per cell and a filtered sample would light lamps between
             // two of them; the tape's dilation reads a nearest sample by hand
-            // and the kit's oracle test is written against that.
+            // and the kit's oracle test is written against that. A line of
+            // text is laid one texel to the device pixel for the same reason.
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
         let bind_group = make_bind(
-            device, &layout, &uniforms, &castings, &plates, &leds, &tapes, &pictures, &atlas,
+            device,
+            &layout,
+            &uniforms,
+            &[&castings, &plates, &leds, &tapes, &vectors, &stops, &points],
+            &atlas,
             &sampler,
         );
         Self {
@@ -365,7 +517,9 @@ impl Chrome {
             plates,
             leds,
             tapes,
-            pictures,
+            vectors,
+            stops,
+            points,
             room,
             instances,
             capacity,
@@ -373,7 +527,7 @@ impl Chrome {
             atlas_size,
             sampler,
             bind_group,
-            struck: Vec::new(),
+            text: HashMap::new(),
         }
     }
 
@@ -384,6 +538,9 @@ impl Chrome {
     /// screen well's physical size, which [`well_ruler`] puts on the logical
     /// ruler the casting's field is measured in; `scale_factor` is the
     /// window's device pixel ratio, for that conversion.
+    ///
+    /// `casting` is the bank's floor. `None` draws no floor at all, which is
+    /// a mount asked for the furniture on its own and nothing under it.
     ///
     /// `pieces` is `chassis::Cabinet::furniture`, whose rectangles are
     /// logical and are scaled by the same ratio on the way in.
@@ -401,88 +558,124 @@ impl Chrome {
         column: (u32, u32),
         well: (u32, u32),
         scale_factor: f64,
-        casting: &ChassisMetalParams,
+        casting: Option<&ChassisMetalParams>,
         pieces: &[Piece],
     ) {
         if column.0 == 0 || column.1 == 0 || target.0 == 0 || target.1 == 0 {
             return;
         }
 
-        // The pictures first: a painted piece is struck on the CPU into the
-        // same atlas the display rasters go in, and only when its description
-        // or its rectangle changed.
-        self.strike(pieces, scale_factor, column);
+        // Where each piece lands, asked once and read three times below.
+        let dests: Vec<Option<(i32, i32, u32, u32)>> = pieces
+            .iter()
+            .map(|p| scale_rect(p.rect, scale_factor, column))
+            .collect();
 
-        // Then the packing, because a piece's record carries where its raster
-        // landed and the records are built after it.
-        let plan = pack(pieces, &self.struck);
+        // The lines of text first: a run this frame asks for and has not
+        // struck before goes through swash here, and the atlas is packed
+        // after, because a record carries where its mask landed.
+        let runs = self.strike_text(pieces, &dests, scale_factor);
+        let plan = pack(pieces, &runs, &self.text);
         let regrown = self.fit_atlas(device, plan.size);
-        for (i, place) in &plan.places {
-            if let Some(raster) = raster_of(pieces, &self.struck, *i) {
-                upload(queue, &self.atlas, raster, *place);
+        for (what, at) in &plan.places {
+            if let Some(raster) = raster_of(pieces, &self.text, what.clone()) {
+                upload(queue, &self.atlas, raster, *at);
             }
         }
-        let atlas_size = self.atlas_size;
-        let struck = &self.struck;
-        let rect_of = |i: usize| -> [f32; 4] {
-            let (w, h) = (atlas_size.0 as f32, atlas_size.1 as f32);
-            match plan.places.iter().position(|(p, _)| *p == i) {
-                Some(k) => {
-                    let (x, y) = plan.places[k].1;
-                    let r = raster_of(pieces, struck, i).expect("a placed raster");
-                    [
-                        x as f32 / w,
-                        y as f32 / h,
+        let uv_of = |what: Placed| -> [f32; 4] {
+            let (w, h) = (self.atlas_size.0 as f32, self.atlas_size.1 as f32);
+            match plan.places.iter().find(|(p, _)| *p == what) {
+                Some((_, (x, y))) => match raster_of(pieces, &self.text, what) {
+                    Some(r) => [
+                        *x as f32 / w,
+                        *y as f32 / h,
                         r.width.max(1) as f32 / w,
                         r.height.max(1) as f32 / h,
-                    ]
-                }
+                    ],
+                    None => [0.0, 0.0, 1.0, 1.0],
+                },
                 None => [0.0, 0.0, 1.0, 1.0],
             }
         };
 
-        let ruler = well_ruler(well, scale_factor);
-        let castings = vec![casting.record([ruler.0 as f32, ruler.1 as f32])];
+        let mut castings: Vec<[f32; CHASSIS_RECORD_FLOATS]> = Vec::new();
         let mut plates: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
         let mut leds: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
         let mut tapes: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
-        let mut pictures: Vec<[f32; PICTURE_RECORD_FLOATS]> = Vec::new();
+        let mut vectors: Vec<VectorRecord> = Vec::new();
+        let mut stops: Vec<StopRecord> = Vec::new();
+        let mut points: Vec<[f32; 2]> = Vec::new();
+        let mut instances: Vec<Instance> = Vec::new();
 
         // The casting is the bank's floor, so it goes first and everything
         // else keeps the plan's own order: one draw, painter's order, no sort.
-        let mut instances = vec![Instance {
-            rect: [0.0, 0.0, column.0 as f32, column.1 as f32],
-            kind: KIND_CHASSIS,
-            index: 0,
-            _pad: [0, 0],
-        }];
+        if let Some(casting) = casting {
+            let ruler = well_ruler(well, scale_factor);
+            castings.push(casting.record([ruler.0 as f32, ruler.1 as f32]));
+            instances.push(Instance {
+                rect: [0.0, 0.0, column.0 as f32, column.1 as f32],
+                kind: KIND_CHASSIS,
+                index: 0,
+                _pad: [0, 0],
+            });
+        }
+
+        let scale = if scale_factor > 0.0 {
+            scale_factor
+        } else {
+            1.0
+        };
         for (i, piece) in pieces.iter().enumerate() {
-            let Some(dest) = scale_rect(piece.rect, scale_factor, column) else {
+            let Some(dest) = dests[i] else {
                 continue;
             };
+            let rect = [dest.0 as f32, dest.1 as f32, dest.2 as f32, dest.3 as f32];
             let (kind, index) = match piece.pass {
                 Pass::Plate => {
                     plates.push(plate_record(&piece.params));
                     (KIND_PLATE, plates.len() - 1)
                 }
                 Pass::LedMatrix => {
-                    leds.push(led_record(&piece.params, rect_of(i)));
+                    leds.push(led_record(&piece.params, uv_of(Placed::Source(i))));
                     (KIND_LED, leds.len() - 1)
                 }
                 Pass::TapeLabel => {
-                    tapes.push(tape_record(&piece.params, rect_of(i)));
+                    tapes.push(tape_record(&piece.params, uv_of(Placed::Source(i))));
                     (KIND_TAPE, tapes.len() - 1)
                 }
                 Pass::Painted => {
-                    if struck[i].is_none() {
+                    let Some(painting) = piece.paint.as_ref() else {
                         continue;
+                    };
+                    for (o, op) in painting.ops.iter().enumerate() {
+                        let text = runs.get(&(i, o)).and_then(|k| self.text.get(k));
+                        let atlas = match runs.get(&(i, o)) {
+                            Some(k) => uv_of(Placed::Run(k.clone())),
+                            None => [0.0, 0.0, 1.0, 1.0],
+                        };
+                        let Some((kind, record, span)) =
+                            op_record(op, scale, dest, text, atlas, stops.len(), points.len())
+                        else {
+                            continue;
+                        };
+                        let Some(rect) = span.rect else {
+                            continue;
+                        };
+                        stops.extend(span.stops);
+                        points.extend(span.points);
+                        vectors.push(record);
+                        instances.push(Instance {
+                            rect,
+                            kind,
+                            index: (vectors.len() - 1) as u32,
+                            _pad: [0, 0],
+                        });
                     }
-                    pictures.push(rect_of(i));
-                    (KIND_RASTER, pictures.len() - 1)
+                    continue;
                 }
             };
             instances.push(Instance {
-                rect: [dest.0 as f32, dest.1 as f32, dest.2 as f32, dest.3 as f32],
+                rect,
                 kind,
                 index: index as u32,
                 _pad: [0, 0],
@@ -493,7 +686,9 @@ impl Chrome {
         rebind |= self.fit(device, 1, plates.len(), PIECE_RECORD_FLOATS);
         rebind |= self.fit(device, 2, leds.len(), PIECE_RECORD_FLOATS);
         rebind |= self.fit(device, 3, tapes.len(), PIECE_RECORD_FLOATS);
-        rebind |= self.fit(device, 4, pictures.len(), PICTURE_RECORD_FLOATS);
+        rebind |= self.fit(device, 4, vectors.len(), VECTOR_RECORD_FLOATS);
+        rebind |= self.fit(device, 5, stops.len(), STOP_RECORD_FLOATS);
+        rebind |= self.fit(device, 6, points.len(), POINT_RECORD_FLOATS);
         if instances.len() > self.capacity {
             self.capacity = instances.len().next_power_of_two();
             self.instances = make_instances(device, self.capacity);
@@ -506,7 +701,12 @@ impl Chrome {
         write_records(queue, &self.plates, &plates);
         write_records(queue, &self.leds, &leds);
         write_records(queue, &self.tapes, &tapes);
-        write_records(queue, &self.pictures, &pictures);
+        write_slice(queue, &self.vectors, &vectors);
+        write_slice(queue, &self.stops, &stops);
+        write_slice(queue, &self.points, &points);
+        if instances.is_empty() {
+            return;
+        }
         queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instances));
         queue.write_buffer(
             &self.uniforms,
@@ -559,44 +759,60 @@ impl Chrome {
             1 => (&mut self.plates, "plates"),
             2 => (&mut self.leds, "lamp grids"),
             3 => (&mut self.tapes, "tapes"),
-            _ => (&mut self.pictures, "pictures"),
+            4 => (&mut self.vectors, "shapes"),
+            5 => (&mut self.stops, "gradient stops"),
+            _ => (&mut self.points, "polygon points"),
         };
         *buffer = make_records(device, label, size);
         true
     }
 
-    /// Strike every painted piece whose description or rectangle changed, and
-    /// forget the pictures of pieces the plan no longer carries.
-    fn strike(&mut self, pieces: &[Piece], scale_factor: f64, column: (u32, u32)) {
-        self.struck.resize_with(pieces.len(), || None);
-        self.struck.truncate(pieces.len());
+    /// Strike every line of text this frame's paintings ask for that is not
+    /// struck already, and forget the runs the frame did not ask for.
+    ///
+    /// The answer says which run each text op belongs to, by `(piece,
+    /// operation)`: the second pass builds records in the same order and
+    /// reads its mask out of that.
+    fn strike_text(
+        &mut self,
+        pieces: &[Piece],
+        dests: &[Option<(i32, i32, u32, u32)>],
+        scale_factor: f64,
+    ) -> HashMap<(usize, usize), RunKey> {
+        let scale = if scale_factor > 0.0 {
+            scale_factor
+        } else {
+            1.0
+        };
+        let mut asked: HashMap<(usize, usize), RunKey> = HashMap::new();
+        let mut alive: HashSet<RunKey> = HashSet::new();
         for (i, piece) in pieces.iter().enumerate() {
-            let Some(painting) = piece.paint.as_ref() else {
-                self.struck[i] = None;
-                continue;
-            };
-            let Some(dest) = scale_rect(piece.rect, scale_factor, column) else {
-                self.struck[i] = None;
-                continue;
-            };
-            let size = (dest.2.max(1), dest.3.max(1));
-            let kept = self.struck[i]
-                .as_ref()
-                .is_some_and(|s| s.size == size && &s.painting == painting);
-            if kept {
+            if dests[i].is_none() {
                 continue;
             }
-            let picture = chassis::paint::rasterize(painting, size, scale_factor);
-            self.struck[i] = Some(Struck {
-                size,
-                painting: painting.clone(),
-                raster: Raster {
-                    width: picture.width,
-                    height: picture.height,
-                    rgba: picture.rgba,
-                },
-            });
+            let Some(painting) = piece.paint.as_ref() else {
+                continue;
+            };
+            for (o, op) in painting.ops.iter().enumerate() {
+                let Op::Text(t) = op else {
+                    continue;
+                };
+                if t.opacity <= 0.0 {
+                    continue;
+                }
+                let key = run_key(t, scale);
+                if !self.text.contains_key(&key) {
+                    let Some((raster, x, y)) = chassis::paint::text_raster(t, scale) else {
+                        continue;
+                    };
+                    self.text.insert(key.clone(), StruckRun { raster, x, y });
+                }
+                alive.insert(key.clone());
+                asked.insert((i, o), key);
+            }
         }
+        self.text.retain(|k, _| alive.contains(k));
+        asked
     }
 
     /// Grow the atlas to hold `size` texels. Only ever grows: the bank's plan
@@ -620,53 +836,84 @@ impl Chrome {
             device,
             &self.layout,
             &self.uniforms,
-            &self.castings,
-            &self.plates,
-            &self.leds,
-            &self.tapes,
-            &self.pictures,
+            &[
+                &self.castings,
+                &self.plates,
+                &self.leds,
+                &self.tapes,
+                &self.vectors,
+                &self.stops,
+                &self.points,
+            ],
             &self.atlas,
             &self.sampler,
         );
     }
 }
 
-/// Where each display piece's raster goes in the atlas.
-///
-/// One column, each raster under the last with a gutter row between: the
-/// rasters are a lamp grid or a glyph mask, tens of texels on a side, so a
-/// shelf packer would buy nothing a bank of twenty strips can measure.
-struct Packing {
-    size: (u32, u32),
-    /// `(piece index, top-left in texels)`, in the plan's own order.
-    places: Vec<(usize, (u32, u32))>,
+/// One thing in the atlas: a display piece's own raster, or a struck line.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Placed {
+    Source(usize),
+    Run(RunKey),
 }
 
-/// A piece's raster: the display's own, or the picture a painted piece was
-/// struck into.
+/// Where each raster this frame needs goes in the atlas.
+///
+/// One column, each raster under the last with a gutter row between: the
+/// rasters are a lamp grid, a glyph mask or a two-figure numeral, tens of
+/// texels on a side, so a shelf packer would buy nothing a bank of twenty
+/// strips can measure.
+struct Packing {
+    size: (u32, u32),
+    /// `(what, top-left in texels)`, in the plan's own order.
+    places: Vec<(Placed, (u32, u32))>,
+}
+
 fn raster_of<'a>(
     pieces: &'a [Piece],
-    struck: &'a [Option<Struck>],
-    i: usize,
+    text: &'a HashMap<RunKey, StruckRun>,
+    what: Placed,
 ) -> Option<&'a Raster> {
-    match pieces[i].source.as_ref() {
-        Some(raster) => Some(raster),
-        None => struck.get(i).and_then(|s| s.as_ref()).map(|s| &s.raster),
+    match what {
+        Placed::Source(i) => pieces[i].source.as_ref(),
+        Placed::Run(key) => text.get(&key).map(|r| &r.raster),
     }
 }
 
-fn pack(pieces: &[Piece], struck: &[Option<Struck>]) -> Packing {
-    let mut places = Vec::new();
+fn pack(
+    pieces: &[Piece],
+    runs: &HashMap<(usize, usize), RunKey>,
+    text: &HashMap<RunKey, StruckRun>,
+) -> Packing {
+    let mut places: Vec<(Placed, (u32, u32))> = Vec::new();
+    let mut seen: HashSet<Placed> = HashSet::new();
     let mut width = 1u32;
     let mut y = 0u32;
-    for i in 0..pieces.len() {
-        let Some(raster) = raster_of(pieces, struck, i) else {
-            continue;
-        };
+    let mut put = |what: Placed, raster: &Raster, width: &mut u32, y: &mut u32| {
+        if !seen.insert(what.clone()) {
+            return;
+        }
         let (w, h) = (raster.width.max(1), raster.height.max(1));
-        places.push((i, (0, y)));
-        width = width.max(w + GUTTER);
-        y += h + GUTTER;
+        places.push((what, (0, *y)));
+        *width = (*width).max(w + GUTTER);
+        *y += h + GUTTER;
+    };
+    for (i, piece) in pieces.iter().enumerate() {
+        if let Some(raster) = piece.source.as_ref() {
+            put(Placed::Source(i), raster, &mut width, &mut y);
+        }
+        if let Some(painting) = piece.paint.as_ref() {
+            for o in 0..painting.ops.len() {
+                let Some(key) = runs.get(&(i, o)) else {
+                    continue;
+                };
+                let Some(run) = text.get(key) else {
+                    continue;
+                };
+                put(Placed::Run(key.clone()), &run.raster, &mut width, &mut y);
+            }
+        }
     }
     Packing {
         size: (width, y.max(1)),
@@ -674,7 +921,229 @@ fn pack(pieces: &[Piece], struck: &[Option<Struck>]) -> Packing {
     }
 }
 
+/// The runs one drawn shape adds to the two shared buffers, and the box its
+/// instance covers.
+#[derive(Default)]
+struct Span {
+    rect: Option<[f32; 4]>,
+    stops: Vec<StopRecord>,
+    points: Vec<[f32; 2]>,
+}
+
+/// The record and instance rectangle for one drawn operation, or `None` for
+/// one that covers nothing.
+///
+/// `dest` is the piece's rectangle on the target; every measure in the record
+/// is the operation's own, scaled to device pixels and left in the painting's
+/// coordinates.
+fn op_record(
+    op: &Op,
+    scale: f64,
+    dest: (i32, i32, u32, u32),
+    text: Option<&StruckRun>,
+    atlas: [f32; 4],
+    stop_base: usize,
+    point_base: usize,
+) -> Option<(u32, VectorRecord, Span)> {
+    let mut v = VectorRecord {
+        origin: [dest.0 as f32, dest.1 as f32],
+        opacity: 1.0,
+        ..VectorRecord::default()
+    };
+    let mut span = Span::default();
+    let kind = match op {
+        Op::Rect(r) => {
+            if r.opacity <= 0.0 || r.rect.width <= 0.0 || r.rect.height <= 0.0 {
+                return None;
+            }
+            let rect = scaled(r.rect.x, r.rect.y, r.rect.width, r.rect.height, scale);
+            v.rect = rect;
+            v.radius = (r.radius * scale) as f32;
+            v.opacity = r.opacity;
+            if let Some((cr, radius)) = r.clip.as_ref() {
+                v.clip = scaled(cr.x, cr.y, cr.width, cr.height, scale);
+                v.clip_radius = (radius * scale) as f32;
+                v.has_clip = 1;
+            }
+            if let Some((bw, color)) = r.border {
+                v.border_width = (bw * scale) as f32;
+                v.border_color = [color.r, color.g, color.b, color.a];
+            }
+            if let Some((angle, (px, py))) = r.rotation {
+                v.rotation = angle as f32;
+                v.pivot_x = (px * scale) as f32;
+                v.pivot_y = (py * scale) as f32;
+            }
+            // A rotated rectangle sweeps a wider box; its diagonal covers it.
+            let pad = 1.0
+                + if r.rotation.is_some() {
+                    f64::from(rect[2] * rect[2] + rect[3] * rect[3]).sqrt()
+                } else {
+                    0.0
+                };
+            let (mut x0, mut y0) = (f64::from(rect[0]) - pad, f64::from(rect[1]) - pad);
+            let (mut x1, mut y1) = (
+                f64::from(rect[0] + rect[2]) + pad,
+                f64::from(rect[1] + rect[3]) + pad,
+            );
+            // Clipped: nothing outside the clip can be drawn, so the smaller
+            // of the two boxes is the one to cover.
+            if r.clip.is_some() {
+                x0 = x0.max(f64::from(v.clip[0]) - 1.0);
+                y0 = y0.max(f64::from(v.clip[1]) - 1.0);
+                x1 = x1.min(f64::from(v.clip[0] + v.clip[2]) + 1.0);
+                y1 = y1.min(f64::from(v.clip[1] + v.clip[3]) + 1.0);
+            }
+            span.rect = op_rect(x0, y0, x1, y1, dest);
+            match &r.fill {
+                Fill::Solid(c) => {
+                    v.color = [c.r, c.g, c.b, c.a];
+                    KIND_RRECT
+                }
+                Fill::Linear { horizontal, stops } => {
+                    v.horizontal = if *horizontal { 1.0 } else { 0.0 };
+                    v.span_offset = stop_base as u32;
+                    v.span_count = stops.len() as u32;
+                    span.stops = stops.iter().map(stop_record).collect();
+                    KIND_RRECT_LINEAR
+                }
+                Fill::Radial { from, to, stops } => {
+                    // The two circles are authored in the same logical pixels
+                    // as the rectangle and the shape's arithmetic walks device
+                    // ones, so they are scaled here with the rest of the
+                    // geometry. Unscaled, at DPR 2 the circles stayed in the
+                    // top-left quarter while the fragment covered all of it,
+                    // and every screw dome came out flat.
+                    v.g0 = [
+                        (from.0 * scale) as f32,
+                        (from.1 * scale) as f32,
+                        (from.2 * scale) as f32,
+                        0.0,
+                    ];
+                    v.g1 = [
+                        (to.0 * scale) as f32,
+                        (to.1 * scale) as f32,
+                        (to.2 * scale) as f32,
+                        0.0,
+                    ];
+                    v.span_offset = stop_base as u32;
+                    v.span_count = stops.len() as u32;
+                    span.stops = stops.iter().map(stop_record).collect();
+                    KIND_RRECT_RADIAL
+                }
+            }
+        }
+        Op::Arc(a) => {
+            let (cx, cy) = (a.center.0 * scale, a.center.1 * scale);
+            let radius = a.radius * scale;
+            let half = (a.line_width * scale) / 2.0;
+            v.g0 = [
+                cx as f32,
+                cy as f32,
+                radius as f32,
+                (a.line_width * scale) as f32,
+            ];
+            v.g1 = [a.start as f32, a.end as f32, 0.0, 0.0];
+            v.color = [a.color.r, a.color.g, a.color.b, a.color.a];
+            let reach = radius + half + 1.0;
+            span.rect = op_rect(cx - reach, cy - reach, cx + reach, cy + reach, dest);
+            KIND_ARC
+        }
+        Op::Polygon(g) => {
+            if g.points.len() < 3 || g.opacity <= 0.0 {
+                return None;
+            }
+            let pts: Vec<[f32; 2]> = g
+                .points
+                .iter()
+                .map(|(x, y)| [(x * scale) as f32, (y * scale) as f32])
+                .collect();
+            let (mut x0, mut y0) = (f64::MAX, f64::MAX);
+            let (mut x1, mut y1) = (f64::MIN, f64::MIN);
+            for p in &pts {
+                x0 = x0.min(f64::from(p[0]));
+                y0 = y0.min(f64::from(p[1]));
+                x1 = x1.max(f64::from(p[0]));
+                y1 = y1.max(f64::from(p[1]));
+            }
+            v.color = [g.color.r, g.color.g, g.color.b, g.color.a];
+            v.opacity = g.opacity;
+            v.span_offset = point_base as u32;
+            v.span_count = pts.len() as u32;
+            span.points = pts;
+            span.rect = op_rect(x0, y0, x1, y1, dest);
+            KIND_POLY
+        }
+        Op::Text(t) => {
+            if t.opacity <= 0.0 {
+                return None;
+            }
+            let run = text?;
+            let (w, h) = (run.raster.width as f64, run.raster.height as f64);
+            v.rect = [run.x as f32, run.y as f32, w as f32, h as f32];
+            v.atlas = atlas;
+            v.color = [t.color.r, t.color.g, t.color.b, t.color.a];
+            v.opacity = t.opacity;
+            span.rect = op_rect(
+                f64::from(run.x),
+                f64::from(run.y),
+                f64::from(run.x) + w,
+                f64::from(run.y) + h,
+                dest,
+            );
+            KIND_TEXT
+        }
+    };
+    Some((kind, v, span))
+}
+
+fn stop_record(stop: &chassis::paint::Stop) -> StopRecord {
+    StopRecord {
+        color: [stop.color.r, stop.color.g, stop.color.b, stop.color.a],
+        position: stop.position as f32,
+        _pad: [0.0; 3],
+    }
+}
+
+fn scaled(x: f64, y: f64, w: f64, h: f64, scale: f64) -> [f32; 4] {
+    [
+        (x * scale) as f32,
+        (y * scale) as f32,
+        (w * scale) as f32,
+        (h * scale) as f32,
+    ]
+}
+
+/// One operation's box, in the piece's own device pixels, cut at the piece's
+/// bounds and moved onto the target.
+///
+/// The cut is the one the piece's raster used to make: an operation reaching
+/// past its piece was clipped by the image it was drawn into, and the piece's
+/// rectangle is that image.
+fn op_rect(x0: f64, y0: f64, x1: f64, y1: f64, dest: (i32, i32, u32, u32)) -> Option<[f32; 4]> {
+    let lx0 = x0.floor().max(0.0);
+    let ly0 = y0.floor().max(0.0);
+    let lx1 = x1.ceil().min(f64::from(dest.2));
+    let ly1 = y1.ceil().min(f64::from(dest.3));
+    if lx1 <= lx0 || ly1 <= ly0 {
+        return None;
+    }
+    Some([
+        lx0 as f32 + dest.0 as f32,
+        ly0 as f32 + dest.1 as f32,
+        (lx1 - lx0) as f32,
+        (ly1 - ly0) as f32,
+    ])
+}
+
 fn write_records<const N: usize>(queue: &wgpu::Queue, buffer: &wgpu::Buffer, records: &[[f32; N]]) {
+    if records.is_empty() {
+        return;
+    }
+    queue.write_buffer(buffer, 0, bytemuck::cast_slice(records));
+}
+
+fn write_slice<T: Pod>(queue: &wgpu::Queue, buffer: &wgpu::Buffer, records: &[T]) {
     if records.is_empty() {
         return;
     }
@@ -759,57 +1228,38 @@ fn make_instances(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+/// The bind group, over the seven parameter buffers in binding order.
 fn make_bind(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
     uniforms: &wgpu::Buffer,
-    castings: &wgpu::Buffer,
-    plates: &wgpu::Buffer,
-    leds: &wgpu::Buffer,
-    tapes: &wgpu::Buffer,
-    pictures: &wgpu::Buffer,
+    records: &[&wgpu::Buffer; 7],
     atlas: &wgpu::Texture,
     sampler: &wgpu::Sampler,
 ) -> wgpu::BindGroup {
     let view = atlas.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut entries = vec![wgpu::BindGroupEntry {
+        binding: 0,
+        resource: uniforms.as_entire_binding(),
+    }];
+    for (i, buffer) in records.iter().enumerate() {
+        entries.push(wgpu::BindGroupEntry {
+            binding: 1 + i as u32,
+            resource: buffer.as_entire_binding(),
+        });
+    }
+    entries.push(wgpu::BindGroupEntry {
+        binding: 8,
+        resource: wgpu::BindingResource::TextureView(&view),
+    });
+    entries.push(wgpu::BindGroupEntry {
+        binding: 9,
+        resource: wgpu::BindingResource::Sampler(sampler),
+    });
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("chassis chrome"),
         layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniforms.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: castings.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: plates.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: leds.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 4,
-                resource: tapes.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 5,
-                resource: pictures.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 6,
-                resource: wgpu::BindingResource::TextureView(&view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 7,
-                resource: wgpu::BindingResource::Sampler(sampler),
-            },
-        ],
+        entries: &entries,
     })
 }
 
@@ -888,6 +1338,15 @@ mod tests {
         assert_eq!(std::mem::size_of::<Uniforms>(), 16);
         assert_eq!(std::mem::size_of::<Instance>(), 32);
         assert_eq!(CHASSIS_RECORD_FLOATS * 4, 64);
+        // A WGSL struct's array stride rounds up to its own alignment, which
+        // for both of these is the 16 bytes their `vec4` fields demand.
+        assert_eq!(
+            std::mem::size_of::<VectorRecord>(),
+            VECTOR_RECORD_FLOATS * 4
+        );
+        assert_eq!(std::mem::size_of::<VectorRecord>() % 16, 0);
+        assert_eq!(std::mem::size_of::<StopRecord>(), STOP_RECORD_FLOATS * 4);
+        assert_eq!(std::mem::size_of::<[f32; 2]>(), POINT_RECORD_FLOATS * 4);
     }
 
     /// The frame pass's own ruler, computed the way the shader computes it:
@@ -984,5 +1443,28 @@ mod tests {
             scale_rect(chassis::Rect::new(10.0, 20.0, 0.0, 40.0), 1.0, column),
             None
         );
+    }
+
+    /// An operation's box is cut at the piece it belongs to, which is what
+    /// the raster it replaced was cut by.
+    #[test]
+    fn an_operation_reaching_past_its_piece_is_cut_at_the_pieces_bounds() {
+        let dest = (100, 50, 40, 20);
+        assert_eq!(
+            op_rect(0.0, 0.0, 40.0, 20.0, dest),
+            Some([100.0, 50.0, 40.0, 20.0])
+        );
+        // Past the right and bottom edges, and past the left and top.
+        assert_eq!(
+            op_rect(-8.0, -3.0, 60.0, 90.0, dest),
+            Some([100.0, 50.0, 40.0, 20.0])
+        );
+        // Whole pixels, outward: a box from 2.4 to 5.1 covers pixels 2..6.
+        assert_eq!(
+            op_rect(2.4, 1.2, 5.1, 4.9, dest),
+            Some([102.0, 51.0, 4.0, 4.0])
+        );
+        // Entirely off the piece.
+        assert_eq!(op_rect(-30.0, 0.0, -10.0, 20.0, dest), None);
     }
 }

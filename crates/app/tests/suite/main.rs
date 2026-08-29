@@ -4,6 +4,7 @@
 //! weighed 21GB that way.
 
 mod bank_column;
+mod bank_furniture;
 mod channel_bank;
 mod clipboard_keys;
 mod find_keys;

@@ -1655,7 +1655,7 @@ impl TerminalSurface {
                 (bank, target_height),
                 (target_width, target_height),
                 scale_factor,
-                params,
+                Some(params),
                 &column_pieces,
             );
         }
