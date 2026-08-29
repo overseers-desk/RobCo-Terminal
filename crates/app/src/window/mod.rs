@@ -1747,7 +1747,7 @@ impl TerminalSurface {
         // `showTerminalSize` either -- the setting is about the resize
         // badge, and hiding a loss behind a cosmetic switch would be a
         // second way to lose the news.
-        frame.mark(Mark::ColumnStart);
+        frame.mark(Mark::ChromeStart);
         let window = (bank + target_width, target_height);
         let badge_opacity = if glass.applied.general.show_terminal_size {
             self.size_badge.1
@@ -1781,7 +1781,7 @@ impl TerminalSurface {
                 entries: &entries,
             }),
         );
-        frame.mark(Mark::ColumnEnd);
+        frame.mark(Mark::ChromeEnd);
         frame.mark(Mark::FrameEnd);
         gpu.present(frame);
     }

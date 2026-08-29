@@ -136,9 +136,9 @@ fn on_an_adapter_with_the_feature_pair_the_instrument_reports_plausible_timings(
         timing.mark(&mut encoder, Mark::ChainStart);
         burn_some_gpu_time(&bare.device, &mut encoder);
         timing.mark(&mut encoder, Mark::ChainEnd);
-        timing.mark(&mut encoder, Mark::ColumnStart);
+        timing.mark(&mut encoder, Mark::ChromeStart);
         burn_some_gpu_time(&bare.device, &mut encoder);
-        timing.mark(&mut encoder, Mark::ColumnEnd);
+        timing.mark(&mut encoder, Mark::ChromeEnd);
         timing.mark(&mut encoder, Mark::FrameEnd);
         timing.resolve(&mut encoder);
         let submission = bare.queue.submit(Some(encoder.finish()));
@@ -150,7 +150,7 @@ fn on_an_adapter_with_the_feature_pair_the_instrument_reports_plausible_timings(
     for series in [
         stats.grid_ms,
         stats.chain_ms,
-        stats.column_ms,
+        stats.chrome_ms,
         stats.frame_ms,
     ] {
         let p = series.expect("eight gpu-timed frames were recorded");
@@ -181,7 +181,7 @@ fn forcing_the_feature_pair_off_the_device_reports_unavailable_without_panicking
     let stats_before = instrument.stats();
     assert!(stats_before.grid_ms.is_none());
     assert!(stats_before.chain_ms.is_none());
-    assert!(stats_before.column_ms.is_none());
+    assert!(stats_before.chrome_ms.is_none());
     assert!(stats_before.frame_ms.is_none());
     assert_eq!(stats_before.gpu_samples, 0);
 

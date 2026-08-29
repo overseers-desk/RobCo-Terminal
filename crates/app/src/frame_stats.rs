@@ -57,7 +57,7 @@ pub fn required_features(adapter: &wgpu::Adapter) -> wgpu::Features {
 }
 
 /// Where in the query set each mark lands. The order matches the frame's
-/// own recording order (`crate::window`'s module doc): grid, chain, column,
+/// own recording order (`crate::window`'s module doc): grid, chain, chrome,
 /// bracketed by the frame's own start and end.
 #[derive(Clone, Copy, Debug)]
 pub enum Mark {
@@ -66,8 +66,8 @@ pub enum Mark {
     GridEnd,
     ChainStart,
     ChainEnd,
-    ColumnStart,
-    ColumnEnd,
+    ChromeStart,
+    ChromeEnd,
     FrameEnd,
 }
 
@@ -81,8 +81,8 @@ impl Mark {
             Mark::GridEnd => 2,
             Mark::ChainStart => 3,
             Mark::ChainEnd => 4,
-            Mark::ColumnStart => 5,
-            Mark::ColumnEnd => 6,
+            Mark::ChromeStart => 5,
+            Mark::ChromeEnd => 6,
             Mark::FrameEnd => 7,
         }
     }
@@ -192,7 +192,7 @@ impl FrameTiming {
         Some(StageDurations {
             grid_ms: ns(Mark::GridStart, Mark::GridEnd) / 1e6,
             chain_ms: ns(Mark::ChainStart, Mark::ChainEnd) / 1e6,
-            column_ms: ns(Mark::ColumnStart, Mark::ColumnEnd) / 1e6,
+            chrome_ms: ns(Mark::ChromeStart, Mark::ChromeEnd) / 1e6,
             frame_ms: ns(Mark::FrameStart, Mark::FrameEnd) / 1e6,
         })
     }
@@ -203,7 +203,7 @@ impl FrameTiming {
 pub struct StageDurations {
     pub grid_ms: f64,
     pub chain_ms: f64,
-    pub column_ms: f64,
+    pub chrome_ms: f64,
     pub frame_ms: f64,
 }
 
@@ -221,7 +221,7 @@ pub struct Percentiles {
 pub struct Stats {
     pub grid_ms: Option<Percentiles>,
     pub chain_ms: Option<Percentiles>,
-    pub column_ms: Option<Percentiles>,
+    pub chrome_ms: Option<Percentiles>,
     pub frame_ms: Option<Percentiles>,
     pub present_interval_ms: Option<Percentiles>,
     /// How many GPU-timed frames are in the window right now (0 on an
@@ -289,7 +289,7 @@ impl Window {
         Stats {
             grid_ms: Self::percentiles(self.durations.iter().map(|d| d.grid_ms)),
             chain_ms: Self::percentiles(self.durations.iter().map(|d| d.chain_ms)),
-            column_ms: Self::percentiles(self.durations.iter().map(|d| d.column_ms)),
+            chrome_ms: Self::percentiles(self.durations.iter().map(|d| d.chrome_ms)),
             frame_ms: Self::percentiles(self.durations.iter().map(|d| d.frame_ms)),
             present_interval_ms: Self::percentiles(self.cadence_ms.iter().copied()),
             gpu_samples: self.durations.len(),
@@ -393,13 +393,13 @@ impl Instrument {
         };
         if self.gpu_available() {
             format!(
-                "frame stats ({} gpu, {} cadence samples): grid {} chain {} column {} frame {} \
+                "frame stats ({} gpu, {} cadence samples): grid {} chain {} chrome {} frame {} \
                  present-interval {}",
                 stats.gpu_samples,
                 stats.cadence_samples,
                 fmt(stats.grid_ms),
                 fmt(stats.chain_ms),
-                fmt(stats.column_ms),
+                fmt(stats.chrome_ms),
                 fmt(stats.frame_ms),
                 fmt(stats.present_interval_ms),
             )
