@@ -58,16 +58,12 @@ proc ::rcsettings::ui::app::start {} {
     wm deiconify .
 }
 
-# The ttk base, and the two styles this window needs for function. The base
-# is clam rather than the platform theme: clam draws every widget in pure Tk
-# and so puts the same window on X11, Windows and macOS, where the X11 default
-# theme and aqua each ignore a different subset of the options a form sets.
-# Everything else wears clam's stock look, this window having no business
-# theming itself when the terminal's own glass is what the user chose.
+# The two styles this window needs for function, on the platform's own ttk
+# theme: this window has no business theming itself when the terminal's own
+# glass is what the user chose.
 proc ::rcsettings::ui::app::styles {} {
-    ttk::style theme use clam
     # The root is a plain Tk widget and does not follow ttk's background, so
-    # it is told what clam's own frames use.
+    # it is told what the theme's own frames use.
     . configure -background [ttk::style lookup TFrame -background]
     # An error on the status line has to be readable as an error without the
     # message being read, so it is the one thing here that carries a colour.
