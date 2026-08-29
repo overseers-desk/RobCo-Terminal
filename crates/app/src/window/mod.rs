@@ -319,9 +319,9 @@ fn logical_cell(cell: term::CellMetrics, resolved: &ResolvedFont, scale_factor: 
 /// driven by, which has nowhere better to live: a second clock would be a
 /// second answer to what time this frame is.
 ///
-/// The degauss transient used to sit here beside it and does not any more. It
-/// is *triggered* by a channel change and only *sampled* by the frame, so it
-/// belongs to the surface's state and not the device's: a window whose chain
+/// The degauss transient is not here: it is *triggered* by a channel change
+/// and only *sampled* by the frame, so it belongs to the surface's state and
+/// not the device's: a window whose chain
 /// failed to load still switches channels, and a headless surface -- which is
 /// where the channel state machines are tested -- has no `Glass` at all.
 struct Glass {

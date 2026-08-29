@@ -267,11 +267,11 @@ fn a_faded_badge_leaves_the_frame_exactly_as_it_found_it() {
 /// The stack: two badges up at once are two plates, the second below the first,
 /// each carrying its own words at its own strength.
 ///
-/// One `write_buffer` per submission is what makes this a real claim rather than
-/// a formality: drawn as two calls sharing one uniform buffer inside one
+/// One record per badge is what makes this a real claim rather than a
+/// formality: drawn as two calls sharing one uniform buffer inside one
 /// encoder, both plates would render with the *second* call's origin and
-/// opacity, i.e. one plate where two were asked for. That is the librashader
-/// lesson applied at a second mount, so it is measured here.
+/// opacity, i.e. one plate where two were asked for. The instanced pass
+/// indexes a record per badge instead, and this measures that it does.
 #[test]
 fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
     let fx = fixture();

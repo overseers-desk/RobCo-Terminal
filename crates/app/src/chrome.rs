@@ -408,7 +408,7 @@ pub struct Chrome {
     vectors: wgpu::Buffer,
     stops: wgpu::Buffer,
     points: wgpu::Buffer,
-    /// How many records each of the seven has room for.
+    /// How many records each buffer has room for.
     room: [usize; 7],
     instances: wgpu::Buffer,
     /// How many instances the instance buffer has room for.
@@ -1415,9 +1415,8 @@ fn scaled(x: f64, y: f64, w: f64, h: f64, scale: f64) -> [f32; 4] {
 /// One operation's box, in the piece's own device pixels, cut at the piece's
 /// bounds and moved onto the target.
 ///
-/// The cut is the one the piece's raster used to make: an operation reaching
-/// past its piece was clipped by the image it was drawn into, and the piece's
-/// rectangle is that image.
+/// An operation reaching past its piece is clipped there: the piece's own
+/// rectangle is the box nothing it draws may cross.
 fn op_rect(x0: f64, y0: f64, x1: f64, y1: f64, dest: (i32, i32, u32, u32)) -> Option<[f32; 4]> {
     let lx0 = x0.floor().max(0.0);
     let ly0 = y0.floor().max(0.0);
@@ -1526,7 +1525,7 @@ fn make_instances(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
-/// The bind group, over the seven parameter buffers in binding order.
+/// The bind group, over every parameter buffer in binding order.
 ///
 /// `glyphs` is the terminal's atlas where a frame carries badges. A frame
 /// without them binds this mount's own atlas there instead: the binding has
