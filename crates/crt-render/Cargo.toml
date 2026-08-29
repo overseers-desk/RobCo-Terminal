@@ -43,7 +43,6 @@ wgpu = "=30.0.0"
 # offscreen target the grid arrives in. Nothing here creates a device; this is
 # where the answer lives for whoever does.
 robco-gpu = { path = "../gpu" }
-log = "0.4"
 
 [dev-dependencies]
 robco-shader-oracle = { path = "../shader-oracle" }

@@ -38,7 +38,6 @@ cosmic-text = "0.19.0"
 # integer.
 fontconfig-parser = "0.5.8"
 bytemuck = { version = "1.23", features = ["derive"] }
-pollster = "0.4"
 log = "0.4"
 regex = "1.13"
 unicode-width = "0.2"
