@@ -74,14 +74,9 @@ pub fn plate_rect(chassis_size: (f64, f64)) -> Rect {
     Rect::new(8.0, 2.0, (w - 8.0).max(0.0), (h - 2.0 - 8.0).max(0.0))
 }
 
-/// The casting's fixed uniforms (everything but `opacity`, which is the
+/// The casting's fixed uniforms: everything but `opacity`, which is the
 /// profile's window-opacity setting and not part of this shell's fixed
-/// contract). The chassis rectangle and the frame region the caller hands
-/// [`chassis_metal_params`](super::common::chassis_metal_params) feed
-/// [`field_mapping`](super::common::field_mapping) for `field_scale`/
-/// `field_offset`; the caller passes the resulting `FieldMapping::viewport`
-/// to the `robco-shader-oracle` crate's `chassis_metal` separately, matching
-/// that function's own `(uv, viewport, params)` signature.
+/// contract.
 pub const CASTING: CastingRecipe = CastingRecipe {
     light_dir: metrics::CASTING_LIGHT_DIR,
     color: metrics::CASTING_COLOR,
@@ -398,9 +393,6 @@ const LABEL_COLOR: &str = "#6a5642";
 const KEY_WIDTH: f64 = 56.0;
 const KEY_HEIGHT: f64 = 40.0;
 const KEY_TOP: f64 = 38.0;
-
-/// The natural width of a line in the application font, for the two labels
-/// centred on their keys.
 
 /// One pager key, in its own coordinates.
 ///

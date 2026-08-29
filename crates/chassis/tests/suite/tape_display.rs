@@ -8,7 +8,7 @@
 //! sampling `Source` at eight neighbor offsets
 //! (`shaders/wgsl/tape_label.wgsl`), so a single raster pixel does
 //! not determine its own output pixel the way it does for the LED grid.
-//! `crates/crt-render/tests/tape_label.rs` sidesteps that with a synthetic
+//! `tests/suite/tape_label.rs` sidesteps that with a synthetic
 //! solid block; this test instead builds a small CPU oracle of
 //! `maskAt`/`punched` over the *real* raster (nearest-sampled, since the
 //! preset sets `filter_linear0 = false` -- deterministic, no bilinear

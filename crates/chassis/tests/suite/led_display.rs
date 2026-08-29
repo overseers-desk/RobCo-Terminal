@@ -4,7 +4,7 @@
 //! (`window_colors`, `spill_strength`, `glow`, the fixed `dotRadius`/
 //! `threshold`/`spillDead` pins), for a sampled channel set.
 //!
-//! `crates/crt-render/tests/led_matrix.rs` already proved the shader itself
+//! `tests/suite/led_matrix.rs` already proved the shader itself
 //! against a synthetic checkerboard, sampling deep inside a cell, past the
 //! antialiasing band and the spill margin, where the output has saturated
 //! to one of the mixed colors. This test reuses that same precedent but
@@ -67,7 +67,7 @@ fn led_display_composes_the_proven_raster_with_led_matrix() {
 
         let params = LedMetalParams {
             grid_size: [r.width as f32, r.height as f32],
-            // Zero margin, same reasoning as crt-render's led_matrix.rs:
+            // Zero margin, same reasoning as tests/suite/led_matrix.rs:
             // it collapses `uv` onto the raw grid coordinate so the test's
             // cell-center sampling lines up with the shader's own math
             // without a second spill-band transform to invert.

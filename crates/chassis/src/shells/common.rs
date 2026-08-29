@@ -113,8 +113,12 @@ pub struct CastingRecipe {
 }
 
 /// A shell's casting uniforms: its own recipe over the field mapping the
-/// chassis's rectangle inside the frame region gives
-/// ([`field_mapping`]).
+/// chassis's rectangle inside the frame region gives ([`field_mapping`]),
+/// which is where `field_scale` and `field_offset` come from.
+///
+/// The mapping's `viewport` is not among them. A caller measuring this
+/// against the `robco-shader-oracle` crate's `chassis_metal` passes it
+/// separately, matching that function's `(uv, viewport, params)` signature.
 pub fn chassis_metal_params(
     recipe: &CastingRecipe,
     chassis: Rect,

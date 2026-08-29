@@ -243,8 +243,6 @@ pub fn row_furniture(
     p
 }
 
-/// The natural height of one stamped numeral's text.
-
 /// The bolted steel shoe that rides the chassis's own rail.
 ///
 /// This shell's rail is fixed chassis furniture
