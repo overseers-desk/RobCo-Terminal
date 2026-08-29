@@ -32,10 +32,13 @@
 //! compiler then names; `SelectionModel::Konsole` in `robco-config`'s
 //! `schema.rs` and the `SELECTION_MODELS` entry in its `dump.rs`; the arm in
 //! `crates/app/src/window.rs` that maps the config value to a [`Kind`];
-//! `crates/term/tests/suite/selection_konsole_tests.rs`; the
-//! `selection_model` row in `settings/ui/form.tcl`, its row in
-//! `docs/config.md`, and the sentence naming the two models in
-//! `docs/keys.md`.
+//! `crates/term/tests/suite/selection_konsole_tests.rs`, the parity test at
+//! the foot of `selection_rio_tests.rs`, and the `selection_model` entries
+//! in `crates/config/src/structural.rs`'s rationale, in
+//! `crates/app/tests/suite/structure_subset.rs`'s alternates and in
+//! `crates/app/tests/suite/pointer_live_settings.rs`; the `selection_model`
+//! row in `settings/ui/form.tcl`, its row in `docs/config.md`, and the
+//! sentence naming the two models in `docs/keys.md`.
 
 pub mod konsole;
 pub mod rio;
