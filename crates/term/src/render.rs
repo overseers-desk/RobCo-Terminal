@@ -220,6 +220,11 @@ pub struct GridRenderer {
     /// finished picture, so the highlight bends with the curvature and glows
     /// with the phosphor like everything else on the tube.
     marked: Option<Marked>,
+    /// The critter standing over the screen, as of the last
+    /// [`GridRenderer::set_critter`]: `(row, column, character)`, row-major.
+    /// Substituted into the cell on the way past like the marking above, and
+    /// for the same reason.
+    critter: Vec<(usize, usize, char)>,
     /// What an input method is composing right now, drawn at the cursor and
     /// belonging to no cell of the grid. See [`GridRenderer::set_preedit`].
     preedit: String,
@@ -366,6 +371,7 @@ impl GridRenderer {
             instances,
             cursor: None,
             marked: None,
+            critter: Vec::new(),
             preedit: String::new(),
             scale: 1,
             origin: [0, 0],
@@ -631,6 +637,73 @@ impl GridRenderer {
         self.upload_preedit(queue);
     }
 
+    /// Stand a critter over the screen, or take it down with an empty slice.
+    ///
+    /// A critter is a few characters that are not the session's, standing on
+    /// the screen for a second or two while something walks across it. It is
+    /// drawn **in the grid** and never into it: the cells this renderer keeps
+    /// stay a faithful copy of what the terminal wrote, so text scrolls
+    /// behind a critter, a selection copied across one yields what the
+    /// session sent, and the block cursor under one still shows the
+    /// session's own character -- which is why a critter appears to pass
+    /// behind the cursor rather than swallow it.
+    ///
+    /// Being in the grid is also what puts it through the CRT chain with
+    /// everything else on the tube: it bends with the curvature and glows
+    /// with the phosphor, where a figure composited over the finished picture
+    /// (`app::badge`) would sit flat on the glass in front of it.
+    ///
+    /// `cells` is row-major and holds a character per cell it wants. Rows are
+    /// rebuilt only where the critter arrived or left, so a critter that has
+    /// not moved since the last frame costs nothing at all, which is what the
+    /// returned count of rewritten rows lets a test hold this to.
+    pub fn set_critter(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        font: &mut FontContext,
+        cells: &[(usize, usize, char)],
+    ) -> usize {
+        if self.critter == cells {
+            return 0;
+        }
+        for &(_, _, c) in cells {
+            self.admit_glyph(device, queue, font, c);
+        }
+        // The union of where it was and where it is: the row it has just left
+        // has to be built again from the grid, which still holds the
+        // session's own characters for it.
+        let mut rows: Vec<usize> = self
+            .critter
+            .iter()
+            .chain(cells)
+            .map(|(row, _, _)| *row)
+            .filter(|row| *row < self.rows)
+            .collect();
+        rows.sort_unstable();
+        rows.dedup();
+        self.critter.clear();
+        self.critter.extend_from_slice(cells);
+        for row in &rows {
+            self.build_row(*row);
+            self.upload_row(queue, *row);
+        }
+        rows.len()
+    }
+
+    /// The half-open range of [`Self::critter`] that falls on this row. The
+    /// list is row-major, so a row is one contiguous run of it.
+    fn critter_row(&self, row: usize) -> (usize, usize) {
+        let lo = self.critter.partition_point(|(r, _, _)| *r < row);
+        let hi = lo + self.critter[lo..].partition_point(|(r, _, _)| *r == row);
+        (lo, hi)
+    }
+
+    /// What [`Self::set_critter`] was last given.
+    pub fn critter(&self) -> &[(usize, usize, char)] {
+        &self.critter
+    }
+
     /// What [`Self::set_preedit`] was last given.
     pub fn preedit(&self) -> &str {
         &self.preedit
@@ -704,6 +777,9 @@ impl GridRenderer {
         let cell_w = self.atlas.cell.width as i32;
         let cell_h = self.atlas.cell.height as i32;
         let baseline = self.atlas.cell.baseline;
+        // The critter's cells for this row, as a run of the row-major list,
+        // walked alongside the columns rather than searched per cell.
+        let (mut at, end) = self.critter_row(row);
         for col in 0..self.cols {
             let mut cell = self.grid.cells[row * self.cols + col];
             // The selection is drawn here, at the one point the cell's
@@ -713,6 +789,18 @@ impl GridRenderer {
             // phosphor, and sit on the glass instead of behind it.
             if marked_at(self.marked.as_ref(), row, col) {
                 cell = inverted(cell, &self.scheme);
+            }
+            // A critter stands on the cell, and after the marking rather than
+            // before it: the highlight belongs to the screen, and a critter
+            // walking through a selection is standing on a highlighted
+            // screen. Only the character is taken. The colours stay the
+            // cell's, so the figure is struck in the phosphor of whatever it
+            // is walking over rather than carrying a palette of its own.
+            while at < end && self.critter[at].1 < col {
+                at += 1;
+            }
+            if at < end && self.critter[at].1 == col {
+                cell.c = self.critter[at].2;
             }
             let x = col as i32 * cell_w;
             let y = row as i32 * cell_h;

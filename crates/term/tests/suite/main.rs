@@ -4,6 +4,7 @@
 //! weighed 21GB that way.
 
 mod antialias;
+mod critter_paint;
 mod fallback;
 mod font_parity;
 mod grid_tests;
