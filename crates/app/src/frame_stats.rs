@@ -1,7 +1,8 @@
 //! A frame's GPU-timing instrument: wgpu timestamp queries straddling the
 //! three recordings [`crate::window`]'s `draw_frame` puts in one encoder --
-//! the grid, the CRT chain, and the bank column's casting -- plus the frame
-//! as a whole, aggregated into a rolling window's p50/p99. The frame-time
+//! the grid, the CRT chain, and the chrome pass that carries the bank column
+//! and the badges over the glass -- plus the frame as a whole, aggregated
+//! into a rolling window's p50/p99. The frame-time
 //! budget question stays open until a real number lands here, and the
 //! question this instrument exists to answer is whether file-watch config
 //! reload holds up for live preview, or a preview socket (the named

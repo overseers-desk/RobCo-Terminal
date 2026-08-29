@@ -158,7 +158,7 @@ pub const NOTICE_OPACITY: f32 = 0.8;
 /// non-blocking transports, and a profile save has nowhere else to report to
 /// -- there is no settings window here to carry that acknowledgement. So the
 /// placement and the wording are judged on their own terms: the mount is the
-/// size badge's plate ([`crate::badge`]), one slot below its own centred
+/// size badge's plate ([`crate::chrome::Badges`]), one slot below its own centred
 /// position, and the words are short enough to read in the two seconds they
 /// are up. See the call sites in `app::window` for each.
 ///

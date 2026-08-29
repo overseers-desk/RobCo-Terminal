@@ -1,11 +1,18 @@
 //! Everything drawn after the chain: the casting, the furniture that stands
-//! on it, and in time the badges over the glass.
+//! on it, and the badges over the glass.
 //!
-//! One pipeline, one instance buffer, one draw, one render pass with
-//! `LoadOp::Load` scissored to the bank column, compositing straight onto the
-//! swapchain view. The picture the chain finished is already on that image and
-//! this goes over it; nothing here begins a pass with `Clear`, so there is no
-//! offscreen texture and no copy back.
+//! One pipeline, one instance buffer, one render pass with `LoadOp::Load`,
+//! compositing straight onto the swapchain view. The picture the chain
+//! finished is already on that image and this goes over it; nothing here
+//! begins a pass with `Clear`, so there is no offscreen texture and no copy
+//! back.
+//!
+//! Two draws, because there are two scissors and not because there are two
+//! kinds of thing. The cabinet's own instances are cut at the bank column,
+//! since a piece is allowed to hang off it. The badges are centred in the
+//! well the column leaves and are cut at the target, since a badge is over
+//! the glass. Everything else about them is shared: one pipeline, one buffer,
+//! one submission.
 //!
 //! # What each instance is
 //!
@@ -55,6 +62,30 @@
 //! that is the result component-alpha reached anyway, since the seam that
 //! carried the raster to the GPU had one alpha channel to put it in.
 //!
+//! # The badges
+//!
+//! [`Badges`] is the transient stack: one black rounded plate per thing the
+//! appliance has to say for a moment, each a rounded rectangle like any other
+//! shape here, with the terminal's own glyphs over it. `crate::overlay` is the
+//! state machine (when, and how strongly); this is what it says.
+//!
+//! A badge is drawn after the chain rather than inside it for the same reason
+//! the cabinet is: run through the curvature it would bend with the tube whose
+//! size it is announcing. It is centred over the screen well, so a wide bank
+//! does not push it off-centre over the glass.
+//!
+//! The plate is twice the text's bounding box, `radius: 5`, with the text
+//! centred in it, and plate and glyphs carry one opacity. The typeface is
+//! deliberate: this appliance has no platform UI font to draw with and would
+//! not want one if it did, so the badge draws from the terminal's own glyph
+//! atlas and is struck in the same phosphor face as the screen it sits over.
+//!
+//! Two rulers meet in it. A glyph is read at the atlas's **integer
+//! magnification**, `term::render`'s rule, which is what lands the badge's
+//! type on the same pixel lattice as the grid's. The corner radius is a
+//! **logical** length and rides the device pixel ratio instead: a logical 5 px
+//! stays a logical 5 px when the font's integer scale changes.
+//!
 //! # Which size is which
 //!
 //! Two sizes go in and they are deliberately different. The **rectangle** is
@@ -77,6 +108,8 @@ use std::collections::{HashMap, HashSet};
 use bytemuck::{Pod, Zeroable};
 use chassis::furniture::{Pass, Piece, Raster};
 use chassis::paint::{Align, Face, Fill, Op, TextOp};
+use term::GlyphAtlas;
+
 use chassis::params::{
     led_record, plate_record, tape_record, ChassisMetalParams, CHASSIS_RECORD_FLOATS,
     PIECE_RECORD_FLOATS,
@@ -94,6 +127,10 @@ const KIND_RRECT_RADIAL: u32 = 6;
 const KIND_ARC: u32 = 7;
 const KIND_POLY: u32 = 8;
 const KIND_TEXT: u32 = 9;
+/// The badge's plate is a rounded rectangle with a solid fill and no
+/// gradient, no border and no clip, which is [`KIND_RRECT`] exactly; only its
+/// glyph read is a body of its own.
+const KIND_GLYPH: u32 = 10;
 
 /// One texel of transparent gutter between two rasters in the atlas, so a
 /// piece sampling at exactly the far edge of its own rectangle reads nothing
@@ -193,6 +230,9 @@ const CHROME_WGSL: &str = r#"
 @group(0) @binding(7) var<storage, read> points: array<vec2<f32>>;
 @group(0) @binding(8) var atlas: texture_2d<f32>;
 @group(0) @binding(9) var atlas_sampler: sampler;
+// The terminal's own glyph atlas, which the badges strike their words from.
+// Read with `textureLoad` and no sampler, exactly as the grid reads it.
+@group(0) @binding(10) var glyphs: texture_2d<f32>;
 
 // The raster read the display bodies and the text body ask the host for.
 // Every raster lives in one atlas, so a body's own 0..1 coordinates are
@@ -204,6 +244,21 @@ const CHROME_WGSL: &str = r#"
 fn chrome_sample(uv: vec2<f32>, rect: vec4<f32>) -> vec4<f32> {
     let p = rect.xy + clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0)) * rect.zw;
     return textureSampleLevel(atlas, atlas_sampler, p, 0.0);
+}
+
+// One glyph of a badge, out of the terminal's atlas at the atlas's own
+// integer magnification: recover the integer pixel, undo the quad's origin
+// and the magnification, and load that texel.
+//
+// `rect` is the quad in physical pixels and `g0` carries the texel origin and
+// the magnification, so the fragment is inside its own quad and the division
+// is over a non-negative offset.
+fn chrome_glyph(position: vec2<f32>, v: VectorParams) -> vec4<f32> {
+    let cell = vec2<i32>(floor(position)) - vec2<i32>(v.rect.xy);
+    let texel = vec2<i32>(v.g0.xy) + cell / i32(max(v.g0.z, 1.0));
+    let coverage = textureLoad(glyphs, texel, 0).r;
+    let a = v.color.a * coverage;
+    return vec4<f32>(v.color.rgb * a, a);
 }
 
 struct Uniforms {
@@ -279,6 +334,9 @@ fn fs(input: VsOut) -> @location(0) vec4<f32> {
     }
     if (input.kind == 9u) {
         return vector_text(input.pos.xy, vectors[input.index]);
+    }
+    if (input.kind == 10u) {
+        return chrome_glyph(input.pos.xy, vectors[input.index]);
     }
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
 }
@@ -416,6 +474,16 @@ impl Chrome {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 10,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -508,6 +576,7 @@ impl Chrome {
             &[&castings, &plates, &leds, &tapes, &vectors, &stops, &points],
             &atlas,
             &sampler,
+            None,
         );
         Self {
             pipeline,
@@ -545,8 +614,15 @@ impl Chrome {
     /// `pieces` is `chassis::Cabinet::furniture`, whose rectangles are
     /// logical and are scaled by the same ratio on the way in.
     ///
-    /// A column of no width draws nothing, which is what a hidden chassis is:
-    /// no bank rather than a bank of zero pixels.
+    /// `badges` is the stack over the glass, top first, centred in the well
+    /// the column leaves. The answer is index-aligned with its entries --
+    /// where each badge landed, or `None` for one that drew nothing (faded
+    /// out, or empty text) -- so a caller can assert on the rectangle this
+    /// chose rather than re-deriving it.
+    ///
+    /// A column of no width draws no cabinet, which is what a hidden chassis
+    /// is: no bank rather than a bank of zero pixels. The badges still go on,
+    /// because the glass is still there.
     #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
@@ -560,10 +636,15 @@ impl Chrome {
         scale_factor: f64,
         casting: Option<&ChassisMetalParams>,
         pieces: &[Piece],
-    ) {
-        if column.0 == 0 || column.1 == 0 || target.0 == 0 || target.1 == 0 {
-            return;
+        badges: Option<Badges>,
+    ) -> Vec<Option<BadgeRect>> {
+        let mut rects = vec![None; badges.as_ref().map_or(0, |b| b.entries.len())];
+        if target.0 == 0 || target.1 == 0 {
+            return rects;
         }
+        let cabinet = column.0 > 0 && column.1 > 0;
+        let pieces: &[Piece] = if cabinet { pieces } else { &[] };
+        let casting = if cabinet { casting } else { None };
 
         // Where each piece lands, asked once and read three times below.
         let dests: Vec<Option<(i32, i32, u32, u32)>> = pieces
@@ -682,6 +763,19 @@ impl Chrome {
             });
         }
 
+        // The cabinet's own draw ends here; what follows goes over the glass
+        // under a scissor of its own.
+        let cabinet_count = instances.len();
+        if let Some(badges) = badges.as_ref() {
+            rects = badge_instances(
+                badges,
+                (column.0 as i32, 0, well.0, well.1),
+                scale_factor,
+                &mut vectors,
+                &mut instances,
+            );
+        }
+
         let mut rebind = self.fit(device, 0, castings.len(), CHASSIS_RECORD_FLOATS);
         rebind |= self.fit(device, 1, plates.len(), PIECE_RECORD_FLOATS);
         rebind |= self.fit(device, 2, leds.len(), PIECE_RECORD_FLOATS);
@@ -705,7 +799,7 @@ impl Chrome {
         write_slice(queue, &self.stops, &stops);
         write_slice(queue, &self.points, &points);
         if instances.is_empty() {
-            return;
+            return rects;
         }
         queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instances));
         queue.write_buffer(
@@ -734,16 +828,55 @@ impl Chrome {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        // A frame carrying badges binds the terminal's atlas, and does it
+        // afresh rather than against a cached identity: a font change swaps
+        // the atlas underneath this mount and wgpu 30 has no cheap identity to
+        // compare one against (`global_id` is gone), so the choice is a stale
+        // binding or a bind group per frame. Badges are drawn only while one
+        // of them is up, so the second costs nothing worth a correctness risk.
+        let with_glyphs = badges.as_ref().map(|b| {
+            make_bind(
+                device,
+                &self.layout,
+                &self.uniforms,
+                &[
+                    &self.castings,
+                    &self.plates,
+                    &self.leds,
+                    &self.tapes,
+                    &self.vectors,
+                    &self.stops,
+                    &self.points,
+                ],
+                &self.atlas,
+                &self.sampler,
+                Some(&b.atlas.view),
+            )
+        });
+
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(
+            0,
+            Some(with_glyphs.as_ref().unwrap_or(&self.bind_group)),
+            &[],
+        );
+        pass.set_vertex_buffer(0, self.instances.slice(..));
         // The bank clips its children, and this is that clip: a piece is
         // allowed to hang off the column and one routinely does, so the
         // scissor is the column's rectangle clamped to the target.
-        let w = column.0.min(target.0);
-        let h = column.1.min(target.1);
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, Some(&self.bind_group), &[]);
-        pass.set_vertex_buffer(0, self.instances.slice(..));
-        pass.set_scissor_rect(0, 0, w, h);
-        pass.draw(0..6, 0..instances.len() as u32);
+        if cabinet_count > 0 {
+            let w = column.0.min(target.0);
+            let h = column.1.min(target.1);
+            pass.set_scissor_rect(0, 0, w, h);
+            pass.draw(0..6, 0..cabinet_count as u32);
+        }
+        // The badges are over the glass, so their clip is the whole target.
+        if instances.len() > cabinet_count {
+            pass.set_scissor_rect(0, 0, target.0, target.1);
+            pass.draw(0..6, cabinet_count as u32..instances.len() as u32);
+        }
+        drop(pass);
+        rects
     }
 
     /// Grow one kind's parameter buffer to hold `wanted` records; `true` when
@@ -847,8 +980,173 @@ impl Chrome {
             ],
             &self.atlas,
             &self.sampler,
+            None,
         );
     }
+}
+
+/// The badge's corner radius, in logical pixels.
+const CORNER_RADIUS: f32 = 5.0;
+
+/// One badge in the stack: what it says, and how strongly.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Entry<'a> {
+    pub text: &'a str,
+    pub opacity: f32,
+}
+
+/// The badge stack a frame carries, and the atlas it is struck from.
+///
+/// Slot 0 is the size overlay's own position and everything below it stacks
+/// beneath that: the two things this appliance has to say -- the grid's new
+/// size and a write queue shedding (`crate::overlay::Notice`) -- are
+/// independent and can be true at the same moment, so stacking them is what
+/// keeps the second from being invisible whenever the first is up.
+pub struct Badges<'a> {
+    pub atlas: &'a GlyphAtlas,
+    /// The atlas's integer magnification, `term::render`'s ruler.
+    pub scale: u32,
+    /// Top first.
+    pub entries: &'a [Entry<'a>],
+}
+
+/// Where a badge went, in physical pixels: origin and size. Returned so a
+/// test can assert on the rectangle the mount chose rather than re-deriving
+/// it, and `None` when there was nothing to draw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BadgeRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The stack's instances, appended to the frame's buffers, and where each
+/// badge landed.
+///
+/// `well` is the screen well in physical pixels: the rectangle the chain drew
+/// into, which is the window less the bank column. A badge centres in exactly
+/// that, not in the window, so a wide bank does not push it off-centre over
+/// the glass.
+fn badge_instances(
+    badges: &Badges,
+    well: (i32, i32, u32, u32),
+    scale_factor: f64,
+    vectors: &mut Vec<VectorRecord>,
+    instances: &mut Vec<Instance>,
+) -> Vec<Option<BadgeRect>> {
+    let mut rects: Vec<Option<BadgeRect>> = vec![None; badges.entries.len()];
+    let scale = badges.scale.max(1);
+    let cell = badges.atlas.cell;
+    if cell.width == 0 || cell.height == 0 {
+        return rects;
+    }
+    let (well_x, well_y, well_w, well_h) = well;
+    // The step down the stack: one badge (two text heights) plus a text
+    // height of air, so two plates read as two and not as one tall one.
+    // Every badge is the same height -- the atlas cell decides it -- so the
+    // step does not depend on which entry is being placed.
+    let text_h = cell.height as i32;
+    let step = 3 * text_h * scale as i32;
+
+    let mut push = |rect: [f32; 4], kind: u32, record: VectorRecord| {
+        vectors.push(record);
+        instances.push(Instance {
+            rect,
+            kind,
+            index: (vectors.len() - 1) as u32,
+            _pad: [0, 0],
+        });
+    };
+
+    for (slot, entry) in badges.entries.iter().enumerate() {
+        if entry.opacity <= 0.0 || entry.text.is_empty() {
+            continue;
+        }
+        // The plate is twice the text's bounding box, and the text sits in
+        // the middle of it.
+        let chars: Vec<char> = entry.text.chars().collect();
+        let text_w = (chars.len() as u32 * cell.width) as i32;
+        let badge_w = text_w * 2;
+        let badge_h = text_h * 2;
+
+        // Centred in the well, on whole physical pixels: half a pixel of
+        // offset would put every glyph between two of them, which is the
+        // same rule `draw_frame` centres the grid by.
+        let origin_x = well_x + (well_w as i32 - badge_w * scale as i32) / 2;
+        let origin_y = well_y + (well_h as i32 - badge_h * scale as i32) / 2 + slot as i32 * step;
+        let alpha = entry.opacity.clamp(0.0, 1.0);
+        let plate = [
+            origin_x as f32,
+            origin_y as f32,
+            (badge_w * scale as i32) as f32,
+            (badge_h * scale as i32) as f32,
+        ];
+        // `color: "black"`, faded by this badge's own envelope. The corner
+        // radius is a logical length, so it rides the device pixel ratio
+        // rather than the font's integer scale, and is never larger than the
+        // box can hold: a badge narrower than 2r would invert its own
+        // corners, which `vector_rrect_distance` clamps.
+        push(
+            plate,
+            KIND_RRECT,
+            VectorRecord {
+                rect: plate,
+                color: [0.0, 0.0, 0.0, alpha],
+                radius: CORNER_RADIUS * scale_factor.max(f64::EPSILON) as f32,
+                opacity: 1.0,
+                ..VectorRecord::default()
+            },
+        );
+
+        // The text's own top-left inside the badge: centred, so half the
+        // doubling on each side.
+        let text_x = text_w / 2;
+        let text_y = text_h / 2;
+        for (i, c) in chars.iter().enumerate() {
+            let Some(glyph) = badges.atlas.slot(*c) else {
+                continue;
+            };
+            if glyph.width == 0 || glyph.height == 0 {
+                continue;
+            }
+            let dst = [
+                text_x + i as i32 * cell.width as i32 + glyph.left,
+                text_y + cell.baseline - glyph.top,
+            ];
+            let quad = [
+                (origin_x + dst[0] * scale as i32) as f32,
+                (origin_y + dst[1] * scale as i32) as f32,
+                (glyph.width * scale) as f32,
+                (glyph.height * scale) as f32,
+            ];
+            push(
+                quad,
+                KIND_GLYPH,
+                VectorRecord {
+                    rect: quad,
+                    // `color: "white"`.
+                    color: [1.0, 1.0, 1.0, alpha],
+                    g0: [
+                        glyph.atlas_x as f32,
+                        glyph.atlas_y as f32,
+                        scale as f32,
+                        0.0,
+                    ],
+                    opacity: 1.0,
+                    ..VectorRecord::default()
+                },
+            );
+        }
+
+        rects[slot] = Some(BadgeRect {
+            x: origin_x,
+            y: origin_y,
+            width: (badge_w * scale as i32).max(0) as u32,
+            height: (badge_h * scale as i32).max(0) as u32,
+        });
+    }
+    rects
 }
 
 /// One thing in the atlas: a display piece's own raster, or a struck line.
@@ -1229,6 +1527,10 @@ fn make_instances(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
 }
 
 /// The bind group, over the seven parameter buffers in binding order.
+///
+/// `glyphs` is the terminal's atlas where a frame carries badges. A frame
+/// without them binds this mount's own atlas there instead: the binding has
+/// to hold a texture whether or not a body reads one, and no body does.
 fn make_bind(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
@@ -1236,6 +1538,7 @@ fn make_bind(
     records: &[&wgpu::Buffer; 7],
     atlas: &wgpu::Texture,
     sampler: &wgpu::Sampler,
+    glyphs: Option<&wgpu::TextureView>,
 ) -> wgpu::BindGroup {
     let view = atlas.create_view(&wgpu::TextureViewDescriptor::default());
     let mut entries = vec![wgpu::BindGroupEntry {
@@ -1255,6 +1558,10 @@ fn make_bind(
     entries.push(wgpu::BindGroupEntry {
         binding: 9,
         resource: wgpu::BindingResource::Sampler(sampler),
+    });
+    entries.push(wgpu::BindGroupEntry {
+        binding: 10,
+        resource: wgpu::BindingResource::TextureView(glyphs.unwrap_or(&view)),
     });
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("chassis chrome"),

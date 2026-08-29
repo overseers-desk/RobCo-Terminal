@@ -111,6 +111,7 @@ fn render_piece(gpu: &Locked, chrome: &mut Chrome, piece: &Piece, scale: f64) ->
         scale,
         None,
         std::slice::from_ref(&at_origin),
+        None,
     );
     let index = gpu.queue.submit([encoder.finish()]);
     gpu.device

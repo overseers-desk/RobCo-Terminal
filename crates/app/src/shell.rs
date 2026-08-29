@@ -164,7 +164,7 @@ pub trait Surface {
     /// clock, both of which are shell events, and a surface that reached back
     /// for it would need a handle on the thing that owns it. An opacity of
     /// zero means "draw nothing", so a surface can hold this verbatim and let
-    /// [`crate::badge::Badge`] decide.
+    /// [`crate::chrome::Badges`] decide.
     fn set_size_badge(&mut self, _text: &str, _opacity: f32) {}
     /// The title the session wants, if it has one yet.
     fn title(&self) -> Option<String> {
@@ -849,7 +849,7 @@ impl ApplicationHandler<ShellEvent> for Shell {
         // The wake is back, and only while the badge is on screen. It was
         // dropped when nothing drew the overlay, because waking a core to
         // animate an opacity no pass read was a terminal spinning for nothing;
-        // `crate::badge` reads it now, so the frames that carry the 200 ms fade
+        // `crate::chrome` reads it now, so the frames that carry the 200 ms fade
         // have to be asked for. Outside those 1.2 seconds this costs nothing:
         // an invisible badge asks for no redraw and no wake, and the loop goes
         // back to waiting exactly as it did before.

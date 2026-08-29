@@ -152,6 +152,7 @@ fn frame_with_furniture(
         scale_factor,
         Some(params),
         pieces,
+        None,
     );
 
     let index = gpu.queue.submit([encoder.finish()]);

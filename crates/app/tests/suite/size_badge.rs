@@ -20,8 +20,13 @@
 //! one with no badge at all. The two halves of the badge's behavior meet
 //! there -- the machine in `app::overlay` decides *when*, this mount
 //! decides *what*, and a fade that reached zero has to leave nothing behind.
+//!
+//! The mount is `app::chrome`, the pass that draws the cabinet. These render
+//! through it with no casting and no furniture, a column width only to say
+//! where the well begins, so what lands on the frame is the badge stack and
+//! nothing else.
 
-use app::badge::Badge;
+use app::chrome::{Badges, Chrome, Entry};
 use app::overlay::{GridSize, SizeOverlay, FADE, HOLD};
 use gpu::harness::Locked;
 use term::{ScalePolicy, SizingRequest, Target};
@@ -73,10 +78,10 @@ fn fixture() -> Fixture {
 /// Clear a frame to [`SENTINEL`], put the badge on it, read it back.
 fn frame_with_badge(
     fx: &Fixture,
-    badge: &mut Badge,
+    badge: &mut Chrome,
     text: &str,
     opacity: f32,
-) -> (term::Image, Option<app::badge::BadgeRect>) {
+) -> (term::Image, Option<app::chrome::BadgeRect>) {
     let output = Target::new(&fx.gpu.device, WINDOW_W, WINDOW_H, gpu::TARGET_FORMAT);
     let view = &output.view;
     let mut encoder = fx
@@ -109,19 +114,24 @@ fn frame_with_badge(
         multiview_mask: None,
     });
 
-    let rect = badge.draw(
+    let rect = badge.render(
         &fx.gpu.device,
         &fx.gpu.queue,
         &mut encoder,
         view,
         (WINDOW_W, WINDOW_H),
-        // The well: the window less the bank column, which is what the
-        // badge is centred in.
-        (BANK as i32, 0, WINDOW_W - BANK, WINDOW_H),
-        &fx.atlas,
-        fx.scale,
+        // No casting and no furniture: the column is here only to say where
+        // the well starts, which is what the badge is centred in.
+        (BANK, WINDOW_H),
+        (WINDOW_W - BANK, WINDOW_H),
         1.0,
-        &[app::badge::Entry { text, opacity }],
+        None,
+        &[],
+        Some(Badges {
+            atlas: &fx.atlas,
+            scale: fx.scale,
+            entries: &[Entry { text, opacity }],
+        }),
     )[0];
 
     let index = fx.gpu.queue.submit([encoder.finish()]);
@@ -138,7 +148,7 @@ fn frame_with_badge(
 #[test]
 fn the_badge_lands_on_the_frame_and_leaves_the_glass_untouched() {
     let fx = fixture();
-    let mut badge = Badge::new(&fx.gpu.device, FRAME_FORMAT);
+    let mut badge = Chrome::new(&fx.gpu.device, FRAME_FORMAT);
 
     // The state machine's own answer, not a number typed here: a resize, and
     // the opacity it reports at that moment.
@@ -225,7 +235,7 @@ fn the_badge_lands_on_the_frame_and_leaves_the_glass_untouched() {
 #[test]
 fn a_faded_badge_leaves_the_frame_exactly_as_it_found_it() {
     let fx = fixture();
-    let mut badge = Badge::new(&fx.gpu.device, FRAME_FORMAT);
+    let mut badge = Chrome::new(&fx.gpu.device, FRAME_FORMAT);
 
     let mut overlay = SizeOverlay::new(true);
     overlay.resized(GridSize {
@@ -265,7 +275,7 @@ fn a_faded_badge_leaves_the_frame_exactly_as_it_found_it() {
 #[test]
 fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
     let fx = fixture();
-    let mut badge = Badge::new(&fx.gpu.device, FRAME_FORMAT);
+    let mut badge = Chrome::new(&fx.gpu.device, FRAME_FORMAT);
 
     let output = Target::new(&fx.gpu.device, WINDOW_W, WINDOW_H, gpu::TARGET_FORMAT);
     let mut encoder = fx
@@ -298,26 +308,31 @@ fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
 
     // The size badge at its own half opacity, and a notice under it at the
     // stronger one `app::overlay::NOTICE_OPACITY` picks.
-    let rects = badge.draw(
+    let rects = badge.render(
         &fx.gpu.device,
         &fx.gpu.queue,
         &mut encoder,
         &output.view,
         (WINDOW_W, WINDOW_H),
-        (BANK as i32, 0, WINDOW_W - BANK, WINDOW_H),
-        &fx.atlas,
-        fx.scale,
+        (BANK, WINDOW_H),
+        (WINDOW_W - BANK, WINDOW_H),
         1.0,
-        &[
-            app::badge::Entry {
-                text: "100x30",
-                opacity: 0.5,
-            },
-            app::badge::Entry {
-                text: app::window::SHED_PTY,
-                opacity: 0.8,
-            },
-        ],
+        None,
+        &[],
+        Some(Badges {
+            atlas: &fx.atlas,
+            scale: fx.scale,
+            entries: &[
+                Entry {
+                    text: "100x30",
+                    opacity: 0.5,
+                },
+                Entry {
+                    text: app::window::SHED_PTY,
+                    opacity: 0.8,
+                },
+            ],
+        }),
     );
     let index = fx.gpu.queue.submit([encoder.finish()]);
     fx.gpu
@@ -345,7 +360,7 @@ fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
     );
 
     // Each plate carries its own opacity: the stronger one is nearer black.
-    let probe = |rect: &app::badge::BadgeRect| {
+    let probe = |rect: &app::chrome::BadgeRect| {
         frame.pixel(
             (rect.x + 8) as u32,
             (rect.y + rect.height as i32 / 2) as u32,
@@ -386,7 +401,7 @@ fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
 #[test]
 fn the_fade_is_visible_in_the_pixels() {
     let fx = fixture();
-    let mut badge = Badge::new(&fx.gpu.device, FRAME_FORMAT);
+    let mut badge = Chrome::new(&fx.gpu.device, FRAME_FORMAT);
 
     let mut overlay = SizeOverlay::new(true);
     overlay.resized(GridSize {

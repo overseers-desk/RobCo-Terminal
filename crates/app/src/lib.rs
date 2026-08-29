@@ -26,14 +26,14 @@
 //!   numbered, which page of them the bank is showing, and the digit chord
 //!   that names one. The three state machines of the channel bank.
 //! - [`geometry`] -- the four numbers the contract measures.
-//! - [`overlay`] / [`badge`] -- the transient size badge: when it shows, and
-//!   the mount that draws it over the finished frame.
+//! - [`overlay`] -- the transient size badge and the appliance's notices:
+//!   when they show, and how strongly.
 //! - [`crashlog`] -- the fatal-signal backtrace logger.
 //! - [`paths`] -- where per-user files live.
 //! - [`window`] / [`gpu`] -- the wgpu surface and the session it drives,
 //!   which is what fills a shell window ([`window::TerminalSurface`]).
-//! - [`chrome`] -- the bank column's metal and everything standing on it,
-//!   composited over the frame the chain drew.
+//! - [`chrome`] -- the bank column's metal, everything standing on it, and
+//!   the badges over the glass, composited over the frame the chain drew.
 //! - [`input`], [`mouse`], [`clipboard`] -- keyboard encoding,
 //!   mouse reporting, and copy/paste. Composed input
 //!   (an IME's committed text) comes in beside the keyboard rather than
@@ -59,7 +59,6 @@
 //!   linked-in Tcl/Tk interpreter. Every other build carries the same entry
 //!   point as a refusal, so no caller writes a `cfg`.
 
-pub mod badge;
 pub mod bank;
 pub mod channels;
 pub mod chord;

@@ -96,7 +96,6 @@ use winit::event_loop::EventLoopProxy;
 use winit::keyboard::ModifiersState;
 use winit::window::Window;
 
-use crate::badge::Badge;
 use crate::bank::BankPager;
 use crate::channels::{BankId, Channels, Close};
 use crate::chord::ChordInput;
@@ -350,11 +349,6 @@ struct Glass {
     /// when its pass could not be loaded, which is a window with a bare well
     /// rather than a process that dies.
     chrome: Chrome,
-    /// The size badge's mount, outside the chain for the same reason the
-    /// column is (`crate::badge`'s module doc). It holds no state of its own:
-    /// what to say and how strongly are the shell's overlay's answer, pushed
-    /// through [`crate::shell::Surface::set_size_badge`].
-    badge: Badge,
     pacing: Pacing,
     /// The settings the chain was last given, so a redraw can tell whether
     /// there is anything to apply.
@@ -643,7 +637,6 @@ impl Glass {
             target,
             chain,
             chrome: Chrome::new(&gpu.device, gpu.format()),
-            badge: Badge::new(&gpu.device, gpu.format()),
             // One clock per window, started here, never read anywhere else.
             pacing: Pacing::new(Instant::now()),
             applied: cfg.clone(),
@@ -1118,8 +1111,8 @@ impl TerminalSurface {
 
     /// What the appliance is saying on its own behalf right now, if anything.
     ///
-    /// The badge itself needs a device and a frame; this is the state under it,
-    /// so a test with neither can read what the user would have seen.
+    /// Drawing the badge needs a device and a frame; this is the state under
+    /// it, so a test with neither can read what the user would have seen.
     pub fn notice(&self) -> &crate::overlay::Notice {
         &self.notice
     }
@@ -1643,28 +1636,12 @@ impl TerminalSurface {
         // purpose: the column is physical because it is a scissor, and the
         // well reaches the chrome physical and is put on the casting's
         // logical ruler there.
-        frame.mark(Mark::ColumnStart);
-        let window = (bank + target_width, target_height);
-        if let Some(params) = column_params.as_ref() {
-            glass.chrome.render(
-                &gpu.device,
-                &gpu.queue,
-                &mut frame.encoder,
-                &frame.view,
-                window,
-                (bank, target_height),
-                (target_width, target_height),
-                scale_factor,
-                Some(params),
-                &column_pieces,
-            );
-        }
-        frame.mark(Mark::ColumnEnd);
-        // Last of all, the size badge -- over the glass and over the casting
-        // both, drawn topmost. It is centred in the *well*, so the rectangle
-        // it is given starts where the column stops. `opacity` gates it: the
-        // shell's overlay reports zero whenever the badge is not up, and the
-        // mount draws nothing rather than a transparent quad.
+        //
+        // The size badge rides along, over the glass and over the casting
+        // both, drawn topmost. It is centred in the *well*, so it starts
+        // where the column stops. `opacity` gates it: the shell's overlay
+        // reports zero whenever the badge is not up, and the mount draws
+        // nothing rather than a transparent quad.
         //
         // `showTerminalSize` is gated here and not at the state machine,
         // because it is live-reloadable and this is the side of the seam that
@@ -1679,35 +1656,41 @@ impl TerminalSurface {
         // `showTerminalSize` either -- the setting is about the resize
         // badge, and hiding a loss behind a cosmetic switch would be a
         // second way to lose the news.
+        frame.mark(Mark::ColumnStart);
+        let window = (bank + target_width, target_height);
         let badge_opacity = if glass.applied.general.show_terminal_size {
             self.size_badge.1
         } else {
             0.0
         };
         let entries = [
-            crate::badge::Entry {
+            crate::chrome::Entry {
                 text: &self.size_badge.0,
                 opacity: badge_opacity,
             },
-            crate::badge::Entry {
+            crate::chrome::Entry {
                 text: self.notice.text(),
                 opacity: self.notice.opacity_at(now),
             },
         ];
-        glass.badge.draw(
+        glass.chrome.render(
             &gpu.device,
             &gpu.queue,
             &mut frame.encoder,
             &frame.view,
-            self.window_size,
-            (bank as i32, 0, target_width, target_height),
-            glass.renderer.atlas(),
-            glass.resolved.integer_scale,
+            window,
+            (bank, target_height),
+            (target_width, target_height),
             scale_factor,
-            &entries,
+            column_params.as_ref(),
+            &column_pieces,
+            Some(crate::chrome::Badges {
+                atlas: glass.renderer.atlas(),
+                scale: glass.resolved.integer_scale,
+                entries: &entries,
+            }),
         );
-        // The badge is inside `FrameEnd` and outside `ColumnEnd`: it is real
-        // work the frame pays for, and it is not the column's.
+        frame.mark(Mark::ColumnEnd);
         frame.mark(Mark::FrameEnd);
         gpu.present(frame);
     }
