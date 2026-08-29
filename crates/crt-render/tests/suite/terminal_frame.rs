@@ -8,7 +8,8 @@
 //! `noise` in `[-0.5, 0.5]`) plus float rounding.
 
 use oracle;
-use crt_burnin::headless;
+use crt::harness::render_single_pass;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const W: u32 = 64;
@@ -27,7 +28,7 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 fn terminal_frame_matches_oracle() {
     let preset = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("shaders/terminal_frame/terminal_frame.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     let params = oracle::TerminalFrameParams {
         screen_curvature: 0.30,
@@ -53,7 +54,7 @@ fn terminal_frame_matches_oracle() {
     // Input is irrelevant: the pass is fully procedural and never samples
     // `Source`. Feed black.
     let input = vec![0u8; (W * H * 4) as usize];
-    let out = headless::render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
+    let out = render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
 
     // Center (dead in the middle of the screen, deep inside `inScreen`),
     // plus two points nearer the frame edge where `frameTint` (and its
@@ -61,7 +62,7 @@ fn terminal_frame_matches_oracle() {
     for &(c, r) in &[(32u32, 32u32), (4, 32), (32, 60)] {
         let uv = uv_of(c, r);
         let (color, alpha) = oracle::terminal_frame(uv, [W as f32, H as f32], &params);
-        let px = out[headless::px_index(W, c, r)];
+        let px = out[px_index(W, c, r)];
 
         let tol = 0.035;
         assert!(

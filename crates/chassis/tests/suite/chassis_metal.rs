@@ -6,7 +6,8 @@
 //! module -- unlike terminal_frame's dither, no term needs to be excluded.
 
 use oracle;
-use crt_burnin::headless;
+use crt::harness::render_single_pass;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const W: u32 = 64;
@@ -25,7 +26,7 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 fn chassis_metal_matches_oracle() {
     let preset =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/metal/chassis_metal.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     let params = oracle::ChassisMetalParams {
         field_scale: [1.0, 1.0],
@@ -58,12 +59,12 @@ fn chassis_metal_matches_oracle() {
     ];
 
     let input = vec![0u8; (W * H * 4) as usize];
-    let out = headless::render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
+    let out = render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
 
     for &(c, r) in &[(0u32, 0u32), (32, 32), (63, 0), (10, 50), (50, 10)] {
         let uv = uv_of(c, r);
         let expected = oracle::chassis_metal(uv, [W as f32, H as f32], &params);
-        let px = out[headless::px_index(W, c, r)];
+        let px = out[px_index(W, c, r)];
         let tol = 0.01;
         assert!(
             (px[0] - expected[0]).abs() < tol

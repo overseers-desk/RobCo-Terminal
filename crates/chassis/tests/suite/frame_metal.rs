@@ -2,7 +2,8 @@
 //! Fully analytic, no `sin` in this shader either.
 
 use oracle;
-use crt_burnin::headless;
+use crt::harness::render_single_pass;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const W: u32 = 96;
@@ -18,7 +19,7 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 #[test]
 fn frame_metal_matches_oracle() {
     let preset = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/metal/frame_metal.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     let params = oracle::FrameMetalParams {
         screen_curvature: 0.30,
@@ -88,14 +89,14 @@ fn frame_metal_matches_oracle() {
     ];
 
     let input = vec![0u8; (W * H * 4) as usize];
-    let out = headless::render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
+    let out = render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
 
     // Sample outside the bezel (chassis), inside the bezel plate, near the
     // screen center (glass), and near a screen edge (frame shadow/seam).
     for &(c, r) in &[(2u32, 2u32), (20, 32), (48, 32), (10, 10)] {
         let uv = uv_of(c, r);
         let (color, alpha) = oracle::frame_metal(uv, [W as f32, H as f32], &params);
-        let px = out[headless::px_index(W, c, r)];
+        let px = out[px_index(W, c, r)];
 
         let tol = 0.015;
         assert!(

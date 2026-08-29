@@ -17,7 +17,8 @@
 //! default radius there is 40, and `bloom_half_*` tests use that number.
 
 use oracle;
-use crt_burnin::headless;
+use crt::harness::{render_single_pass, render_single_pass_io};
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const W: u32 = 64;
@@ -67,7 +68,7 @@ fn column_band(src_w: u32, x0: u32, x1: u32, uv_x: f32) -> impl Fn(f32) -> f32 {
 /// A blur's weights sum to 1: a constant field must come back unchanged.
 #[test]
 fn bloom_constant_field_is_unchanged() {
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = shader_dir().join("bloom.slangp");
     let mut input = vec![0u8; (W * H * 4) as usize];
     for px in input.chunks_exact_mut(4) {
@@ -76,9 +77,9 @@ fn bloom_constant_field_is_unchanged() {
         px[2] = 40;
         px[3] = 255;
     }
-    let out = headless::render_single_pass(&gpu, &preset, &[("radius", 16.0)], W, H, &input);
+    let out = render_single_pass(&gpu, &preset, &[("radius", 16.0)], W, H, &input);
     let (c, r) = (32, 32);
-    let px = out[headless::px_index(W, c, r)];
+    let px = out[px_index(W, c, r)];
     let expected = [128.0 / 255.0, 200.0 / 255.0, 40.0 / 255.0];
     for i in 0..3 {
         assert!(
@@ -98,7 +99,7 @@ fn bloom_constant_field_is_unchanged() {
 /// `clamp_to_edge` would break the linearity assumption.
 #[test]
 fn bloom_linear_ramp_is_unchanged_away_from_edges() {
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = shader_dir().join("bloom.slangp");
     let mut input = vec![0u8; (W * H * 4) as usize];
     for y in 0..H {
@@ -112,12 +113,12 @@ fn bloom_linear_ramp_is_unchanged_away_from_edges() {
         }
     }
     let radius = 16.0;
-    let out = headless::render_single_pass(&gpu, &preset, &[("radius", radius)], W, H, &input);
+    let out = render_single_pass(&gpu, &preset, &[("radius", radius)], W, H, &input);
 
     // radius 16 taps reach +/-16px; stay >20px from every edge.
     for &c in &[24u32, 32, 40] {
         let r = 32u32;
-        let px = out[headless::px_index(W, c, r)];
+        let px = out[px_index(W, c, r)];
         let expected = c as f32 / (W - 1) as f32;
         assert!(
             (px[0] - expected).abs() < 0.02,
@@ -131,19 +132,19 @@ fn bloom_linear_ramp_is_unchanged_away_from_edges() {
 /// out as the oracle's Gaussian of it, at the column and either side of it.
 #[test]
 fn bloom_h_matches_oracle() {
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = shader_dir().join("bloom_h.slangp");
     let input = mask_image(W, H, |x, _| x == 32);
 
     let radius = 14.0f32;
-    let out = headless::render_single_pass(&gpu, &preset, &[("radius", radius)], W, H, &input);
+    let out = render_single_pass(&gpu, &preset, &[("radius", radius)], W, H, &input);
 
     let texel = 1.0 / W as f32;
     for &c in &[28u32, 32, 36] {
         let r = 10u32;
         let uv = uv_of(c, r, W, H);
         let expected = oracle::gaussian_blur_1d(radius, texel, column_band(W, 32, 32, uv[0]));
-        let px = out[headless::px_index(W, c, r)];
+        let px = out[px_index(W, c, r)];
         assert!(
             (px[0] - expected).abs() < 0.01,
             "column {c}: gpu={} oracle={expected}",
@@ -161,13 +162,13 @@ fn bloom_h_matches_oracle() {
 fn bloom_half_h_halo_is_the_oracle_gaussian_and_monotone() {
     const SRC_W: u32 = 192;
     const SRC_H: u32 = 16;
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = shader_dir().join("bloom_half_h.slangp");
     let input = mask_image(SRC_W, SRC_H, |x, _| (95..=97).contains(&x));
 
     let radius = 40.0f32;
     let (out_w, out_h) = (SRC_W / 2, SRC_H / 2);
-    let out = headless::render_single_pass_io(
+    let out = render_single_pass_io(
         &gpu,
         &preset,
         &[("radius", radius)],
@@ -185,7 +186,7 @@ fn bloom_half_h_halo_is_the_oracle_gaussian_and_monotone() {
     for c in centre..=centre + 44 {
         let uv = uv_of(c, r, out_w, out_h);
         let expected = oracle::gaussian_blur_1d(radius, texel, column_band(SRC_W, 95, 97, uv[0]));
-        let px = out[headless::px_index(out_w, c, r)];
+        let px = out[px_index(out_w, c, r)];
         assert!(
             (px[0] - expected).abs() < 0.01,
             "column {c}: gpu={} oracle={expected}",
@@ -211,7 +212,7 @@ fn bloom_half_h_halo_is_the_oracle_gaussian_and_monotone() {
 #[test]
 fn bloom_half_block_halo_is_separable_oracle_product() {
     const SRC: u32 = 160;
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = shader_dir().join("bloom_half.slangp");
     let input = mask_image(SRC, SRC, |x, y| {
         (76..=84).contains(&x) && (76..=84).contains(&y)
@@ -219,7 +220,7 @@ fn bloom_half_block_halo_is_separable_oracle_product() {
 
     let radius = 16.0f32;
     let out_size = SRC / 2;
-    let out = headless::render_single_pass_io(
+    let out = render_single_pass_io(
         &gpu,
         &preset,
         &[("radius", radius)],
@@ -239,7 +240,7 @@ fn bloom_half_block_halo_is_separable_oracle_product() {
         for (c, r) in [(centre + d, centre), (centre, centre + d)] {
             let uv = uv_of(c, r, out_size, out_size);
             let expected = profile(uv[0]) * profile(uv[1]);
-            let px = out[headless::px_index(out_size, c, r)];
+            let px = out[px_index(out_size, c, r)];
             assert!(
                 (px[0] - expected).abs() < 0.01,
                 "({c},{r}): gpu={} oracle={expected} (peak {at_centre})",

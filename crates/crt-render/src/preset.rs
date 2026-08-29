@@ -40,9 +40,9 @@ use config::Config;
 /// after it renumbers itself.
 pub const PASSES: &[Pass] = &[
     Pass {
-        alias: crt_burnin::ALIAS,
+        alias: crate::burn_in::ALIAS,
         file: "burn_in.slang",
-        source: crt_burnin::BURN_IN_SLANG,
+        source: crate::burn_in::BURN_IN_SLANG,
         owner: "burn-in",
         scale: Scale::BurnInQuality,
         float_framebuffer: true,
@@ -62,14 +62,14 @@ pub const PASSES: &[Pass] = &[
         // sampled once and both the burn-in effect and the static shader
         // read it under whatever filtering it carries. So does this chain.
         //
-        // What `crt-burnin/MOUNT.md` warns about -- a linear filter reading the
+        // What `crate::burn_in`'s docs warn about -- a linear filter reading the
         // accumulator at coordinates it was not written at -- does not arise at
         // this mount: the accumulator renders a full-screen quad into a
         // framebuffer the same size as the feedback it samples, so every fetch
         // lands on a texel centre. `tests/suite/burn_in_chain.rs` measures the ramp
         // that would drift if it did not.
         filter_linear: true,
-        note: "the burn-in accumulator, shader and all, from `crt-burnin`. \
+        note: "the burn-in accumulator, shader and all, from `crt::burn_in`. \
                `alias0` is what creates the feedback framebuffer and names it \
                `BurnFeedback` inside the shader; `float_framebuffer0` is the \
                decay's accuracy (0.26% over a 12-frame fade against 1.32% at 8 \
@@ -408,7 +408,7 @@ mod tests {
 
     #[test]
     fn pass_zero_is_the_block_the_mount_contract_asks_for() {
-        // `MOUNT.md` says to call `crt_burnin::preset_pass_block` rather than
+        // `crate::burn_in` says to call `preset_pass_block` rather than
         // write the accumulator's block by hand. This preset cannot: every
         // block here is assembled by walking `PASSES`, and pass 0's framebuffer
         // is sized by `general.burn_in_quality`, which that function's own
@@ -416,21 +416,21 @@ mod tests {
         // that function's line for line instead, which is the same contract
         // with the scale left to the host.
         let text = Structure::from_config(&Config::default()).preset_text();
-        for line in crt_burnin::preset_pass_block(BURN_PASS, PASSES[BURN_PASS].file).lines() {
+        for line in crate::burn_in::preset_pass_block(BURN_PASS, PASSES[BURN_PASS].file).lines() {
             let (key, value) = line.split_once(" = ").expect("a `key = value` line");
             // The three the host owns. The standalone block renders the
             // accumulator at the size of whatever precedes it, and this chain
             // renders it at the structural quality setting; and `filter_linear`
             // on pass 0 is not the accumulator's setting at all in librashader,
             // it is the chain's filter for `Original`. See the note on the
-            // pass, and `MOUNT.md`'s own paragraph on the position.
+            // pass, and `crate::burn_in`'s own paragraph on the position.
             if key == "scale_type0" || key == "scale0" || key == "filter_linear0" {
                 continue;
             }
             assert!(
                 text.contains(&format!("{key} = \"{value}\"")),
                 "the generated preset is missing `{key} = {value}`, which \
-                 crt_burnin::preset_pass_block puts on the accumulator:\n{text}"
+                 crate::burn_in::preset_pass_block puts on the accumulator:\n{text}"
             );
         }
     }
@@ -463,6 +463,6 @@ mod tests {
         // The feedback contract: later passes sample `Burn`, and a feedback
         // pass at the end of a chain has nothing to hand its ghost to.
         assert!(BURN_PASS < PASSES.len() - 1);
-        assert_eq!(PASSES[BURN_PASS].alias, crt_burnin::ALIAS);
+        assert_eq!(PASSES[BURN_PASS].alias, crate::burn_in::ALIAS);
     }
 }

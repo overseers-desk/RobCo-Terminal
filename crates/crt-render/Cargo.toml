@@ -11,6 +11,13 @@ publish = false
 name = "crt"
 path = "src/lib.rs"
 
+# The measurement rig: `crt::harness` mounts a single pass, or the burn-in
+# accumulator alone, on the locked headless device. Tests only, here and in
+# `robco-chassis` and `robco-app`, both of which name this feature in their own
+# dev-dependencies. Nothing shipped links it.
+[features]
+harness = ["robco-gpu/harness"]
+
 [dependencies]
 robco-config = { path = "../config" }
 robco-term = { path = "../term" }
@@ -22,12 +29,6 @@ robco-term = { path = "../term" }
 # to be able to name and to drive both. The arrow runs this way and only this
 # way -- `robco-chassis` depends on no part of this crate.
 robco-chassis = { path = "../chassis" }
-# Pass 0. The accumulator's shader, its decay clock and the mount contract all
-# come from here rather than being restated: `crt::preset` writes
-# `crt_burnin::BURN_IN_SLANG` into the generated preset and `crt::chain` drives
-# `crt_burnin::BurnInPass`. Its lib is `crt_burnin`. It also owns the one
-# headless GPU harness the tests mount passes on.
-robco-crt-burnin = { path = "../crt-burnin" }
 # The wgpu runtime is the only backend this crate needs; default features off
 # keeps d3d11/d3d12/vulkan/metal runtimes out of the graph.
 librashader = { version = "=0.12.0", default-features = false, features = [
@@ -46,8 +47,8 @@ log = "0.4"
 
 [dev-dependencies]
 robco-shader-oracle = { path = "../shader-oracle" }
-# The same crate the chain's normal dependency names, with the machine-wide
-# device lock turned on. Tests only: a lock the application could block on
-# would be a defect.
-robco-gpu = { path = "../gpu", features = ["harness"] }
+# This crate, with the measurement rig turned on. The suite links the rig the
+# same way `robco-chassis` and `robco-app` do rather than through a second door
+# only this crate has.
+robco-crt-render = { path = ".", features = ["harness"] }
 anyhow = "1"

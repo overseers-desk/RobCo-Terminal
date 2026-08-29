@@ -14,7 +14,8 @@
 //! at every point along an edge, which holds only while the spill kernel's
 //! taps are no farther apart than the lamps they read.
 
-use crt_burnin::headless;
+use crt::harness::render_single_pass_io;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const GRID_W: u32 = 8;
@@ -26,7 +27,7 @@ const OUT_H: u32 = 64;
 fn led_matrix_lit_and_dark_cells_read_correctly() {
     let preset =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     // Checkerboard glyph raster, one texel per grid cell.
     let mut input = vec![0u8; (GRID_W * GRID_H * 4) as usize];
@@ -73,7 +74,7 @@ fn led_matrix_lit_and_dark_cells_read_correctly() {
         ("spillDeadY", 0.2),
     ];
 
-    let out = headless::render_single_pass_io(
+    let out = render_single_pass_io(
         &gpu, &preset, params, GRID_W, GRID_H, OUT_W, OUT_H, &input,
     );
 
@@ -90,7 +91,7 @@ fn led_matrix_lit_and_dark_cells_read_correctly() {
             let lit = (gx + gy) % 2 == 0;
             let c = gx * px_per_cell_x + px_per_cell_x / 2;
             let r = gy * px_per_cell_y + px_per_cell_y / 2;
-            let px = out[headless::px_index(OUT_W, c, r)];
+            let px = out[px_index(OUT_W, c, r)];
             let expected = if lit { lit_color } else { dim_color };
             let tol = 0.06;
             assert!(
@@ -116,7 +117,7 @@ fn led_matrix_spill_band_is_flat_along_an_edge_over_a_checkerboard() {
     const OUT: u32 = 128;
     let preset =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     let mut input = vec![0u8; (GRID * GRID * 4) as usize];
     for gy in 0..GRID {
@@ -158,7 +159,7 @@ fn led_matrix_spill_band_is_flat_along_an_edge_over_a_checkerboard() {
         ("spillDeadY", 0.2),
     ];
 
-    let out = headless::render_single_pass_io(&gpu, &preset, params, GRID, GRID, OUT, OUT, &input);
+    let out = render_single_pass_io(&gpu, &preset, params, GRID, GRID, OUT, OUT, &input);
 
     // Halfway out into the bottom band (v = 0.875), across the columns the
     // grid spans, a lamp's width in from either end of the band.
@@ -167,7 +168,7 @@ fn led_matrix_spill_band_is_flat_along_an_edge_over_a_checkerboard() {
     let c0 = (margin * OUT as f32) as u32 + px_per_lamp;
     let c1 = ((1.0 - margin) * OUT as f32) as u32 - px_per_lamp;
     let band: Vec<f32> = (c0..c1)
-        .map(|c| out[headless::px_index(OUT, c, r)][0])
+        .map(|c| out[px_index(OUT, c, r)][0])
         .collect();
     let mean = band.iter().sum::<f32>() / band.len() as f32;
     let (lo, hi) = band

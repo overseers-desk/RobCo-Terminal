@@ -134,7 +134,9 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 robco-shader-oracle = { path = "../shader-oracle" }
 serde_json = "1"
 tempfile = "3"
-# The one headless GPU harness (and the machine-wide device lock that comes
-# with it): `tests/suite/bank_column.rs` mounts the casting on a real device with no
-# window, the same way `robco-chassis`'s own shader tests do.
-robco-crt-burnin = { path = "../crt-burnin" }
+# The machine-wide device lock and the offscreen readback, and the librashader
+# rig that mounts a single pass on them: `tests/suite/bank_column.rs` mounts the
+# casting on a real device with no window, the same way `robco-chassis`'s own
+# shader tests do.
+robco-gpu = { path = "../gpu", features = ["harness"] }
+robco-crt-render = { path = "../crt-render", features = ["harness"] }

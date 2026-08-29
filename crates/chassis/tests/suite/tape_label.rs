@@ -11,7 +11,8 @@
 //! output color is dominated by `letterColor`/`tapeColor` respectively --
 //! checking "letters read as letters, body reads as body", not exact values.
 
-use crt_burnin::headless;
+use crt::harness::render_single_pass;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const SIZE_W: u32 = 160;
@@ -33,7 +34,7 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 fn tape_label_letter_and_body_read_correctly() {
     let preset =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/tape_label/tape_label.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     // Glyph mask (alpha channel): a solid block from x in [60,100), y in
     // [8,24) -- comfortably larger than dilatePx (0.8px) and bevelPx (1.5px)
@@ -76,7 +77,7 @@ fn tape_label_letter_and_body_read_correctly() {
         ("seed", 0.0),
     ];
 
-    let out = headless::render_single_pass(&gpu, &preset, params, SIZE_W, SIZE_H, &mask);
+    let out = render_single_pass(&gpu, &preset, params, SIZE_W, SIZE_H, &mask);
 
     // Deep letter interior. The shader never outputs `letterColor` raw: deep
     // inside a solid mask (`mC == mToward == mAway == mAwayFar == 1`, true
@@ -86,7 +87,7 @@ fn tape_label_letter_and_body_read_correctly() {
     // sheen add-on -- so the expected value is `letterColor * 0.74`, with
     // tolerance wide enough for the grain's `+/-0.05` swing and the sheen.
     let letter_uv = uv_of(80, 16);
-    let letter_px = out[headless::px_index(SIZE_W, 80, 16)];
+    let letter_px = out[px_index(SIZE_W, 80, 16)];
     let _ = letter_uv;
     let letter_expected = [
         letter_color[0] * 0.74,
@@ -106,7 +107,7 @@ fn tape_label_letter_and_body_read_correctly() {
 
     // Deep plastic body, far from the mask block and from the strip's
     // rounded ends / top-bottom rim.
-    let body_px = out[headless::px_index(SIZE_W, 20, 16)];
+    let body_px = out[px_index(SIZE_W, 20, 16)];
     assert!(
         (body_px[0] - tape_color[0]).abs() < tol
             && (body_px[1] - tape_color[1]).abs() < tol

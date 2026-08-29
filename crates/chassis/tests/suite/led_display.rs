@@ -20,7 +20,8 @@
 
 use chassis::color::str_to_color;
 use chassis::displays::{led, raster};
-use crt_burnin::headless;
+use crt::harness::render_single_pass_io;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 /// Amber, `robco-config`'s `ScreenSettings` default (`presets.rs:29`,
@@ -31,7 +32,7 @@ const AMBER: &str = "#ff8100";
 fn led_display_composes_the_proven_raster_with_led_matrix() {
     let preset =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     let font =
         term::fonts::font_by_name(led::DEFAULT_LED_FONT_NAME, term::fonts::FontSource::Bundled)
@@ -90,7 +91,7 @@ fn led_display_composes_the_proven_raster_with_led_matrix() {
         let px_per_cell = 8;
         let out_w = r.width * px_per_cell;
         let out_h = r.height * px_per_cell;
-        let out = headless::render_single_pass_io(
+        let out = render_single_pass_io(
             &gpu, &preset, params, r.width, r.height, out_w, out_h, &input,
         );
 
@@ -99,7 +100,7 @@ fn led_display_composes_the_proven_raster_with_led_matrix() {
                 let lit = r.alpha[(gy * r.width + gx) as usize] >= 128;
                 let c = gx * px_per_cell + px_per_cell / 2;
                 let row = gy * px_per_cell + px_per_cell / 2;
-                let px = out[headless::px_index(out_w, c, row)];
+                let px = out[px_index(out_w, c, row)];
                 let expected = if lit { colors.lit } else { colors.dim };
                 let tol = 0.08;
                 assert!(

@@ -26,7 +26,7 @@
 //      `FrameSource` (pass 2, B3). The tiled noise field is a librashader
 //      user texture, `NoiseSource`. The burn-in fade rate is not a uniform of
 //      this pass at all: the accumulator is driven by `BURNIN_DECAY_STEP`,
-//      which `crt_burnin::DecayClock` computes from the real frame delta, and
+//      which `crt::burn_in::DecayClock` computes from the real frame delta, and
 //      `BurnIn` survives here only as the switch that decides whether the
 //      ghost is composited, a runtime branch.
 //   4. The degauss transient is applied here. Elsewhere it could be a
@@ -254,7 +254,7 @@ void main() {
     float bloomScale = 1.0 + max(global.Bloom, 0.0);
     txt_color *= bloomScale;
 
-    // The burn-in composite; `crt-burnin/MOUNT.md` explains each term.
+    // The burn-in composite; `crt::burn_in`'s docs explain each term.
     //
     //   * `(1.0 - txt_blur.a)` is the freshness mask on the consuming side.
     //     Alpha out of the accumulator is not opacity: it is 1 where the pixel
@@ -269,7 +269,7 @@ void main() {
     //     that interval is always zero and the term is always subtracting
     //     nothing. If this graph ever gains a damage-gated accumulator the
     //     term comes back, and the two timestamps it needs belong in
-    //     `crt_burnin::BurnInPass`, not in this pass's uniforms.
+    //     `crt::burn_in::BurnInPass`, not in this pass's uniforms.
     if (global.BurnIn > 0.0) {
         vec4 txt_blur = texture(Burn, staticCoords);
         vec3 burnInColor = 0.65 * txt_blur.rgb * (1.0 - txt_blur.a);

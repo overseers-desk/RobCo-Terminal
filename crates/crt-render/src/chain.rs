@@ -18,7 +18,7 @@
 //!
 //! One pass in the chain has state outside its own uniforms, and [`Chain`]
 //! carries the host half of it: the burn-in accumulator at pass 0.
-//! `crt-burnin/MOUNT.md` states what a host graph owes it, and all of it is
+//! [`crate::burn_in`]'s docs state what a host graph owes it, and all of it is
 //! here rather than at the call site, so nothing above this crate can forget a
 //! frame of it:
 //!
@@ -35,7 +35,7 @@ use librashader::presets::ShaderFeatures;
 use librashader::runtime::wgpu::{FilterChain, FilterChainOptions, WgpuOutputView};
 use librashader::runtime::{FilterChainParameters, Size, Viewport};
 
-use crt_burnin::BurnInPass;
+use crate::burn_in::BurnInPass;
 
 use crate::pacing::FrameTime;
 use crate::params::Params;

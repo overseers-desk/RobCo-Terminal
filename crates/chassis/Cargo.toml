@@ -20,16 +20,20 @@ robco-config = { path = "../config" }
 # display kits compose into a texture.
 robco-term = { path = "../term" }
 
-# Nothing from `robco-crt-render`: decision (b) is that the chassis stays off
-# the glass chain, in the dependency graph as well as in the pixels. The two
+# Nothing from `robco-crt-render` here: decision (b) is that the chassis stays
+# off the glass chain, in the dependency graph as well as in the pixels. Its
+# measurement rig is a dev-dependency below, which no shipped chrome links. The
+# two
 # `utils.js` helpers both halves of the chrome need are in `src/color.rs`, and
 # the metal oracles came here whole with their shaders.
 
 [dev-dependencies]
 robco-shader-oracle = { path = "../shader-oracle" }
-# The one headless GPU harness, in the lowest crate that owns a device. The
-# shader done-tests render a pass offscreen and read the pixels back through
-# it. Note the direction: this is a dev-dependency only, so no shipped chrome
-# reaches into the glass chain's half of the tree.
-robco-crt-burnin = { path = "../crt-burnin" }
+# The offscreen device and the machine-wide lock the shader done-tests hold it
+# under, and the librashader rig that mounts one of this crate's `.slangp`
+# presets on it. Note the direction: both are dev-dependencies only, so no
+# shipped chrome reaches into the glass chain's half of the tree, and
+# `robco-crt-render`'s own `[dependencies]` on this crate is unaffected.
+robco-gpu = { path = "../gpu", features = ["harness"] }
+robco-crt-render = { path = "../crt-render", features = ["harness"] }
 wgpu = "=30.0.0"

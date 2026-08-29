@@ -1,6 +1,6 @@
 //! The burn-in accumulator, measured where it actually runs.
 //!
-//! `crt-burnin`'s own suite proves the physics on a chain of its own: a
+//! `tests/suite/burn_in.rs` proves the physics on a chain of its own: a
 //! standalone preset, or three passes with a copy either side. This proves the
 //! same physics survive the mount that ships: five passes, the accumulator at
 //! index 0 rendering at `general.burn_in_quality`, its ghost read back out by
@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 
 use config::Config;
 use crt::{Chain, DegaussState, Geometry, Pacing, Params};
-use crt_burnin::decay::decay_step;
+use crt::burn_in::decay::decay_step;
 
 const W: u32 = 128;
 const H: u32 = 128;
@@ -56,7 +56,7 @@ const FP16_ULP: f32 = 1.0 / 8192.0;
 ///
 /// Each test here stands up its own wgpu device and its own five-pass chain,
 /// and three of those at once on a software Vulkan ICD is a segfault inside the
-/// driver rather than a test failure. `crt-burnin`'s own suite serialises for
+/// driver rather than a test failure. The accumulator's own suite serialises for
 /// the same reason. It costs nothing: the chain loads dominate either way.
 fn serial() -> MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
@@ -169,7 +169,7 @@ fn run(mask_on: bool, frames: usize) -> Run {
                 &h.input.texture,
                 &view,
                 (W, H),
-                crt_burnin::headless::OUTPUT_FORMAT,
+                gpu::harness::OUTPUT_FORMAT,
                 &mut encoder,
                 time,
             )
@@ -184,7 +184,7 @@ fn run(mask_on: bool, frames: usize) -> Run {
             .expect("poll after a chain frame");
 
         let px = h.gpu.read_output(&output, W, H).expect("readback");
-        levels.push(px[crt_burnin::headless::px_index(W, W / 2, H / 2)][1]);
+        levels.push(px[gpu::harness::px_index(W, W / 2, H / 2)][1]);
         decays.push(chain.last_burn_in_decay().expect("a decay was pushed"));
     }
 
@@ -368,7 +368,7 @@ fn switching_burn_in_off_takes_the_ghost_with_it() {
                 &h.input.texture,
                 &view,
                 (W, H),
-                crt_burnin::headless::OUTPUT_FORMAT,
+                gpu::harness::OUTPUT_FORMAT,
                 &mut encoder,
                 time,
             )
@@ -382,7 +382,7 @@ fn switching_burn_in_off_takes_the_ghost_with_it() {
             })
             .expect("poll");
         let px = h.gpu.read_output(&output, W, H).expect("readback");
-        levels.push(px[crt_burnin::headless::px_index(W, W / 2, H / 2)][1]);
+        levels.push(px[gpu::harness::px_index(W, W / 2, H / 2)][1]);
     }
 
     println!("burn_in=0: {}", fmt(&levels));

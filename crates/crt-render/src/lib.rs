@@ -51,6 +51,8 @@
 //! - [`params`] every uniform, and the arithmetic between a setting and it.
 //! - [`pacing`] the wall clock the whole chain is timed by.
 //! - [`degauss`] the degauss transient, as a hook something else triggers.
+//! - [`burn_in`] pass 0: the accumulator's shader, its decay clock and what a
+//!   host graph owes it every frame.
 //!
 //! The wgpu features this chain needs are not this crate's to state. Nothing
 //! here creates a device, so they have to be asked for at the call site, and
@@ -60,8 +62,9 @@
 //!
 //! # How the pass bodies are sourced
 //!
-//! - **Burn-in**: pass 0, and it is `crt-burnin`'s, not this crate's. The
-//!   shader written into the preset is `crt_burnin::BURN_IN_SLANG` and the
+//! - **Burn-in**: pass 0, from [`burn_in`], which owns the accumulator's
+//!   shader, its decay clock and the mount contract. The shader written into
+//!   the preset is [`burn_in::BURN_IN_SLANG`] and the
 //!   host half of the mount is inside [`Chain`], which pushes
 //!   `BURNIN_DECAY_STEP` before every frame, sets the rate when the settings
 //!   move, and restarts the clock when a rebuild discontinues the ghost.
@@ -70,7 +73,7 @@
 //!   accuracy; `filter_linear0 = false` keeps it from smearing. Alpha is the
 //!   freshness mask, not opacity, and the dynamic pass reads it back as
 //!   `(1.0 - txt_blur.a)`. There is no fade-rate uniform in [`params`]: the
-//!   rate is wall-clock and lives in `crt_burnin::DecayClock`.
+//!   rate is wall-clock and lives in [`burn_in::DecayClock`].
 //! - **The bloom and frame passes**: passes 1-2 (the bloom, `BloomH` then
 //!   `BloomSource`) and 3 (`FrameSource`). The bodies live under
 //!   `shaders/bloom/` (a separable Gaussian, which is why the bloom is two
@@ -95,10 +98,14 @@
 //! grown three copies of it and they are folded there, in the leaf crate that
 //! owns the device concerns.
 
+pub mod burn_in;
 pub mod chain;
 /// The chain's uniforms are built through these same functions.
 pub use chassis::color;
 pub mod degauss;
+/// The measurement rig, behind the `harness` feature. Tests only.
+#[cfg(feature = "harness")]
+pub mod harness;
 pub mod pacing;
 pub mod params;
 pub mod preset;

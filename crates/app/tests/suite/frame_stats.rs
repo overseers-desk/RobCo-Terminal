@@ -7,11 +7,11 @@
 //! = instrument reports unavailable, never panics") holds on a real device,
 //! not only in the pure-logic unit tests `frame_stats`'s own module carries.
 //! So this builds its own bare device, the same way `tests/bank_column.rs`
-//! and `crt_burnin::headless` do: no surface, no window, `GpuLock`-serialised
+//! and `gpu::harness` do: no surface, no window, `GpuLock`-serialised
 //! against every other GPU test in the workspace.
 
 use app::frame_stats::{self, Instrument, Mark};
-use crt_burnin::headless::GpuLock;
+use gpu::harness::GpuLock;
 
 /// A bare device with no surface and no window.
 struct Bare {

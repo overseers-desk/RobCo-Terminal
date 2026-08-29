@@ -2,8 +2,8 @@
 //! the geometry produces.
 //!
 //! `bank_frame_geometry.rs` proves the arithmetic. This proves the arithmetic
-//! reaches the glass: the frame is rendered offscreen through `crt_burnin`'s
-//! headless harness with the uniform set [`chassis::frame::frame_params`]
+//! reaches the glass: the frame is rendered offscreen through the chain
+//! crate's measurement rig with the uniform set [`chassis::frame::frame_params`]
 //! builds from a real [`WindowLayout`], and the screen opening it leaves is
 //! measured off the readback and compared against what the distortion
 //! formula says it should be.
@@ -33,7 +33,8 @@ use chassis::metrics::shells;
 use oracle;
 use chassis::{BankGeometry, ChannelIndicator, LedMetrics, WindowLayout};
 use config::Config;
-use crt_burnin::headless;
+use crt::harness::render_single_pass;
+use gpu::harness::{px_index, Locked};
 
 /// The stock appliance's bank: amber shell, LED strips, twelve characters,
 /// glow. 184 px, and it does not move with the window.
@@ -111,7 +112,7 @@ fn params_pair(
 fn moulding_thickness(pixels: &[[f32; 4]], w: u32, h: u32) -> u32 {
     let row = h / 2;
     for c in 0..w {
-        if pixels[headless::px_index(w, c, row)][3] < 0.5 {
+        if pixels[px_index(w, c, row)][3] < 0.5 {
             return c;
         }
     }
@@ -131,7 +132,7 @@ fn the_moulding_lands_where_the_geometry_puts_it() {
     cfg.screen.screen_curvature = 0.0;
 
     let bank = stock_bank_width();
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("shaders/metal/frame_metal.slangp");
 
@@ -142,7 +143,7 @@ fn the_moulding_lands_where_the_geometry_puts_it() {
         let (params, oracle_params) = params_pair(&cfg, &layout);
 
         let input = vec![0u8; (w * h * 4) as usize];
-        let out = headless::render_single_pass(&gpu, &preset, &params, w, h, &input);
+        let out = render_single_pass(&gpu, &preset, &params, w, h, &input);
 
         // The uniform, derived here by hand rather than read back off the
         // thing under test: the stored frame-size setting of the stock
@@ -188,18 +189,18 @@ fn the_drawn_frame_agrees_with_the_oracle_on_uniforms_the_geometry_chose() {
     let h = layout.crt.height as u32; // 768
     let (params, oracle_params) = params_pair(&cfg, &layout);
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("shaders/metal/frame_metal.slangp");
     let input = vec![0u8; (w * h * 4) as usize];
-    let out = headless::render_single_pass(&gpu, &preset, &params, w, h, &input);
+    let out = render_single_pass(&gpu, &preset, &params, w, h, &input);
 
     // A corner (chassis beyond the plate), the moulding at the waist, the
     // glass, and a point on the plate's lit top band.
     for &(c, r) in &[(2u32, 2u32), (10, h / 2), (w / 2, h / 2), (w / 2, 6)] {
         let uv = [(c as f32 + 0.5) / w as f32, (r as f32 + 0.5) / h as f32];
         let (color, alpha) = oracle::frame_metal(uv, [w as f32, h as f32], &oracle_params);
-        let px = out[headless::px_index(w, c, r)];
+        let px = out[px_index(w, c, r)];
         let tol = 0.015;
         assert!(
             (px[0] - color[0]).abs() < tol
@@ -226,7 +227,7 @@ fn a_wider_bank_thickens_the_moulding_it_leaves() {
     let mut cfg = Config::default();
     cfg.screen.screen_curvature = 0.0;
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("shaders/metal/frame_metal.slangp");
 
@@ -239,7 +240,7 @@ fn a_wider_bank_thickens_the_moulding_it_leaves() {
         let h = layout.crt.height as u32;
         let (params, p) = params_pair(&cfg, &layout);
         let input = vec![0u8; (w * h * 4) as usize];
-        let out = headless::render_single_pass(&gpu, &preset, &params, w, h, &input);
+        let out = render_single_pass(&gpu, &preset, &params, w, h, &input);
         let px = moulding_thickness(&out, w, h) as f32;
         // Each one still lands on its own closed form.
         let expected = (p.frame_size / (1.0 + 2.0 * p.frame_size)) * w as f32;
@@ -270,7 +271,7 @@ fn curvature_pushes_the_glass_edge_out_under_the_moulding() {
     // The stock profile's curvature is small, so this is a one-sided bound
     // rather than a figure -- what it catches is a curvature uniform that
     // never arrived, or arrived with the sign flipped.
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("shaders/metal/frame_metal.slangp");
     let layout = WindowLayout::new(1440.0, 900.0, stock_bank_width());
@@ -284,7 +285,7 @@ fn curvature_pushes_the_glass_edge_out_under_the_moulding() {
         // 0.7 is the highest curvature any bundled screen preset carries.
         cfg.screen.screen_curvature = curvature;
         let (params, _) = params_pair(&cfg, &layout);
-        let out = headless::render_single_pass(&gpu, &preset, &params, w, h, &input);
+        let out = render_single_pass(&gpu, &preset, &params, w, h, &input);
         thickness.push(moulding_thickness(&out, w, h));
     }
 

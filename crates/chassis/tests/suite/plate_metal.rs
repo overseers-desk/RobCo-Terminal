@@ -3,7 +3,8 @@
 //! in the surface math).
 
 use oracle;
-use crt_burnin::headless;
+use crt::harness::render_single_pass;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const W: u32 = 128;
@@ -18,7 +19,7 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 #[test]
 fn plate_metal_matches_oracle() {
     let preset = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/metal/plate_metal.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     let params = oracle::PlateMetalParams {
         size_px: [W as f32, H as f32],
@@ -68,7 +69,7 @@ fn plate_metal_matches_oracle() {
     ];
 
     let input = vec![0u8; (W * H * 4) as usize];
-    let out = headless::render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
+    let out = render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
 
     // Interior points only (away from the rounded-rect edge / coverage
     // falloff, which is intentionally a hard-edged antialiasing band the
@@ -77,7 +78,7 @@ fn plate_metal_matches_oracle() {
     for &(c, r) in &[(64u32, 16u32), (20, 16), (100, 16), (64, 8), (64, 24)] {
         let uv = uv_of(c, r);
         let (color, coverage) = oracle::plate_metal(uv, &params);
-        let px = out[headless::px_index(W, c, r)];
+        let px = out[px_index(W, c, r)];
 
         let tol = 0.01;
         assert!(

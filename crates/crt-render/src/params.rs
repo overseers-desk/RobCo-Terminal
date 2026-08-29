@@ -167,7 +167,7 @@ impl Params {
         let glowing_line = s.glowing_line as f32 * 0.2;
 
         // The setting itself, and nothing derived from it. The fade *rate* is
-        // not a uniform of this chain: `crt_burnin::DecayClock` turns the same
+        // not a uniform of this chain: `crate::burn_in::DecayClock` turns the same
         // setting into the per-frame `BURNIN_DECAY_STEP` the accumulator
         // subtracts, from the real frame delta, and `crt::chain` pushes it. All
         // this value does is tell the dynamic pass whether to composite the
@@ -362,7 +362,7 @@ impl Params {
         self.values.iter()
     }
 
-    /// The `screen.burn_in` setting, on the scale `crt_burnin` takes it.
+    /// The `screen.burn_in` setting, on the scale `crate::burn_in` takes it.
     ///
     /// Not a uniform lookup for its own sake: [`Chain`](crate::chain::Chain)
     /// hands this to `BurnInPass::set_burn_in` on every parameter push. The

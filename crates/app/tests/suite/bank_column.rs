@@ -21,7 +21,7 @@
 use app::column::Column;
 use chassis::Cabinet;
 use config::Config;
-use crt_burnin::headless;
+use gpu::harness::{px_index, Locked};
 
 /// The window, at the default window size.
 const WINDOW_W: u32 = 1024;
@@ -112,7 +112,7 @@ fn oracle_params(params: &[(&'static str, f32)]) -> oracle::ChassisMetalParams {
 
 /// Clear a frame to [`SENTINEL`], composite the column over it, read it back.
 fn frame_with_column(
-    gpu: &headless::Gpu,
+    gpu: &Locked,
     column: &mut Column,
     bank: u32,
     scale_factor: f64,
@@ -123,7 +123,7 @@ fn frame_with_column(
 
 /// The same, with furniture on the casting.
 fn frame_with_furniture(
-    gpu: &headless::Gpu,
+    gpu: &Locked,
     column: &mut Column,
     bank: u32,
     scale_factor: f64,
@@ -192,9 +192,9 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
     assert_eq!(cabinet.bank_width(), BANK);
     let params = cabinet.chassis_params();
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
         .expect("the column's pass loads");
 
     let frame = frame_with_column(&gpu, &mut column, BANK, 1.0, &params);
@@ -218,7 +218,7 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
             (y as f32 + 0.5) / WINDOW_H as f32,
         ];
         let expected = oracle::chassis_metal(uv, well, &oracle_params);
-        let got = frame[headless::px_index(WINDOW_W, x, y)];
+        let got = frame[px_index(WINDOW_W, x, y)];
         let tol = 0.01;
         assert!(
             (got[0] - expected[0]).abs() < tol
@@ -232,8 +232,8 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
     // ...and it is metal rather than a flat fill: the field varies across the
     // column, so a mount that had dropped every uniform would not pass above
     // by accident.
-    let a = frame[headless::px_index(WINDOW_W, 4, 4)];
-    let b = frame[headless::px_index(WINDOW_W, 200, 600)];
+    let a = frame[px_index(WINDOW_W, 4, 4)];
+    let b = frame[px_index(WINDOW_W, 200, 600)];
     assert!(
         (a[0] - b[0]).abs() > 1e-4 || (a[1] - b[1]).abs() > 1e-4,
         "the column is a flat fill: {a:?} against {b:?}"
@@ -249,7 +249,7 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
         (WINDOW_W - 1, WINDOW_H - 1),
     ] {
         assert_eq!(
-            frame[headless::px_index(WINDOW_W, x, y)],
+            frame[px_index(WINDOW_W, x, y)],
             SENTINEL,
             "the column reached ({x},{y}), which is the glass's"
         );
@@ -272,9 +272,9 @@ fn the_castings_field_is_the_wells_logical_size_on_a_hidpi_display() {
     let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
     let params = cabinet.chassis_params();
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
         .expect("the column's pass loads");
 
     let frame = frame_with_column(&gpu, &mut column, BANK, 2.0, &params);
@@ -317,7 +317,7 @@ fn the_castings_field_is_the_wells_logical_size_on_a_hidpi_display() {
                 continue;
             }
             telling += 1;
-            let got = frame[headless::px_index(WINDOW_W, x, y)];
+            let got = frame[px_index(WINDOW_W, x, y)];
             assert!(
                 (got[0] - expected[0]).abs() < TOL
                     && (got[1] - expected[1]).abs() < TOL
@@ -358,9 +358,9 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     let row_furniture = |i: usize| &pieces[5 + 2 * i];
     let strip_of = |i: usize| &pieces[6 + 2 * i];
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
         .expect("the column's pass loads");
 
     let bare = frame_with_column(&gpu, &mut column, BANK, 1.0, &cabinet.chassis_params());
@@ -404,11 +404,11 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     for &(dx, dy) in &[(pw / 2, 8u32), (60, 8), (100, 50), (149, 55)] {
         let uv = [(dx as f32 + 0.5) / pw as f32, (dy as f32 + 0.5) / ph as f32];
         let (color, coverage) = oracle::plate_metal(uv, &plate_oracle);
-        let got = frame[headless::px_index(WINDOW_W, px + dx, py + dy)];
+        let got = frame[px_index(WINDOW_W, px + dx, py + dy)];
         // Premultiplied source-over onto the casting, which is what the
         // mount's blend state does; deep inside the plate the coverage is 1
         // and the casting under it contributes nothing.
-        let under = bare[headless::px_index(WINDOW_W, px + dx, py + dy)];
+        let under = bare[px_index(WINDOW_W, px + dx, py + dy)];
         let expect = |i: usize| color[i] * coverage + under[i] * (1.0 - coverage);
         let tol = 0.01;
         assert!(
@@ -422,7 +422,7 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     }
     // ...and the plate is not the casting: it is a *raised* piece, so it has
     // to differ from what was underneath.
-    let inside = headless::px_index(WINDOW_W, px + pw / 2, py + 8);
+    let inside = px_index(WINDOW_W, px + pw / 2, py + 8);
     assert!(
         (frame[inside][0] - bare[inside][0]).abs() > 1e-3,
         "the plate left the casting unchanged at its own centre"
@@ -471,7 +471,7 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
             }
             let lit = raster.rgba[((gy * grid.0 + gx) * 4) as usize] >= 128;
             let expected = if lit { colors.lit } else { colors.dim };
-            let got = frame[headless::px_index(WINDOW_W, cx as u32, cy as u32)];
+            let got = frame[px_index(WINDOW_W, cx as u32, cy as u32)];
             let tol = 0.08;
             assert!(
                 (got[0] - expected.r).abs() < tol
@@ -505,7 +505,7 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
         (dark.rect.x + dark.rect.width / 2.0) as u32,
         (dark.rect.y + dark.rect.height / 2.0) as u32,
     );
-    let got = frame[headless::px_index(WINDOW_W, dx, dy)];
+    let got = frame[px_index(WINDOW_W, dx, dy)];
     assert!(
         (got[0] - dark_colors.dim.r).abs() < 0.08,
         "the dark slot's window at ({dx},{dy}) reads {:?}, not the unpowered dim {:?}",
@@ -564,8 +564,8 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
                 f32::from(picture.rgba[i + 2]) / 255.0,
                 f32::from(picture.rgba[i + 3]) / 255.0,
             ];
-            let under = before_row[headless::px_index(WINDOW_W, rx + x, ry + y)];
-            let got = with_row[headless::px_index(WINDOW_W, rx + x, ry + y)];
+            let under = before_row[px_index(WINDOW_W, rx + x, ry + y)];
+            let got = with_row[px_index(WINDOW_W, rx + x, ry + y)];
             // The raster is premultiplied, so source-over is `src + dst * (1 -
             // a)` with no divide anywhere.
             let expect = |c: usize| src[c] + under[c] * (1.0 - src[3]);
@@ -622,13 +622,13 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     );
     assert_eq!(head.rgba[3], 0, "the screw's own corner is not transparent");
     assert_eq!(
-        with_screw[headless::px_index(WINDOW_W, sx, sy)],
-        plate_only[headless::px_index(WINDOW_W, sx, sy)],
+        with_screw[px_index(WINDOW_W, sx, sy)],
+        plate_only[px_index(WINDOW_W, sx, sy)],
         "the screw's transparent corner changed the plate under it"
     );
     let mid = ((head.height / 2 * head.width + head.width / 2) * 4) as usize;
     assert!(head.rgba[mid + 3] > 200, "the screw's head is not opaque");
-    let got = with_screw[headless::px_index(WINDOW_W, sx + head.width / 2, sy + head.height / 2)];
+    let got = with_screw[px_index(WINDOW_W, sx + head.width / 2, sy + head.height / 2)];
     assert!(
         (got[0] - f32::from(head.rgba[mid]) / 255.0).abs() < 1.0 / 255.0 + 1e-4,
         "the screw's own centre reads {:?}, not the raster's {}",
@@ -650,7 +650,7 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
         (WINDOW_W - 1, WINDOW_H - 1),
     ] {
         assert_eq!(
-            frame[headless::px_index(WINDOW_W, x, y)],
+            frame[px_index(WINDOW_W, x, y)],
             SENTINEL,
             "the furniture reached ({x},{y}), which is the glass's"
         );
@@ -683,9 +683,9 @@ fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
         ]
     );
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
         .expect("the column's pass loads");
     let frame = frame_with_furniture(
         &gpu,
@@ -700,7 +700,7 @@ fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
     // where no glyph box reaches.
     let label = &pieces[3];
     let tape = chassis::displays::tape::tape_color();
-    let body = frame[headless::px_index(
+    let body = frame[px_index(
         WINDOW_W,
         label.rect.x as u32 + 2,
         (label.rect.y + label.rect.height / 2.0) as u32,
@@ -748,7 +748,7 @@ fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
     let mut total = 0;
     for y in 0..gh as u32 {
         for x in 0..gw as u32 {
-            let px = frame[headless::px_index(WINDOW_W, gx as u32 + x, gy as u32 + y)];
+            let px = frame[px_index(WINDOW_W, gx as u32 + x, gy as u32 + y)];
             total += 1;
             if px[0] >= struck_at {
                 struck += 1;
@@ -795,9 +795,9 @@ fn a_painted_piece_reaching_a_slot_a_shaded_piece_built_still_draws() {
     let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
     let params = cabinet.chassis_params();
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
         .expect("the column's pass loads");
 
     // One rectangle, well inside the bank, for both pieces.
@@ -836,7 +836,7 @@ fn a_painted_piece_reaching_a_slot_a_shaded_piece_built_still_draws() {
     let frame = frame_with_furniture(&gpu, &mut column, BANK, 1.0, &params, &[painted]);
 
     for &(dx, dy) in &[(rw / 2, rh / 2), (2, 2), (rw - 3, rh - 3)] {
-        let i = headless::px_index(WINDOW_W, rx + dx, ry + dy);
+        let i = px_index(WINDOW_W, rx + dx, ry + dy);
         assert!(
             (frame[i][0] - 1.0).abs() < 0.02
                 && frame[i][1].abs() < 0.02
@@ -860,15 +860,15 @@ fn a_hidden_chassis_draws_no_column_at_all() {
     assert_eq!(cabinet.bank_width(), 0);
     assert!(!cabinet.is_shown());
 
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), headless::OUTPUT_FORMAT)
+    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
         .expect("the column's pass loads");
 
     let frame = frame_with_column(&gpu, &mut column, 0, 1.0, &cabinet.chassis_params());
     for &(x, y) in &[(0u32, 0u32), (1, 1), (WINDOW_W / 2, WINDOW_H / 2)] {
         assert_eq!(
-            frame[headless::px_index(WINDOW_W, x, y)],
+            frame[px_index(WINDOW_W, x, y)],
             SENTINEL,
             "something was drawn at ({x},{y}) for a chassis that is not shown"
         );

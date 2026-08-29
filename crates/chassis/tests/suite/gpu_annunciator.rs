@@ -11,7 +11,8 @@ use std::path::PathBuf;
 use oracle;
 use chassis::shells::annunciator;
 use chassis::shells::common::Rect;
-use crt_burnin::headless;
+use crt::harness::render_single_pass;
+use gpu::harness::{px_index, Locked};
 
 const W: u32 = 64;
 const H: u32 = 64;
@@ -31,7 +32,7 @@ fn annunciator_chassis_metal_region_renders_as_the_oracle_predicts() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/metal/chassis_metal.slangp");
     assert!(preset.is_file(), "expected {preset:?} to exist");
 
-    let gpu = match headless::Gpu::new() {
+    let gpu = match Locked::new() {
         Ok(gpu) => gpu,
         Err(e) => {
             eprintln!("skipping: no headless wgpu device ({e})");
@@ -64,12 +65,12 @@ fn annunciator_chassis_metal_region_renders_as_the_oracle_predicts() {
     ];
 
     let input = vec![0u8; (W * H * 4) as usize];
-    let out = headless::render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
+    let out = render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
 
     for &(c, r) in &[(0u32, 0u32), (32, 32), (63, 0), (10, 50), (50, 10)] {
         let uv = uv_of(c, r);
         let expected = oracle::chassis_metal(uv, [W as f32, H as f32], &params);
-        let px = out[headless::px_index(W, c, r)];
+        let px = out[px_index(W, c, r)];
         let tol = 0.01;
         assert!(
             (px[0] - expected[0]).abs() < tol

@@ -20,7 +20,8 @@
 //! point outside the centred glyph rectangle is the plastic-color check.
 
 use chassis::displays::{raster, tape};
-use crt_burnin::headless;
+use crt::harness::render_single_pass_io;
+use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
 
 const DISPLAY_HEIGHT: f64 = 44.0; // tape::NATURAL_HEIGHT, a fixture naming no height.
@@ -109,7 +110,7 @@ fn find_saturated_interior(
 fn tape_display_composes_the_proven_raster_with_tape_label() {
     let preset =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/tape_label/tape_label.slangp");
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
 
     let font = term::fonts::font_by_name(tape::FONT_NAME, term::fonts::FontSource::Bundled)
         .unwrap();
@@ -172,7 +173,7 @@ fn tape_display_composes_the_proven_raster_with_tape_label() {
             ("seed", tape::SEED),
         ];
 
-        let out = headless::render_single_pass_io(
+        let out = render_single_pass_io(
             &gpu, &preset, params, r.width, r.height, out_w, out_h, &input,
         );
 
@@ -181,7 +182,7 @@ fn tape_display_composes_the_proven_raster_with_tape_label() {
         // canvas edge by construction).
         let body_c = 2u32;
         let body_row = out_h / 2;
-        let body_px = out[headless::px_index(out_w, body_c, body_row)];
+        let body_px = out[px_index(out_w, body_c, body_row)];
         let tol = 0.12;
         assert!(
             (body_px[0] - tape_color.r).abs() < tol
@@ -199,7 +200,7 @@ fn tape_display_composes_the_proven_raster_with_tape_label() {
         // clear the dilate/bevel band; not every short sample string will.
         if let Some((c, row)) = find_saturated_interior(&r, rect, out_w, out_h, light) {
             checked_any_letter = true;
-            let letter_px = out[headless::px_index(out_w, c, row)];
+            let letter_px = out[px_index(out_w, c, row)];
             // The shader's own reduction at full saturation: face = letterColor *
             // (0.74 + 0.10*faceGrain), faceGrain in [-0.5, 0.5].
             let expected = [

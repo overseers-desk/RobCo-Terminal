@@ -7,11 +7,10 @@
 //! anything the `decay` unit tests do not already cover.
 
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard};
 
-use crt_burnin::chain::BurnInChain;
-use crt_burnin::decay::decay_step;
-use crt_burnin::headless::{Cell, Gpu};
+use crt::burn_in::decay::decay_step;
+use crt::harness::BurnInChain;
+use gpu::harness::{Cell, Locked};
 
 const W: u32 = 64;
 const H: u32 = 64;
@@ -31,20 +30,22 @@ const FP16_ULP: f32 = 1.0 / 2048.0;
 const GHOST: Cell = Cell::new(8, 24, 24, 40);
 const STEADY: Cell = Cell::new(40, 24, 56, 40);
 
-/// One device for the whole test binary, and one test on it at a time.
+/// A device for the test that asks for one, and no more than one alive in this
+/// process at a time.
 ///
-/// Two reasons to serialise rather than take a device per test: chain loads are
-/// the expensive part of every test here, and concurrent chains on one queue
-/// make the frame timings in the reported numbers meaningless.
-fn gpu() -> (&'static Gpu, MutexGuard<'static, ()>) {
-    static LOCK: Mutex<()> = Mutex::new(());
-    let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    (crate::gpu(), guard)
+/// The device holds the machine-wide GPU lock for its whole life, which is what
+/// serialises these against `support::Harness`'s devices in this same binary as
+/// well as against another process running the suite. A device that outlived
+/// its test would therefore be a device no other test in this binary could ever
+/// get past, so each takes its own and drops it.
+fn gpu() -> Locked {
+    Locked::new().expect("headless wgpu device")
 }
 
 fn preset(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("shaders")
+        .join("burn_in")
         .join(name)
 }
 
@@ -68,7 +69,7 @@ struct Run {
 }
 
 fn run(preset_name: &str, burn_in: f64, mask_on: bool, frames: usize) -> Run {
-    let (g, _guard) = gpu();
+    let g = &gpu();
     let mut chain =
         BurnInChain::load(g, &preset(preset_name), burn_in, W, H).expect("load burn-in chain");
     chain.pass().set_mask(mask_on);
@@ -271,7 +272,7 @@ fn the_freshness_mask_suppresses_decay_on_newly_lit_pixels() {
 
 #[test]
 fn changing_the_rate_mid_run_takes_effect_without_a_reload() {
-    let (g, _guard) = gpu();
+    let g = &gpu();
     let mut chain =
         BurnInChain::load(g, &preset("burn_in.slangp"), BURN_IN, W, H).expect("load chain");
 
@@ -340,7 +341,7 @@ fn burn_in_zero_leaves_no_ghost_and_needs_no_rebuild() {
 
 #[test]
 fn a_restart_costs_the_ghost_nothing_but_one_frame_of_decay() {
-    let (g, _guard) = gpu();
+    let g = &gpu();
     let mut chain =
         BurnInChain::load(g, &preset("burn_in.slangp"), BURN_IN, W, H).expect("load chain");
     let step = decay_step(BURN_IN, DT);

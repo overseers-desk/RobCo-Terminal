@@ -5,9 +5,11 @@
 
 mod support;
 mod bloom;
+mod burn_in;
 mod burn_in_chain;
 mod contracts;
 mod glyph_survival;
+mod mount;
 mod pass_graph;
 mod terminal_frame;
 mod user_lut;

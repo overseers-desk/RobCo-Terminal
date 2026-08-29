@@ -23,7 +23,7 @@
 
 use app::badge::Badge;
 use app::overlay::{GridSize, SizeOverlay, FADE, HOLD};
-use crt_burnin::headless;
+use gpu::harness::Locked;
 use term::{ScalePolicy, SizingRequest, Target};
 
 /// A window at the default size the app opens with, and the shipped
@@ -47,13 +47,13 @@ const SENTINEL: [u8; 4] = [102, 102, 102, 255];
 const FRAME_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 struct Fixture {
-    gpu: headless::Gpu,
+    gpu: Locked,
     atlas: term::GlyphAtlas,
     scale: u32,
 }
 
 fn fixture() -> Fixture {
-    let gpu = headless::Gpu::new().expect("headless wgpu device");
+    let gpu = Locked::new().expect("headless wgpu device");
     let entry = term::bundled_fonts()
         .first()
         .expect("at least one bundled font")

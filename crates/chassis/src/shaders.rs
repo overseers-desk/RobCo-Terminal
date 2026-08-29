@@ -7,7 +7,7 @@
 //! checkout and nowhere else.
 //!
 //! These constants are the other half, for a host that writes its own preset
-//! and has no source tree to read from. It is the same shape `crt_burnin`
+//! and has no source tree to read from. It is the same shape `crt::burn_in`
 //! gives the burn-in pass, and for the same reason: a shipped binary carries
 //! its shaders rather than looking for them.
 

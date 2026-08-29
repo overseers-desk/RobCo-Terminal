@@ -273,10 +273,10 @@ fn the_only_burn_in_uniform_left_is_the_composite_switch() {
         );
     }
 
-    // The fade time those settings mean is `crt-burnin`'s to say now, still
+    // The fade time those settings mean is `crt::burn_in`'s to say now, still
     // on the 0.16 s and 1.6 s bounds it always had.
-    assert!((crt_burnin::decay::fade_time_seconds(0.0) - 0.16).abs() < 1e-12);
-    assert!((crt_burnin::decay::fade_time_seconds(1.0) - 1.6).abs() < 1e-12);
+    assert!((crt::burn_in::decay::fade_time_seconds(0.0) - 0.16).abs() < 1e-12);
+    assert!((crt::burn_in::decay::fade_time_seconds(1.0) - 1.6).abs() < 1e-12);
 }
 
 #[test]
