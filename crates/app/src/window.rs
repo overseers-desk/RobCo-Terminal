@@ -620,9 +620,11 @@ pub struct TerminalSurface {
     /// the run is: 1 a click, 2 a double, 3 a triple. A fourth press on the
     /// same cell starts a new run at 1, which is what every terminal does.
     last_click: Option<(Instant, (usize, usize), u8)>,
-    /// What the last completed selection said. The clipboard is the real
-    /// destination; this is what a test with no display can read.
-    last_selection: Option<String>,
+    /// The two selections this window writes to, and the platform handle
+    /// behind them ([`crate::clipboard`]). Held rather than made per call
+    /// because on X11 the primary selection lives inside the process that
+    /// owns it.
+    clipboard: clipboard::Store,
     /// Pixels of wheel travel not yet worth a line, for the trackpads
     /// that report in pixels rather than notches.
     wheel_pixels: f64,
@@ -921,6 +923,7 @@ impl TerminalSurface {
         start_home: bool,
     ) -> Self {
         let columns = viewport.term_size().cols();
+        let window_has_display = window.is_some();
         // The set comes up on channel 1, and the tube is armed only after
         // it, so the first channel is not a channel change and nothing
         // flinches.
@@ -965,7 +968,11 @@ impl TerminalSurface {
             dragging: false,
             secondary_press: false,
             last_click: None,
-            last_selection: None,
+            clipboard: if window_has_display {
+                clipboard::Store::platform()
+            } else {
+                clipboard::Store::memory()
+            },
             wheel_pixels: 0.0,
             settings: None,
             base: Config::default(),
@@ -1809,9 +1816,17 @@ impl TerminalSurface {
         }
     }
 
-    /// The text of the last completed selection, if there was one.
+    /// The text of the last completed selection, if there was one: the
+    /// primary selection's slot, which is where selecting puts it.
     pub fn last_selection(&self) -> Option<&str> {
-        self.last_selection.as_deref()
+        self.clipboard.last(clipboard::Target::Primary)
+    }
+
+    /// This window's clipboard store, for a caller that wants to see which
+    /// of the two selections a gesture wrote. A headless surface's store is
+    /// the whole of what it has.
+    pub fn clipboard_store(&self) -> &clipboard::Store {
+        &self.clipboard
     }
 
     /// Lines the view is scrolled back above the bottom of the history.
@@ -2119,7 +2134,7 @@ impl TerminalSurface {
     /// | key | handler |
     /// |---|---|
     /// | `Ctrl+Shift+C` | [`Self::copy_selection`] |
-    /// | `Ctrl+Shift+V` | [`Self::paste`] |
+    /// | `Ctrl+Shift+V` | [`Self::paste_from`] |
     /// | `Ctrl+Shift+T` | [`Self::new_channel`] |
     /// | `Ctrl+Shift+W` | [`Self::close_channel`] |
     /// | `Ctrl+Shift+Left/Right` | [`Self::move_channel`] |
@@ -2188,7 +2203,7 @@ impl TerminalSurface {
                 true
             }
             Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("v") => {
-                self.paste(false);
+                self.paste_from(clipboard::Target::Clipboard, false);
                 true
             }
             _ => false,
@@ -3515,44 +3530,43 @@ impl TerminalSurface {
         self.selection.release(gesture)
     }
 
-    /// Konsole copies on select rather than on a keystroke. The clipboard
-    /// needs a display to talk to, so a headless surface keeps the text
-    /// and skips the platform call.
+    /// Selecting writes the primary selection and nothing else, which is
+    /// what the middle button pastes. The clipboard is left where the user
+    /// put it: a run marked to paste two lines down must not cost them what
+    /// they copied ten minutes ago.
     fn copy_on_select(&mut self, text: Option<String>) {
         let Some(text) = text.filter(|t| !t.is_empty()) else {
             return;
         };
-        if self.window.is_some() {
-            if let Err(e) = clipboard::copy(&text) {
-                log::debug!("could not copy the selection: {e}");
-            }
+        if let Err(e) = self.clipboard.set(clipboard::Target::Primary, &text) {
+            log::debug!("could not write the primary selection: {e}");
         }
-        self.last_selection = Some(text);
     }
 
-    /// `Ctrl+Shift+C`. Copy-on-select has usually put this same text on the
-    /// clipboard already; the keystroke matters after another application
-    /// has taken the clipboard since, and to the hand that reaches for it
-    /// out of habit. A surface with no display keeps the text and skips the
-    /// platform call, as [`Self::copy_on_select`] does.
+    /// `Ctrl+Shift+C`. The selection is on the primary selection already;
+    /// this is what puts it on the clipboard, where a browser or an editor
+    /// will look for it.
     fn copy_selection(&mut self) {
-        let Some(text) = self.last_selection.clone() else {
+        let Some(text) = self
+            .clipboard
+            .last(clipboard::Target::Primary)
+            .map(str::to_owned)
+        else {
             return;
         };
-        if self.window.is_some() {
-            if let Err(e) = clipboard::copy(&text) {
-                log::debug!("could not copy the selection: {e}");
-            }
+        if let Err(e) = self.clipboard.set(clipboard::Target::Clipboard, &text) {
+            log::debug!("could not copy the selection: {e}");
         }
     }
 
     /// `force_bracketed` is the pointer's Ctrl asking for brackets the
     /// terminal's own mode did not.
-    fn paste(&mut self, force_bracketed: bool) {
-        if self.window.is_none() {
-            return;
-        }
-        match clipboard::paste() {
+    fn paste_from(&mut self, target: clipboard::Target, force_bracketed: bool) {
+        match self.clipboard.get(target) {
+            // An empty selection is nothing to type, and typing it would
+            // still send a pair of paste brackets to a program waiting for
+            // a command.
+            Ok(text) if text.is_empty() => {}
             Ok(text) => {
                 // A question standing on the air takes the paste instead of
                 // the wire. A password is a thing people keep in a password
@@ -3832,7 +3846,9 @@ impl Surface for TerminalSurface {
             PointerAction::ReportToProgram => {
                 self.report_mouse(report_button(button), cell, mods, true)
             }
-            PointerAction::PastePrimary { bracketed } => self.paste(bracketed),
+            PointerAction::PastePrimary { bracketed } => {
+                self.paste_from(clipboard::Target::Primary, bracketed)
+            }
             PointerAction::OpenSettings => self.open_settings_app(),
             PointerAction::Ignore => {}
         }

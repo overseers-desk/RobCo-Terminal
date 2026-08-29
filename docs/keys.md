@@ -47,18 +47,34 @@ Konsole's `Ctrl`+`Shift`+`F11` and one used to a bare `F11`.
 
 | Key | What it does |
 |---|---|
-| `Ctrl`+`Shift`+`C` | Copy the selection |
-| `Ctrl`+`Shift`+`V` | Paste |
+| `Ctrl`+`Shift`+`C` | Copy the selection to the clipboard |
+| `Ctrl`+`Shift`+`V` | Paste the clipboard |
+| Double-click | Select the word under the pointer |
+| Triple-click | Select the whole line under the pointer, wrapping and all |
 
-Selecting text with the mouse copies it already. `Ctrl`+`Shift`+`C` copies
-it again, which is what you want after something else has taken the
-clipboard. Middle-click pastes, as `Ctrl`+`Shift`+`V` does; holding `Ctrl`
-while you middle-click forces bracketed paste onto a program that did not
-ask for it. Hold `Ctrl`+`Alt` while you drag to select a rectangle instead
-of a run of lines, and `Ctrl` alone (`Cmd` on macOS) to copy a wrapped
-command as one unbroken run. Right-click opens the settings window
-([docs/settings-gui.md](settings-gui.md)); a program tracking the mouse
-(vim, htop) receives the button instead, as it does the others.
+There are two selections here, as there are in every X11 terminal.
+Selecting text with the mouse fills the *primary* selection, and the middle
+button pastes it: that pair is a gesture of its own, and it leaves the
+clipboard alone, so a run marked to paste two lines down does not cost you
+what you copied ten minutes ago. `Ctrl`+`Shift`+`C` is what puts the
+selection on the *clipboard*, where a browser or an editor looks for it,
+and `Ctrl`+`Shift`+`V` is what reads it back. On macOS and Windows, which
+have one pasteboard between them and no primary selection, the middle
+button pastes the last selection made in this window and the pasteboard
+stays where you left it.
+
+Holding `Ctrl` while you middle-click forces bracketed paste onto a program
+that did not ask for it. Hold `Ctrl`+`Alt` while you drag to select a
+rectangle instead of a run of lines, and `Ctrl` alone (`Cmd` on macOS) to
+copy a wrapped command as one unbroken run. Right-click opens the settings
+window ([docs/settings-gui.md](settings-gui.md)); a program tracking the
+mouse (vim, htop) receives the button instead, as it does the others.
+
+Which model the drag itself follows is `general.selection_model`
+([config.md](config.md)): `konsole`, the default, points at a cell and grows
+a range of cells; `rio` points at the seam between two cells, so a drag
+begun on the right half of a character leaves that character out, and it
+brings rio's own word separators and its bracket-matching double click.
 
 On macOS `Ctrl`+click is the right-click, as it is in every Mac terminal,
 so it opens the settings window and reaches a mouse-tracking program the
