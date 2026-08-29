@@ -45,10 +45,11 @@ pub struct Critters {
     active: Option<(Crossing, Instant)>,
     /// The cells as of the last tick, row-major.
     cells: Vec<(usize, usize, char)>,
-    /// The rows painted on the previous tick, so the row a piece has just
-    /// left is repainted from the terminal behind it.
-    was: Option<(usize, usize)>,
-    now: Option<(usize, usize)>,
+    /// The cells as of the tick before, kept so [`Critters::tick`] can
+    /// compare rather than guess. The two are swapped each tick, so this
+    /// costs one allocation over the life of a window rather than one a
+    /// frame.
+    prev: Vec<(usize, usize, char)>,
 }
 
 impl Critters {
@@ -65,8 +66,7 @@ impl Critters {
             next: None,
             active: None,
             cells: Vec::new(),
-            was: None,
-            now: None,
+            prev: Vec::new(),
         }
     }
 
@@ -82,8 +82,7 @@ impl Critters {
     /// Advance to `now` on a screen this size, and say whether the cells
     /// differ from the last tick.
     pub fn tick(&mut self, now: Instant, cols: usize, rows: usize) -> bool {
-        let before = self.cells.len();
-        let was_where = self.now;
+        std::mem::swap(&mut self.cells, &mut self.prev);
         self.cells.clear();
 
         if !self.enabled || cols == 0 || rows == 0 {
@@ -94,12 +93,13 @@ impl Critters {
             self.advance(now, cols, rows);
         }
 
-        self.was = was_where;
-        self.now = self.active.map(|(c, _)| c.band(rows)).unwrap_or(None);
         if let Some((crossing, _)) = self.active {
             crossing.paint(cols, rows, &mut self.cells);
         }
-        before != self.cells.len() || was_where != self.now
+        // The cells themselves, not a count of them: a piece that steps one
+        // column while wholly on the glass paints the same number of cells in
+        // the same rows, and a count would call that no change.
+        self.cells != self.prev
     }
 
     /// Start a crossing if one is due, or carry the one in hand forward.

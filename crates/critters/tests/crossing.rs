@@ -319,3 +319,60 @@ fn every_piece_retired_is_the_same_silence_as_switched_off() {
         assert!(critters.crossing().is_none());
     }
 }
+
+/// The caller drives its redraw off this, so it has to mean exactly what it
+/// says: the cells differ from last time. The failure it guards is quiet. A
+/// piece crossing the middle of a wide screen paints the same number of cells
+/// in the same rows on every step, and only the columns move, so anything
+/// short of comparing the cells calls that no change and the crossing
+/// stutters.
+#[test]
+fn the_answer_is_whether_the_cells_differ_and_nothing_looser() {
+    let t0 = epoch();
+    let mut critters = Critters::new(31, true, Duration::from_secs(2), [true; ART.len()]);
+    let mut previous: Vec<(usize, usize, char)> = Vec::new();
+    let mut moved_without_growing = 0;
+    for i in 0..40_000u64 {
+        let changed = critters.tick(t0 + Duration::from_millis(i * 5), 200, 24);
+        let cells = critters.cells().to_vec();
+        assert_eq!(
+            changed,
+            cells != previous,
+            "at tick {i} the answer disagreed with the cells"
+        );
+        if cells != previous && cells.len() == previous.len() && !cells.is_empty() {
+            moved_without_growing += 1;
+        }
+        previous = cells;
+    }
+    assert!(
+        moved_without_growing > 50,
+        "only {moved_without_growing} steps moved without changing the cell count; \
+         the case this guards was barely exercised"
+    );
+}
+
+/// A deadline that has passed has to be cleared by the tick that answers it.
+///
+/// This is the property whose absence spins an event loop. The caller sleeps
+/// until `wake_at`, wakes, ticks, and sleeps again on the new `wake_at`. If a
+/// tick at or after the deadline can leave the deadline where it was, the
+/// caller is told to sleep until an instant already gone, wakes immediately,
+/// and does it again for as long as the critter is on the glass.
+#[test]
+fn a_tick_at_the_deadline_moves_the_deadline() {
+    let t0 = epoch();
+    let mut critters = Critters::new(37, true, Duration::from_secs(3), [true; ART.len()]);
+    critters.tick(t0, 80, 24);
+    let mut now = t0;
+    for _ in 0..20_000 {
+        let due = critters.wake_at().expect("enabled, so it always has a next");
+        // Wake exactly when asked, as the caller does.
+        now = now.max(due);
+        critters.tick(now, 80, 24);
+        assert!(
+            critters.wake_at().is_some_and(|next| next > now),
+            "the deadline stayed at or behind {now:?} after a tick that answered it"
+        );
+    }
+}

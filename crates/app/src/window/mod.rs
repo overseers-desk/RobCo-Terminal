@@ -687,6 +687,22 @@ fn critter_seed() -> u64 {
         .unwrap_or(0x5EED)
 }
 
+/// The wait the config asks for, as a duration.
+///
+/// The file is hand-editable and takes any number where the settings window
+/// offers a slider, so this is where an unusable one stops. A value under a
+/// second is read as a second, and one too large for a `Duration` at all --
+/// `1e300` minutes, say -- falls back to the shipped default rather than
+/// taking the window down with it, because a mistyped interval is a typo and
+/// not a reason to lose a session.
+fn critter_mean(minutes: f64) -> Duration {
+    let shipped = CritterSettings::default().mean_minutes * 60.0;
+    Duration::try_from_secs_f64((minutes * 60.0).max(1.0)).unwrap_or_else(|_| {
+        log::warn!("critters.mean_minutes = {minutes} is not a usable interval; using {shipped}s");
+        Duration::from_secs_f64(shipped)
+    })
+}
+
 /// This window's critters as they ship, before the settings file has been
 /// read. `apply_live_settings` replaces this on the first frame; it is here
 /// so the shipped values have one home, which is the schema.
@@ -695,7 +711,7 @@ fn shipped_critters() -> Critters {
     Critters::new(
         critter_seed(),
         shipped.enabled,
-        Duration::from_secs_f64(shipped.mean_minutes * 60.0),
+        critter_mean(shipped.mean_minutes),
         critter_cast(&shipped),
     )
 }
@@ -1422,7 +1438,7 @@ impl TerminalSurface {
         let cfg = self.live_config();
         self.critters.configure(
             cfg.critters.enabled,
-            Duration::from_secs_f64((cfg.critters.mean_minutes * 60.0).max(1.0)),
+            critter_mean(cfg.critters.mean_minutes),
             critter_cast(&cfg.critters),
         );
 
@@ -2108,12 +2124,23 @@ impl Surface for TerminalSurface {
         }
 
         // The critters' own deadline: the next column of a crossing in hand,
-        // or the instant the next one is due. The effects clock above happens
-        // to wake this window often enough today, but a critter that owes the
-        // screen a step says so itself rather than living on somebody else's
-        // frames.
-        if let Some(at) = self.critters.wake_at() {
-            wake_at = wake_at.min(at);
+        // or the instant the next one is due. A deadline in the future is
+        // something to sleep until; a deadline already past is a frame owed
+        // now, and it has to be *asked for*, because `draw_frame` is the only
+        // thing that advances a crossing. A wake that draws nothing would
+        // leave the step where it was and the deadline where it was, and the
+        // loop would spin on a `WaitUntil` in the past for as long as the
+        // critter was on screen.
+        //
+        // Gated on the glass for the reason the effects clock above is: a
+        // window with nothing to draw on owes the critters no frames.
+        let mut critter_due = false;
+        if self.glass.is_some() {
+            match self.critters.wake_at() {
+                Some(at) if at > now => wake_at = wake_at.min(at),
+                Some(_) => critter_due = true,
+                None => {}
+            }
         }
 
         // The output governor (see [`Self::next_output_frame`]): output asks
@@ -2137,7 +2164,7 @@ impl Surface for TerminalSurface {
         }
 
         Tick {
-            redraw: output_due || effects_due,
+            redraw: output_due || effects_due || critter_due,
             wake_at: Some(wake_at),
             finished: false,
         }

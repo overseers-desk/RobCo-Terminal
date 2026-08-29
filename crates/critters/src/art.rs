@@ -132,22 +132,6 @@ impl Crossing {
         self.step >= self.steps(cols)
     }
 
-    /// The rows of the screen this crossing can touch, first and last
-    /// inclusive, or `None` when the box is wholly above or below the glass.
-    pub fn band(&self, rows: usize) -> Option<(usize, usize)> {
-        if rows == 0 {
-            return None;
-        }
-        let last_row = self.top + i32::from(self.art.height) - 1;
-        if last_row < 0 || self.top >= rows as i32 {
-            return None;
-        }
-        Some((
-            self.top.max(0) as usize,
-            (last_row.min(rows as i32 - 1)) as usize,
-        ))
-    }
-
     /// Append every cell this crossing wants painted, row-major, clipped to
     /// the screen, transparent cells left out.
     ///
