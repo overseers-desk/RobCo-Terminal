@@ -100,6 +100,7 @@ use crate::badge::Badge;
 use crate::bank::BankPager;
 use crate::channels::{BankId, Channels, Close};
 use crate::chord::ChordInput;
+use crate::chrome::Chrome;
 use crate::column::Column;
 use crate::frame_stats::Mark;
 use crate::gpu::Gpu;
@@ -350,6 +351,7 @@ struct Glass {
     /// when its pass could not be loaded, which is a window with a bare well
     /// rather than a process that dies.
     column: Option<Column>,
+    chrome: Chrome,
     /// The size badge's mount, outside the chain for the same reason the
     /// column is (`crate::badge`'s module doc). It holds no state of its own:
     /// what to say and how strongly are the shell's overlay's answer, pushed
@@ -643,6 +645,7 @@ impl Glass {
             target,
             chain,
             column: Column::new(&gpu.device, &gpu.queue, &dir, gpu.format()),
+            chrome: Chrome::new(&gpu.device, gpu.format()),
             badge: Badge::new(&gpu.device, gpu.format()),
             // One clock per window, started here, never read anywhere else.
             pacing: Pacing::new(Instant::now()),
@@ -1638,17 +1641,36 @@ impl TerminalSurface {
         // through. It also has to: the chain's last pass cleared this whole
         // image before drawing its rectangle of it, so what stands to the left
         // of the well right now is transparent black.
+        //
+        // The casting first, natively, then the furniture that stands on it.
+        // The window is the well plus the bank, and the two rectangles the
+        // chrome takes are in different rulers on purpose: the column is
+        // physical because it is a scissor, the well reaches the chrome
+        // physical and is put on the casting's logical ruler there.
         frame.mark(Mark::ColumnStart);
-        if let (Some(column), Some(params)) = (glass.column.as_mut(), column_params) {
+        let window = (bank + target_width, target_height);
+        if let Some(params) = column_params.as_ref() {
+            glass.chrome.render(
+                &gpu.device,
+                &gpu.queue,
+                &mut frame.encoder,
+                &frame.view,
+                window,
+                (bank, target_height),
+                (target_width, target_height),
+                scale_factor,
+                params,
+            );
+        }
+        if let (Some(column), true) = (glass.column.as_mut(), column_params.is_some()) {
             column.render(
                 &gpu.device,
                 &gpu.queue,
                 &mut frame.encoder,
                 &frame.view,
                 (bank, target_height),
-                (target_width, target_height),
+                window,
                 scale_factor,
-                &params,
                 &column_pieces,
                 time.index,
             );

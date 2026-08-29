@@ -43,6 +43,17 @@ pub const LED_MATRIX_SLANG: &str = include_str!("../shaders/led_matrix/led_matri
 /// instead of lamps. Uniforms from [`crate::furniture::tape_params`].
 pub const TAPE_LABEL_SLANG: &str = include_str!("../shaders/tape_label/tape_label.slang");
 
+/// `wgsl/common.wgsl`: the metal-surface math shared by everything drawn
+/// after the CRT chain, the twin of `metal_common.slang`. It declares no
+/// bindings and no entry points, so a host concatenates it ahead of a shader
+/// body and its own glue.
+pub const COMMON_WGSL: &str = include_str!("../shaders/wgsl/common.wgsl");
+
+/// `wgsl/chassis_metal.wgsl`: the casting under the bank column, as one
+/// function over a `ChassisParams` value. The parameter block is
+/// [`crate::params::ChassisMetalParams::record`]'s layout.
+pub const CHASSIS_METAL_WGSL: &str = include_str!("../shaders/wgsl/chassis_metal.wgsl");
+
 /// Include files the shader sources above pull in with `#include`. A host
 /// materializing shaders to disk writes these into the same directory as
 /// the including shaders, under exactly these file names; librashader
@@ -83,6 +94,22 @@ mod tests {
         assert!(common.contains("float metalField"));
         for src in [FRAME_METAL_SLANG, CHASSIS_METAL_SLANG, PLATE_METAL_SLANG] {
             assert!(src.contains("#include \"metal_common.slang\""));
+        }
+    }
+
+    /// The WGSL half carries the same surface math under its own spelling,
+    /// and carries no bindings: a body that declared a `@group` would fix the
+    /// binding numbers of every host that concatenates it.
+    #[test]
+    fn the_wgsl_bodies_are_functions_a_host_binds_rather_than_passes() {
+        assert!(COMMON_WGSL.contains("fn metal_field("));
+        assert!(COMMON_WGSL.contains("fn rrect_px("));
+        assert!(CHASSIS_METAL_WGSL.contains("fn chassis_metal("));
+        assert!(CHASSIS_METAL_WGSL.contains("viewport_size"));
+        for src in [COMMON_WGSL, CHASSIS_METAL_WGSL] {
+            assert!(!src.contains("@group"));
+            assert!(!src.contains("@vertex"));
+            assert!(!src.contains("@fragment"));
         }
     }
 }

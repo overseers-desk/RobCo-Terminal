@@ -400,8 +400,8 @@ impl Cabinet {
         frame::frame_params(&self.frame_style, &self.shell, &self.cfg, &self.layout)
     }
 
-    /// The uniforms for the casting under the bank column.
-    pub fn chassis_params(&self) -> Vec<Param> {
+    /// The parameter block for the casting under the bank column.
+    pub fn chassis_params(&self) -> crate::params::ChassisMetalParams {
         frame::chassis_params(&self.chassis_style, &self.shell, &self.layout)
     }
 
@@ -537,7 +537,7 @@ mod tests {
         assert_eq!(c.min_bank_width(), 154);
         assert_eq!(c.min_inner_size(), (474, 240));
         assert_eq!(c.frame_params().len(), 36);
-        assert_eq!(c.chassis_params().len(), 14);
+        assert_eq!(c.chassis_params().field_scale, [184.0 / 840.0, 1.0]);
     }
 
     #[test]

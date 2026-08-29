@@ -226,6 +226,202 @@ impl Locked {
     }
 }
 
+/// The glue [`render_wgsl_quad`] wraps a shader body in: a full-viewport
+/// triangle whose `uv` runs 0..1 across the output, and a fragment stage that
+/// hands that `uv` to the body's `shade`.
+///
+/// `uv.y` grows downwards, so readback row `r` is texcoord `v = (r + 0.5) / h`
+/// with no flip. That is the same mapping librashader's quad lands on, which
+/// is what lets one oracle judge a pass before and after it leaves the chain.
+const QUAD_GLUE: &str = r#"
+struct QuadOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn quad_vs(@builtin(vertex_index) index: u32) -> QuadOut {
+    let x = f32((index << 1u) & 2u);
+    let y = f32(index & 2u);
+    var out: QuadOut;
+    out.uv = vec2<f32>(x, y);
+    out.pos = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+    return out;
+}
+
+@fragment
+fn quad_fs(input: QuadOut) -> @location(0) vec4<f32> {
+    return shade(input.uv);
+}
+"#;
+
+/// Render one WGSL shader body over a `w`x`h` viewport and read the result
+/// back as RGBA f32: the native twin of `crt::harness::render_single_pass`,
+/// for the passes that draw after the chain rather than inside it.
+///
+/// `source` is a complete WGSL module that defines `fn shade(uv: vec2<f32>)
+/// -> vec4<f32>`. It may declare, in bind group 0, a uniform block at binding
+/// 0 (filled from `params`), the input texture at binding 1, and a
+/// non-filtering sampler at binding 2; a body that reads none of them
+/// declares none of them, and the layout still carries all three.
+///
+/// `input` is RGBA8, `w * h * 4` bytes. It panics rather than returning a
+/// `Result` for the librashader rig's reason: every caller is a test whose
+/// next line would be `.expect` anyway.
+pub fn render_wgsl_quad(
+    gpu: &Locked,
+    source: &str,
+    params: &[u8],
+    w: u32,
+    h: u32,
+    input: &[u8],
+) -> Vec<[f32; 4]> {
+    let device = &gpu.device;
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("wgsl quad"),
+        source: wgpu::ShaderSource::Wgsl(format!("{source}{QUAD_GLUE}").into()),
+    });
+
+    // A uniform buffer is never zero-sized, and a body that reads no
+    // parameters still gets a block bound: the layout is fixed so that one
+    // rig serves procedural and sampling bodies alike.
+    let mut bytes = params.to_vec();
+    bytes.resize(bytes.len().max(16).next_multiple_of(16), 0);
+    let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("wgsl quad params"),
+        size: bytes.len() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    gpu.queue.write_buffer(&uniforms, 0, &bytes);
+
+    let texture = gpu.make_input(w.max(1), h.max(1));
+    gpu.upload(&texture, w.max(1), h.max(1), input);
+    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("wgsl quad"),
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("wgsl quad"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            },
+        ],
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("wgsl quad"),
+        layout: &layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniforms.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&texture_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("wgsl quad"),
+        bind_group_layouts: &[Some(&layout)],
+        immediate_size: 0,
+    });
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("wgsl quad"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: Some("quad_vs"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &module,
+            entry_point: Some("quad_fs"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: OUTPUT_FORMAT,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    });
+
+    let output = gpu.make_output(w, h);
+    let view = output.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("wgsl quad"),
+    });
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("wgsl quad"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, Some(&bind_group), &[]);
+        pass.draw(0..3, 0..1);
+    }
+    let index = gpu.queue.submit([encoder.finish()]);
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: Some(index),
+            timeout: None,
+        })
+        .expect("device poll failed");
+    gpu.read_output(&output, w, h)
+        .unwrap_or_else(|e| panic!("reading back a WGSL quad: {e}"))
+}
+
 /// A rectangle of lit pixels, in texel coordinates.
 #[derive(Debug, Clone, Copy)]
 pub struct Cell {

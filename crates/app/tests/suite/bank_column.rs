@@ -9,15 +9,16 @@
 //! - the column's own rectangle carries the shell's metal, matching
 //!   `oracle::chassis_metal` at sampled points, which is only true if
 //!   the two sizes went into the mount the right way round (the drawn rectangle
-//!   is the bank's, `viewportSize` is the screen well's; see `app::column`);
+//!   is the bank's, `viewport_size` is the screen well's; see `app::chrome`);
 //! - every pixel outside that rectangle is exactly what was on the frame
 //!   before, to the bit. A second librashader chain pointed at the swapchain
 //!   would have cleared them, which is the whole reason `app::column` renders
-//!   offscreen and blits.
+//!   its furniture offscreen and blits.
 //!
 //! And the hidden-chassis state, which is not a column of no width but no
 //! column: nothing is drawn at all, and the frame comes back untouched.
 
+use app::chrome::Chrome;
 use app::column::Column;
 use chassis::Cabinet;
 use config::Config;
@@ -87,47 +88,47 @@ fn plate_params(params: &[(&'static str, f32)]) -> oracle::PlateMetalParams {
     }
 }
 
-/// The oracle's parameter struct, from the same uniform set the mount pushes.
-/// Reading it back out by name is deliberate: a uniform `chassis_params`
-/// spells differently from the shader reaches the shader as nothing at all,
-/// and only a comparison against the CPU form notices.
-fn oracle_params(params: &[(&'static str, f32)]) -> oracle::ChassisMetalParams {
-    oracle::ChassisMetalParams {
-        field_scale: [param(params, "fieldScaleX"), param(params, "fieldScaleY")],
-        field_offset: [param(params, "fieldOffsetX"), param(params, "fieldOffsetY")],
-        light_dir: [param(params, "lightDirX"), param(params, "lightDirY")],
-        chassis_color: [
-            param(params, "chassisColorR"),
-            param(params, "chassisColorG"),
-            param(params, "chassisColorB"),
-        ],
-        metal: oracle::MetalParams {
-            grain_amount: param(params, "grainAmount"),
-            mottle_amount: param(params, "mottleAmount"),
-            scratch_amount: param(params, "scratchAmount"),
-        },
-        vignette_strength: param(params, "vignetteStrength"),
-    }
-}
-
 /// Clear a frame to [`SENTINEL`], composite the column over it, read it back.
 fn frame_with_column(
     gpu: &Locked,
-    column: &mut Column,
+    column: &mut Mount,
     bank: u32,
     scale_factor: f64,
-    params: &[(&'static str, f32)],
+    params: &chassis::params::ChassisMetalParams,
 ) -> Vec<[f32; 4]> {
     frame_with_furniture(gpu, column, bank, scale_factor, params, &[])
+}
+
+/// The two mounts a bank is drawn by, held together because every test here
+/// needs both: the native pass that lays the casting down, and the
+/// librashader one that stands the furniture on it.
+struct Mount {
+    chrome: Chrome,
+    column: Column,
+}
+
+impl Mount {
+    fn new(gpu: &Locked, dir: &std::path::Path) -> Self {
+        Self {
+            chrome: Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT),
+            column: Column::new(
+                &gpu.device,
+                &gpu.queue,
+                dir,
+                gpu::harness::OUTPUT_FORMAT,
+            )
+            .expect("the furniture's mount"),
+        }
+    }
 }
 
 /// The same, with furniture on the casting.
 fn frame_with_furniture(
     gpu: &Locked,
-    column: &mut Column,
+    column: &mut Mount,
     bank: u32,
     scale_factor: f64,
-    params: &[(&'static str, f32)],
+    params: &chassis::params::ChassisMetalParams,
     pieces: &[chassis::Piece],
 ) -> Vec<[f32; 4]> {
     let output = gpu.make_output(WINDOW_W, WINDOW_H);
@@ -161,15 +162,25 @@ fn frame_with_furniture(
         multiview_mask: None,
     });
 
-    column.render(
+    column.chrome.render(
+        &gpu.device,
+        &gpu.queue,
+        &mut encoder,
+        &view,
+        (WINDOW_W, WINDOW_H),
+        (bank, WINDOW_H),
+        (WINDOW_W - bank, WINDOW_H),
+        scale_factor,
+        params,
+    );
+    column.column.render(
         &gpu.device,
         &gpu.queue,
         &mut encoder,
         &view,
         (bank, WINDOW_H),
-        (WINDOW_W - bank, WINDOW_H),
+        (WINDOW_W, WINDOW_H),
         scale_factor,
-        params,
         pieces,
         0,
     );
@@ -194,8 +205,7 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
-        .expect("the column's pass loads");
+    let mut column = Mount::new(&gpu, dir.path());
 
     let frame = frame_with_column(&gpu, &mut column, BANK, 1.0, &params);
 
@@ -205,7 +215,7 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
     // across the boundary rather than restarting.
     // At this scale factor the well's physical and logical sizes are the same
     // number; the test below separates them.
-    let oracle_params = oracle_params(&params);
+    let oracle_params = params;
     let well = [(WINDOW_W - BANK) as f32, WINDOW_H as f32];
     for &(x, y) in &[
         (0u32, 0u32),
@@ -274,12 +284,11 @@ fn the_castings_field_is_the_wells_logical_size_on_a_hidpi_display() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
-        .expect("the column's pass loads");
+    let mut column = Mount::new(&gpu, dir.path());
 
     let frame = frame_with_column(&gpu, &mut column, BANK, 2.0, &params);
 
-    let oracle_params = oracle_params(&params);
+    let oracle_params = params;
     // Rounded, not halved: `well_ruler` hands the pass whole pixels, and this
     // well is an odd 777 wide.
     let logical_well = [
@@ -360,8 +369,7 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
-        .expect("the column's pass loads");
+    let mut column = Mount::new(&gpu, dir.path());
 
     let bare = frame_with_column(&gpu, &mut column, BANK, 1.0, &cabinet.chassis_params());
     let frame = frame_with_furniture(
@@ -685,8 +693,7 @@ fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
-        .expect("the column's pass loads");
+    let mut column = Mount::new(&gpu, dir.path());
     let frame = frame_with_furniture(
         &gpu,
         &mut column,
@@ -797,8 +804,7 @@ fn a_painted_piece_reaching_a_slot_a_shaded_piece_built_still_draws() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
-        .expect("the column's pass loads");
+    let mut column = Mount::new(&gpu, dir.path());
 
     // One rectangle, well inside the bank, for both pieces.
     let rect = chassis::Rect::new(40.0, 60.0, 64.0, 32.0);
@@ -862,8 +868,7 @@ fn a_hidden_chassis_draws_no_column_at_all() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Column::new(&gpu.device, &gpu.queue, dir.path(), gpu::harness::OUTPUT_FORMAT)
-        .expect("the column's pass loads");
+    let mut column = Mount::new(&gpu, dir.path());
 
     let frame = frame_with_column(&gpu, &mut column, 0, 1.0, &cabinet.chassis_params());
     for &(x, y) in &[(0u32, 0u32), (1, 1), (WINDOW_W / 2, WINDOW_H / 2)] {

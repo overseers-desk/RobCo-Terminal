@@ -31,6 +31,7 @@
 
 use crate::layout::WindowLayout;
 use crate::metrics::{Rgb, ShellMetrics};
+use crate::params::{ChassisMetalParams, MetalParams};
 use config::Config;
 
 /// One named uniform, the same shape `crt::params::Param` uses.
@@ -279,7 +280,9 @@ pub fn frame_params(
     ]
 }
 
-/// The uniform set for `shaders/metal/chassis_metal.slangp`.
+/// The parameter block for `shaders/wgsl/chassis_metal.wgsl`, which the host
+/// completes with the well's logical size
+/// ([`ChassisMetalParams::record`]) and writes into its own buffer.
 ///
 /// The three field uniforms are what make the bank's metal and the bezel's one
 /// casting rather than two: the chassis is drawn in the frame's coordinates,
@@ -289,26 +292,22 @@ pub fn chassis_params(
     style: &ChassisStyle,
     shell: &ShellMetrics,
     layout: &WindowLayout,
-) -> Vec<Param> {
+) -> ChassisMetalParams {
     let (_viewport, field_scale, field_offset) = layout.chassis_field();
     let light = shell.casting_light_dir;
     let color = shell.casting_color;
-    vec![
-        ("fieldScaleX", field_scale[0]),
-        ("fieldScaleY", field_scale[1]),
-        ("fieldOffsetX", field_offset[0]),
-        ("fieldOffsetY", field_offset[1]),
-        ("lightDirX", light[0]),
-        ("lightDirY", light[1]),
-        ("chassisColorR", color.r),
-        ("chassisColorG", color.g),
-        ("chassisColorB", color.b),
-        ("chassisColorA", 1.0),
-        ("grainAmount", style.grain_amount),
-        ("mottleAmount", style.mottle_amount),
-        ("scratchAmount", style.scratch_amount),
-        ("vignetteStrength", style.vignette_strength),
-    ]
+    ChassisMetalParams {
+        field_scale,
+        field_offset,
+        light_dir: light,
+        chassis_color: [color.r, color.g, color.b],
+        metal: MetalParams {
+            grain_amount: style.grain_amount,
+            mottle_amount: style.mottle_amount,
+            scratch_amount: style.scratch_amount,
+        },
+        vignette_strength: style.vignette_strength,
+    }
 }
 
 #[cfg(test)]
@@ -417,10 +416,8 @@ mod tests {
         );
         // The bank stands left of the frame's origin, covering 184/840 of
         // its field.
-        assert_eq!(param(&p, "fieldScaleX"), 184.0 / 840.0);
-        assert_eq!(param(&p, "fieldScaleY"), 1.0);
-        assert_eq!(param(&p, "fieldOffsetX"), -(184.0 / 840.0));
-        assert_eq!(param(&p, "fieldOffsetY"), 0.0);
+        assert_eq!(p.field_scale, [184.0 / 840.0, 1.0]);
+        assert_eq!(p.field_offset, [-(184.0 / 840.0), 0.0]);
         // The same casting the frame reads, so the metal is continuous
         // across the boundary rather than two pieces that happen to meet.
         let frame = frame_params(
@@ -429,10 +426,21 @@ mod tests {
             &Config::default(),
             &layout,
         );
-        for c in ["chassisColorR", "chassisColorG", "chassisColorB"] {
-            assert_eq!(param(&p, c), param(&frame, c));
+        for (i, c) in ["chassisColorR", "chassisColorG", "chassisColorB"]
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(p.chassis_color[i], param(&frame, c));
         }
-        assert_eq!(param(&p, "lightDirX"), param(&frame, "lightDirX"));
-        assert_eq!(param(&p, "lightDirY"), param(&frame, "lightDirY"));
+        assert_eq!(p.light_dir[0], param(&frame, "lightDirX"));
+        assert_eq!(p.light_dir[1], param(&frame, "lightDirY"));
+
+        // The block the mount writes is the WGSL struct's own field order,
+        // with the well's logical size in the slot the shader reads it from.
+        let record = p.record([840.0, 768.0]);
+        assert_eq!(record[6], 840.0);
+        assert_eq!(record[7], 768.0);
+        assert_eq!(record[11], 1.0);
+        assert_eq!(record[15], p.vignette_strength);
     }
 }

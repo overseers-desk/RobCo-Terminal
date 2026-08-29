@@ -1,70 +1,38 @@
-//! The bank column, composited over the presented frame.
+//! The bank's furniture, composited over the presented frame.
 //!
 //! Chassis chrome lives *outside* the CRT chain. The bezel is the one
 //! exception, and rides in the chain's frame slot because it hugs the curved
-//! glass it is set into; this is the other half: the flat casting to the left
-//! of the well, which bends with nothing and is drawn after the glass is on the
-//! swapchain.
+//! glass it is set into. The casting to the left of the well is drawn by
+//! [`crate::chrome`], natively, straight onto the swapchain. What is left
+//! here is the furniture that stands on that casting: the shell's plate and
+//! one channel display per row, each still a librashader pass.
 //!
 //! # Why it is drawn offscreen and then blitted
 //!
-//! `chassis` owns the shader and draws nothing itself, so this is the host's
+//! `chassis` owns the shaders and draws nothing itself, so this is the host's
 //! mount, the same shape `crt::Chain` is. But a librashader chain's last pass
 //! begins its render pass with `LoadOp::Clear` over the whole attachment
 //! (`librashader-runtime-wgpu`'s `graphics_pipeline::begin_rendering`), and it
 //! sets its scissor afterwards, so pointing a second chain straight at the
-//! swapchain view would wipe the frame the first one just drew there. The
-//! column is therefore rendered into a texture of its own and copied into place
-//! by [`Blit`], whose render pass loads rather than clears.
+//! swapchain view would wipe the frame the first one just drew there. Each
+//! piece is therefore rendered into a scratch texture of its own and blitted
+//! into a column texture, over what is already there; the column texture
+//! accumulates the whole bank and only then goes on the frame, blended over
+//! the casting the chrome pass laid down. Treating each row as a piece
+//! composited into the shared column texture gives clipping for free: a
+//! strip's spill margin reaches past the column's edges and is cut there by
+//! the scissor rather than landing on the glass.
 //!
-//! # Which size is which
-//!
-//! Two sizes go in and they are deliberately different:
-//!
-//! - the **drawn rectangle** is the bank column, and it is what `vTexCoord`
-//!   spans;
-//! - `viewportSize`, which `chassis_metal.slang` reads off `OutputSize`, is
-//!   the **screen well's** size, because the casting continues the bezel's
-//!   metal field leftwards and is drawn in the bezel's coordinates rather
-//!   than its own. That is what `fieldScale`/`fieldOffset` from
-//!   [`chassis::WindowLayout::chassis_field`] are expressed against: get the
-//!   two sizes the wrong way round and the metal grain restarts at the seam
-//!   and the vignette lights the column as if it were a plate of its own.
-//!
-//! The two are in different units, too, and that is the second half of the
-//! same trap. The rectangle is physical pixels, because it is a texture and a
-//! scissor. The declared well is **logical** pixels ([`well_ruler`]), because
-//! the field it stands for is measured off `chassis::WindowLayout`, which is
-//! logical throughout, and the bezel this casting continues divides its own
-//! `OutputSize` by `windowScaling * DPR` to reach the same ruler
-//! (`frame_metal.slang`'s `main`, and the push site in
-//! `crt::params::Params::build`). Declare the well in physical pixels and the
-//! grain runs at half scale on the bank side of a 2x display.
-//!
-//! librashader keeps them apart for us: the `OutputSize` uniform comes from the
-//! output view's declared size, while the scissor and viewport come from the
-//! `Viewport`'s own rect (`RenderTarget::viewport`). So the view is declared at
-//! the well's size and the rect is the column's.
-//!
-//! # The furniture on top of it
-//!
-//! The casting is the bank's floor, not the bank. What stands on it (the
-//! shell's plate, one channel display per row) is
-//! [`chassis::furniture`]'s plan, and every piece of it is another librashader
-//! pass with the same clearing habit. So each piece is rendered into a scratch
-//! texture of its own and blitted into *this* texture, over what is already
-//! there; the column texture accumulates the whole bank and only then goes on
-//! the frame. Treating each row as a piece composited into the shared column
-//! texture gives clipping for free: a strip's spill margin reaches past the
-//! column's edges and is cut there by the scissor rather than landing on the
-//! glass.
+//! The column texture is cleared to transparent at the head of every frame,
+//! so what it carries is exactly the furniture, premultiplied, and the blend
+//! that puts it on the frame is an ordinary source-over.
 //!
 //! The pieces' rectangles are logical pixels and this texture is physical, so
-//! the mount scales them on the way in. What it does *not* scale is the
-//! uniforms: `sizePx`, `gridSize` and the glyph rectangle are all measured in
-//! logical coordinates, so a 2.5 px bevel is two and a half logical pixels
-//! drawn across five device ones on a scaled display. That is why nothing
-//! here multiplies a uniform by the ratio.
+//! the mount scales them on the way in ([`crate::chrome::scale_rect`]). What
+//! it does *not* scale is the uniforms: `sizePx`, `gridSize` and the glyph
+//! rectangle are all measured in logical coordinates, so a 2.5 px bevel is two
+//! and a half logical pixels drawn across five device ones on a scaled
+//! display. That is why nothing here multiplies a uniform by the ratio.
 
 use std::path::{Path, PathBuf};
 
@@ -72,28 +40,6 @@ use chassis::furniture::{Pass, Piece, Raster};
 use librashader::presets::ShaderFeatures;
 use librashader::runtime::wgpu::{FilterChain, FilterChainOptions, WgpuOutputView};
 use librashader::runtime::{FilterChainParameters, Size, Viewport};
-
-/// The generated preset's file names, beside the chain's own in the same
-/// directory (`crate::paths::preset_dir`).
-const SLANG: &str = "chassis_metal.slang";
-const SLANGP: &str = "chassis_column.slangp";
-
-/// The one-pass preset. `scale_type0 = source` with a 1x1 source is not a
-/// framebuffer size here: a single-pass chain renders straight to the viewport,
-/// so nothing but the pass list is load bearing.
-const PRESET: &str = "\
-# Generated by robco-term. The bank column's casting, mounted outside the CRT
-# chain: it is flat chrome composited over the finished glass, not a
-# stage the picture passes through. The body is
-# `chassis::shaders::CHASSIS_METAL_SLANG`, written beside this file.
-shaders = 1
-
-shader0 = chassis_metal.slang
-scale_type0 = source
-scale0 = 1.0
-filter_linear0 = false
-wrap_mode0 = clamp_to_edge
-";
 
 /// The three furniture passes, each `shaders = 1` over its own body: the same
 /// preset text `chassis/shaders/*/` ships beside each `.slang`, written out
@@ -160,17 +106,8 @@ fn write_includes(dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Write the column's preset and its shader body into `dir`.
-pub fn materialize(dir: &Path) -> std::io::Result<PathBuf> {
-    std::fs::create_dir_all(dir)?;
-    write_includes(dir)?;
-    write_body(&dir.join(SLANG), chassis::shaders::CHASSIS_METAL_SLANG)?;
-    let preset = dir.join(SLANGP);
-    std::fs::write(&preset, PRESET)?;
-    Ok(preset)
-}
-
-/// The same for one furniture pass; returns its preset's path.
+/// Write one furniture pass's preset and shader body into `dir`;
+/// returns the preset's path.
 pub fn materialize_furniture(dir: &Path, pass: Pass) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
     write_includes(dir)?;
@@ -184,14 +121,9 @@ pub fn materialize_furniture(dir: &Path, pass: Pass) -> std::io::Result<PathBuf>
     Ok(preset)
 }
 
-/// The mounted column: the metal pass, the furniture that stands on it, the
-/// texture they are assembled in, and the blit that puts that texture on the
-/// frame.
+/// The mounted furniture: the texture the pieces are assembled in, the
+/// chains that draw them, and the blit that puts that texture on the frame.
 pub struct Column {
-    chain: FilterChain,
-    /// The pass is procedural and samples nothing, but a chain needs an input
-    /// texture, so it gets the smallest legal one.
-    source: wgpu::Texture,
     target: wgpu::Texture,
     view: wgpu::TextureView,
     /// The column's own size in physical pixels, so a resize rebuilds the
@@ -310,68 +242,19 @@ struct Slot {
 }
 
 impl Column {
-    /// Load the column's pass for a device. `format` is the swapchain's, so the
-    /// texture the blit samples and the view it writes are the same format and
-    /// librashader compiles the pass against it once.
+    /// Prepare the furniture's mount for a device. `format` is the
+    /// swapchain's, so the textures the blit samples and the views it writes
+    /// are the same format and librashader compiles each pass against it once.
     pub fn new(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _queue: &wgpu::Queue,
         dir: &Path,
         format: wgpu::TextureFormat,
     ) -> Option<Self> {
-        let preset = match materialize(dir) {
-            Ok(path) => path,
-            Err(e) => {
-                log::error!("could not write the column's preset into {dir:?}: {e}");
-                return None;
-            }
-        };
-        let options = FilterChainOptions {
-            force_no_mipmaps: false,
-            // Off for the same reason `crt::chain` has it off: the cache is not
-            // free of conditions and nobody has measured that it pays.
-            enable_cache: false,
-            adapter_info: None,
-        };
-        let chain = match FilterChain::load_from_path(
-            &preset,
-            ShaderFeatures::NONE,
-            device,
-            queue,
-            Some(&options),
-        ) {
-            Ok(chain) => chain,
-            Err(e) => {
-                log::error!(
-                    "could not load the bank column from {}: {e}",
-                    preset.display()
-                );
-                return None;
-            }
-        };
-
         let size = (1, 1);
         let target = make_target(device, format, size);
         let view = target.create_view(&wgpu::TextureViewDescriptor::default());
         Some(Self {
-            chain,
-            source: device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("bank column source"),
-                size: wgpu::Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_DST
-                    | wgpu::TextureUsages::COPY_SRC
-                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            }),
             target,
             view,
             size,
@@ -449,16 +332,14 @@ impl Column {
         }
     }
 
-    /// Record the column into `output`.
+    /// Record the furniture into `output`.
     ///
     /// `column` is the bank's rectangle in physical pixels at the window's left
-    /// edge; `well` is the screen well's size, also physical, which is the
-    /// field the casting's metal is measured in (see the module doc) and is
-    /// declared to the pass on the logical ruler [`well_ruler`] puts it on.
-    /// `scale_factor` is the window's device pixel ratio, for that conversion.
-    /// `params` is `chassis::Cabinet::chassis_params`; `pieces` is
-    /// `chassis::Cabinet::furniture`, whose rectangles are logical and are
-    /// scaled by the same ratio on the way in.
+    /// edge, the same rectangle [`crate::chrome`] laid the casting into;
+    /// `frame` is the window's own size, which is what the blit's destination
+    /// rectangle is measured against. `scale_factor` is the window's device
+    /// pixel ratio. `pieces` is `chassis::Cabinet::furniture`, whose
+    /// rectangles are logical and are scaled by that ratio on the way in.
     ///
     /// A column of no width draws nothing, which is what a hidden chassis is:
     /// no bank rather than a bank of zero pixels.
@@ -470,9 +351,8 @@ impl Column {
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
         column: (u32, u32),
-        well: (u32, u32),
+        frame: (u32, u32),
         scale_factor: f64,
-        params: &[(&'static str, f32)],
         pieces: &[Piece],
         frame_index: usize,
     ) {
@@ -487,37 +367,26 @@ impl Column {
             self.size = column;
             self.blit.rebind(device, &self.view);
         }
-        // The window the column goes on: everything the caller divided.
-        let frame = (column.0 + well.0, column.1.max(well.1));
 
-        let sink = self.chain.parameters();
-        for (name, value) in params {
-            sink.set_parameter_value(name, *value);
-        }
-
-        // The declared size is the well's, not this view's: it is the
-        // `OutputSize` the shader reads `viewportSize` off, and the casting is
-        // drawn in the bezel's coordinates. The rect the quad covers is the
-        // column, which is this view whole. The well goes in on the logical
-        // ruler the bezel's own `viewportSize` lands on; the rect stays
-        // physical, because it is a scissor.
-        let well = well_ruler(well, scale_factor);
-        let declared = Size::new(well.0, well.1);
-        let rect = Size::new(column.0, column.1);
-        let viewport = Viewport {
-            x: 0.0,
-            y: 0.0,
-            mvp: None,
-            output: WgpuOutputView::new_from_raw(&self.view, declared, self.format),
-            size: rect,
-        };
-        if let Err(e) = self
-            .chain
-            .frame(&self.source, &viewport, encoder, frame_index, None)
-        {
-            log::error!("could not record the bank column: {e}");
-            return;
-        }
+        // Transparent, every frame: what this texture carries is the
+        // furniture alone, premultiplied, and the casting it stands on is
+        // already on the frame this is about to be blended onto.
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("bank furniture ground"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
 
         self.draw_furniture(device, queue, encoder, pieces, scale_factor, frame_index);
         self.blit.draw(queue, encoder, output, column, frame);
@@ -544,7 +413,8 @@ impl Column {
 
         let mut plan: Vec<Recording> = Vec::new();
         for (i, piece) in pieces.iter().enumerate() {
-            let Some(dest) = scale_rect(piece.rect, scale_factor, column) else {
+            let Some(dest) = crate::chrome::scale_rect(piece.rect, scale_factor, column)
+            else {
                 continue;
             };
             if let Some(painting) = piece.paint.as_ref() {
@@ -753,64 +623,6 @@ impl Column {
     }
 }
 
-/// The screen well in the logical pixels `chassis_metal.slang` measures its
-/// field in, from the physical size the swapchain and the render target are in.
-///
-/// The bezel this casting continues reaches the same ruler by dividing its
-/// `OutputSize` by `windowScaling * device_pixel_ratio`
-/// (`crt::params::Params::build`); the column has no window scaling to undo,
-/// because its pass renders straight to a viewport and is never scaled by the
-/// preset, so the whole conversion is the ratio. Floored at one pixel: a
-/// zero-sized `OutputSize` divides through the shader's field mapping.
-fn well_ruler(well: (u32, u32), scale_factor: f64) -> (u32, u32) {
-    let ratio = if scale_factor > 0.0 {
-        scale_factor
-    } else {
-        1.0
-    };
-    (
-        ((well.0 as f64 / ratio).round() as u32).max(1),
-        ((well.1 as f64 / ratio).round() as u32).max(1),
-    )
-}
-
-/// A furniture piece's rectangle, from `chassis`'s logical pixels to this
-/// texture's physical ones.
-///
-/// Returns `(x, y, width, height)` with `x`/`y` signed, because a piece is
-/// allowed to hang off the column and one routinely does: an LED window's
-/// spill margin reaches a strip's height and a half past its own left edge,
-/// which is well outside the bank on the annunciator. The blit's scissor cuts
-/// it at the bank's bounds; what this returns is the *whole* rectangle, so
-/// the part that is on the column lands in the right place.
-///
-/// `None` for a piece with no area, or one entirely off the column.
-fn scale_rect(
-    rect: chassis::Rect,
-    scale_factor: f64,
-    column: (u32, u32),
-) -> Option<(i32, i32, u32, u32)> {
-    let ratio = if scale_factor > 0.0 {
-        scale_factor
-    } else {
-        1.0
-    };
-    // The edges are rounded rather than the origin and size, so two rows a
-    // whole pitch apart stay a whole pitch apart at any ratio.
-    let x0 = (rect.x * ratio).round();
-    let y0 = (rect.y * ratio).round();
-    let x1 = ((rect.x + rect.width) * ratio).round();
-    let y1 = ((rect.y + rect.height) * ratio).round();
-    let (w, h) = ((x1 - x0) as i64, (y1 - y0) as i64);
-    if w <= 0 || h <= 0 {
-        return None;
-    }
-    if x1 <= 0.0 || y1 <= 0.0 || x0 >= f64::from(column.0) || y0 >= f64::from(column.1) {
-        return None;
-    }
-    Some((x0 as i32, y0 as i32, w as u32, h as u32))
-}
-
 /// The texture a display pass samples as `Source`: one texel per lamp for the
 /// LED grid, one per raster pixel for the tape.
 fn make_source(device: &wgpu::Device, size: (u32, u32)) -> wgpu::Texture {
@@ -874,7 +686,7 @@ fn make_target(
     })
 }
 
-/// The copy that puts the column on the frame without clearing it.
+/// The copy that puts the furniture on the frame without clearing it.
 ///
 /// One triangle, nearest-sampled, source and destination the same size, into a
 /// render pass whose load op is `Load`. That last word is the whole reason this
@@ -887,10 +699,10 @@ fn make_target(
 /// (which *may* be clamped, to reproduce the column's own clip) cuts what
 /// falls outside.
 struct Blit {
-    /// Straight copy, for the column onto the frame: the casting is opaque and
-    /// the whole rectangle is being replaced.
+    /// Straight copy, kept as the fallback where the target cannot blend.
     pipeline: wgpu::RenderPipeline,
-    /// Premultiplied source-over, for furniture onto the column. Both display
+    /// Premultiplied source-over, for furniture onto the column and for the
+    /// finished column onto the casting under it. Both display
     /// passes and the plate emit premultiplied colour: `plate_metal` returns
     /// `color * coverage` with `coverage` in alpha, and `led_matrix`'s spill
     /// band returns `litColor * a` with the same `a`.
@@ -1137,8 +949,8 @@ impl Blit {
         self.dest = Some(dest);
     }
 
-    /// The straight copy: the finished column onto the frame, at the window's
-    /// left edge.
+    /// The finished column onto the frame, at the window's left edge, over
+    /// the casting the chrome pass laid there.
     ///
     /// `frame` is the *window's* size, not the column's, because that is what
     /// the destination rectangle is measured against; the window can grow
@@ -1163,7 +975,7 @@ impl Blit {
             bind_group,
             rect,
             frame,
-            &self.pipeline,
+            self.over.as_ref().unwrap_or(&self.pipeline),
             "bank column",
         );
     }
@@ -1232,90 +1044,5 @@ impl Blit {
         pass.set_bind_group(0, Some(bind_group), &[]);
         pass.set_scissor_rect(x0, y0, x1 - x0, y1 - y0);
         pass.draw(0..3, 0..1);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::time::{Duration, Instant};
-
-    use config::Config;
-    use crt::{DegaussState, Geometry, Pacing, Params};
-
-    /// The frame pass's own ruler, computed the way the shader computes it:
-    /// `OutputSize / windowScaling`, where `OutputSize` is the render target
-    /// (physical pixels) scaled by the preset's `windowScaling` and the
-    /// uniform is whatever `Params::build` pushed under that name.
-    fn frame_ruler(well_physical: (u32, u32), window_scaling: f64, dpr: f32) -> (f64, f64) {
-        let mut cfg = Config::default();
-        cfg.general.window_scaling = window_scaling;
-        let geom = Geometry {
-            output_width: well_physical.0 as f32 / dpr,
-            output_height: well_physical.1 as f32 / dpr,
-            device_pixel_ratio: dpr,
-            ..Geometry::default()
-        };
-        let mut pacing = Pacing::new(Instant::now());
-        let time = pacing.tick_by(Duration::from_millis(16));
-        let params = Params::build(&cfg, &geom, time, DegaussState::IDLE);
-        let divisor = f64::from(params.get("windowScaling").expect("the frame's ruler"));
-        // The framebuffer: `scale_type = original`, `scale = windowScaling`.
-        let output = (
-            well_physical.0 as f64 * window_scaling,
-            well_physical.1 as f64 * window_scaling,
-        );
-        (output.0 / divisor, output.1 / divisor)
-    }
-
-    #[test]
-    fn the_well_the_column_declares_is_the_ruler_the_bezel_divides_to() {
-        // The bezel and the bank casting are one field across the seam, so the
-        // size the column declares to `chassis_metal` has to be the size
-        // `frame_metal` arrives at from the other side: at every ratio, and
-        // whatever the window scaling does to the frame pass's framebuffer.
-        for &(well, scaling, dpr) in &[
-            ((840u32, 768u32), 1.0f64, 1.0f32),
-            ((840, 768), 1.0, 2.0),
-            ((840, 768), 2.0, 2.0),
-            ((1680, 1536), 0.5, 2.0),
-        ] {
-            let (fx, fy) = frame_ruler(well, scaling, dpr);
-            let (cx, cy) = well_ruler(well, f64::from(dpr));
-            assert!(
-                (fx - f64::from(cx)).abs() < 1.0 && (fy - f64::from(cy)).abs() < 1.0,
-                "column declared {cx}x{cy}, bezel measures {fx}x{fy} \
-                 (well {well:?}, windowScaling {scaling}, dpr {dpr})"
-            );
-        }
-    }
-
-    #[test]
-    fn the_ruler_halves_the_well_on_a_two_times_display() {
-        assert_eq!(well_ruler((840, 768), 1.0), (840, 768));
-        assert_eq!(well_ruler((1680, 1536), 2.0), (840, 768));
-        // ...and never hands the shader a zero to divide its field by.
-        assert_eq!(well_ruler((1, 1), 4.0), (1, 1));
-        assert_eq!(well_ruler((0, 0), 1.0), (1, 1));
-        // A scale factor a window never reports is not a divide by zero.
-        assert_eq!(well_ruler((840, 768), 0.0), (840, 768));
-    }
-
-    #[test]
-    fn a_dpr_of_two_halves_the_frames_ruler_and_the_window_scaling_drops_out() {
-        // The 1024x768 logical well of the default window, on a 2x display:
-        // the shader must land on the logical size at both scalings.
-        for scaling in [1.0, 2.0, 0.5] {
-            let (x, y) = frame_ruler((2048, 1536), scaling, 2.0);
-            assert!(
-                (x - 1024.0).abs() < 1e-6 && (y - 768.0).abs() < 1e-6,
-                "{x}x{y}"
-            );
-        }
-        // At DPR 1 the same well is 1024x768 physical and lands in the same
-        // place, which is what says the DPR is the only thing that changed.
-        let (x, y) = frame_ruler((1024, 768), 1.0, 1.0);
-        assert!((x - 1024.0).abs() < 1e-6 && (y - 768.0).abs() < 1e-6);
     }
 }

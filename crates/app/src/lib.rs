@@ -63,6 +63,7 @@ pub mod badge;
 pub mod bank;
 pub mod channels;
 pub mod chord;
+pub mod chrome;
 pub mod cli;
 pub mod clipboard;
 pub mod column;
