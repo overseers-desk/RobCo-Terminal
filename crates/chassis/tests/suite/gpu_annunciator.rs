@@ -6,7 +6,6 @@
 //! `tests/suite/chassis_metal.rs` runs, here anchored to this shell's actual fixed
 //! parameters instead of arbitrary test values.
 
-use oracle;
 use chassis::shells::annunciator;
 use chassis::shells::common::{self, Rect};
 use gpu::harness::{px_index, render_wgsl_quad, Locked};

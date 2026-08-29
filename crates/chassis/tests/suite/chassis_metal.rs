@@ -6,7 +6,6 @@
 //! module -- unlike terminal_frame's dither, no term needs to be excluded.
 
 use gpu::harness::{px_index, render_wgsl_quad, Locked};
-use oracle;
 
 const W: u32 = 64;
 const H: u32 = 64;

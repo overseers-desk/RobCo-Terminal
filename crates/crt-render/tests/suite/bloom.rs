@@ -16,7 +16,6 @@
 //! the taps must tighten to keep reading every one of them; the chain's
 //! default radius there is 40, and `bloom_half_*` tests use that number.
 
-use oracle;
 use crt::harness::{render_single_pass, render_single_pass_io};
 use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;

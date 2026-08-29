@@ -7,7 +7,6 @@
 //! below (0.035) absorbs its full amplitude (±0.02, `noise * 0.04` with
 //! `noise` in `[-0.5, 0.5]`) plus float rounding.
 
-use oracle;
 use crt::harness::render_single_pass;
 use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;

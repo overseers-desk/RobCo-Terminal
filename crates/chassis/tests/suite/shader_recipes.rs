@@ -5,7 +5,6 @@
 //! real GPU render) to confirm the wiring produces valid shader output, not
 //! just a struct that happens to compile.
 
-use oracle;
 use chassis::shells::common::{self, FrameRuntime, Rect};
 use chassis::shells::{annunciator, slide_rule, switchboard};
 

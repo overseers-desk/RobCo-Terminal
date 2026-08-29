@@ -4,7 +4,6 @@
 
 use chassis::params::record_bytes;
 use gpu::harness::{px_index, render_wgsl_quad, Locked};
-use oracle;
 
 const W: u32 = 128;
 const H: u32 = 32;

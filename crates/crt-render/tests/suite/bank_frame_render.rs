@@ -30,7 +30,6 @@
 
 use chassis::frame::{self, FrameScale};
 use chassis::metrics::shells;
-use oracle;
 use chassis::{BankGeometry, ChannelIndicator, LedMetrics, WindowLayout};
 use config::Config;
 use crt::harness::render_single_pass;

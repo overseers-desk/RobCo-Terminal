@@ -8,7 +8,6 @@
 //! mounts a single pass is the chain's. `robco-chassis` reaches nothing in
 //! this half of the tree.
 
-use oracle;
 use crt::harness::render_single_pass;
 use gpu::harness::{px_index, Locked};
 use std::path::PathBuf;
