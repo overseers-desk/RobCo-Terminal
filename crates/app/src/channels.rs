@@ -34,7 +34,7 @@
 
 use std::mem;
 
-use tmux_cc::{PaneId, SessionId, WindowId};
+use tmux_cc::{PaneId, WindowId};
 
 /// Slots are two engraved digits, so 99 is the last one a panel can name.
 pub const CHANNEL_CAP: u32 = 99;
@@ -62,9 +62,6 @@ pub enum Manager {
         /// `tmux -CC` typed on a remote shell. `None` on a bank the
         /// terminal raised itself, which holds nothing at home.
         home: Option<(BankId, u32)>,
-        /// The session this bank's gateway is attached to, `None` until the
-        /// `Server` reply names it.
-        session: Option<SessionId>,
         /// A window this bank asked tmux for, still on its way: asking for a
         /// channel puts you in it, so the next window to arrive takes the air
         /// while the ones tmux volunteers do not.
@@ -809,7 +806,7 @@ impl<S> Channels<S> {
         if self.manager_of(bank).is_some_and(Manager::is_tmux) {
             return None;
         }
-        let id = self.push_bank(host, Some((bank, channel)), None);
+        let id = self.push_bank(host, Some((bank, channel)));
         let was_current = bank == self.current_bank && channel == self.current_channel;
         let armed = self.degauss_armed;
         self.degauss_armed = false;
@@ -829,11 +826,10 @@ impl<S> Channels<S> {
     pub fn attach_spawned(
         &mut self,
         host: &str,
-        session: SessionId,
         make: impl FnOnce() -> Option<S>,
     ) -> Option<BankId> {
         let gateway = make()?;
-        let id = self.push_bank(host, None, Some(session));
+        let id = self.push_bank(host, None);
         self.insert_row(Row {
             bank: id,
             channel: 1,
@@ -898,12 +894,7 @@ impl<S> Channels<S> {
     }
 
     /// A new bank under a tmux attachment; its gateway row is the caller's to place.
-    fn push_bank(
-        &mut self,
-        host: &str,
-        home: Option<(BankId, u32)>,
-        session: Option<SessionId>,
-    ) -> BankId {
+    fn push_bank(&mut self, host: &str, home: Option<(BankId, u32)>) -> BankId {
         let id = self.next_bank_id;
         self.next_bank_id += 1;
         self.banks.push(Bank {
@@ -911,19 +902,11 @@ impl<S> Channels<S> {
             manager: Manager::Tmux {
                 host: host.to_string(),
                 home,
-                session,
                 new_window_pending: false,
                 attach_done: false,
             },
         });
         id
-    }
-
-    /// The session the bank's gateway is attached to, off its `Server` reply.
-    pub fn set_bank_session(&mut self, bank: BankId, id: SessionId) {
-        if let Some(Manager::Tmux { session, .. }) = self.manager_mut(bank) {
-            *session = Some(id);
-        }
     }
 
     /// `:577-608`. Detach or gateway death: the bank's window rows vanish, the
@@ -1408,9 +1391,8 @@ mod tests {
     }
 
     /// A bank the terminal raised for a session it found.
-    fn spawned(set: &mut Channels<u32>, host: &str, id: &str, mark: u32) -> BankId {
-        set.attach_spawned(host, SessionId::parse(id).unwrap(), || Some(mark))
-            .expect("a bank")
+    fn spawned(set: &mut Channels<u32>, host: &str, mark: u32) -> BankId {
+        set.attach_spawned(host, || Some(mark)).expect("a bank")
     }
 
     #[test]
@@ -1418,7 +1400,7 @@ mod tests {
         let mut set = channels();
         let free = set.first_free(0);
         let _ = set.take_degauss();
-        let bank = spawned(&mut set, "prime", "$4", 44);
+        let bank = spawned(&mut set, "prime", 44);
         assert_eq!(set.first_free(0), free, "nothing is held at home for it");
         assert_eq!(
             (set.current_bank(), set.current_channel()),
@@ -1439,7 +1421,7 @@ mod tests {
     fn collapsing_a_bank_raised_for_a_found_session_takes_nothing_home() {
         let mut set = channels();
         open(&mut set, 0, 2, 22);
-        let bank = spawned(&mut set, "prime", "$4", 44);
+        let bank = spawned(&mut set, "prime", 44);
         window(&mut set, bank, 1, "vim", 1);
         set.select_channel(bank, 2);
         let _ = set.take_degauss();
@@ -1457,7 +1439,7 @@ mod tests {
     #[test]
     fn a_bank_raised_for_a_found_session_never_switches_the_set_off() {
         let mut set = channels();
-        let bank = spawned(&mut set, "prime", "$4", 44);
+        let bank = spawned(&mut set, "prime", 44);
         window(&mut set, bank, 1, "vim", 1);
         // Home's one channel is the last channel, whatever stands beside it.
         assert_eq!(set.close_channel(0, 1), Close::CloseWindow);
@@ -1471,7 +1453,7 @@ mod tests {
     fn the_greeting_is_owed_once_by_each_bank_and_not_once_by_the_set() {
         let mut set = channels();
         let typed = set.attach(0, 1, "prime").unwrap();
-        let found = spawned(&mut set, "prime", "$4", 44);
+        let found = spawned(&mut set, "prime", 44);
         // The found bank's first window arrives while the air is on another
         // bank's gateway, so it greets nobody.
         assert!(window(&mut set, found, 1, "vim", 1));

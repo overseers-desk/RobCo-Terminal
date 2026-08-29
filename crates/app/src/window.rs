@@ -1690,7 +1690,6 @@ impl TerminalSurface {
         pid: u32,
         sessions: Vec<(SessionId, String)>,
     ) {
-        self.channels.set_bank_session(bank, attached.clone());
         self.sessions
             .insert((socket.clone(), pid, attached), SessionSlot::Banked(bank));
         if !server_is_local(&socket, pid) {
@@ -1733,7 +1732,7 @@ impl TerminalSurface {
             // Host name empty until the client's own bootstrap names it.
             let Some(raised) = self
                 .channels
-                .attach_spawned("", id.clone(), || spawn(&config, size))
+                .attach_spawned("", || spawn(&config, size))
             else {
                 log::warn!("tmux: no client for session {name} on {socket}");
                 continue;
