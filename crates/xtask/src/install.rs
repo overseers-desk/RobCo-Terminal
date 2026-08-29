@@ -42,7 +42,7 @@
 //! - the 24 bundled font faces (`include_bytes!` in `robco-term`'s
 //!   `fonts::bundled`),
 //! - every shader source: the CRT chain's passes (`robco-crt-render`'s
-//!   `preset`), the burn-in pass (`robco-crt-burnin`), the chassis metal, LED
+//!   `preset`), the burn-in pass (`crt::burn_in`), the chassis metal, LED
 //!   matrix and tape-label passes (`robco-chassis`'s `shaders`), and the
 //!   grid's WGSL (`robco-term`'s `render`),
 //! - the CRT chain's noise texture (`allNoise512.png`),

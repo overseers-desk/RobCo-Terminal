@@ -19,15 +19,15 @@ One process holds one `wgpu` device and a `winit` window. Inside it:
 |---|---|
 | `config` | The settings schema, its defaults, the built-in presets, TOML reading and writing, the file watch, and the profile model. |
 | `term` | Everything that is a terminal and nothing that is a window: the session, the PTY loop, the grid read-back seam, the DCS tap, the glyph atlas, selection, search, hotspots, and the pointer distortion math. |
-| `crt-render` | The pass graph, and materialising its preset and shader bodies into the cache directory. |
-| `crt-burnin` | The persistence feedback pass. |
+| `crt-render` | The pass graph, the persistence feedback pass inside it, and materialising the preset and shader bodies into the cache directory. |
+| `gpu` | The wgpu device concerns every crate shares: the feature set a device is created with, the offscreen target and its readback, and, for tests only, the machine-wide device lock. |
 | `chassis` | The cabinet: bank geometry, shells, channel displays, and the procedural metal. It holds no device and draws nothing. |
 | `tmux-cc` | The control-mode protocol codec, and nothing else. Session and window policy live with the gateway that uses it. |
 | `app` | The process: command line, window shell, single-instance arbitration, input, crash logger, and the tmux gateway. |
 | `xtask` | The evaluation harness and the packaging targets. |
 | `shader-oracle` | CPU reimplementations of the shader math, as a development dependency. Tests render a pixel on the GPU and compare it against the same closed form computed here. |
 
-Four boundaries carry weight. The chain stops at the glass, so `chassis` computes geometry and colour without depending on the render chain; the single crate that holds a device is the one that mounts the casting pass. The protocol codec holds no policy, so it can be driven from recorded transcripts. The configuration plumbing is schema-agnostic, operating on a TOML document and on any deserializable type, so the schema and the file mechanics can change independently. The oracle is a development dependency, so no reference implementation ships in a binary.
+Four boundaries carry weight. The chain stops at the glass, so `chassis` computes geometry and colour without depending on the render chain in anything it ships; it reaches the chain's measurement rig as a development dependency only, to mount its own passes on a device. The protocol codec holds no policy, so it can be driven from recorded transcripts. The configuration plumbing is schema-agnostic, operating on a TOML document and on any deserializable type, so the schema and the file mechanics can change independently. The oracle is a development dependency, so no reference implementation ships in a binary.
 
 ## No widget toolkit
 

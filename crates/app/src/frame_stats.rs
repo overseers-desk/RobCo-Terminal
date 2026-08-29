@@ -164,7 +164,7 @@ impl FrameTiming {
         submission: wgpu::SubmissionIndex,
     ) -> Option<StageDurations> {
         // The same map-then-poll-then-read shape `gpu::read_back`'s and
-        // `crt-burnin::headless`'s readbacks already use: `PollType::Wait`
+        // `gpu::harness`'s readbacks already use: `PollType::Wait`
         // runs the mapping callback synchronously before returning, so
         // there is no callback to store and no second wakeup to wait for.
         self.readback_buffer

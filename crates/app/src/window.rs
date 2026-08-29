@@ -378,7 +378,7 @@ struct Glass {
     font: FontContext,
     /// What the atlas was built for. A settings edit that moves any of it
     /// means the atlas is the wrong size and has to be rebuilt, which is also
-    /// one of the two events `crt-burnin`'s mount contract calls a
+    /// one of the two events `crt::burn_in`'s mount contract calls a
     /// discontinuity of the ghost.
     font_name: String,
     resolved: ResolvedFont,
@@ -2737,7 +2737,7 @@ impl TerminalSurface {
             }
 
             // The two discontinuities the settings cannot express, which
-            // `crt-burnin`'s mount contract leaves to the application: a
+            // `crt::burn_in`'s mount contract leaves to the application: a
             // resized target and a rebuilt atlas both mean the accumulator's
             // contents describe a picture that is no longer on screen, and a
             // ghost of the old one would otherwise decay in place over it.
