@@ -240,6 +240,12 @@ impl<S> Channels<S> {
         self.current_channel
     }
 
+    /// The pair on the air, which is how most callers want it: nothing reads
+    /// one of these two without reading the other.
+    pub fn on_air(&self) -> (BankId, u32) {
+        (self.current_bank, self.current_channel)
+    }
+
     /// The bank the user is looking at: the pager binds it here while it steps
     /// without stealing the air.
     pub fn bank_on_view(&self) -> BankId {

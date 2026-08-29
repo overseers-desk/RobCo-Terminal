@@ -892,10 +892,7 @@ impl TerminalSurface {
         if let Some(req) = ssh {
             surface.connect_ssh(req);
             surface.channels.started();
-            surface.on_air = (
-                surface.channels.current_bank(),
-                surface.channels.current_channel(),
-            );
+            surface.on_air = surface.channels.on_air();
         }
         surface
     }
@@ -936,7 +933,7 @@ impl TerminalSurface {
         if start_home {
             channels.start(|| spawn(session, size));
         }
-        let on_air = (channels.current_bank(), channels.current_channel());
+        let on_air = channels.on_air();
         Self {
             window,
             gpu,
@@ -1003,10 +1000,7 @@ impl TerminalSurface {
     /// Answers how many bytes the *visible* channel produced, since that is
     /// the one a redraw would show.
     pub fn pump(&mut self) -> usize {
-        let current = (
-            self.channels.current_bank(),
-            self.channels.current_channel(),
-        );
+        let current = self.channels.on_air();
         let mut visible_bytes = 0;
         let mut died: Vec<(BankId, u32)> = Vec::new();
         for row in self.channels.rows_mut() {
@@ -1137,7 +1131,7 @@ impl TerminalSurface {
             return false;
         };
         let slot = picker.slot;
-        if (self.channels.current_bank(), self.channels.current_channel()) != (0, slot) {
+        if self.channels.on_air() != (0, slot) {
             // The page is standing but off the air: the keyboard is the
             // visible channel's. A dead picker row (closed by hand) is
             // forgotten here, the one place that would otherwise trust it.
@@ -1467,7 +1461,7 @@ impl TerminalSurface {
         if self.find.is_some() {
             return;
         }
-        let on = (self.channels.current_bank(), self.channels.current_channel());
+        let on = self.channels.on_air();
         let Some(session) = self.channels.session_mut() else {
             return;
         };
@@ -1494,7 +1488,7 @@ impl TerminalSurface {
     ) -> bool {
         use winit::keyboard::{Key, NamedKey};
 
-        let on = (self.channels.current_bank(), self.channels.current_channel());
+        let on = self.channels.on_air();
         if self.find.as_ref().map(|find| find.on) != Some(on) {
             return false;
         }
@@ -1555,7 +1549,7 @@ impl TerminalSurface {
     /// a search raised over an old selection is a new question, and two
     /// highlights at once would leave the answer to it unreadable.
     pub fn marked_range(&self) -> Option<term::MarkedRange> {
-        let on = (self.channels.current_bank(), self.channels.current_channel());
+        let on = self.channels.on_air();
         self.find
             .as_ref()
             .filter(|find| find.on == on)
@@ -1767,10 +1761,7 @@ impl TerminalSurface {
     /// One gateway's turn: drain its tap, advance, apply; answers the bytes that
     /// reached the channel on the air (see [`Self::pump`]).
     fn pump_gateway(&mut self, bank: BankId) -> usize {
-        let current = (
-            self.channels.current_bank(),
-            self.channels.current_channel(),
-        );
+        let current = self.channels.on_air();
         let mut visible = 0;
         let Some(mut gateway) = self.gateways.remove(&bank) else {
             return visible;
@@ -2436,10 +2427,7 @@ impl TerminalSurface {
 
     /// `Ctrl+Shift+W`.
     pub fn close_channel(&mut self) {
-        let (bank, channel) = (
-            self.channels.current_bank(),
-            self.channels.current_channel(),
-        );
+        let (bank, channel) = self.channels.on_air();
         match self.channels.close_channel(bank, channel) {
             // The last channel anywhere switches the appliance off, which
             // for this surface is the same end its child's exit has.
@@ -2479,10 +2467,7 @@ impl TerminalSurface {
     /// Unlike the chord, this names no numeral, so it stands whether or not
     /// the bank is on show.
     pub fn move_channel(&mut self, direction: i32) {
-        let (bank, channel) = (
-            self.channels.current_bank(),
-            self.channels.current_channel(),
-        );
+        let (bank, channel) = self.channels.on_air();
         // Slot 0 does not exist, and the cap is the model's to enforce:
         // `move_current_to` answers false for either and nothing moves.
         let Some(target) = channel.checked_add_signed(direction) else {
@@ -2562,10 +2547,7 @@ impl TerminalSurface {
         if self.channels.take_degauss() {
             self.degauss.trigger(Instant::now());
         }
-        let on_air = (
-            self.channels.current_bank(),
-            self.channels.current_channel(),
-        );
+        let on_air = self.channels.on_air();
         if self.on_air != on_air {
             self.on_air = on_air;
             // A mark is a region of one grid and means nothing on another, the
