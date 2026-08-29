@@ -20,7 +20,7 @@
 //! `PartialEq`, and deleting a variant makes the compiler name every site
 //! that still assumed it.
 //!
-//! Coordinates at this seam are absolute lines (see [`crate::grid`]): 0 is
+//! Coordinates across this enum are absolute lines (see [`crate::grid`]): 0 is
 //! the oldest line still in scrollback. rio-vt numbers lines from the top of
 //! the screen with history running negative, and [`rio`] does that shift at
 //! its own edge so nothing above this module sees it.
@@ -102,8 +102,7 @@ pub struct MarkedRange {
 }
 
 impl MarkedRange {
-    /// Is this cell inside the range? The per-cell question a renderer asks
-    /// once per cell of the screen.
+    /// The per-cell question a renderer asks once per cell of the screen.
     pub fn contains(&self, column: usize, line: usize) -> bool {
         if line < self.start.1 || line > self.end.1 {
             return false;
@@ -268,8 +267,9 @@ impl SelectionModel {
     }
 }
 
-/// The same machinery also lets a caller ask for one line of plain text
-/// without a selection: handy for a status line or a test.
+/// The [`crate::grid`] copying this module uses for a selection also lets a
+/// caller ask for one line of plain text without a selection: handy for a
+/// status line or a test.
 pub fn line_text(grid: &impl GridView, line: usize) -> String {
     let mut out = String::new();
     copy_line(grid, line, 0, Count::ToEndOfLine, false, false, &mut out);

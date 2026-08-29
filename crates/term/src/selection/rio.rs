@@ -1,4 +1,4 @@
-//! The rio-vt selection model, driven from this crate's pointer seam.
+//! The rio-vt selection model, one arm of [`super::SelectionModel`].
 //!
 //! The state itself lives where rio-vt keeps its own, in
 //! `Crosswords::selection`, and that placement is the whole reason this arm
@@ -14,7 +14,7 @@
 //! a resize is measured against, and whether a gesture has put anything on
 //! the glass at all.
 //!
-//! The seam is absolute lines in and absolute lines out ([`super`]); the two
+//! [`super::SelectionModel`] speaks absolute lines in and out; the two
 //! conversions at the edges are the only coordinate work here.
 
 use rio_vt::crosswords::pos::{Column, Line, Pos, Side};

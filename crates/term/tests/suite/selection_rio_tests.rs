@@ -76,7 +76,7 @@ fn window(term: &Crosswords<VoidListener>) -> Window {
     }
 }
 
-/// A screen row as an absolute line index, which is what the seam speaks.
+/// A screen row as an absolute line index, which is what `SelectionModel` speaks.
 fn line(term: &Crosswords<VoidListener>, row: usize) -> usize {
     term.history_size() + row
 }

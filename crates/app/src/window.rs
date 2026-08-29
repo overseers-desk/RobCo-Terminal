@@ -961,8 +961,9 @@ impl TerminalSurface {
             ime: ImeState::default(),
             eof: false,
             scroll: ScrollPosition::default(),
-            // The default model until a press reads the settings: no
-            // handle is attached yet, and nothing is on the glass to mark.
+            // The default model until a press reads the settings: the
+            // settings handle is attached after this returns, and nothing is
+            // on the glass to mark yet.
             selection: SelectionModel::new(Kind::Konsole, columns),
             pointer_cell: (0, 0),
             dragging: false,
@@ -3467,10 +3468,9 @@ impl TerminalSurface {
         }
     }
 
-    /// One pointer gesture's context: the grid on the air, the window it is
-    /// shown through, and the half of the cell the pointer is on. Assembled
-    /// at each call site rather than held, because the window is read off
-    /// `self` and the grid is borrowed out of the channel model.
+    /// The [`selection::Gesture`] is assembled at each call site rather than
+    /// held, because the window is read off `self` and the grid is borrowed
+    /// out of the channel model.
     fn begin_selection(&mut self, cell: (usize, usize), side: Side, mods: pointer::Modifiers) {
         let win = self.selection_window();
         let Some(session) = self.channels.session_mut() else {
