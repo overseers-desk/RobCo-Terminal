@@ -1,5 +1,11 @@
-//! Print one crossing to stdout, for a human to look at.
-//! `cargo run -p robco-critters --example look -- whale 30`
+//! One frame of one piece, printed for a human to look at.
+//!
+//! The art is a transcription, and the mistake a transcription makes is a
+//! clipped beak or a plume landing on the whale's back: something a test can
+//! call rectangular and a person can see is wrong. This is how you see it.
+//! `%` stands in for the screen behind, so what shows through shows.
+//!
+//! `cargo run -p robco-critters --example look -- whale 45`
 fn main() {
     let mut args = std::env::args().skip(1);
     let want = args.next().unwrap_or_else(|| "whale".into());
