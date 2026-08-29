@@ -14,12 +14,13 @@
 
 use std::time::{Duration, Instant};
 
+use app::clipboard::Target;
 use app::shell::Surface;
 use app::window::TerminalSurface;
 use term::{CellSize, SessionConfig, Viewport};
 use winit::dpi::PhysicalPosition;
 use winit::event::{MouseButton, MouseScrollDelta};
-use winit::keyboard::ModifiersState;
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 
 const CELL_W: f64 = 9.0;
 const CELL_H: f64 = 18.0;
@@ -321,4 +322,91 @@ fn a_click_reaches_the_program_once_it_asks_for_the_mouse() {
         "the SGR report never reached the pty\n--- screen ---\n{}",
         surface.viewport_text().join("\n")
     );
+}
+
+/// A shell that says `ready` and then reads a line at a time, echoing it in
+/// brackets: what reached the pty, and where the line ended.
+fn reader() -> &'static str {
+    "printf 'hello world\\n'; while IFS= read -r l; do echo \"[$l]\"; done"
+}
+
+/// The whole primary-selection round trip: drag a run, middle-click, and the
+/// run arrives at the child as typing. Nothing in between touches a display.
+#[test]
+fn a_middle_click_types_the_primary_selection_at_the_child() {
+    let mut surface = surface(reader(), 24);
+    wait_for_screen(&mut surface, "hello world");
+
+    surface.mouse_pressed(MouseButton::Left, at(0, 0), none());
+    surface.cursor_moved(at(5, 0), none());
+    surface.mouse_released(MouseButton::Left, at(5, 0), none());
+    assert_eq!(surface.last_selection(), Some("hello"));
+
+    surface.mouse_pressed(MouseButton::Middle, at(0, 2), none());
+    surface.key_input(&Key::Named(NamedKey::Enter), None, none());
+
+    wait_for_screen(&mut surface, "[hello]");
+}
+
+/// Selecting fills the primary selection and leaves the clipboard where it
+/// was. The two slots are the point of the pair, and a headless surface's
+/// store is where both of them live.
+#[test]
+fn a_drag_writes_the_primary_selection_and_leaves_the_clipboard_alone() {
+    let mut surface = surface("printf 'hello world\\n'", 24);
+    wait_for_screen(&mut surface, "hello world");
+
+    surface.mouse_pressed(MouseButton::Left, at(0, 0), none());
+    surface.cursor_moved(at(5, 0), none());
+    surface.mouse_released(MouseButton::Left, at(5, 0), none());
+
+    let store = surface.clipboard_store();
+    assert_eq!(store.last(Target::Primary), Some("hello"));
+    assert_eq!(
+        store.last(Target::Clipboard),
+        None,
+        "a selection must not cost the user what they had copied"
+    );
+}
+
+/// Three presses on one cell take the whole line, without a drag.
+#[test]
+fn a_triple_click_takes_the_whole_line() {
+    let mut surface = surface("printf 'hello world\\n'", 24);
+    wait_for_screen(&mut surface, "hello world");
+
+    for _ in 0..3 {
+        surface.mouse_pressed(MouseButton::Left, at(7, 0), none());
+        surface.mouse_released(MouseButton::Left, at(7, 0), none());
+    }
+
+    assert_eq!(
+        surface.last_selection(),
+        Some("hello world\n"),
+        "a whole line carries the line ending, so pasting it enters the command"
+    );
+}
+
+/// A fourth press on the same cell is a new click, not a fourth stage: the
+/// run restarts, and the drag that follows selects what it crossed.
+#[test]
+fn a_fourth_press_starts_a_fresh_selection() {
+    let mut surface = surface("printf 'hello world\\n'", 24);
+    wait_for_screen(&mut surface, "hello world");
+
+    for _ in 0..3 {
+        surface.mouse_pressed(MouseButton::Left, at(0, 0), none());
+        surface.mouse_released(MouseButton::Left, at(0, 0), none());
+    }
+    assert_eq!(
+        surface.last_selection(),
+        Some("hello world\n"),
+        "a whole line carries the line ending, so pasting it enters the command"
+    );
+
+    surface.mouse_pressed(MouseButton::Left, at(0, 0), none());
+    surface.cursor_moved(at(5, 0), none());
+    surface.mouse_released(MouseButton::Left, at(5, 0), none());
+
+    assert_eq!(surface.last_selection(), Some("hello"));
 }

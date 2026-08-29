@@ -16,5 +16,6 @@ mod scrollback;
 mod search_tests;
 mod selection_konsole_tests;
 mod selection_paint;
+mod selection_rio_tests;
 mod system_fonts;
 mod transcript;

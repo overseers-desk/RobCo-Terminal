@@ -258,3 +258,69 @@ fn a_click_lands_on_the_same_cell_at_dpr_1_and_dpr_2() {
         "the drag selected nothing at either scale"
     );
 }
+
+/// `general.selection_model` reaches the next drag without a restart.
+///
+/// The two models disagree about what a click points at, and this drag is
+/// where that disagreement shows. It begins in the right half of column 10:
+/// Konsole's model points at that cell and takes its letter, rio's points at
+/// the seam after it and starts on the next one. One fixed pixel span
+/// therefore names two different runs, and which one it names is the key.
+#[test]
+fn the_selection_model_key_reaches_the_next_drag() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    let with_model = |model: &str| {
+        format!(
+            "[general]\nchassis_shown = false\nselection_model = \"{model}\"\n\
+             [screen]\nmargin = 0.0\nscreen_curvature = 0.0\nscreen_radius = 0.0\nframe_size = 0.0\n"
+        )
+    };
+    write_atomic(&path, &with_model("konsole"));
+
+    let handle =
+        Arc::new(SettingsHandle::spawn(path.clone(), |_, _, _| {}).expect("watcher should start"));
+
+    let viewport = Viewport::new(
+        COLS * CELL_W as u32,
+        24 * CELL_H as u32,
+        1.0,
+        CellSize::new(CELL_W as f32, CELL_H as f32),
+    );
+    let mut surface = TerminalSurface::headless(&scripted(), viewport);
+    surface.set_settings(Arc::clone(&handle));
+    wait_for_screen(&mut surface, ALPHABET);
+
+    // A press four pixels right of the middle of column 10, which is its
+    // right half whatever the couple of pixels of margin do to the mapping.
+    let from = PhysicalPosition::new(at(10, 0).x + 4.0, at(10, 0).y);
+    let select = |surface: &mut TerminalSurface| {
+        surface.mouse_pressed(MouseButton::Left, from, none());
+        surface.cursor_moved(at(15, 0), none());
+        surface.mouse_released(MouseButton::Left, at(15, 0), none());
+        surface
+            .last_selection()
+            .expect("a press-drag-release should select something")
+            .to_string()
+    };
+
+    let konsole = select(&mut surface);
+    assert_eq!(konsole, "KLMNO", "Konsole's model takes the cell clicked on");
+
+    write_atomic(&path, &with_model("rio"));
+    assert!(wait_until(
+        || handle.current().general.selection_model == config::schema::SelectionModel::Rio,
+        Duration::from_secs(5)
+    ));
+
+    // Two presses on one cell inside the double-click window are a double
+    // click, and this drag starts where the last one did. Waiting the window
+    // out makes the second gesture a first click again.
+    std::thread::sleep(Duration::from_millis(500));
+
+    let rio = select(&mut surface);
+    assert_eq!(
+        rio, "LMNO",
+        "rio's model anchors on the seam, so the same pixels name the next run"
+    );
+}

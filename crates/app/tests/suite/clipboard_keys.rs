@@ -15,8 +15,12 @@
 
 use std::time::{Duration, Instant};
 
+use app::clipboard::Target;
+use app::shell::Surface;
 use app::window::TerminalSurface;
 use term::{CellSize, SessionConfig, Viewport};
+use winit::dpi::PhysicalPosition;
+use winit::event::MouseButton;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 
 const CELL_W: f32 = 9.0;
@@ -87,5 +91,37 @@ fn the_clipboard_chords_reach_the_child_as_nothing() {
         wait_for(&mut surface, "["),
         "[ab]",
         "the two chords put something on the wire"
+    );
+}
+
+/// The middle of a cell, in window pixels.
+fn at(column: u32, row: u32) -> PhysicalPosition<f64> {
+    PhysicalPosition::new(
+        f64::from(column) * f64::from(CELL_W) + f64::from(CELL_W) / 2.0,
+        f64::from(row) * f64::from(CELL_H) + f64::from(CELL_H) / 2.0,
+    )
+}
+
+/// `Ctrl`+`Shift`+`C` is the crossing between the two selections: the drag
+/// filled the primary one, and the chord is what puts the same text on the
+/// clipboard a browser or an editor will look at.
+#[test]
+fn ctrl_shift_c_carries_the_selection_over_to_the_clipboard() {
+    let mut surface = surface();
+    wait_for(&mut surface, "ready");
+
+    let none = ModifiersState::empty();
+    surface.mouse_pressed(MouseButton::Left, at(0, 0), none);
+    surface.cursor_moved(at(5, 0), none);
+    surface.mouse_released(MouseButton::Left, at(5, 0), none);
+    assert_eq!(surface.clipboard_store().last(Target::Primary), Some("ready"));
+    assert_eq!(surface.clipboard_store().last(Target::Clipboard), None);
+
+    character(&mut surface, "C", CTRL_SHIFT);
+
+    assert_eq!(
+        surface.clipboard_store().last(Target::Clipboard),
+        Some("ready"),
+        "the chord did not reach the clipboard"
     );
 }
