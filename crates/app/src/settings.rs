@@ -1,6 +1,6 @@
 //! Wiring `robco-config` into the application.
 //!
-//! This module owns three things:
+//! This module owns four things:
 //!
 //! 1. **The platform config file path** ([`config_path`]), decided here
 //!    because it was previously unowned.
