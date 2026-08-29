@@ -1,11 +1,11 @@
 //! The grid seam, and the two grid-to-text paths every consumer above it uses.
 //!
-//! Selection, search and the URL filters all work on text, and all three
-//! reach it through the same pair of functions: one that copies a line (or
-//! part of one, clamped to the cells that were actually written) and one
-//! that decodes cells into text (dropping the second half of every
-//! double-width character). Sharing them means the three consumers share one
-//! definition of "what does this line say".
+//! Selection and the URL filters both work on text, and both reach it
+//! through the same pair of functions: one that copies a line (or part of
+//! one, clamped to the cells that were actually written) and one that
+//! decodes cells into text (dropping the second half of every double-width
+//! character). Sharing them means the two consumers share one definition of
+//! "what does this line say".
 //!
 //! Everything above this module addresses lines by **absolute index**: 0 is
 //! the oldest line still in scrollback and `total_lines() - 1` is the bottom
@@ -20,8 +20,8 @@ use unicode_width::UnicodeWidthChar;
 ///
 /// Implementors normalise cells on the way out. rio-vt's `Square` is a packed
 /// u64 and an untouched cell reads `'\0'`, not `' '`; a caller must never see
-/// that, or every row is `columns` characters wide and every search haystack
-/// is full of NULs. `cell()` returns `' '` for an untouched cell and
+/// that, or every row is `columns` characters wide and every haystack the
+/// URL filters scan is full of NULs. `cell()` returns `' '` for an untouched cell and
 /// `line_len()` reports where the written part of the line stops, so a
 /// caller can tell "untouched" from "space" without scanning every column
 /// itself.
@@ -160,30 +160,6 @@ pub fn write_range(
     block_mode: bool,
     preserve_line_breaks: bool,
 ) -> String {
-    write_range_recording_positions(
-        grid,
-        start_index,
-        end_index,
-        block_mode,
-        preserve_line_breaks,
-        None,
-    )
-}
-
-/// `write_range`, optionally recording where each decoded chunk began.
-///
-/// The offsets are what `PlainTextDecoder::setRecordLinePositions` collects:
-/// one per `decodeLine` call. That is one per line, *plus one more* for the
-/// lone newline appended when the range's last line was short, which is why
-/// `HistorySearch` treats the list as having a spurious final entry.
-pub fn write_range_recording_positions(
-    grid: &impl GridView,
-    start_index: usize,
-    end_index: usize,
-    block_mode: bool,
-    preserve_line_breaks: bool,
-    mut positions: Option<&mut Vec<usize>>,
-) -> String {
     let columns = grid.columns();
     let top = start_index / columns;
     let left = start_index % columns;
@@ -192,9 +168,6 @@ pub fn write_range_recording_positions(
 
     let mut out = String::new();
     for y in top..=bottom.min(grid.total_lines().saturating_sub(1)) {
-        if let Some(p) = positions.as_deref_mut() {
-            p.push(out.len());
-        }
         let start = if y == top || block_mode { left } else { 0 };
         let count = if y == bottom || block_mode {
             Count::Cells((right + 1).saturating_sub(start))
@@ -219,36 +192,12 @@ pub fn write_range_recording_positions(
         if y == bottom {
             if let Count::Cells(requested) = count {
                 if copied < requested {
-                    if let Some(p) = positions.as_deref_mut() {
-                        p.push(out.len());
-                    }
                     out.push('\n');
                 }
             }
         }
     }
     out
-}
-
-/// `Screen::writeLinesToStream`: whole lines `from..=to`, line breaks kept,
-/// with the decoder's line positions alongside. This is what `HistorySearch`
-/// searches a block of history through.
-pub fn write_lines_recording_positions(
-    grid: &impl GridView,
-    from_line: usize,
-    to_line: usize,
-) -> (String, Vec<usize>) {
-    let columns = grid.columns();
-    let mut positions = Vec::new();
-    let text = write_range_recording_positions(
-        grid,
-        from_line * columns,
-        to_line * columns + (columns - 1),
-        false,
-        true,
-        Some(&mut positions),
-    );
-    (text, positions)
 }
 
 /// The buffer the filter chain scans, and the byte offset each line starts at.

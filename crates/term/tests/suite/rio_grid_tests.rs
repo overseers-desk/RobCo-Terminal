@@ -1,4 +1,4 @@
-//! The same three features, over a real rio-vt grid instead of a scripted one.
+//! The same features, over a real rio-vt grid instead of a scripted one.
 //!
 //! The scripted tests prove the logic; this one proves the seam: that
 //! `RioGrid` presents a `Crosswords` in the coordinates the logic expects,
@@ -15,7 +15,6 @@ use rio_vt::performer::handler::Processor;
 use term::grid::GridView;
 use term::hotspots::UrlFilterChain;
 use term::rio_grid::RioGrid;
-use term::search::{literal_pattern, search};
 use term::selection::konsole::Konsole;
 use term::selection::Window;
 
@@ -81,28 +80,6 @@ fn a_selection_over_a_live_grid_copies_what_is_on_it() {
     assert_eq!(c.release(&g).as_deref(), Some("hello"));
 
     assert_eq!(c.double_click(&g, w, 8, 0).as_deref(), Some("world"));
-}
-
-#[test]
-fn search_reaches_into_rio_scrollback() {
-    // Twelve lines through a four-row screen: the first eight are in history,
-    // reachable only through the negative `Line` indices the adapter hides.
-    let mut bytes = Vec::new();
-    for i in 0..12 {
-        bytes.extend_from_slice(format!("line-{i:02}\r\n").as_bytes());
-    }
-    let term = term_with(&bytes, 20, 4);
-    let g = RioGrid::new(&term);
-    assert!(g.history_lines() >= 8, "lines did scroll off");
-
-    let re = literal_pattern("line-00", true);
-    let hit = search(&g, &re, true, 0, 0).expect("the oldest line is still findable");
-    assert_eq!(hit.start_column, 0);
-    assert_eq!(
-        term::selection::line_text(&g, hit.start_line),
-        "line-00",
-        "and the hit's line number addresses the line it was found on"
-    );
 }
 
 #[test]

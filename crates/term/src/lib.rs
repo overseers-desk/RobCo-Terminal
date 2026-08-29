@@ -27,9 +27,10 @@
 //! * [`grid`]: the grid seam. `GridView` is the one definition of what a
 //!   line says; [`rio_grid`] adapts rio-vt's `Crosswords` onto it and carries
 //!   the read-back-as-text path with it.
-//! * [`selection`] / [`search`] / [`hotspots`] / [`pointer`]: what the user
-//!   has selected, what a search found in scrollback, which spans are links,
-//!   and whether a pointer event marks the screen or reaches the program.
+//! * [`selection`] / [`hotspots`] / [`pointer`]: what the user has selected,
+//!   which spans are links, and whether a pointer event marks the screen or
+//!   reaches the program. Scrollback search is rio-vt's own
+//!   (`Crosswords::search_next`), driven from `crates/app`'s find line.
 //! * [`fonts`]: the bundled catalogue, and [`fonts::sizing`], the seam: a
 //!   catalogue row plus the user's knobs in, a `ResolvedFont` out. Nothing
 //!   downstream sees the catalogue's raw per-entry properties again.
@@ -57,7 +58,6 @@ pub mod hotspots;
 pub mod pointer;
 pub mod render;
 pub mod rio_grid;
-pub mod search;
 pub mod selection;
 pub mod session;
 pub mod size;
@@ -84,7 +84,6 @@ pub use render::{GridRenderer, Marked, SyncStats};
 // moment the view is scrolled back, which is the case the renderer is in.
 pub use cells::vt::viewport_text;
 pub use rio_grid::{all_text, cell_char, live_text, row_cells, row_text, screen_contains, RioGrid};
-pub use search::{search, SearchHit};
 // `distortion::Point` and `selection::Window` stay behind their modules.
 // Both are common words that mean something else one crate up (a winit
 // `Window`, a pixel point), and neither is asked for often enough to be

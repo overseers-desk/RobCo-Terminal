@@ -18,7 +18,7 @@ One process holds one `wgpu` device and a `winit` window. Inside it:
 | Crate | Owns |
 |---|---|
 | `config` | The settings schema, its defaults, the built-in presets, TOML reading and writing, the file watch, and the profile model. |
-| `term` | Everything that is a terminal and nothing that is a window: the session, the PTY loop, the grid read-back seam, the DCS tap, the glyph atlas, selection, search, hotspots, and the pointer distortion math. |
+| `term` | Everything that is a terminal and nothing that is a window: the session, the PTY loop, the grid read-back seam, the DCS tap, the glyph atlas, selection, hotspots, and the pointer distortion math. |
 | `crt-render` | The pass graph, the persistence feedback pass inside it, and materialising the preset and shader bodies into the cache directory. |
 | `gpu` | The wgpu device concerns every crate shares: the feature set a device is created with, the offscreen target and its readback, and, for tests only, the machine-wide device lock. |
 | `chassis` | The cabinet: bank geometry, shells, channel displays, and the procedural metal. It holds no device and draws nothing. |
