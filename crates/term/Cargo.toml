@@ -24,6 +24,11 @@ path = "src/bin/esctest_harness.rs"
 # application rather than the core, and wgpu is nailed to 30.0.0 by librashader.
 rio-vt = { version = "=0.5.24", default-features = false, features = ["pty"] }
 wgpu = "=30.0.0"
+# The offscreen device, the colour target the grid is drawn into and the
+# readback the pixel tests measure. Its lib is `gpu`, and `Gpu`, `Image` and
+# `Target` are re-exported from this crate's root because the renderer's
+# signatures name them.
+robco-gpu = { path = "../gpu" }
 cosmic-text = "0.19.0"
 # Not a new crate in the graph: `cosmic-text` already enables `fontdb`'s
 # fontconfig feature, so this is the parser the font enumeration reads
@@ -44,12 +49,12 @@ swash = "0.2"
 serde_json = "1.0.151"
 # `tests/font_parity.rs` decodes the checked-in reference rasters.
 png = "0.18"
-# The machine-wide GPU lock, and nothing else. `tests/pixel_properties.rs` and
-# `tests/scrollback.rs` stand up a real `term::gpu::Gpu`, and a second process
-# holding a device at the same time is what Wave 2b traced its wedged runs to;
-# `--test-threads=1` cannot reach across processes but
-# `crt_burnin::headless::GpuLock` can. Dev-only and cycle-free: `robco-crt-burnin`
-# depends on librashader, wgpu and pollster, and on nothing in this tree. The
-# shipping `term::gpu::Gpu` stays unlocked -- it is the application's device, and
-# an application that blocked on a test lock would be a defect.
-robco-crt-burnin = { path = "../crt-burnin" }
+# The machine-wide GPU lock, and nothing else this crate does not already have.
+# `tests/pixel_properties.rs` and `tests/scrollback.rs` stand up a real
+# `gpu::Gpu`, and a second process holding a device at the same time is what
+# Wave 2b traced its wedged runs to; `--test-threads=1` cannot reach across
+# processes but `gpu::harness::GpuLock` can. The lock is behind `robco-gpu`'s
+# `harness` feature, which only this dev-dependency turns on: the shipping
+# `gpu::Gpu` stays unlocked, because it is the application's device and an
+# application that blocked on a test lock would be a defect.
+robco-gpu = { path = "../gpu", features = ["harness"] }

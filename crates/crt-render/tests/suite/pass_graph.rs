@@ -3,7 +3,7 @@
 //!
 //! Four properties, in this order:
 //!
-//! 1. a `term::gpu::Target` renders through the chain at all;
+//! 1. a `gpu::Target` renders through the chain at all;
 //! 2. a parameter change takes effect on the next frame with no chain reload,
 //!    and the reload counter proves the "no reload" half rather than the
 //!    absence of a log line;
@@ -322,7 +322,7 @@ fn the_degauss_hook_alters_the_output_for_its_duration() {
 
 /// Mean luma over a band of rows, so a claim about the dark part of the picture
 /// is not diluted by the lit part.
-fn mean_luma_rows(img: &term::gpu::Image, rows: std::ops::Range<u32>) -> f64 {
+fn mean_luma_rows(img: &gpu::Image, rows: std::ops::Range<u32>) -> f64 {
     let mut sum = 0u64;
     let mut count = 0u64;
     for y in rows {

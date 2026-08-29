@@ -16,7 +16,7 @@
 //! the `(1.0 - alpha)` mask on the consuming side.
 //!
 //! The output is read as `Rgba32Float` rather than through
-//! `term::gpu::Target`. An 8-bit target quantises at 1/255, which is a third of
+//! `gpu::Target`. An 8-bit target quantises at 1/255, which is a third of
 //! a frame's decay here, so the ramp it produced could not be told from a
 //! different one.
 

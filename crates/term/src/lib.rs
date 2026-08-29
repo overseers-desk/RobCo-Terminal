@@ -38,9 +38,13 @@
 //!   rio-vt `Square` becomes a coloured cell.
 //! * [`viewport`]: scrollback policy over rio-vt's display offset.
 //! * [`render`]: the damage-driven instance buffer and the draw.
-//! * [`gpu`]: an offscreen target and a readback. The grid is drawn into a
-//!   texture, not into the swapchain, so the CRT chain can filter the grid
-//!   without filtering the chassis around it.
+//!
+//! The offscreen target and its readback are not here: `robco-gpu` owns them,
+//! along with the feature set a device is created with, because the application
+//! and the test harness make devices too. The grid is drawn into a
+//! `gpu::Target`, not into the swapchain, so the CRT chain can filter the grid
+//! without filtering the chassis around it, and [`Gpu`], [`Image`] and
+//! [`Target`] are re-exported here because the renderer's signatures name them.
 
 pub mod atlas;
 pub mod cells;
@@ -48,7 +52,6 @@ pub mod color;
 pub mod dcs;
 pub mod distortion;
 pub mod fonts;
-pub mod gpu;
 pub mod grid;
 pub mod hotspots;
 pub mod pointer;
@@ -70,6 +73,7 @@ pub use dcs::{DcsParser, DcsTap, NoopTap};
 pub use distortion::{correct_distortion, DistortionParams};
 pub use fonts::sizing::{resolve, ResolvedFont, ScalePolicy, SizingRequest};
 pub use fonts::{bundled_fonts, font_by_name, system_fonts, FontEntry, FontSource};
+// From `robco-gpu`, not from a module of this crate.
 pub use gpu::{Gpu, Image, Target};
 pub use grid::{GridView, ScriptedGrid};
 pub use hotspots::{HotSpot, HotSpotType, UrlFilterChain, UrlType};

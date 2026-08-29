@@ -11,7 +11,7 @@
 //! reads a subset of the fields `config::structural::STRUCTURAL` names, and a
 //! test in `crates/app` holds that subset relation.
 //!
-//! The chain's input is `term::gpu::Target`'s texture, which carries
+//! The chain's input is `gpu::Target`'s texture, which carries
 //! `TEXTURE_BINDING` for exactly this. Its output is the finished glass image
 //! and nothing else: chassis chrome composites over this result rather than
 //! through it, which is the whole reason the Rio fork was rejected.
@@ -175,7 +175,7 @@ impl Chain {
 
     /// Draw one frame: `input` through the chain, into `output`.
     ///
-    /// `input` is `term::gpu::Target::texture`. `output` is whatever the
+    /// `input` is `gpu::Target::texture`. `output` is whatever the
     /// chassis layer wants the glass on, a swapchain view in the app and an
     /// offscreen view under test; the chain does not care which.
     ///

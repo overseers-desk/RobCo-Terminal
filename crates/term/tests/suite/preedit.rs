@@ -19,13 +19,13 @@
 //! measured on characters this appliance can actually strike. The romaji stage
 //! of a Japanese composition is this, literally: `nihon` before the conversion.
 
-use crt_burnin::headless::GpuLock;
+use gpu::harness::GpuLock;
 use term::atlas::Rasterization;
 use term::cells::{CellGrid, CursorShape, CursorState};
 use term::color::Scheme;
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
 use term::fonts::{font_by_name, FontEntry, FontSource};
-use term::gpu::{Gpu, Image};
+use gpu::{Gpu, Image};
 use term::render::GridRenderer;
 use term::{ascii_charset, FontContext, DEFAULT_THRESHOLD};
 

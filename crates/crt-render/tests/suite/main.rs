@@ -7,7 +7,6 @@ mod support;
 mod bloom;
 mod burn_in_chain;
 mod contracts;
-mod device_features;
 mod glyph_survival;
 mod pass_graph;
 mod terminal_frame;

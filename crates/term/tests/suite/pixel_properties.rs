@@ -29,13 +29,13 @@
 //! pixel would count as an intermediate value and the measurement would say
 //! nothing about antialiasing at all.
 
-use crt_burnin::headless::GpuLock;
+use gpu::harness::GpuLock;
 use term::atlas::Rasterization;
 use term::cells::CellGrid;
 use term::color::Scheme;
 use term::fonts::sizing::{self, ResolvedFont, ScalePolicy, SizingRequest};
 use term::fonts::{self, font_by_name, FontEntry, FontSource};
-use term::gpu::{Gpu, Image};
+use gpu::{Gpu, Image};
 use term::render::GridRenderer;
 
 /// The two faces used for measurement, looked up in the bundled catalogue.
@@ -70,7 +70,7 @@ const TRANSPARENT: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 ///
 /// The device comes with the machine-wide GPU lock, which is what keeps this
 /// binary from holding a device at the same time as another process's chain
-/// tests. `term::gpu::Gpu` is the shipping type and takes no lock of its own --
+/// tests. `gpu::Gpu` is the shipping type and takes no lock of its own --
 /// the application is not competing with anyone -- so the lock is taken here,
 /// where the competition is. The tuple's order is its drop order: the device
 /// goes first, the lock after it.

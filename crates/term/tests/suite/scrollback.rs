@@ -20,13 +20,13 @@ use rio_vt::crosswords::Crosswords;
 use rio_vt::event::{VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
 
-use crt_burnin::headless::GpuLock;
+use gpu::harness::GpuLock;
 use std::time::Instant;
 use term::atlas::Rasterization;
 use term::color::Scheme;
 use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
-use term::gpu::Gpu;
+use gpu::Gpu;
 use term::render::GridRenderer;
 use term::viewport::{ScrollPosition, WHEEL_GLIDE};
 use term::{ascii_charset, FontContext, DEFAULT_THRESHOLD};
@@ -52,10 +52,10 @@ impl Dimensions for Size {
 
 /// The device, and the machine-wide GPU lock it is held under.
 ///
-/// `term::gpu::Gpu` is the shipping type and takes no lock of its own -- the
+/// `gpu::Gpu` is the shipping type and takes no lock of its own -- the
 /// application is not competing with anyone for a device. These tests are, with
 /// every other GPU test in the tree and in any other process running the suite,
-/// which is what `crt_burnin::headless::GpuLock` exists for. The tuple's order
+/// which is what `gpu::harness::GpuLock` exists for. The tuple's order
 /// is its drop order: the device goes first, the lock after it.
 fn gpu() -> Option<(Gpu, GpuLock)> {
     let lock = match GpuLock::acquire() {

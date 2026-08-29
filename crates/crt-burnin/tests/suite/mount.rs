@@ -84,7 +84,7 @@ fn a_generated_preset_mounts_the_pass_after_another_one() {
 
 #[test]
 fn fp32_accumulator_is_available_and_better_than_fp16() {
-    if !gpu().float32_filterable {
+    if !gpu().float32_filterable() {
         // Not a silent skip: without the feature this is not "slightly worse",
         // it is a wgpu validation error inside librashader's bind group. The
         // shipping preset asks for fp16 precisely so it never depends on this.

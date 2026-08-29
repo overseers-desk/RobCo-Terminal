@@ -25,7 +25,7 @@ use wgpu::util::DeviceExt as _;
 use crate::atlas::{FontContext, GlyphAtlas};
 use crate::cells::{Cell, CellGrid, CursorShape, CursorState};
 use crate::color::{Rgba, Scheme};
-use crate::gpu::{Gpu, Image, Target, TARGET_FORMAT};
+use gpu::{Gpu, Image, Target, TARGET_FORMAT};
 use crate::selection::Selection;
 
 /// One quad. All integers: the CPU decides the exact pixels, the GPU only
@@ -924,7 +924,7 @@ impl GridRenderer {
         width: u32,
         height: u32,
     ) -> Image {
-        let target = Target::new(&gpu.device, width.max(1), height.max(1));
+        let target = Target::new(&gpu.device, width.max(1), height.max(1), TARGET_FORMAT);
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });

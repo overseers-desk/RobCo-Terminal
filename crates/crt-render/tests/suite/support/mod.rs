@@ -3,13 +3,13 @@
 //! Every claim in these tests is made about bytes read back from a texture, on
 //! a device with no window and no surface, so the suite runs under Xvfb (and
 //! would run with no display at all). The picture the chain is fed is drawn
-//! into a real `term::gpu::Target`, because that texture, and its
+//! into a real `gpu::Target`, because that texture, and its
 //! `TEXTURE_BINDING` usage, is the seam this suite exercises.
 //!
-//! The device itself is not made here. It comes from `crt_burnin::headless`,
-//! the rebuild's one headless GPU harness; this module used to stand up a
-//! third copy of that and now owns only what is particular to these tests,
-//! which is the picture and the frame.
+//! The device itself is not made here. It comes from `gpu::harness`, the
+//! rebuild's one headless GPU harness; this module used to stand up a third
+//! copy of that and now owns only what is particular to these tests, which is
+//! the picture and the frame.
 
 // Each integration test compiles this module into its own binary, so anything
 // one test file does not call reads as dead code there. The allow is about that
@@ -18,8 +18,8 @@
 
 use std::path::PathBuf;
 
-use crt_burnin::headless::Gpu;
-use term::gpu::{Image, Target};
+use gpu::harness::Locked as Gpu;
+use gpu::{Image, Target, TARGET_FORMAT};
 use wgpu::util::DeviceExt as _;
 
 /// A deterministic stand-in for the terminal grid: black with one lit bar
@@ -75,8 +75,8 @@ pub struct Harness {
 impl Harness {
     pub fn new(name: &str, width: u32, height: u32) -> Result<Self, String> {
         let gpu = Gpu::new().map_err(|e| e.to_string())?;
-        let input = Target::new(&gpu.device, width, height);
-        let output = Target::new(&gpu.device, width, height);
+        let input = Target::new(&gpu.device, width, height, TARGET_FORMAT);
+        let output = Target::new(&gpu.device, width, height, TARGET_FORMAT);
 
         let module = gpu
             .device
@@ -152,7 +152,7 @@ impl Harness {
                     entry_point: Some("fs"),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: term::gpu::TARGET_FORMAT,
+                        format: TARGET_FORMAT,
                         blend: None,
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
@@ -257,7 +257,7 @@ impl Harness {
                 &self.input.texture,
                 &self.output.view,
                 (self.output.width, self.output.height),
-                term::gpu::TARGET_FORMAT,
+                TARGET_FORMAT,
                 &mut encoder,
                 time,
             )

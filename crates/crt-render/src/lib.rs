@@ -8,7 +8,7 @@
 //! 56 variants a compile-time approach would generate.
 //!
 //! ```text
-//!   term::gpu::Target  (the grid, drawn offscreen; carries TEXTURE_BINDING)
+//!   gpu::Target  (the grid, drawn offscreen; carries TEXTURE_BINDING)
 //!          |
 //!          |  Original
 //!          v
@@ -51,13 +51,12 @@
 //! - [`params`] every uniform, and the arithmetic between a setting and it.
 //! - [`pacing`] the wall clock the whole chain is timed by.
 //! - [`degauss`] the degauss transient, as a hook something else triggers.
-//! - [`device`] the wgpu features the chain wants, for whoever creates the
-//!   device. Nothing here creates one, so it has to be asked for at the call
-//!   site, and all three call sites now do: the app's surface setup calls
-//!   [`device::required_features`](device::required_features), and `term::gpu`
-//!   and `crt_burnin::headless` restate the same filter because a dependency
-//!   on this crate would be a cycle. `tests/suite/device_features.rs` holds the
-//!   three to one answer.
+//!
+//! The wgpu features this chain needs are not this crate's to state. Nothing
+//! here creates a device, so they have to be asked for at the call site, and
+//! every call site asks `gpu::required_features` for them: the app's surface
+//! setup, the offscreen device the grid is drawn on, and the test harness. That
+//! crate says why each feature is on the set.
 //!
 //! # How the pass bodies are sourced
 //!
@@ -91,16 +90,15 @@
 //!
 //! One further module came with the pass ports: [`color`], the color-helper
 //! module. The closed-form shader math the per-pass tests compare against
-//! now lives in the `robco-shader-oracle` crate. This crate's own tests reach the one
-//! headless GPU harness directly, as `crt_burnin::headless`: the rebuild had
-//! grown three copies of it and they are folded there, in the lowest crate
-//! that owns a device.
+//! now lives in the `robco-shader-oracle` crate. This crate's own tests reach
+//! the one headless GPU harness directly, as `gpu::harness`: the rebuild had
+//! grown three copies of it and they are folded there, in the leaf crate that
+//! owns the device concerns.
 
 pub mod chain;
 /// The chain's uniforms are built through these same functions.
 pub use chassis::color;
 pub mod degauss;
-pub mod device;
 pub mod pacing;
 pub mod params;
 pub mod preset;

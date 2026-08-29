@@ -77,7 +77,7 @@ fn frame_with_badge(
     text: &str,
     opacity: f32,
 ) -> (term::Image, Option<app::badge::BadgeRect>) {
-    let output = Target::new(&fx.gpu.device, WINDOW_W, WINDOW_H);
+    let output = Target::new(&fx.gpu.device, WINDOW_W, WINDOW_H, gpu::TARGET_FORMAT);
     let view = &output.view;
     let mut encoder = fx
         .gpu
@@ -267,7 +267,7 @@ fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
     let fx = fixture();
     let mut badge = Badge::new(&fx.gpu.device, FRAME_FORMAT);
 
-    let output = Target::new(&fx.gpu.device, WINDOW_W, WINDOW_H);
+    let output = Target::new(&fx.gpu.device, WINDOW_W, WINDOW_H, gpu::TARGET_FORMAT);
     let mut encoder = fx
         .gpu
         .device

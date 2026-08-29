@@ -38,11 +38,16 @@ librashader = { version = "=0.12.0", default-features = false, features = [
 # Exactly 30.0.0: librashader 0.12 links this version, and a wgpu::Device from
 # any other is a different, incompatible type at the FilterChain boundary.
 wgpu = "=30.0.0"
+# The feature set every device this chain runs on is created with, and the
+# offscreen target the grid arrives in. Nothing here creates a device; this is
+# where the answer lives for whoever does.
+robco-gpu = { path = "../gpu" }
 log = "0.4"
 
 [dev-dependencies]
 robco-shader-oracle = { path = "../shader-oracle" }
+# The same crate the chain's normal dependency names, with the machine-wide
+# device lock turned on. Tests only: a lock the application could block on
+# would be a defect.
+robco-gpu = { path = "../gpu", features = ["harness"] }
 anyhow = "1"
-# `tests/device_features.rs` asks the machine for an adapter, which is an async
-# call and the only thing left in this crate that blocks on one.
-pollster = "0.4"

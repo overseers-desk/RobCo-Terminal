@@ -734,7 +734,12 @@ impl Glass {
         // The well, not the window: the chain draws into the rectangle the bank
         // column leaves, and `Params::build` reads `normalizedScreenScale` off
         // the geometry this target's size produces.
-        let target = Target::new(&gpu.device, viewport.width.max(1), viewport.height.max(1));
+        let target = Target::new(
+            &gpu.device,
+            viewport.width.max(1),
+            viewport.height.max(1),
+            gpu::TARGET_FORMAT,
+        );
 
         let dir = paths::preset_dir(identity);
         let chain = match Chain::from_config(&gpu.device, &gpu.queue, &dir, cfg) {
@@ -2747,7 +2752,7 @@ impl TerminalSurface {
                     glass.target.width,
                     glass.target.height
                 );
-                glass.target = Target::new(&gpu.device, width, height);
+                glass.target = Target::new(&gpu.device, width, height, gpu::TARGET_FORMAT);
                 glass.chain.burn_in().restart();
             }
             if refonted {

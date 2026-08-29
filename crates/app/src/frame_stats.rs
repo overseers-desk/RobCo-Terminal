@@ -29,7 +29,7 @@
 //! without threading a query set through `term::GridRenderer`, `crt::Chain`
 //! and `crate::column::Column`. Both features are requested together,
 //! filtered to what the adapter actually offers (the same pattern
-//! `crt::device::required_features` uses); an adapter offering neither, or
+//! `gpu::required_features` uses); an adapter offering neither, or
 //! only the base feature, gets an instrument that reports itself
 //! unavailable rather than one that panics reaching for `write_timestamp`.
 //!
@@ -48,7 +48,7 @@ const WANTED: wgpu::Features =
     wgpu::Features::TIMESTAMP_QUERY.union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS);
 
 /// The features this instrument wants, filtered to what the adapter offers.
-/// Pass the result into `required_features` alongside `crt::device`'s at
+/// Pass the result into `required_features` alongside `gpu::required_features`'s at
 /// device creation; requesting a feature the adapter lacks is a device
 /// creation error, not a graceful degradation.
 pub fn required_features(adapter: &wgpu::Adapter) -> wgpu::Features {
@@ -163,7 +163,7 @@ impl FrameTiming {
         period_ns: f32,
         submission: wgpu::SubmissionIndex,
     ) -> Option<StageDurations> {
-        // The same map-then-poll-then-read shape `term::gpu`'s and
+        // The same map-then-poll-then-read shape `gpu::read_back`'s and
         // `crt-burnin::headless`'s readbacks already use: `PollType::Wait`
         // runs the mapping callback synchronously before returning, so
         // there is no callback to store and no second wakeup to wait for.

@@ -25,7 +25,7 @@ use crt::preset::{self, Structure};
 use librashader::presets::ShaderFeatures;
 use librashader::runtime::wgpu::{FilterChain, FilterChainOptions, WgpuOutputView};
 use librashader::runtime::{Size, Viewport};
-use term::gpu::Image;
+use gpu::Image;
 
 /// A one-pass preset that does nothing but show the LUT.
 const PROBE_PRESET: &str = "\
@@ -104,7 +104,7 @@ fn render_probe(h: &support::Harness, dir: &Path, offset: &str) -> Image {
                 output: WgpuOutputView::new_from_raw(
                     &h.output.view,
                     size,
-                    term::gpu::TARGET_FORMAT,
+                    gpu::TARGET_FORMAT,
                 ),
                 size,
             },

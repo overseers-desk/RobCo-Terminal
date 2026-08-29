@@ -3647,6 +3647,7 @@ dependencies = [
  "robco-config",
  "robco-crt-burnin",
  "robco-crt-render",
+ "robco-gpu",
  "robco-shader-oracle",
  "robco-ssh-link",
  "robco-term",
@@ -3691,6 +3692,7 @@ version = "0.1.0"
 dependencies = [
  "librashader",
  "pollster",
+ "robco-gpu",
  "wgpu",
 ]
 
@@ -3701,12 +3703,20 @@ dependencies = [
  "anyhow",
  "librashader",
  "log",
- "pollster",
  "robco-chassis",
  "robco-config",
  "robco-crt-burnin",
+ "robco-gpu",
  "robco-shader-oracle",
  "robco-term",
+ "wgpu",
+]
+
+[[package]]
+name = "robco-gpu"
+version = "0.1.0"
+dependencies = [
+ "pollster",
  "wgpu",
 ]
 
@@ -3741,7 +3751,7 @@ dependencies = [
  "pollster",
  "regex",
  "rio-vt",
- "robco-crt-burnin",
+ "robco-gpu",
  "serde_json",
  "swash",
  "ttf-parser",

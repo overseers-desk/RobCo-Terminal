@@ -16,7 +16,7 @@ path = "src/lib.rs"
 # host that only wants those can turn the runtime off. On by default because the
 # pass is the point of the crate.
 default = ["wgpu-runtime"]
-wgpu-runtime = ["dep:librashader", "dep:wgpu", "dep:pollster"]
+wgpu-runtime = ["dep:librashader", "dep:wgpu", "dep:pollster", "dep:robco-gpu"]
 
 [dependencies]
 # Exactly the S1 pins. librashader 0.12 links wgpu 30.0.0 and hands us its
@@ -28,3 +28,6 @@ librashader = { version = "=0.12.0", default-features = false, features = [
 ], optional = true }
 wgpu = { version = "=30.0.0", optional = true }
 pollster = { version = "0.4", optional = true }
+# The device, the machine-wide lock and the offscreen readback the rig here
+# renders through. Its lib is `gpu`.
+robco-gpu = { path = "../gpu", features = ["harness"], optional = true }

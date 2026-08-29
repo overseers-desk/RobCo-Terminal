@@ -38,7 +38,7 @@ use term::cells::CellGrid;
 use term::color::Scheme;
 use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
-use term::gpu::Image;
+use gpu::Image;
 use term::render::GridRenderer;
 use term::{ascii_charset, FontContext, DEFAULT_THRESHOLD};
 

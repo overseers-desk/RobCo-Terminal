@@ -29,11 +29,11 @@
 //! no display, so the coverage tests run wherever the crate compiles. Only the
 //! two that put bytes in a texture ask for a GPU.
 
-use crt_burnin::headless::GpuLock;
+use gpu::harness::GpuLock;
 use term::atlas::Rasterization;
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
 use term::fonts::{font_by_name, FontEntry, FontSource};
-use term::gpu::Gpu;
+use gpu::Gpu;
 use term::{ascii_charset, FontContext};
 
 /// The face a session opens on: a Nerd Font at its designed 12 pixels, which

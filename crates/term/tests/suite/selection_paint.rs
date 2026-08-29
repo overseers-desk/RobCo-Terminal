@@ -27,12 +27,12 @@ use rio_vt::crosswords::Crosswords;
 use rio_vt::event::{VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
 
-use crt_burnin::headless::GpuLock;
+use gpu::harness::GpuLock;
 use term::atlas::Rasterization;
 use term::color::Scheme;
 use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
-use term::gpu::{Gpu, Image};
+use gpu::{Gpu, Image};
 use term::render::{GridRenderer, Marked};
 use term::selection::Selection;
 use term::viewport::ScrollPosition;

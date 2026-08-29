@@ -42,13 +42,13 @@
 //! one pixel off a strike is the counterexample that keeps the assertion from
 //! being a description of a bug.
 
-use crt_burnin::headless::GpuLock;
+use gpu::harness::GpuLock;
 use term::atlas::Rasterization;
 use term::cells::CellGrid;
 use term::color::Scheme;
 use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{ScalePolicy, SizingRequest};
-use term::gpu::{Gpu, Image};
+use gpu::{Gpu, Image};
 use term::render::GridRenderer;
 use term::FontEntry;
 

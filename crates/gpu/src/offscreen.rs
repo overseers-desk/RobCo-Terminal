@@ -1,39 +1,24 @@
 //! Offscreen wgpu context: a device, a colour target, and a pixel readback.
 //!
-//! This is not test-only scaffolding: the grid has to be drawn into an
-//! offscreen texture *before* the CRT chain runs (that is the point the Rio
-//! fork could not provide), so `Target` is the seam the pass graph hangs
-//! off. The readback half is what the pixel-property tests measure.
+//! No window and no surface. The grid is drawn into a [`Target`] before the CRT
+//! chain runs, which is the point the Rio fork could not provide, and the
+//! readback half is what the pixel-property tests measure.
 //!
-//! No window and no surface. Every claim this module makes is made about bytes
-//! that came back from `Target::read_rgba`, so the readback path is deliberately
-//! dull: a non-sRGB `Rgba8Unorm` target, so a shader value of 1.0 is the byte 255
-//! and a shader value of 0.0 is the byte 0, with no transfer function in between
-//! to smear the comparison.
+//! Every claim a test makes is made about bytes that came back from
+//! [`Target::read_rgba`], so the readback path is deliberately dull: a non-sRGB
+//! [`TARGET_FORMAT`], so a shader value of 1.0 is the byte 255 and a shader
+//! value of 0.0 is the byte 0, with no transfer function in between to smear
+//! the comparison.
+//!
+//! A target carries its format, so one device serves both the grid's
+//! `Rgba8Unorm` and the measurement rig's `Rgba32Float`: [`Target::read_rgba`]
+//! and [`Target::read_rgba_f32`] are the two readings of one padded copy path,
+//! which differs only in bytes per pixel.
 
 use wgpu::util::DeviceExt as _;
 
+/// The grid's offscreen format. Non-sRGB on purpose: see the module docs.
 pub const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
-
-/// The wgpu features to ask for, filtered to those this adapter has.
-///
-/// Nothing in this crate uses either of them. They are here because the device
-/// this module creates is the device the CRT chain runs on, and both features
-/// have to be asked for at creation or they are unavailable for the life of the
-/// device: `PIPELINE_CACHE`, without which librashader's `enable_cache` is a
-/// validation panic on a rayon worker rather than an error, and
-/// `FLOAT32_FILTERABLE`, without which an fp32 burn-in accumulator is a
-/// validation error rather than a slower path.
-///
-/// `crt::device::required_features` is the authority on that set and says why
-/// each feature is on it. This crate cannot call it: `crt-render` depends on
-/// this one, so a dependency the other way is a cycle. The set is therefore
-/// restated here, and `crt-render`'s `device_features` test asserts that this
-/// function and `crt::device`'s agree on one adapter, so the copy cannot drift
-/// in silence.
-pub fn required_features(adapter: &wgpu::Adapter) -> wgpu::Features {
-    adapter.features() & (wgpu::Features::PIPELINE_CACHE | wgpu::Features::FLOAT32_FILTERABLE)
-}
 
 pub struct Gpu {
     pub device: wgpu::Device,
@@ -43,11 +28,22 @@ pub struct Gpu {
 }
 
 impl Gpu {
+    /// An offscreen device with the features the chain needs.
     pub fn new() -> Result<Self, String> {
-        pollster::block_on(Self::new_async())
+        Self::with_extra_features(wgpu::Features::empty())
     }
 
-    async fn new_async() -> Result<Self, String> {
+    /// An offscreen device with the chain's features plus `extra`, filtered to
+    /// what the adapter offers.
+    ///
+    /// `extra` is for a caller whose own rendering needs a capability the chain
+    /// does not, such as blending into a float32 target, which no shipped
+    /// swapchain ever asks for.
+    pub fn with_extra_features(extra: wgpu::Features) -> Result<Self, String> {
+        pollster::block_on(Self::new_async(extra))
+    }
+
+    async fn new_async(extra: wgpu::Features) -> Result<Self, String> {
         // No window, so no display handle. `_from_env` keeps WGPU_BACKEND
         // usable for reproducing a result on a specific backend.
         let instance =
@@ -64,8 +60,9 @@ impl Gpu {
         let info = adapter.get_info();
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("term offscreen device"),
-                required_features: required_features(&adapter),
+                label: Some("robco offscreen device"),
+                required_features: crate::required_features(&adapter)
+                    | (adapter.features() & extra),
                 ..Default::default()
             })
             .await
@@ -93,108 +90,166 @@ impl Gpu {
     }
 }
 
+/// A colour texture something renders into and a later pass samples.
+///
+/// `TEXTURE_BINDING` because this texture is the CRT filter chain's input: a
+/// shader pass samples it, and a texture without the binding usage cannot be
+/// sampled at all. `COPY_SRC` because [`read_back`] copies it.
+pub fn color_texture(
+    device: &wgpu::Device,
+    label: &str,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
+}
+
+/// Copy a texture into a mappable buffer and return its rows tightly packed.
+///
+/// One padded `copy_texture_to_buffer`, one `map_async`, one de-pad, for every
+/// format anything here reads back; `bytes_per_pixel` is the whole of the
+/// difference between an 8-bit target and a float32 one.
+pub fn read_back(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    width: u32,
+    height: u32,
+    bytes_per_pixel: u32,
+) -> Vec<u8> {
+    let unpadded = width * bytes_per_pixel;
+    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let padded = unpadded.div_ceil(align) * align;
+
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("readback buffer"),
+        size: (padded * height) as u64,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("readback"),
+    });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded),
+                rows_per_image: Some(height),
+            },
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+    let index = queue.submit(Some(encoder.finish()));
+
+    buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: Some(index),
+            timeout: None,
+        })
+        .expect("device poll for readback");
+
+    let view = buffer
+        .slice(..)
+        .get_mapped_range()
+        .expect("map readback buffer");
+    let mut bytes = Vec::with_capacity((unpadded * height) as usize);
+    for row in 0..height {
+        let start = (row * padded) as usize;
+        bytes.extend_from_slice(&view[start..start + unpadded as usize]);
+    }
+    drop(view);
+    buffer.unmap();
+    bytes
+}
+
 /// A colour attachment we can render into and then read back byte for byte.
 pub struct Target {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub width: u32,
     pub height: u32,
+    pub format: wgpu::TextureFormat,
 }
 
 impl Target {
-    pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("term offscreen target"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TARGET_FORMAT,
-            // `TEXTURE_BINDING` because this texture is the CRT filter
-            // chain's input: a shader pass samples it, and a
-            // texture without the binding usage cannot be sampled at all.
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
+    /// A target at `format`. [`TARGET_FORMAT`] for the terminal grid;
+    /// `Rgba32Float` where a measurement needs finer steps than 1/255.
+    pub fn new(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        let texture = color_texture(device, "robco offscreen target", width, height, format);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
             view,
             width,
             height,
+            format,
         }
     }
 
-    /// Copy the target into a mappable buffer and return tightly packed RGBA8.
+    /// Read an 8-bit target back as tightly packed RGBA8.
     pub fn read_rgba(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Image {
-        let unpadded = self.width * 4;
-        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-        let padded = unpadded.div_ceil(align) * align;
-
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("term readback buffer"),
-            size: (padded * self.height) as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded),
-                    rows_per_image: Some(self.height),
-                },
-            },
-            wgpu::Extent3d {
-                width: self.width,
-                height: self.height,
-                depth_or_array_layers: 1,
-            },
-        );
-        queue.submit(Some(encoder.finish()));
-
-        buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll for readback");
-
-        let view = buffer
-            .slice(..)
-            .get_mapped_range()
-            .expect("map readback buffer");
-        let mut pixels = Vec::with_capacity((unpadded * self.height) as usize);
-        for row in 0..self.height {
-            let start = (row * padded) as usize;
-            pixels.extend_from_slice(&view[start..start + unpadded as usize]);
-        }
-        drop(view);
-        buffer.unmap();
-
+        let pixels = read_back(device, queue, &self.texture, self.width, self.height, 4);
         Image {
             width: self.width,
             height: self.height,
             pixels,
         }
     }
+
+    /// Read a float32 target back as RGBA f32, row padding removed.
+    pub fn read_rgba_f32(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<[f32; 4]> {
+        let bytes = read_back(device, queue, &self.texture, self.width, self.height, 16);
+        decode_rgba_f32(&bytes)
+    }
+}
+
+/// Tightly packed `Rgba32Float` bytes as pixels.
+///
+/// Decoded four bytes at a time rather than reinterpreted: a `Vec<u8>` carries
+/// no alignment guarantee an `&[f32]` cast could rely on.
+pub(crate) fn decode_rgba_f32(bytes: &[u8]) -> Vec<[f32; 4]> {
+    bytes
+        .chunks_exact(16)
+        .map(|px| {
+            let f = |i: usize| f32::from_ne_bytes(px[i..i + 4].try_into().unwrap());
+            [f(0), f(4), f(8), f(12)]
+        })
+        .collect()
 }
 
 /// A readback: tightly packed RGBA8, row major, top row first.
@@ -292,7 +347,7 @@ impl Image {
     }
 
     /// A readback the numbers cannot check: whether the text is legible.
-    /// Every structural property this module checks would still hold if the
+    /// Every structural property the pixel tests check would still hold if the
     /// atlas were mapping every character to the same glyph.
     pub fn ascii_preview(&self, cols: u32, rows: u32) -> String {
         let mut s = String::new();

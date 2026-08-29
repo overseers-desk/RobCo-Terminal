@@ -80,13 +80,13 @@ impl Gpu {
         let (device, queue) = adapter
             // The CRT chain runs on this device, and both of the features it
             // wants have to be asked for here or they are gone for the life of
-            // the device. `crt::device::required_features` is the authority on
+            // the device. `gpu::required_features` is the authority on
             // which those are and why; it filters them to what the adapter
             // actually offers, so this is not a device that fails to be created
             // on a machine that lacks them.
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("robco device"),
-                required_features: crt::device::required_features(&adapter)
+                required_features: gpu::required_features(&adapter)
                     | frame_stats::required_features(&adapter),
                 ..Default::default()
             })
@@ -113,7 +113,7 @@ impl Gpu {
         //
         // This also puts the presented path in the same space as every pixel
         // number already recorded here, which were all measured on
-        // `term::gpu::TARGET_FORMAT` (`Rgba8Unorm`, no transfer function), so
+        // `gpu::TARGET_FORMAT` (`Rgba8Unorm`, no transfer function), so
         // existing RMSE comparisons inherit rather than re-establish them. The
         // alternative -- keeping the sRGB swapchain and moving the whole
         // chain to linear light -- is a different design than the one built

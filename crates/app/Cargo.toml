@@ -52,6 +52,10 @@ russh-config = "0.58"
 # matcher.
 globset = "0.4"
 robco-term = { path = "../term" }
+# The feature set this crate's surface device is created with. The CRT chain
+# runs on that device and both features it wants have to be asked for at
+# creation, so the answer comes from the crate that owns it.
+robco-gpu = { path = "../gpu" }
 # The control-mode protocol codec, reached as `tmux_cc`: what the gateway in
 # `crate::tmux` speaks through. Protocol only; the session/window policy the
 # codec refuses to hold lives here, in the gateway.
