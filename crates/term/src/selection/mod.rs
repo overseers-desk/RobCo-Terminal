@@ -31,7 +31,7 @@
 //! and its `mod` line; the `Konsole` variant here and the match arms the
 //! compiler then names; `SelectionModel::Konsole` in `robco-config`'s
 //! `schema.rs` and the `SELECTION_MODELS` entry in its `dump.rs`; the arm in
-//! `crates/app/src/window.rs` that maps the config value to a [`Kind`];
+//! `crates/app/src/window/mod.rs` that maps the config value to a [`Kind`];
 //! `crates/term/tests/suite/selection_konsole_tests.rs`, the parity test at
 //! the foot of `selection_rio_tests.rs`, and the `selection_model` entries
 //! in `crates/config/src/structural.rs`'s rationale, in

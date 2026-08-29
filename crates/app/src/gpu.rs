@@ -7,8 +7,8 @@
 //! swapchain image and an encoder, the caller records whatever it likes
 //! into them, and [`Gpu::present`] submits and hands the image back. It is
 //! split that way because the recording half is now the glyph grid and
-//! a five-stage filter chain living one module up, and neither of them
-//! belongs behind a `render()` that owns the surface too.
+//! the filter chain living one module up, and neither of them belongs
+//! behind a `render()` that owns the surface too.
 //!
 //! wgpu is pinned to exactly 30.0.0 because librashader 0.12 pins it
 //! there. This module is written against that version's API, which drifted

@@ -43,7 +43,7 @@ const ROWS: usize = 6;
 const SCROLLBACK: usize = 200;
 
 /// The shipped appliance's own colours: one phosphor for every glyph, opaque
-/// black behind it (`crates/app/src/window.rs`).
+/// black behind it (`crates/app/src/window/mod.rs`).
 const PHOSPHOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 const BEHIND: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
