@@ -2,16 +2,16 @@
 # default), the four edits of a flat table, and the ssh rows, each held to
 # the machine-write contract's bar that one changed key is one changed
 # line. A row that is added or removed is one added or removed block, and
-# every byte around it stands. The schema behind the resolution is the
-# literal data in model.tcl itself; tests/schema.test holds those literals
-# to the binary's own dump.
+# every byte around it stands. The schema behind the resolution is what
+# the terminal states: these tests open the model against a real binary,
+# the way the window does, and skip where a checkout has none to ask.
 
 package require tcltest 2.5
 namespace import ::tcltest::*
 
 source [file join [file dirname [info script]] helpers.tcl]
 source [file join $::libdir model.tcl]
-force_test_binary
+need_binary
 
 set ::configdir [file join [temporaryDirectory] model-[pid]]
 set ::configpath [file join $::configdir config.toml]
@@ -45,27 +45,27 @@ proc screen_look {} {
     return $out
 }
 
-test schema-1.1 {defaults are raw TOML, presets in declaration order} -body {
+test schema-1.1 {defaults are raw TOML, presets in declaration order} -constraints realBinary -body {
     list [::rcsettings::model::shipped screen bloom] \
         [lrange [::rcsettings::model::preset_names screen] 0 2] \
         [::rcsettings::model::preset_names chassis]
 } -result {0.6 {{Default Amber} {Monochrome Green} {Deep Blue}} {Annunciator {Slide Rule} Switchboard}}
 
-test schema-1.2 {fonts are catalogue key and display name} -body {
+test schema-1.2 {fonts are catalogue key and display name} -constraints realBinary -body {
     lindex [::rcsettings::model::fonts] 6
 } -result {COZETTE_SCALED Cozette}
 
-test schema-1.3 {the value lists} -body {
+test schema-1.3 {the value lists} -constraints realBinary -body {
     list [::rcsettings::model::enum shell] \
         [::rcsettings::model::enum channel_display]
 } -result {{annunciator slide-rule switchboard} {led tape}}
 
-test schema-1.4 {an unknown table or preset is an error, never a guess} -body {
+test schema-1.4 {an unknown table or preset is an error, never a guess} -constraints realBinary -body {
     list [catch {::rcsettings::model::preset screen Vintage}] \
         [catch {::rcsettings::model::shipped screen no_such_key}]
 } -result {1 1}
 
-test effective-2.1 {pinned, then the named preset, then the default} -setup {
+test effective-2.1 {pinned, then the named preset, then the default} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     list [::rcsettings::model::effective screen bloom] \
@@ -73,7 +73,7 @@ test effective-2.1 {pinned, then the named preset, then the default} -setup {
         [::rcsettings::model::effective general led_characters]
 } -result {0.9 #7fb4ff 12}
 
-test effective-2.2 {the base of an unpinned key is the preset's value} -setup {
+test effective-2.2 {the base of an unpinned key is the preset's value} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     list [::rcsettings::model::base screen ambient_light] \
@@ -82,14 +82,14 @@ test effective-2.2 {the base of an unpinned key is the preset's value} -setup {
         [::rcsettings::model::preset_name screen]
 } -result {0.0 1 0 {Deep Blue}}
 
-test effective-2.3 {a name matching no built-in falls back to the default} -setup {
+test effective-2.3 {a name matching no built-in falls back to the default} -constraints realBinary -setup {
     with_config "\[screen\]\nname = \"my workshop\"\n"
 } -body {
     list [::rcsettings::model::effective screen bloom] \
         [::rcsettings::model::effective screen font_name]
 } -result {0.6 TERMINESS_SCALED}
 
-test effective-2.4 {an unnamed table resolves against the shipped default} -setup {
+test effective-2.4 {an unnamed table resolves against the shipped default} -constraints realBinary -setup {
     without_config
 } -body {
     list [::rcsettings::model::preset_name screen] \
@@ -97,14 +97,14 @@ test effective-2.4 {an unnamed table resolves against the shipped default} -setu
         [::rcsettings::model::effective chassis shell]
 } -result {{Default Amber} 0.6 annunciator}
 
-test set-3.1 {an edit changes one line and no other byte} -setup {
+test set-3.1 {an edit changes one line and no other byte} -constraints realBinary -setup {
     set before [with_config $::fixture]
 } -body {
     ::rcsettings::model::set_value screen bloom 0.4
     list [surgery $before [on_disk]] [::rcsettings::model::effective screen bloom]
 } -result {{{{bloom = 0.9}} {{bloom = 0.4}}} 0.4}
 
-test set-3.2 {a value equal to the base is written by removing the key} -setup {
+test set-3.2 {a value equal to the base is written by removing the key} -constraints realBinary -setup {
     set before [with_config $::fixture]
 } -body {
     ::rcsettings::model::set_value screen bloom 0.6
@@ -113,7 +113,7 @@ test set-3.2 {a value equal to the base is written by removing the key} -setup {
         [::rcsettings::model::effective screen bloom]
 } -result {{{{bloom = 0.9}} {}} 0 0.6}
 
-test set-3.3 {the base is the preset's value, not the shipped default} -setup {
+test set-3.3 {the base is the preset's value, not the shipped default} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     # Deep Blue turns the ambient light off; the shipped default is 0.3,
@@ -123,14 +123,14 @@ test set-3.3 {the base is the preset's value, not the shipped default} -setup {
         [::tomledit::get [on_disk] screen.ambient_light]
 } -result {1 0.3}
 
-test set-3.4 {a key the file does not have yet costs one added line} -setup {
+test set-3.4 {a key the file does not have yet costs one added line} -constraints realBinary -setup {
     set before [with_config $::fixture]
 } -body {
     ::rcsettings::model::set_value screen font_name IOSEVKA
     surgery $before [on_disk]
 } -result {{} {{font_name = "IOSEVKA"}}}
 
-test set-3.5 {a value is formatted after the type of its default} -setup {
+test set-3.5 {a value is formatted after the type of its default} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     ::rcsettings::model::set_value screen font_name IOSEVKA
@@ -144,14 +144,14 @@ test set-3.5 {a value is formatted after the type of its default} -setup {
     }
 } -result {{"IOSEVKA"} 20 true 2.0}
 
-test set-3.6 {an absent file is an empty document to edit} -setup {
+test set-3.6 {an absent file is an empty document to edit} -constraints realBinary -setup {
     without_config
 } -body {
     ::rcsettings::model::set_value chassis frame_size 0.6
     on_disk
 } -result "\[chassis\]\nframe_size = 0.6\n"
 
-test set-3.7 {the file is re-read before each write} -setup {
+test set-3.7 {the file is re-read before each write} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     # Another writer lands between the model's load and its next edit.
@@ -162,14 +162,14 @@ test set-3.7 {the file is re-read before each write} -setup {
         [::tomledit::get [on_disk] screen.bloom]
 } -result {20 0.4}
 
-test reset-4.1 {reset unpins, leaving the preset's value showing} -setup {
+test reset-4.1 {reset unpins, leaving the preset's value showing} -constraints realBinary -setup {
     set before [with_config $::fixture]
 } -body {
     ::rcsettings::model::reset screen bloom
     list [surgery $before [on_disk]] [::rcsettings::model::effective screen bloom]
 } -result {{{{bloom = 0.9}} {}} 0.6}
 
-test switch-5.1 {switching presets drops this table's overrides only} -setup {
+test switch-5.1 {switching presets drops this table's overrides only} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     ::rcsettings::model::switch_preset screen E-Ink
@@ -191,7 +191,7 @@ mystery_key = \"kept\"
 generated_at = \"2026-08-01\"
 } 0.0"
 
-test switch-5.2 {naming the shipped preset removes the name key} -setup {
+test switch-5.2 {naming the shipped preset removes the name key} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     ::rcsettings::model::switch_preset screen {Default Amber}
@@ -201,14 +201,14 @@ test switch-5.2 {naming the shipped preset removes the name key} -setup {
         [::tomledit::get [on_disk] screen.mystery_key]
 } -result {0 {Default Amber} 0.6 {"kept"}}
 
-test switch-5.3 {switching a table the file has no header for} -setup {
+test switch-5.3 {switching a table the file has no header for} -constraints realBinary -setup {
     without_config
 } -body {
     ::rcsettings::model::switch_preset chassis Switchboard
     list [on_disk] [::rcsettings::model::effective chassis channel_display]
 } -result "{\[chassis\]\nname = \"Switchboard\"\n} tape"
 
-test pin-6.1 {pinning overrides keeps every visible value where it was} -setup {
+test pin-6.1 {pinning overrides keeps every visible value where it was} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     set was [screen_look]
@@ -218,7 +218,7 @@ test pin-6.1 {pinning overrides keeps every visible value where it was} -setup {
         [::rcsettings::model::pinned screen font_color]
 } -result {E-Ink 1 1}
 
-test pin-6.2 {a pinned key the new base already gives is unpinned} -setup {
+test pin-6.2 {a pinned key the new base already gives is unpinned} -constraints realBinary -setup {
     with_config "\[screen\]\nname = \"Deep Blue\"\njitter = 0.2\nbloom = 0.9\n"
 } -body {
     set was [screen_look]
@@ -229,7 +229,7 @@ test pin-6.2 {a pinned key the new base already gives is unpinned} -setup {
         [::rcsettings::model::pinned screen name]
 } -result {1 0 1 0}
 
-test pin-6.3 {pinning against a name no preset answers to} -setup {
+test pin-6.3 {pinning against a name no preset answers to} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     set was [screen_look]
@@ -245,25 +245,25 @@ proc ssh_view {} {
     return [list $out [::rcsettings::model::ssh_default]]
 }
 
-test ssh-8.1 {rows resolve their fields against the row defaults} -setup {
+test ssh-8.1 {rows resolve their fields against the row defaults} -constraints realBinary -setup {
     with_config $::sshfixture
 } -body {
     list [ssh_view] [lindex [::rcsettings::model::ssh_hosts] 1]
 } -result {{{vault relay spare} vault} {host relay user {} port 2222 key {}}}
 
-test ssh-8.2 {a file with no rows has none, and starts on localhost} -setup {
+test ssh-8.2 {a file with no rows has none, and starts on localhost} -constraints realBinary -setup {
     with_config $::fixture
 } -body {
     ssh_view
 } -result {{} {}}
 
-test ssh-8.3 {a default naming no row is what it is; the tab reads it} -setup {
+test ssh-8.3 {a default naming no row is what it is; the tab reads it} -constraints realBinary -setup {
     with_config "\[ssh\]\ndefault = \"gone\"\n"
 } -body {
     ssh_view
 } -result {{} gone}
 
-test ssh-9.1 {a field equal to the row default is written by removing it} -setup {
+test ssh-9.1 {a field equal to the row default is written by removing it} -constraints realBinary -setup {
     set before [with_config $::sshfixture]
 } -body {
     ::rcsettings::model::set_ssh_host 1 port 22
@@ -271,7 +271,7 @@ test ssh-9.1 {a field equal to the row default is written by removing it} -setup
         [dict get [lindex [::rcsettings::model::ssh_hosts] 1] port]
 } -result {{{{port = 2222}} {}} 22}
 
-test ssh-9.2 {a field away from its default is one changed line} -setup {
+test ssh-9.2 {a field away from its default is one changed line} -constraints realBinary -setup {
     set before [with_config $::sshfixture]
 } -body {
     ::rcsettings::model::set_ssh_host 2 port 2022
@@ -279,7 +279,7 @@ test ssh-9.2 {a field away from its default is one changed line} -setup {
         [lmap row [::rcsettings::model::ssh_hosts] {dict get $row port}]
 } -result {{{} {{port = 2022}}} {22 2222 2022}}
 
-test ssh-9.3 {host is written even when it is the row default's own value} -setup {
+test ssh-9.3 {host is written even when it is the row default's own value} -constraints realBinary -setup {
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::set_ssh_host 2 host ""
@@ -287,7 +287,7 @@ test ssh-9.3 {host is written even when it is the row default's own value} -setu
         [lmap row [::rcsettings::model::ssh_hosts] {dict get $row host}]
 } -result {3 {vault relay {}}}
 
-test ssh-9.4 {a field is formatted after the type of its row default} -setup {
+test ssh-9.4 {a field is formatted after the type of its row default} -constraints realBinary -setup {
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::set_ssh_host 0 port 2222
@@ -297,35 +297,35 @@ test ssh-9.4 {a field is formatted after the type of its row default} -setup {
         [::tomledit::get $text {ssh.host[0].key}]
 } -result {2222 {"~/.ssh/id_ed25519"}}
 
-test ssh-9.5 {an unknown key inside a row is round-tripped} -setup {
+test ssh-9.5 {an unknown key inside a row is round-tripped} -constraints realBinary -setup {
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::set_ssh_host 0 user "someone"
     ::tomledit::plain [::tomledit::get [on_disk] {ssh.host[0].note}]
 } -result {unknown to this tool}
 
-test ssh-10.1 {renaming the checked row takes the check with it} -setup {
+test ssh-10.1 {renaming the checked row takes the check with it} -constraints realBinary -setup {
     set before [with_config $::sshfixture]
 } -body {
     ::rcsettings::model::set_ssh_host 0 host "vault.example.com"
     list [surgery $before [on_disk]] [ssh_view]
 } -result {{{{default = "vault"} {odd_key = "kept"} {} {# the vault, behind the door} {[[ssh.host]]} {host = "vault"}} {{default = "vault.example.com"} {odd_key = "kept"} {} {# the vault, behind the door} {[[ssh.host]]} {host = "vault.example.com"}}} {{vault.example.com relay spare} vault.example.com}}
 
-test ssh-10.2 {renaming a row the check is not on leaves the check} -setup {
+test ssh-10.2 {renaming a row the check is not on leaves the check} -constraints realBinary -setup {
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::set_ssh_host 1 host "relay.example.com"
     ssh_view
 } -result {{vault relay.example.com spare} vault}
 
-test ssh-11.1 {checking a row writes its host as the default} -setup {
+test ssh-11.1 {checking a row writes its host as the default} -constraints realBinary -setup {
     set before [with_config $::sshfixture]
 } -body {
     ::rcsettings::model::set_ssh_default "spare"
     list [surgery $before [on_disk]] [::rcsettings::model::ssh_default]
 } -result {{{{default = "vault"}} {{default = "spare"}}} spare}
 
-test ssh-11.2 {checking localhost removes the key rather than emptying it} -setup {
+test ssh-11.2 {checking localhost removes the key rather than emptying it} -constraints realBinary -setup {
     set before [with_config $::sshfixture]
 } -body {
     ::rcsettings::model::set_ssh_default ""
@@ -334,7 +334,7 @@ test ssh-11.2 {checking localhost removes the key rather than emptying it} -setu
         [::rcsettings::model::ssh_default]
 } -result {{{{default = "vault"}} {}} 0 {}}
 
-test ssh-11.3 {a default for rows that have no table above them} -setup {
+test ssh-11.3 {a default for rows that have no table above them} -constraints realBinary -setup {
     with_config "\[\[ssh.host\]\]\nhost = \"a\"\n"
 } -body {
     # An explicit `[ssh]` after its own rows is not a document the
@@ -343,14 +343,14 @@ test ssh-11.3 {a default for rows that have no table above them} -setup {
     on_disk
 } -result "\[ssh\]\ndefault = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\n"
 
-test ssh-12.1 {a new row carries its host and nothing else} -setup {
+test ssh-12.1 {a new row carries its host and nothing else} -constraints realBinary -setup {
     set before [with_config $::sshfixture]
 } -body {
     ::rcsettings::model::add_ssh_host
     list [surgery $before [on_disk]] [lindex [::rcsettings::model::ssh_hosts] 3]
 } -result {{{} {{[[ssh.host]]} {host = ""} {}}} {host {} user {} port 22 key {}}}
 
-test ssh-12.2 {the first row of a file that has none} -setup {
+test ssh-12.2 {the first row of a file that has none} -constraints realBinary -setup {
     without_config
 } -body {
     ::rcsettings::model::add_ssh_host
@@ -359,14 +359,14 @@ test ssh-12.2 {the first row of a file that has none} -setup {
     on_disk
 } -result "\[ssh\]\ndefault = \"vault\"\n\n\[\[ssh.host\]\]\nhost = \"vault\"\n"
 
-test ssh-13.1 {removing a row leaves every other row's bytes} -setup {
+test ssh-13.1 {removing a row leaves every other row's bytes} -constraints realBinary -setup {
     set before [with_config $::sshfixture]
 } -body {
     ::rcsettings::model::remove_ssh_host 1
     list [surgery $before [on_disk]] [ssh_view]
 } -result {{{{host = "relay"} {port = 2222} {} {[[ssh.host]]}} {}} {{vault spare} vault}}
 
-test ssh-13.2 {removing the checked row unchecks it} -setup {
+test ssh-13.2 {removing the checked row unchecks it} -constraints realBinary -setup {
     with_config $::sshfixture
 } -body {
     ::rcsettings::model::remove_ssh_host 0
@@ -374,14 +374,14 @@ test ssh-13.2 {removing the checked row unchecks it} -setup {
         [dict exists [::tomledit::parse [on_disk]] tables ssh default]
 } -result {{{relay spare} {}} 0}
 
-test ssh-13.3 {a row of the same name still answering keeps the check} -setup {
+test ssh-13.3 {a row of the same name still answering keeps the check} -constraints realBinary -setup {
     with_config "\[ssh\]\ndefault = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\n\n\[\[ssh.host\]\]\nhost = \"a\"\nport = 2222\n"
 } -body {
     ::rcsettings::model::remove_ssh_host 0
     ssh_view
 } -result {a a}
 
-test ssh-14.1 {the file is re-read before an ssh write too} -setup {
+test ssh-14.1 {the file is re-read before an ssh write too} -constraints realBinary -setup {
     with_config $::sshfixture
 } -body {
     ::tomledit::atomic_write $::configpath \
@@ -391,7 +391,7 @@ test ssh-14.1 {the file is re-read before an ssh write too} -setup {
         [lindex [::rcsettings::model::ssh_hosts] 1]
 } -result {20 {host relay user {} port 2200 key {}}}
 
-test guard-15.1 {an edit is refused whole on a file outside the subset} -setup {
+test guard-15.1 {an edit is refused whole on a file outside the subset} -constraints realBinary -setup {
     with_config "\[general\]\nbanner = \"\"\"\nwelcome\n\[screen\]\n\"\"\"\n"
 } -body {
     set code [catch {::rcsettings::model::set_value screen bloom 0.4} err]
@@ -402,7 +402,7 @@ test guard-15.1 {an edit is refused whole on a file outside the subset} -setup {
             "\[general\]\nbanner = \"\"\"\nwelcome\n\[screen\]\n\"\"\"\n"]
 } -result {1 1 1}
 
-test guard-15.2 {reading an unsafe file still works} -setup {
+test guard-15.2 {reading an unsafe file still works} -constraints realBinary -setup {
     with_config "\[general\]\nfont_scaling = 1.5\npoint = { x = 1 }\n"
 } -body {
     ::rcsettings::model::effective general font_scaling

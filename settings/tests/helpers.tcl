@@ -14,6 +14,22 @@ proc force_test_binary {} {
     }
 }
 
+# The schema is asked of the binary at open, so a test that reads a
+# default, a preset or a value list needs one to run against. The suites
+# set the realBinary constraint from the discovery the window itself
+# uses, and the tests carrying that constraint skip where there is no
+# build to ask. $::binpath is the binary found, for a test that runs it
+# under a flag of its own. Where there is one, the schema is read here so
+# a test that reads it without opening a config file has it.
+proc need_binary {} {
+    force_test_binary
+    ::tcltest::testConstraint realBinary \
+        [expr {![catch {::rcsettings::model::locate} ::binpath]}]
+    if {[::tcltest::testConstraint realBinary]} {
+        ::rcsettings::model::load_schema
+    }
+}
+
 # The one thing every writer test asserts: which lines an edit replaced.
 # Common prefix and common suffix are peeled off first, so a result of
 # {{old} {new}} is proof that every other byte of the document is
