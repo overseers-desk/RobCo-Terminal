@@ -3,7 +3,7 @@
 //! each shell's chassis and frame compute from margins and offsets, checked
 //! against hand-derived expected values at each sampled size.
 
-use chassis::shells::common::{field_mapping, frame_viewport_size, Rect};
+use chassis::shells::common::{field_mapping, Rect};
 use chassis::shells::{annunciator, slide_rule, switchboard};
 
 /// Chassis sizes sampled: a small bank, the mock's own approximate size, and
@@ -87,15 +87,3 @@ fn field_mapping_at_sampled_window_sizes() {
     }
 }
 
-/// The frame's viewport-size formula (`width / window_scaling, height /
-/// window_scaling`), re-checked through each shell's own re-export, at
-/// sampled window sizes including a HiDPI `window_scaling`.
-#[test]
-fn frame_viewport_at_sampled_sizes_matches_shared_formula() {
-    for &(w, h, scaling) in &[(1200.0, 1080.0, 1.0), (2400.0, 2160.0, 2.0)] {
-        let expected = frame_viewport_size(w, h, scaling);
-        assert_eq!(annunciator::frame_viewport(w, h, scaling), expected);
-        assert_eq!(slide_rule::frame_viewport(w, h, scaling), expected);
-        assert_eq!(switchboard::frame_viewport(w, h, scaling), expected);
-    }
-}

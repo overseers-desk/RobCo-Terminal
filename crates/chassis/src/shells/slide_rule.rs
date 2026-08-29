@@ -7,10 +7,10 @@
 use crate::color::{darker, lighter, hex_literal_to_color, Rgba};
 use crate::furniture::Piece;
 use crate::layout::Rect as PaintRect;
-use crate::params::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
+use crate::params::{MetalParams, PlateMetalParams};
 use crate::paint::{Align, Face, Painting, PolygonOp, RectOp, Stop, TextOp};
 
-use super::common::{field_mapping, frame_viewport_size, rgb, Rect};
+use super::common::{numeral_line_height, rgb, sans_width, CastingRecipe, FrameRecipe, Rect};
 
 /// This shell's fixed geometry, field for field.
 ///
@@ -77,23 +77,18 @@ pub fn rail_rect(chassis_size: (f64, f64)) -> Rect {
     )
 }
 
-/// The chassis region's fixed uniforms (`opacity` excluded per the same
-/// reasoning as the annunciator's).
-pub fn chassis_metal_params(chassis: Rect, frame_region: Option<Rect>) -> ChassisMetalParams {
-    let fm = field_mapping(chassis, frame_region);
-    ChassisMetalParams {
-        field_scale: fm.scale,
-        field_offset: fm.offset,
-        light_dir: metrics::CASTING_LIGHT_DIR,
-        chassis_color: rgb(metrics::CASTING_COLOR),
-        metal: MetalParams {
-            grain_amount: 0.4,
-            mottle_amount: 1.35,
-            scratch_amount: 0.7,
-        },
-        vignette_strength: 0.3,
-    }
-}
+/// The casting's fixed uniforms (`opacity` excluded per the same reasoning
+/// as the annunciator's).
+pub const CASTING: CastingRecipe = CastingRecipe {
+    light_dir: metrics::CASTING_LIGHT_DIR,
+    color: metrics::CASTING_COLOR,
+    metal: MetalParams {
+        grain_amount: 0.4,
+        mottle_amount: 1.35,
+        scratch_amount: 0.7,
+    },
+    vignette_strength: 0.3,
+};
 
 /// The rail's fixed uniforms. `size_px` is filled in by the caller from
 /// [`rail_rect`]'s own size.
@@ -118,52 +113,31 @@ pub fn rail_metal_params(size_px: [f32; 2]) -> PlateMetalParams {
     }
 }
 
-/// The settings-derived frame uniforms; see `annunciator::FrameRuntime` for
-/// why these are a caller-supplied group rather than shell constants.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FrameRuntime {
-    pub screen_curvature: f32,
-    pub frame_shininess: f32,
-    pub frame_size: f32,
-    pub screen_radius: f32,
-    pub ambient_light: f32,
-}
-
-pub fn frame_metal_params(runtime: FrameRuntime) -> FrameMetalParams {
-    FrameMetalParams {
-        screen_curvature: runtime.screen_curvature,
-        frame_size: runtime.frame_size,
-        screen_radius: runtime.screen_radius,
-        ambient_light: runtime.ambient_light,
-        frame_shininess: runtime.frame_shininess,
-        light_dir: metrics::CASTING_LIGHT_DIR,
-        bezel_color: rgb("#2e2820"),
-        chassis_color: rgb(metrics::CASTING_COLOR),
-        ridge_color: rgb("#8c8068"),
-        bezel_margins: [6.0, 10.0, 14.0, 12.0],
-        outer_radius: 45.0,
-        well_depth: 45.0,
-        well_floor: 0.16,
-        ridge_gain: 0.45,
-        metal: MetalParams {
-            grain_amount: 0.35,
-            mottle_amount: 1.0,
-            scratch_amount: 0.55,
-        },
-        vignette_strength: 0.35,
-        fill_gain: 0.35,
-        trough_gain: 0.0,
-        // The plate is lit only in a band along its own moulding, with a
-        // bright rim standing on the well wall.
-        face_band_px: 12.0,
-        rim_dist_px: 14.0,
-        rim_gain: 1.6,
-    }
-}
-
-pub fn frame_viewport(width: f64, height: f64, window_scaling: f64) -> [f32; 2] {
-    frame_viewport_size(width, height, window_scaling)
-}
+/// The bezel's fixed uniforms.
+pub const FRAME: FrameRecipe = FrameRecipe {
+    light_dir: metrics::CASTING_LIGHT_DIR,
+    bezel_color: "#2e2820",
+    chassis_color: metrics::CASTING_COLOR,
+    ridge_color: "#8c8068",
+    bezel_margins: [6.0, 10.0, 14.0, 12.0],
+    outer_radius: 45.0,
+    well_depth: 45.0,
+    well_floor: 0.16,
+    ridge_gain: 0.45,
+    metal: MetalParams {
+        grain_amount: 0.35,
+        mottle_amount: 1.0,
+        scratch_amount: 0.55,
+    },
+    vignette_strength: 0.35,
+    fill_gain: 0.35,
+    trough_gain: 0.0,
+    // The plate is lit only in a band along its own moulding, with a bright
+    // rim standing on the well wall.
+    face_band_px: 12.0,
+    rim_dist_px: 14.0,
+    rim_gain: 1.6,
+};
 
 /// The fixed colours of one row's furniture, each a hex colour literal
 /// read at /255.
@@ -203,7 +177,7 @@ pub fn row_furniture(
     // down and right of the ink and at half strength.
     let lane_w = display_rect.x - metrics::COLUMN_GAP as f64;
     if lane_w > 0.0 && !numeral.is_empty() {
-        let line_h = numeral_line_height();
+        let line_h = numeral_line_height(row::NUMERAL_PIXEL_SIZE);
         let lane_y = (row_h - line_h) / 2.0;
         let stamped = |dx: f64, dy: f64, color: Rgba, opacity: f32| TextOp {
             face: Face::Catalogue("IOSEVKA"),
@@ -270,14 +244,6 @@ pub fn row_furniture(
 }
 
 /// The natural height of one stamped numeral's text.
-fn numeral_line_height() -> f64 {
-    term::fonts::font_by_name("IOSEVKA", term::fonts::FontSource::Bundled)
-        .and_then(|e| {
-            term::fonts::metrics::scaled_metrics(e.data(), row::NUMERAL_PIXEL_SIZE as u32)
-        })
-        .map(|m| m.height())
-        .unwrap_or(row::NUMERAL_PIXEL_SIZE)
-}
 
 /// The bolted steel shoe that rides the chassis's own rail.
 ///
@@ -709,15 +675,3 @@ fn counter_lamps(cfg: &config::Config, panel: PaintRect, page_label: &str) -> Op
     ))
 }
 
-fn sans_width(text: &str, pixel_size: f64, letter_spacing: f64, bold: bool) -> f64 {
-    let Some(data) = term::fonts::system::default_sans() else {
-        return 0.0;
-    };
-    term::fonts::text::natural_width(&term::fonts::text::TextSpec {
-        data,
-        pixel_size: pixel_size as u32,
-        text,
-        letter_spacing,
-        bold,
-    })
-}

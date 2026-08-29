@@ -6,7 +6,7 @@
 //! just a struct that happens to compile.
 
 use oracle;
-use chassis::shells::common::Rect;
+use chassis::shells::common::{self, FrameRuntime, Rect};
 use chassis::shells::{annunciator, slide_rule, switchboard};
 
 fn assert_rgb_close(got: [f32; 3], want_hex: &str) {
@@ -33,7 +33,7 @@ fn annunciator_chassis_metal_recipe_matches_the_recorded_values() {
     // grain/mottle/scratch/vignette fixed here.
     let chassis = Rect::new(0.0, 0.0, 357.0, 1080.0);
     let frame_region = Rect::new(0.0, 0.0, 1200.0, 1080.0);
-    let p = annunciator::chassis_metal_params(chassis, Some(frame_region));
+    let p = common::chassis_metal_params(&annunciator::CASTING, chassis, Some(frame_region));
 
     assert_eq!(p.light_dir, [0.8, -0.6]);
     assert_rgb_close(p.chassis_color, "#16130f");
@@ -81,14 +81,14 @@ fn annunciator_plate_metal_recipe_matches_the_recorded_values() {
 #[test]
 fn annunciator_frame_metal_recipe_matches_the_recorded_values() {
     // The fixed half of the recipe.
-    let runtime = annunciator::FrameRuntime {
+    let runtime = FrameRuntime {
         screen_curvature: 0.3,
         frame_shininess: 0.1,
         frame_size: 0.02,
         screen_radius: 8.0,
         ambient_light: 0.3,
     };
-    let p = annunciator::frame_metal_params(runtime);
+    let p = common::frame_metal_params(&annunciator::FRAME, runtime);
     assert_eq!(p.light_dir, [0.8, -0.6]);
     assert_rgb_close(p.bezel_color, "#26211c");
     assert_rgb_close(p.chassis_color, "#16130f");
@@ -139,7 +139,7 @@ fn slide_rule_rail_is_plate_metal_not_chassis_metal() {
 fn slide_rule_chassis_and_frame_recipes_match_the_recorded_values() {
     let chassis = Rect::new(0.0, 0.0, 500.0, 1080.0);
     let frame_region = Rect::new(0.0, 0.0, 1400.0, 1080.0);
-    let cp = slide_rule::chassis_metal_params(chassis, Some(frame_region));
+    let cp = common::chassis_metal_params(&slide_rule::CASTING, chassis, Some(frame_region));
     assert_eq!(cp.light_dir, [-0.55, -0.85]);
     assert_rgb_close(cp.chassis_color, "#453c2d");
     assert_eq!(cp.metal.grain_amount, 0.4);
@@ -147,14 +147,14 @@ fn slide_rule_chassis_and_frame_recipes_match_the_recorded_values() {
     assert_eq!(cp.metal.scratch_amount, 0.7);
     assert_eq!(cp.vignette_strength, 0.3);
 
-    let runtime = slide_rule::FrameRuntime {
+    let runtime = FrameRuntime {
         screen_curvature: 0.2,
         frame_shininess: 0.05,
         frame_size: 0.03,
         screen_radius: 6.0,
         ambient_light: 0.4,
     };
-    let fp = slide_rule::frame_metal_params(runtime);
+    let fp = common::frame_metal_params(&slide_rule::FRAME, runtime);
     assert_rgb_close(fp.bezel_color, "#2e2820");
     assert_rgb_close(fp.ridge_color, "#8c8068");
     assert_eq!(fp.bezel_margins, [6.0, 10.0, 14.0, 12.0]);
@@ -172,29 +172,29 @@ fn slide_rule_chassis_and_frame_recipes_match_the_recorded_values() {
 #[test]
 fn switchboard_has_no_plate_metal_call_at_all() {
     // There is no `switchboard::plate_metal_params`/`rail_metal_params` --
-    // the module exposes only `chassis_rect`/`chassis_metal_params`/
-    // `frame_metal_params`, since this shell has no nested plate or rail
+    // the module exposes only `chassis_rect` and the two recipe tables,
+    // since this shell has no nested plate or rail
     // region. This test exists to make that omission an intentional,
     // checked fact rather than a silent gap: if a later change adds
     // plate/rail furniture to this shell, this module gains a function and
     // this comment goes with it.
     let chassis = Rect::new(0.0, 0.0, 700.0, 1080.0);
     let frame_region = Rect::new(0.0, 0.0, 1500.0, 1080.0);
-    let cp = switchboard::chassis_metal_params(chassis, Some(frame_region));
+    let cp = common::chassis_metal_params(&switchboard::CASTING, chassis, Some(frame_region));
     assert_rgb_close(cp.chassis_color, "#232830");
     assert_eq!(cp.metal.grain_amount, 0.45);
     assert_eq!(cp.metal.mottle_amount, 0.7);
     assert_eq!(cp.metal.scratch_amount, 0.45);
     assert_eq!(cp.vignette_strength, 0.22);
 
-    let runtime = switchboard::FrameRuntime {
+    let runtime = FrameRuntime {
         screen_curvature: 0.15,
         frame_shininess: 0.08,
         frame_size: 0.02,
         screen_radius: 10.0,
         ambient_light: 0.25,
     };
-    let fp = switchboard::frame_metal_params(runtime);
+    let fp = common::frame_metal_params(&switchboard::FRAME, runtime);
     assert_rgb_close(fp.bezel_color, "#20242b");
     assert_rgb_close(fp.ridge_color, "#737a83");
     assert_eq!(fp.bezel_margins, [0.0, 6.0, 10.0, 10.0]);

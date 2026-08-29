@@ -6,10 +6,10 @@
 use crate::color::{darker, lighter, hex_literal_to_color, with_alpha, Rgba};
 use crate::furniture::Piece;
 use crate::layout::Rect as PaintRect;
-use crate::params::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
+use crate::params::{MetalParams, PlateMetalParams};
 use crate::paint::{Align, ArcOp, Face, Painting, PolygonOp, RectOp, Stop, TextOp};
 
-use super::common::{field_mapping, frame_viewport_size, rgb, Rect};
+use super::common::{numeral_line_height, rgb, sans_width, CastingRecipe, FrameRecipe, Rect};
 
 /// This shell's fixed geometry, field for field.
 ///
@@ -84,69 +84,43 @@ pub fn chassis_rect(chassis_size: (f64, f64)) -> Rect {
     Rect::new(0.0, 0.0, chassis_size.0, chassis_size.1)
 }
 
-/// The chassis region's fixed uniforms (`opacity` excluded as in the other
-/// two shells).
-pub fn chassis_metal_params(chassis: Rect, frame_region: Option<Rect>) -> ChassisMetalParams {
-    let fm = field_mapping(chassis, frame_region);
-    ChassisMetalParams {
-        field_scale: fm.scale,
-        field_offset: fm.offset,
-        light_dir: metrics::CASTING_LIGHT_DIR,
-        chassis_color: rgb(metrics::CASTING_COLOR),
-        metal: MetalParams {
-            grain_amount: 0.45,
-            mottle_amount: 0.7,
-            scratch_amount: 0.45,
-        },
-        vignette_strength: 0.22,
-    }
-}
+/// The casting's fixed uniforms (`opacity` excluded as in the other two
+/// shells).
+pub const CASTING: CastingRecipe = CastingRecipe {
+    light_dir: metrics::CASTING_LIGHT_DIR,
+    color: metrics::CASTING_COLOR,
+    metal: MetalParams {
+        grain_amount: 0.45,
+        mottle_amount: 0.7,
+        scratch_amount: 0.45,
+    },
+    vignette_strength: 0.22,
+};
 
-/// The settings-derived frame uniforms; see `annunciator::FrameRuntime` for
-/// why these are a caller-supplied group rather than shell constants.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FrameRuntime {
-    pub screen_curvature: f32,
-    pub frame_shininess: f32,
-    pub frame_size: f32,
-    pub screen_radius: f32,
-    pub ambient_light: f32,
-}
-
-pub fn frame_metal_params(runtime: FrameRuntime) -> FrameMetalParams {
-    FrameMetalParams {
-        screen_curvature: runtime.screen_curvature,
-        frame_size: runtime.frame_size,
-        screen_radius: runtime.screen_radius,
-        ambient_light: runtime.ambient_light,
-        frame_shininess: runtime.frame_shininess,
-        light_dir: metrics::CASTING_LIGHT_DIR,
-        bezel_color: rgb("#20242b"),
-        chassis_color: rgb(metrics::CASTING_COLOR),
-        ridge_color: rgb("#737a83"),
-        bezel_margins: [0.0, 6.0, 10.0, 10.0],
-        outer_radius: 26.0,
-        well_depth: 30.0,
-        well_floor: 0.18,
-        ridge_gain: 0.4,
-        metal: MetalParams {
-            grain_amount: 0.35,
-            mottle_amount: 0.8,
-            scratch_amount: 0.45,
-        },
-        vignette_strength: 0.4,
-        fill_gain: 0.35,
-        trough_gain: 0.0,
-        // Same face-band law as the slide rule's, shallower well.
-        face_band_px: 10.0,
-        rim_dist_px: 12.0,
-        rim_gain: 1.3,
-    }
-}
-
-pub fn frame_viewport(width: f64, height: f64, window_scaling: f64) -> [f32; 2] {
-    frame_viewport_size(width, height, window_scaling)
-}
+/// The bezel's fixed uniforms.
+pub const FRAME: FrameRecipe = FrameRecipe {
+    light_dir: metrics::CASTING_LIGHT_DIR,
+    bezel_color: "#20242b",
+    chassis_color: metrics::CASTING_COLOR,
+    ridge_color: "#737a83",
+    bezel_margins: [0.0, 6.0, 10.0, 10.0],
+    outer_radius: 26.0,
+    well_depth: 30.0,
+    well_floor: 0.18,
+    ridge_gain: 0.4,
+    metal: MetalParams {
+        grain_amount: 0.35,
+        mottle_amount: 0.8,
+        scratch_amount: 0.45,
+    },
+    vignette_strength: 0.4,
+    fill_gain: 0.35,
+    trough_gain: 0.0,
+    // Same face-band law as the slide rule's, shallower well.
+    face_band_px: 10.0,
+    rim_dist_px: 12.0,
+    rim_gain: 1.3,
+};
 
 /// The row's fixed colours, each a hex colour literal read at /255 except
 /// the two derived from the plastic and the one that is the profile's own
@@ -258,7 +232,7 @@ pub fn row_furniture(
     let lane_x = 6.0;
     let lane_w = (metrics::NUMERAL_CENTER_X as f64 - 8.0) * 2.0 + 4.0;
     if !numeral.is_empty() {
-        let line_h = numeral_line_height();
+        let line_h = numeral_line_height(row::NUMERAL_PIXEL_SIZE);
         let lane_y = (row_h - line_h) / 2.0;
         let paint = hex_literal_to_color(row::NUMERAL_PAINT);
         let stamped = |dx: f64, dy: f64, color: Rgba, opacity: f32| TextOp {
@@ -830,18 +804,6 @@ impl SwitchboardScrew {
     }
 }
 
-fn sans_width(text: &str, pixel_size: f64, letter_spacing: f64, bold: bool) -> f64 {
-    let Some(data) = term::fonts::system::default_sans() else {
-        return 0.0;
-    };
-    term::fonts::text::natural_width(&term::fonts::text::TextSpec {
-        data,
-        pixel_size: pixel_size as u32,
-        text,
-        letter_spacing,
-        bold,
-    })
-}
 
 fn serif_width(text: &str, pixel_size: f64, bold: bool) -> f64 {
     let Some(data) = term::fonts::system::default_serif() else {
@@ -863,12 +825,3 @@ fn serif_line_height(pixel_size: f64) -> f64 {
         .unwrap_or(pixel_size)
 }
 
-/// The natural height of one stamped numeral's text.
-fn numeral_line_height() -> f64 {
-    term::fonts::font_by_name("IOSEVKA", term::fonts::FontSource::Bundled)
-        .and_then(|e| {
-            term::fonts::metrics::scaled_metrics(e.data(), row::NUMERAL_PIXEL_SIZE as u32)
-        })
-        .map(|m| m.height())
-        .unwrap_or(row::NUMERAL_PIXEL_SIZE)
-}

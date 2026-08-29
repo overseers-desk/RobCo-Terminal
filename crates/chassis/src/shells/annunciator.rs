@@ -5,10 +5,12 @@
 
 use crate::color::{darker, lighter, hex_literal_to_color, Rgba};
 use crate::layout::Rect as PaintRect;
-use crate::params::{ChassisMetalParams, FrameMetalParams, MetalParams, PlateMetalParams};
+use crate::params::{MetalParams, PlateMetalParams};
 use crate::paint::{Align, Face, Painting, RectOp, Stop, TextOp};
 
-use super::common::{field_mapping, frame_viewport_size, jitter, rgb, Rect};
+use super::common::{
+    jitter, numeral_line_height, rgb, sans_width, CastingRecipe, FrameRecipe, Rect,
+};
 
 /// This shell's fixed geometry, field for field.
 ///
@@ -72,28 +74,24 @@ pub fn plate_rect(chassis_size: (f64, f64)) -> Rect {
     Rect::new(8.0, 2.0, (w - 8.0).max(0.0), (h - 2.0 - 8.0).max(0.0))
 }
 
-/// The chassis region's fixed uniforms (everything but `opacity`, which is
-/// the profile's window-opacity setting and not part of this shell's fixed
-/// contract). `chassis_rect`/`frame_region` feed
+/// The casting's fixed uniforms (everything but `opacity`, which is the
+/// profile's window-opacity setting and not part of this shell's fixed
+/// contract). The chassis rectangle and the frame region the caller hands
+/// [`chassis_metal_params`](super::common::chassis_metal_params) feed
 /// [`field_mapping`](super::common::field_mapping) for `field_scale`/
-/// `field_offset`; the caller passes the resulting [`FieldMapping::viewport`]
-/// to the `robco-shader-oracle` crate's `chassis_metal` separately, matching that function's own
-/// `(uv, viewport, params)` signature.
-pub fn chassis_metal_params(chassis: Rect, frame_region: Option<Rect>) -> ChassisMetalParams {
-    let fm = field_mapping(chassis, frame_region);
-    ChassisMetalParams {
-        field_scale: fm.scale,
-        field_offset: fm.offset,
-        light_dir: metrics::CASTING_LIGHT_DIR,
-        chassis_color: rgb(metrics::CASTING_COLOR),
-        metal: MetalParams {
-            grain_amount: 0.16,
-            mottle_amount: 0.4,
-            scratch_amount: 0.08,
-        },
-        vignette_strength: 0.42,
-    }
-}
+/// `field_offset`; the caller passes the resulting `FieldMapping::viewport`
+/// to the `robco-shader-oracle` crate's `chassis_metal` separately, matching
+/// that function's own `(uv, viewport, params)` signature.
+pub const CASTING: CastingRecipe = CastingRecipe {
+    light_dir: metrics::CASTING_LIGHT_DIR,
+    color: metrics::CASTING_COLOR,
+    metal: MetalParams {
+        grain_amount: 0.16,
+        mottle_amount: 0.4,
+        scratch_amount: 0.08,
+    },
+    vignette_strength: 0.42,
+};
 
 /// The raised plate's fixed uniforms. `size_px` is filled in by the caller
 /// from [`plate_rect`]'s own size, since it follows the item's own
@@ -119,60 +117,32 @@ pub fn plate_metal_params(size_px: [f32; 2]) -> PlateMetalParams {
     }
 }
 
-/// The five settings-derived frame uniforms (screen curvature, frame
-/// shininess, frame size, screen radius, ambient light): not part of this
-/// shell's fixed metrics contract, supplied by the config crate at render
-/// time. Grouped so [`frame_metal_params`] takes one argument instead of
-/// five positional floats.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FrameRuntime {
-    pub screen_curvature: f32,
-    pub frame_shininess: f32,
-    pub frame_size: f32,
-    pub screen_radius: f32,
-    pub ambient_light: f32,
-}
-
-/// The fixed half of the recipe (every uniform not sourced from the
-/// settings) merged with the runtime half a live config supplies.
-pub fn frame_metal_params(runtime: FrameRuntime) -> FrameMetalParams {
-    FrameMetalParams {
-        screen_curvature: runtime.screen_curvature,
-        frame_size: runtime.frame_size,
-        screen_radius: runtime.screen_radius,
-        ambient_light: runtime.ambient_light,
-        frame_shininess: runtime.frame_shininess,
-        light_dir: metrics::CASTING_LIGHT_DIR,
-        bezel_color: rgb("#26211c"),
-        chassis_color: rgb(metrics::CASTING_COLOR),
-        ridge_color: rgb("#6e5c48"),
-        bezel_margins: [0.0, 12.0, 10.0, 9.0],
-        outer_radius: 60.0,
-        well_depth: 9.0,
-        well_floor: 0.4,
-        ridge_gain: 0.7,
-        metal: MetalParams {
-            grain_amount: 0.16,
-            mottle_amount: 0.5,
-            scratch_amount: 0.15,
-        },
-        vignette_strength: 0.42,
-        fill_gain: 0.95,
-        trough_gain: 0.35,
-        // The face-band law is switched off for this shell: declared as
-        // zeros, not left unset -- every uniform the shader names gets a
-        // value here.
-        face_band_px: 0.0,
-        rim_dist_px: 0.0,
-        rim_gain: 0.0,
-    }
-}
-
-/// This shell's own re-export of the shared viewport-size formula
-/// (identical across all three shells).
-pub fn frame_viewport(width: f64, height: f64, window_scaling: f64) -> [f32; 2] {
-    frame_viewport_size(width, height, window_scaling)
-}
+/// The bezel's fixed uniforms, the half of `frame_metal`'s block the
+/// settings do not supply.
+pub const FRAME: FrameRecipe = FrameRecipe {
+    light_dir: metrics::CASTING_LIGHT_DIR,
+    bezel_color: "#26211c",
+    chassis_color: metrics::CASTING_COLOR,
+    ridge_color: "#6e5c48",
+    bezel_margins: [0.0, 12.0, 10.0, 9.0],
+    outer_radius: 60.0,
+    well_depth: 9.0,
+    well_floor: 0.4,
+    ridge_gain: 0.7,
+    metal: MetalParams {
+        grain_amount: 0.16,
+        mottle_amount: 0.5,
+        scratch_amount: 0.15,
+    },
+    vignette_strength: 0.42,
+    fill_gain: 0.95,
+    trough_gain: 0.35,
+    // The face-band law is switched off for this shell: declared as zeros,
+    // not left unset -- every uniform the shader names gets a value here.
+    face_band_px: 0.0,
+    rim_dist_px: 0.0,
+    rim_gain: 0.0,
+};
 
 /// The four slotted screws, as `(rectangle, slot angle in degrees)` in the
 /// chassis item's own coordinates.
@@ -242,7 +212,7 @@ pub fn row_furniture(
     // down and right of the lit face.
     let lane_w = display_rect.x - metrics::COLUMN_GAP as f64;
     if lane_w > 0.0 && !numeral.is_empty() {
-        let line_h = numeral_line_height();
+        let line_h = numeral_line_height(row::NUMERAL_PIXEL_SIZE);
         let lane_y = (row_h - line_h) / 2.0;
         let struck = |dx: f64, dy: f64, color: Rgba, opacity: f32| TextOp {
             face: Face::Catalogue("IOSEVKA"),
@@ -326,16 +296,6 @@ pub fn row_furniture(
     p
 }
 
-/// The natural height of one numeral's text, which is what sizes the lane
-/// and therefore what centres the strike in the row.
-fn numeral_line_height() -> f64 {
-    term::fonts::font_by_name("IOSEVKA", term::fonts::FontSource::Bundled)
-        .and_then(|e| {
-            term::fonts::metrics::scaled_metrics(e.data(), row::NUMERAL_PIXEL_SIZE as u32)
-        })
-        .map(|m| m.height())
-        .unwrap_or(row::NUMERAL_PIXEL_SIZE)
-}
 
 /// The PREV/NEXT rocker at the bank's foot.
 ///
@@ -441,18 +401,6 @@ const KEY_TOP: f64 = 38.0;
 
 /// The natural width of a line in the application font, for the two labels
 /// centred on their keys.
-fn sans_width(text: &str, pixel_size: f64, letter_spacing: f64, bold: bool) -> f64 {
-    let Some(data) = term::fonts::system::default_sans() else {
-        return 0.0;
-    };
-    term::fonts::text::natural_width(&term::fonts::text::TextSpec {
-        data,
-        pixel_size: pixel_size as u32,
-        text,
-        letter_spacing,
-        bold,
-    })
-}
 
 /// One pager key, in its own coordinates.
 ///

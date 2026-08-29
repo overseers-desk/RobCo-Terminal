@@ -6,6 +6,7 @@
 use crate::color::{hex_literal_to_color, with_alpha, Rgba};
 use crate::layout::Rect as Rect2;
 use crate::paint::{ArcOp, Fill, Painting, RectOp, Stop};
+use crate::params::{ChassisMetalParams, FrameMetalParams, MetalParams};
 
 /// A rectangle in the coordinate space of the item it is measured against,
 /// pixels, top-left origin: the convention every chassis/frame anchor
@@ -96,6 +97,132 @@ pub fn frame_viewport_size(width: f64, height: f64, window_scaling: f64) -> [f32
 pub fn rgb(hex: &str) -> [f32; 3] {
     let c = hex_literal_to_color(hex);
     [c.r, c.g, c.b]
+}
+
+/// The fixed half of a shell's casting recipe: every `chassis_metal`
+/// uniform that is the shell's own constant rather than a measurement of
+/// where the chassis landed. Each shell declares one of these beside its
+/// metrics.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CastingRecipe {
+    pub light_dir: [f32; 2],
+    /// A hex colour literal, read through [`rgb`].
+    pub color: &'static str,
+    pub metal: MetalParams,
+    pub vignette_strength: f32,
+}
+
+/// A shell's casting uniforms: its own recipe over the field mapping the
+/// chassis's rectangle inside the frame region gives
+/// ([`field_mapping`]).
+pub fn chassis_metal_params(
+    recipe: &CastingRecipe,
+    chassis: Rect,
+    frame_region: Option<Rect>,
+) -> ChassisMetalParams {
+    let fm = field_mapping(chassis, frame_region);
+    ChassisMetalParams {
+        field_scale: fm.scale,
+        field_offset: fm.offset,
+        light_dir: recipe.light_dir,
+        chassis_color: rgb(recipe.color),
+        metal: recipe.metal,
+        vignette_strength: recipe.vignette_strength,
+    }
+}
+
+/// The five settings-derived frame uniforms (screen curvature, frame
+/// shininess, frame size, screen radius, ambient light): not part of any
+/// shell's fixed metrics contract, supplied by the config crate at render
+/// time. Grouped so [`frame_metal_params`] takes one argument instead of
+/// five positional floats.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FrameRuntime {
+    pub screen_curvature: f32,
+    pub frame_shininess: f32,
+    pub frame_size: f32,
+    pub screen_radius: f32,
+    pub ambient_light: f32,
+}
+
+/// The fixed half of a shell's bezel recipe: every `frame_metal` uniform
+/// the settings do not supply. Each shell declares one of these beside its
+/// metrics.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FrameRecipe {
+    pub light_dir: [f32; 2],
+    /// Hex colour literals, read through [`rgb`].
+    pub bezel_color: &'static str,
+    pub chassis_color: &'static str,
+    pub ridge_color: &'static str,
+    pub bezel_margins: [f32; 4],
+    pub outer_radius: f32,
+    pub well_depth: f32,
+    pub well_floor: f32,
+    pub ridge_gain: f32,
+    pub metal: MetalParams,
+    pub vignette_strength: f32,
+    pub fill_gain: f32,
+    pub trough_gain: f32,
+    /// The face-band law: a lit band along the plate's own moulding and a
+    /// bright rim standing on the well wall. All three zero switches it
+    /// off, which is a shell whose bezel is lit by the fill alone.
+    pub face_band_px: f32,
+    pub rim_dist_px: f32,
+    pub rim_gain: f32,
+}
+
+/// A shell's bezel uniforms: its own fixed recipe merged with the runtime
+/// half a live config supplies.
+pub fn frame_metal_params(recipe: &FrameRecipe, runtime: FrameRuntime) -> FrameMetalParams {
+    FrameMetalParams {
+        screen_curvature: runtime.screen_curvature,
+        frame_size: runtime.frame_size,
+        screen_radius: runtime.screen_radius,
+        ambient_light: runtime.ambient_light,
+        frame_shininess: runtime.frame_shininess,
+        light_dir: recipe.light_dir,
+        bezel_color: rgb(recipe.bezel_color),
+        chassis_color: rgb(recipe.chassis_color),
+        ridge_color: rgb(recipe.ridge_color),
+        bezel_margins: recipe.bezel_margins,
+        outer_radius: recipe.outer_radius,
+        well_depth: recipe.well_depth,
+        well_floor: recipe.well_floor,
+        ridge_gain: recipe.ridge_gain,
+        metal: recipe.metal,
+        vignette_strength: recipe.vignette_strength,
+        fill_gain: recipe.fill_gain,
+        trough_gain: recipe.trough_gain,
+        face_band_px: recipe.face_band_px,
+        rim_dist_px: recipe.rim_dist_px,
+        rim_gain: recipe.rim_gain,
+    }
+}
+
+/// The natural width of one run of the platform's own sans face, which is
+/// what every shell's engraved lettering is set in.
+pub fn sans_width(text: &str, pixel_size: f64, letter_spacing: f64, bold: bool) -> f64 {
+    let Some(data) = term::fonts::system::default_sans() else {
+        return 0.0;
+    };
+    term::fonts::text::natural_width(&term::fonts::text::TextSpec {
+        data,
+        pixel_size: pixel_size as u32,
+        text,
+        letter_spacing,
+        bold,
+    })
+}
+
+/// The natural height of one stamped numeral's text, at the pixel size the
+/// shell strikes its numerals at. Iosevka in every shell: the numerals are
+/// the appliance's own stamping, not the user's face.
+pub fn numeral_line_height(pixel_size: f64) -> f64 {
+    term::fonts::font_by_name("IOSEVKA", term::fonts::FontSource::Bundled)
+        .and_then(|e| term::fonts::metrics::scaled_metrics(e.data(), pixel_size as u32))
+        .map(|m| m.height())
+        .unwrap_or(pixel_size)
 }
 
 /// The cheap hash off a numeral that sways one window's lip brightness and

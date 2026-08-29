@@ -8,7 +8,7 @@
 
 use oracle;
 use chassis::shells::annunciator;
-use chassis::shells::common::Rect;
+use chassis::shells::common::{self, Rect};
 use gpu::harness::{px_index, render_wgsl_quad, Locked};
 
 const W: u32 = 64;
@@ -46,7 +46,7 @@ fn annunciator_chassis_metal_region_renders_as_the_oracle_predicts() {
     // right of the frame's screen well.
     let chassis = Rect::new(851.0, 0.0, 349.0, 1080.0);
     let frame_region = Rect::new(0.0, 0.0, 1200.0, 1080.0);
-    let params = annunciator::chassis_metal_params(chassis, Some(frame_region));
+    let params = common::chassis_metal_params(&annunciator::CASTING, chassis, Some(frame_region));
 
     let input = vec![0u8; (W * H * 4) as usize];
     let record: Vec<u8> = params
