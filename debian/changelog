@@ -1,3 +1,19 @@
+robco-term (0.1.7) unstable; urgency=medium
+
+  * Every so often something drawn walks across the glass and leaves. A
+    whale spouts, three ducks paddle past, the D51 runs through. It is
+    not a screen saver: it comes while you are typing, a keystroke does
+    not chase it away, and it is drawn over the terminal's picture rather
+    than into it, so text scrolls behind one and a selection copied
+    across one still gives back what the session wrote. Every piece is
+    off any cell it touches within about a second.
+  * The Critters tab settles whether they visit, how long on average
+    between one and the next, and which of the eight are still in the
+    cast. The interval is an average and not a period, so one is never
+    due.
+
+ -- Weiwu Zhang <a@colourful.land>  Sat, 29 Aug 2026 16:02:19 +1000
+
 robco-term (0.1.6) unstable; urgency=medium
 
   * The catalogue's wide 16-pixel face is GNU Unifont, under the SIL Open

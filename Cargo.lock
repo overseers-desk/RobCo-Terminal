@@ -3626,7 +3626,7 @@ dependencies = [
 
 [[package]]
 name = "robco-app"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "arboard",
  "bytemuck",
@@ -3645,6 +3645,7 @@ dependencies = [
  "regex",
  "robco-chassis",
  "robco-config",
+ "robco-critters",
  "robco-crt-render",
  "robco-gpu",
  "robco-shader-oracle",
