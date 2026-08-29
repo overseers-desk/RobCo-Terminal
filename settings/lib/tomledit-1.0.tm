@@ -103,8 +103,7 @@ namespace eval ::tomledit {
         error "cannot get \"$path\": a row is not a value"
     }
 
-    # Set what the path names to the pre-formatted TOML scalar $value,
-    # touching only that key's bytes.
+    # Set what the path names to the pre-formatted TOML scalar $value.
     proc put {text path value} {
         lassign [resolve $path] kind a b c
         switch -exact -- $kind {
@@ -287,12 +286,8 @@ namespace eval ::tomledit {
 
     # Whether the document sits inside the subset the line surgery
     # understands: the answer is empty, or one line naming what falls
-    # outside. A construct beyond the subset can fool the span finder (a
-    # multiline string may hold a line shaped like a header, and an edit
-    # would then land inside the string), so a writer asks this first and
-    # refuses rather than guessing. Valid TOML a reader elsewhere accepts
-    # is deliberately refusable here: a refused edit costs the user a hand
-    # edit, a misplaced one costs them their file.
+    # outside. Valid TOML a reader elsewhere accepts is deliberately
+    # refusable here, and a writer asks this before its first edit.
     proc unsafe {text} {
         lassign [lines $text] all trailing
         set n 0
@@ -344,12 +339,12 @@ namespace eval ::tomledit {
         return [list $start $end]
     }
 
-    # Set table.key to the pre-formatted TOML value $value, touching only
-    # that key's bytes. A present key keeps its line's leading whitespace,
-    # its `key = ` spelling and anything trailing the old value, a
-    # same-line comment included; an absent key is appended at the end of
-    # the table's span, above the blank lines and comment block that
-    # introduce the next table; an absent table is appended at EOF.
+    # Set table.key to the pre-formatted TOML value $value. A present key
+    # keeps its line's leading whitespace, its `key = ` spelling and
+    # anything trailing the old value, a same-line comment included; an
+    # absent key is appended at the end of the table's span, above the
+    # blank lines and comment block that introduce the next table; an
+    # absent table is appended at EOF.
     proc set_key {text table key value} {
         lassign [lines $text] all trailing
         set span [table_span $all $table]
@@ -401,9 +396,9 @@ namespace eval ::tomledit {
         return $at
     }
 
-    # Remove table.key's line; everything else keeps its bytes. Removing
-    # the last key of a table does not remove the header: an empty table
-    # means the same as an absent one, and the header may carry a comment.
+    # Remove table.key's line. Removing the last key of a table does not
+    # remove the header: an empty table means the same as an absent one,
+    # and the header may carry a comment.
     proc unset_key {text table key} {
         lassign [lines $text] all trailing
         set span [table_span $all $table]
@@ -461,9 +456,9 @@ namespace eval ::tomledit {
         return [lindex $spans $index]
     }
 
-    # Set the pre-formatted value of $key inside row $index of $name. Every
-    # byte outside that row is identical, and inside it only the key's own
-    # line moves. An absent key is added at the end of the row's body.
+    # Set the pre-formatted value of $key inside row $index of $name: the
+    # key's own line inside that row is what moves. An absent key is added
+    # at the end of the row's body.
     proc set_array_key {text name index key value} {
         lassign [lines $text] all trailing
         lassign [row_span $all $name $index] start end
@@ -534,11 +529,11 @@ namespace eval ::tomledit {
         return [string range $name 0 [expr {$dot - 1}]]
     }
 
-    # Row $index's header and body go; the bytes around them stay. Two
-    # things are not this row's to take with it: a comment block sitting
-    # directly on the next header, which introduces that header, and the
-    # blank line above the row, which is only removed when the row was the
-    # last thing in the document and the blank would be left dangling.
+    # Row $index's header and body go. Two things are not this row's to
+    # take with it: a comment block sitting directly on the next header,
+    # which introduces that header, and the blank line above the row,
+    # which is only removed when the row was the last thing in the
+    # document and the blank would be left dangling.
     proc remove_array_row {text name index} {
         lassign [lines $text] all trailing
         lassign [row_span $all $name $index] start end
