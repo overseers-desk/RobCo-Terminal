@@ -47,6 +47,8 @@ namespace eval ::rcsettings::ui::form {
                 led_characters     int   "LED characters"       {1 40}
                 chassis_shown      bool  "Draw the chassis"     {}
                 grapheme_clustering bool "Grapheme clustering"  {}
+                selection_model    bool  "Between-character selection (rio)"
+                    {rio konsole}
             }
         }
         screen {

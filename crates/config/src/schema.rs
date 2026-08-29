@@ -64,6 +64,22 @@ pub struct GeneralSettings {
     /// program that wants cluster widths can still ask for them at
     /// runtime with `CSI ? 2027 h`.
     pub grapheme_clustering: bool,
+    /// Which house's selection model the pointer follows.
+    pub selection_model: SelectionModel,
+}
+
+/// Which selection model the pointer follows.
+///
+/// The two houses disagree about what a click points at. `Konsole` points
+/// at a cell and grows a range of cells. `Rio` points at the seam between
+/// two cells, so a drag begun on the right half of a character leaves that
+/// character out, and it brings rio's own word separators and its
+/// bracket-matching double click with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectionModel {
+    Konsole,
+    Rio,
 }
 
 /// Which family of rasterization the shader pipeline applies to glyphs,
@@ -208,6 +224,7 @@ impl Default for GeneralSettings {
             led_characters: 12,
             chassis_shown: true,
             grapheme_clustering: false,
+            selection_model: SelectionModel::Konsole,
         }
     }
 }

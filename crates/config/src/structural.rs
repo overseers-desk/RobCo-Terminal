@@ -31,7 +31,10 @@
 //! decay/intensity uniforms fed every frame, not pass enables -- the
 //! *quality* knobs above are what size their framebuffers);
 //! `screen.screen_curvature` / `screen.screen_radius` (wired to live
-//! uniforms, curvature framed as a runtime parameter).
+//! uniforms, curvature framed as a runtime parameter);
+//! `general.selection_model` (read at the start of each pointer gesture, so
+//! a change reaches the next drag without a rebuild and without touching
+//! what is on the glass).
 
 use crate::Config;
 

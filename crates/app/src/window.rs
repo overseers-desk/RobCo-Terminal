@@ -958,6 +958,8 @@ impl TerminalSurface {
             ime: ImeState::default(),
             eof: false,
             scroll: ScrollPosition::default(),
+            // The default model until a press reads the settings: no
+            // handle is attached yet, and nothing is on the glass to mark.
             selection: SelectionModel::new(Kind::Konsole, columns),
             pointer_cell: (0, 0),
             dragging: false,
@@ -2536,6 +2538,29 @@ impl TerminalSurface {
         self.live_config().general.grapheme_clustering
     }
 
+    /// Which selection model the pointer follows, as the settings stand at
+    /// this moment. Read at the start of a gesture rather than carried from
+    /// startup, so an edit in the settings window reaches the next drag.
+    fn selection_kind(&self) -> Kind {
+        match self.live_config().general.selection_model {
+            config::schema::SelectionModel::Konsole => Kind::Konsole,
+            config::schema::SelectionModel::Rio => Kind::Rio,
+        }
+    }
+
+    /// Put the model the settings now name in place. The two models hold
+    /// their state in different shapes and in different coordinates, so the
+    /// one going out takes its marks with it and the gesture about to start
+    /// begins on empty glass.
+    fn retarget_selection(&mut self, kind: Kind) {
+        if self.selection.kind() == kind {
+            return;
+        }
+        let columns = self.selection.columns();
+        self.selection.clear();
+        self.selection = SelectionModel::new(kind, columns);
+    }
+
     /// The session a channel opened now should run: this process's, with
     /// the width policy taken from the settings as they stand.
     fn session_now(&self) -> SessionConfig {
@@ -3775,6 +3800,7 @@ impl Surface for TerminalSurface {
         // where it plugs in.
         match on_press(self.pointer_context(), button, mods, false) {
             PointerAction::Mark | PointerAction::MarkAndActivateHotSpot => {
+                self.retarget_selection(self.selection_kind());
                 let now = Instant::now();
                 let count = match self.last_click {
                     Some((at, at_cell, count))

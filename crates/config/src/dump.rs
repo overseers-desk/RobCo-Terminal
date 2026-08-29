@@ -25,7 +25,7 @@ use serde::Serialize;
 
 use crate::schema::{
     ChannelDisplay, ChannelIndicator, ChassisSettings, GeneralSettings, Rasterization,
-    ScreenSettings, Shell,
+    ScreenSettings, SelectionModel, Shell,
 };
 
 /// One font catalogue entry: the key settings persist and the label a menu
@@ -42,6 +42,7 @@ struct Values {
     shell: Vec<Shell>,
     channel_indicator: Vec<ChannelIndicator>,
     channel_display: Vec<ChannelDisplay>,
+    selection_model: Vec<SelectionModel>,
 }
 
 #[derive(Serialize)]
@@ -77,6 +78,7 @@ pub fn dump(fonts: Vec<FontListing>) -> String {
             shell: SHELLS.to_vec(),
             channel_indicator: CHANNEL_INDICATORS.to_vec(),
             channel_display: CHANNEL_DISPLAYS.to_vec(),
+            selection_model: SELECTION_MODELS.to_vec(),
         },
     };
     toml_edit::ser::to_string_pretty(&dump).expect("settings dump serializes")
@@ -115,6 +117,7 @@ const CHANNEL_INDICATORS: [ChannelIndicator; 3] = [
     ChannelIndicator::Switch,
 ];
 const CHANNEL_DISPLAYS: [ChannelDisplay; 2] = [ChannelDisplay::Led, ChannelDisplay::Tape];
+const SELECTION_MODELS: [SelectionModel; 2] = [SelectionModel::Konsole, SelectionModel::Rio];
 
 #[cfg(test)]
 mod tests {
@@ -128,6 +131,7 @@ mod tests {
         s: Shell,
         i: ChannelIndicator,
         d: ChannelDisplay,
+        m: SelectionModel,
     ) {
         match r {
             Rasterization::NoRasterization
@@ -144,6 +148,9 @@ mod tests {
         }
         match d {
             ChannelDisplay::Led | ChannelDisplay::Tape => {}
+        }
+        match m {
+            SelectionModel::Konsole | SelectionModel::Rio => {}
         }
     }
 
