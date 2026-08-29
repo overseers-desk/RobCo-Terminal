@@ -9,7 +9,7 @@
 //! two display kits, the glyph raster that pass samples.
 //!
 //! It draws nothing and owns no device, like the rest of the crate. The mount
-//! is `app::column`.
+//! is `app::chrome`.
 //!
 //! # What is here
 //!

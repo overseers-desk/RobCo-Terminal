@@ -266,7 +266,7 @@ pub struct ShellConfig {
     /// (`chassis::layout::min_inner_size_physical`).
     ///
     /// Real now: a window standing in a chassis draws the bank column
-    /// (`app::column`), so the room the hint reserves is room the appliance
+    /// (`app::chrome`), so the room the hint reserves is room the appliance
     /// uses. On the shipped profile that is 247 px, which is the annunciator's
     /// furniture around twelve characters of the measured lamp cell, and a
     /// minimum width of 567. A shell whose windows are empty

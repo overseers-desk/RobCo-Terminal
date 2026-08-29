@@ -27,7 +27,7 @@
 //! # Where it goes in the frame
 //!
 //! After the chain, over the finished glass, with `LoadOp::Load` -- the same
-//! place and for the same reason as [`crate::column`]: chassis chrome stays
+//! place and for the same reason as [`crate::chrome`]: chassis chrome stays
 //! out of the CRT chain, and a badge run through the curvature would bend
 //! with the tube it is announcing the size of. The badge is centred over the
 //! screen well and layered above the whole chain rather than inside it, so it stays

@@ -3635,7 +3635,6 @@ dependencies = [
  "env_logger",
  "globset",
  "libc",
- "librashader",
  "log",
  "notify",
  "objc2 0.5.2",

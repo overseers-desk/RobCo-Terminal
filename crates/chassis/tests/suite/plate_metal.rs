@@ -1,14 +1,23 @@
-//! Standalone proof + done-test for `shaders/metal/plate_metal.slang`.
+//! Standalone proof + done-test for `shaders/wgsl/plate_metal.wgsl`.
 //! Fully analytic, same reasoning as `chassis_metal.rs` (no `sin` anywhere
 //! in the surface math).
 
+use chassis::params::{plate_record, record_bytes};
+use gpu::harness::{px_index, render_wgsl_quad, Locked};
 use oracle;
-use crt::harness::render_single_pass;
-use gpu::harness::{px_index, Locked};
-use std::path::PathBuf;
 
 const W: u32 = 128;
 const H: u32 = 32;
+
+fn source() -> String {
+    format!(
+        "{}{}{}",
+        chassis::shaders::COMMON_WGSL,
+        chassis::shaders::PLATE_METAL_WGSL,
+        "@group(0) @binding(0) var<uniform> p: PlateParams;\n\
+         fn shade(uv: vec2<f32>) -> vec4<f32> { return plate_metal(uv, p); }\n",
+    )
+}
 
 /// See `tests/chassis_metal.rs`'s `uv_of` for the empirical confirmation
 /// that readback row maps to texcoord v with no flip.
@@ -18,7 +27,6 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 
 #[test]
 fn plate_metal_matches_oracle() {
-    let preset = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/metal/plate_metal.slangp");
     let gpu = Locked::new().expect("headless wgpu device");
 
     let params = oracle::PlateMetalParams {
@@ -40,36 +48,9 @@ fn plate_metal_matches_oracle() {
         seed: 7.0,
     };
 
-    let gpu_params: &[(&str, f32)] = &[
-        ("sizePxX", params.size_px[0]),
-        ("sizePxY", params.size_px[1]),
-        ("lightDirX", params.light_dir[0]),
-        ("lightDirY", params.light_dir[1]),
-        ("baseColorR", params.base_color[0]),
-        ("baseColorG", params.base_color[1]),
-        ("baseColorB", params.base_color[2]),
-        ("baseColorA", 1.0),
-        ("highlightColorR", params.highlight_color[0]),
-        ("highlightColorG", params.highlight_color[1]),
-        ("highlightColorB", params.highlight_color[2]),
-        ("highlightColorA", 1.0),
-        ("shadowColorR", params.shadow_color[0]),
-        ("shadowColorG", params.shadow_color[1]),
-        ("shadowColorB", params.shadow_color[2]),
-        ("shadowColorA", 1.0),
-        ("cornerRadius", params.corner_radius),
-        ("bevelPx", params.bevel_px),
-        ("grainAmount", params.metal.grain_amount),
-        ("mottleAmount", params.metal.mottle_amount),
-        ("scratchAmount", params.metal.scratch_amount),
-        ("vignetteStrength", params.vignette_strength),
-        ("wearAmount", params.wear_amount),
-        ("seamGain", params.seam_gain),
-        ("seed", params.seed),
-    ];
-
     let input = vec![0u8; (W * H * 4) as usize];
-    let out = render_single_pass(&gpu, &preset, gpu_params, W, H, &input);
+    let record = record_bytes(&plate_record(&chassis::furniture::plate_params(&params)));
+    let out = render_wgsl_quad(&gpu, &source(), &record, W, H, &input);
 
     // Interior points only (away from the rounded-rect edge / coverage
     // falloff, which is intentionally a hard-edged antialiasing band the

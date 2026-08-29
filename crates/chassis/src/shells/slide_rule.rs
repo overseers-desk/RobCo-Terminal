@@ -637,7 +637,7 @@ pub fn pager(
 /// `panel` is the page window's own recessed floor, in the pager's own
 /// coordinates. Clipping the lamp field's spill to the panel's rounded
 /// bounds is not done here: a shaded [`crate::furniture::Pass`] piece has no
-/// clip of its own, only the bank's own outer one (`app::column`), so the
+/// clip of its own, only the bank's own outer one (`app::chrome`'s scissor), so the
 /// grown rectangle below can spill past the panel's edges. Left as a
 /// residual rather than fixed: the spill this margin would want clipped is
 /// itself a fifth the strength of a channel window's own (0.12 against

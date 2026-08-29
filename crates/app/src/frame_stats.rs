@@ -27,7 +27,7 @@
 //! with; `draw_frame` marks between three calls whose internals it does not
 //! otherwise touch, so the encoder-level write is the only one that fits
 //! without threading a query set through `term::GridRenderer`, `crt::Chain`
-//! and `crate::column::Column`. Both features are requested together,
+//! and `crate::chrome::Chrome`. Both features are requested together,
 //! filtered to what the adapter actually offers (the same pattern
 //! `gpu::required_features` uses); an adapter offering neither, or
 //! only the base feature, gets an instrument that reports itself

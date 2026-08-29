@@ -1,6 +1,14 @@
-//! The uniform payloads of the three procedural metal shaders: what a host
-//! (a shell's furniture, the app's column) fills in to draw a metal, and
-//! what the shader-oracle test crate's CPU reimplementations take as input.
+//! The uniform payloads of the procedural metal shaders: what a host (a
+//! shell's furniture, the app's chrome) fills in to draw a metal, and what
+//! the shader-oracle test crate's CPU reimplementations take as input.
+//!
+//! The `*_record` functions below are the other half: the parameter blocks
+//! the WGSL bodies under `shaders/wgsl/` declare, in the field order and with
+//! the padding those structs' layouts put there. One statement of each
+//! layout, read by the mount that fills the buffer and by the test that
+//! measures the shader against the CPU oracle.
+
+use crate::frame::Param;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MetalParams {
@@ -100,3 +108,140 @@ pub struct FrameMetalParams {
     pub rim_gain: f32,
 }
 
+
+/// The float count of a furniture piece's parameter record, which is the
+/// size in floats of the `PlateParams`, `LedParams` and `TapeParams` structs
+/// the three WGSL bodies under `shaders/wgsl/` declare. They are one size on
+/// purpose: a mount holds one buffer per kind and a rig binds one block, and
+/// a single number is one thing to keep true.
+pub const PIECE_RECORD_FLOATS: usize = 28;
+
+/// One named uniform out of a piece's list, or zero.
+///
+/// Zero rather than a panic because a missing name is a mount that has not
+/// been finished, not a corrupt one, and the tests below name every field
+/// each record wants.
+fn named(params: &[Param], name: &str) -> f32 {
+    for (n, v) in params {
+        if *n == name {
+            return *v;
+        }
+    }
+    0.0
+}
+
+/// The `PlateParams` block `shaders/wgsl/plate_metal.wgsl` declares, from the
+/// named list [`crate::furniture::plate_params`] builds.
+pub fn plate_record(p: &[Param]) -> [f32; PIECE_RECORD_FLOATS] {
+    [
+        named(p, "sizePxX"),
+        named(p, "sizePxY"),
+        named(p, "lightDirX"),
+        named(p, "lightDirY"),
+        named(p, "baseColorR"),
+        named(p, "baseColorG"),
+        named(p, "baseColorB"),
+        named(p, "baseColorA"),
+        named(p, "highlightColorR"),
+        named(p, "highlightColorG"),
+        named(p, "highlightColorB"),
+        named(p, "highlightColorA"),
+        named(p, "shadowColorR"),
+        named(p, "shadowColorG"),
+        named(p, "shadowColorB"),
+        named(p, "shadowColorA"),
+        named(p, "cornerRadius"),
+        named(p, "bevelPx"),
+        named(p, "grainAmount"),
+        named(p, "mottleAmount"),
+        named(p, "scratchAmount"),
+        named(p, "vignetteStrength"),
+        named(p, "wearAmount"),
+        named(p, "seamGain"),
+        named(p, "seed"),
+        0.0,
+        0.0,
+        0.0,
+    ]
+}
+
+/// The `LedParams` block `shaders/wgsl/led_matrix.wgsl` declares, from the
+/// named list [`crate::furniture::led_params`] builds.
+///
+/// `atlas` is where this strip's lamp raster sits in the host's atlas, as
+/// origin and extent in the atlas's own 0..1 coordinates. It is the host's to
+/// supply: the shader asks for its raster in the raster's own coordinates and
+/// the mount decides where that lives.
+pub fn led_record(p: &[Param], atlas: [f32; 4]) -> [f32; PIECE_RECORD_FLOATS] {
+    [
+        named(p, "gridSizeX"),
+        named(p, "gridSizeY"),
+        named(p, "spillMarginX"),
+        named(p, "spillMarginY"),
+        named(p, "spillDeadX"),
+        named(p, "spillDeadY"),
+        0.0,
+        0.0,
+        atlas[0],
+        atlas[1],
+        atlas[2],
+        atlas[3],
+        named(p, "litColorR"),
+        named(p, "litColorG"),
+        named(p, "litColorB"),
+        named(p, "litColorA"),
+        named(p, "dimColorR"),
+        named(p, "dimColorG"),
+        named(p, "dimColorB"),
+        named(p, "dimColorA"),
+        named(p, "panelColorR"),
+        named(p, "panelColorG"),
+        named(p, "panelColorB"),
+        named(p, "panelColorA"),
+        named(p, "dotRadius"),
+        named(p, "threshold"),
+        named(p, "glow"),
+        named(p, "spillStrength"),
+    ]
+}
+
+/// The `TapeParams` block `shaders/wgsl/tape_label.wgsl` declares, from the
+/// named list [`crate::furniture::tape_params`] builds. `atlas` is as
+/// [`led_record`]'s.
+pub fn tape_record(p: &[Param], atlas: [f32; 4]) -> [f32; PIECE_RECORD_FLOATS] {
+    [
+        named(p, "sizePxX"),
+        named(p, "sizePxY"),
+        named(p, "lightDirX"),
+        named(p, "lightDirY"),
+        named(p, "glyphRectPxX"),
+        named(p, "glyphRectPxY"),
+        named(p, "glyphRectPxZ"),
+        named(p, "glyphRectPxW"),
+        atlas[0],
+        atlas[1],
+        atlas[2],
+        atlas[3],
+        named(p, "tapeColorR"),
+        named(p, "tapeColorG"),
+        named(p, "tapeColorB"),
+        named(p, "tapeColorA"),
+        named(p, "letterColorR"),
+        named(p, "letterColorG"),
+        named(p, "letterColorB"),
+        named(p, "letterColorA"),
+        named(p, "bevelPx"),
+        named(p, "dilatePx"),
+        named(p, "sheenAmount"),
+        named(p, "grainAmount"),
+        named(p, "seed"),
+        0.0,
+        0.0,
+        0.0,
+    ]
+}
+
+/// A record's bytes, for a buffer write.
+pub fn record_bytes(record: &[f32; PIECE_RECORD_FLOATS]) -> Vec<u8> {
+    record.iter().flat_map(|f| f.to_ne_bytes()).collect()
+}

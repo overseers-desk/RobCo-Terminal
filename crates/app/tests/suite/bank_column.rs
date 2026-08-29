@@ -11,15 +11,15 @@
 //!   the two sizes went into the mount the right way round (the drawn rectangle
 //!   is the bank's, `viewport_size` is the screen well's; see `app::chrome`);
 //! - every pixel outside that rectangle is exactly what was on the frame
-//!   before, to the bit. A second librashader chain pointed at the swapchain
-//!   would have cleared them, which is the whole reason `app::column` renders
-//!   its furniture offscreen and blits.
+//!   before, to the bit. That is what the chrome pass's `LoadOp::Load` and
+//!   its scissor at the column's rectangle buy, and it is why the chassis is
+//!   drawn by a pass of its own rather than by a second filter chain, whose
+//!   last pass would clear the attachment first.
 //!
 //! And the hidden-chassis state, which is not a column of no width but no
 //! column: nothing is drawn at all, and the frame comes back untouched.
 
 use app::chrome::Chrome;
-use app::column::Column;
 use chassis::Cabinet;
 use config::Config;
 use gpu::harness::{px_index, Locked};
@@ -91,41 +91,20 @@ fn plate_params(params: &[(&'static str, f32)]) -> oracle::PlateMetalParams {
 /// Clear a frame to [`SENTINEL`], composite the column over it, read it back.
 fn frame_with_column(
     gpu: &Locked,
-    column: &mut Mount,
+    chrome: &mut Chrome,
     bank: u32,
     scale_factor: f64,
     params: &chassis::params::ChassisMetalParams,
 ) -> Vec<[f32; 4]> {
-    frame_with_furniture(gpu, column, bank, scale_factor, params, &[])
+    frame_with_furniture(gpu, chrome, bank, scale_factor, params, &[])
 }
 
-/// The two mounts a bank is drawn by, held together because every test here
-/// needs both: the native pass that lays the casting down, and the
-/// librashader one that stands the furniture on it.
-struct Mount {
-    chrome: Chrome,
-    column: Column,
-}
 
-impl Mount {
-    fn new(gpu: &Locked, dir: &std::path::Path) -> Self {
-        Self {
-            chrome: Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT),
-            column: Column::new(
-                &gpu.device,
-                &gpu.queue,
-                dir,
-                gpu::harness::OUTPUT_FORMAT,
-            )
-            .expect("the furniture's mount"),
-        }
-    }
-}
 
 /// The same, with furniture on the casting.
 fn frame_with_furniture(
     gpu: &Locked,
-    column: &mut Mount,
+    chrome: &mut Chrome,
     bank: u32,
     scale_factor: f64,
     params: &chassis::params::ChassisMetalParams,
@@ -162,7 +141,7 @@ fn frame_with_furniture(
         multiview_mask: None,
     });
 
-    column.chrome.render(
+    chrome.render(
         &gpu.device,
         &gpu.queue,
         &mut encoder,
@@ -172,17 +151,7 @@ fn frame_with_furniture(
         (WINDOW_W - bank, WINDOW_H),
         scale_factor,
         params,
-    );
-    column.column.render(
-        &gpu.device,
-        &gpu.queue,
-        &mut encoder,
-        &view,
-        (bank, WINDOW_H),
-        (WINDOW_W, WINDOW_H),
-        scale_factor,
         pieces,
-        0,
     );
 
     let index = gpu.queue.submit([encoder.finish()]);
@@ -204,8 +173,7 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
     let params = cabinet.chassis_params();
 
     let gpu = Locked::new().expect("headless wgpu device");
-    let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Mount::new(&gpu, dir.path());
+    let mut column = Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT);
 
     let frame = frame_with_column(&gpu, &mut column, BANK, 1.0, &params);
 
@@ -274,7 +242,7 @@ fn the_column_lands_on_the_frame_and_leaves_the_glass_untouched() {
 /// `OutputSize` by `windowScaling * DPR` to land on logical pixels
 /// (`crt::params::Params::build`); the column has no window scaling to undo and
 /// reaches the same ruler by declaring the well over the ratio
-/// (`app::column::well_ruler`). Get one of the two wrong and the grain changes
+/// (`app::chrome::well_ruler`). Get one of the two wrong and the grain changes
 /// scale at the seam on every HiDPI display, which no test at ratio 1 can see.
 #[test]
 fn the_castings_field_is_the_wells_logical_size_on_a_hidpi_display() {
@@ -283,8 +251,7 @@ fn the_castings_field_is_the_wells_logical_size_on_a_hidpi_display() {
     let params = cabinet.chassis_params();
 
     let gpu = Locked::new().expect("headless wgpu device");
-    let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Mount::new(&gpu, dir.path());
+    let mut column = Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT);
 
     let frame = frame_with_column(&gpu, &mut column, BANK, 2.0, &params);
 
@@ -368,8 +335,7 @@ fn the_furniture_lands_on_the_casting_and_still_leaves_the_glass_untouched() {
     let strip_of = |i: usize| &pieces[6 + 2 * i];
 
     let gpu = Locked::new().expect("headless wgpu device");
-    let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Mount::new(&gpu, dir.path());
+    let mut column = Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT);
 
     let bare = frame_with_column(&gpu, &mut column, BANK, 1.0, &cabinet.chassis_params());
     let frame = frame_with_furniture(
@@ -692,8 +658,7 @@ fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
     );
 
     let gpu = Locked::new().expect("headless wgpu device");
-    let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Mount::new(&gpu, dir.path());
+    let mut column = Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT);
     let frame = frame_with_furniture(
         &gpu,
         &mut column,
@@ -803,8 +768,7 @@ fn a_painted_piece_reaching_a_slot_a_shaded_piece_built_still_draws() {
     let params = cabinet.chassis_params();
 
     let gpu = Locked::new().expect("headless wgpu device");
-    let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Mount::new(&gpu, dir.path());
+    let mut column = Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT);
 
     // One rectangle, well inside the bank, for both pieces.
     let rect = chassis::Rect::new(40.0, 60.0, 64.0, 32.0);
@@ -867,8 +831,7 @@ fn a_hidden_chassis_draws_no_column_at_all() {
     assert!(!cabinet.is_shown());
 
     let gpu = Locked::new().expect("headless wgpu device");
-    let dir = tempfile::tempdir().expect("temp dir");
-    let mut column = Mount::new(&gpu, dir.path());
+    let mut column = Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT);
 
     let frame = frame_with_column(&gpu, &mut column, 0, 1.0, &cabinet.chassis_params());
     for &(x, y) in &[(0u32, 0u32), (1, 1), (WINDOW_W / 2, WINDOW_H / 2)] {

@@ -220,7 +220,7 @@ impl Chain {
     /// begins its last render pass with a clear over the whole attachment and
     /// sets its scissor afterwards, so the column's ground is cleared to
     /// transparent black by this call whatever the origin is. That is why
-    /// `app::column` composites over the frame after this returns rather than
+    /// `app::chrome` composites over the frame after this returns rather than
     /// before it.
     #[allow(clippy::too_many_arguments)]
     pub fn frame_at(

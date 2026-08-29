@@ -9,9 +9,9 @@
 //! offscreen target and the chain takes it from there to the swapchain,
 //! all inside [`window::TerminalSurface`]. The cabinet around the glass is
 //! `crates/chassis`: it measures the window's division into a bank column
-//! and a screen well and owns the seam between them, and [`column`] is the
-//! host mount that puts its casting on the frame after the chain has run,
-//! composited outside the chain rather than bending with it.
+//! and a screen well and owns the seam between them, and [`chrome`] is the
+//! host mount that puts its casting and its furniture on the frame after the
+//! chain has run, composited outside the chain rather than bending with it.
 //!
 //! The behavior here is not a matter of taste: `cargo run -p xtask --
 //! contract` prints the CLI/window contract the eval harness drives a
@@ -32,8 +32,8 @@
 //! - [`paths`] -- where per-user files live.
 //! - [`window`] / [`gpu`] -- the wgpu surface and the session it drives,
 //!   which is what fills a shell window ([`window::TerminalSurface`]).
-//! - [`column`] -- the bank column's metal, composited over the frame the
-//!   chain drew.
+//! - [`chrome`] -- the bank column's metal and everything standing on it,
+//!   composited over the frame the chain drew.
 //! - [`input`], [`mouse`], [`clipboard`] -- keyboard encoding,
 //!   mouse reporting, and copy/paste. Composed input
 //!   (an IME's committed text) comes in beside the keyboard rather than
@@ -66,7 +66,6 @@ pub mod chord;
 pub mod chrome;
 pub mod cli;
 pub mod clipboard;
-pub mod column;
 pub mod crashlog;
 pub mod distortion;
 pub mod find;

@@ -1,4 +1,4 @@
-//! Standalone proof + done-test for `shaders/led_matrix/led_matrix.slang`.
+//! Standalone proof + done-test for `shaders/wgsl/led_matrix.wgsl`.
 //!
 //! Snapshot/threshold tier, not full analytic replication: this pass gathers
 //! a Gaussian neighborhood of texture samples for its spill term
@@ -14,9 +14,23 @@
 //! at every point along an edge, which holds only while the spill kernel's
 //! taps are no farther apart than the lamps they read.
 
-use crt::harness::render_single_pass_io;
-use gpu::harness::{px_index, Locked};
-use std::path::PathBuf;
+use chassis::params::{led_record, record_bytes};
+use gpu::harness::{px_index, render_wgsl_quad_io, Locked};
+
+/// The body with the one-piece glue a rig needs: the parameter block at
+/// binding 0, and `shade` over it. The raster reaches the body through the
+/// harness's own `chrome_sample`, so the atlas rectangle is the whole
+/// texture.
+fn source() -> String {
+    format!(
+        "{}{}",
+        chassis::shaders::LED_MATRIX_WGSL,
+        "@group(0) @binding(0) var<uniform> p: LedParams;\n\
+         fn shade(uv: vec2<f32>) -> vec4<f32> { return led_matrix(uv, p); }\n",
+    )
+}
+
+const WHOLE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
 
 const GRID_W: u32 = 8;
 const GRID_H: u32 = 4;
@@ -25,8 +39,6 @@ const OUT_H: u32 = 64;
 
 #[test]
 fn led_matrix_lit_and_dark_cells_read_correctly() {
-    let preset =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
     let gpu = Locked::new().expect("headless wgpu device");
 
     // Checkerboard glyph raster, one texel per grid cell.
@@ -74,16 +86,17 @@ fn led_matrix_lit_and_dark_cells_read_correctly() {
         ("spillDeadY", 0.2),
     ];
 
-    let out = render_single_pass_io(
-        &gpu, &preset, params, GRID_W, GRID_H, OUT_W, OUT_H, &input,
+    let record = record_bytes(&led_record(params, WHOLE));
+    let out = render_wgsl_quad_io(
+        &gpu, &source(), &record, GRID_W, GRID_H, OUT_W, OUT_H, &input,
     );
 
     let px_per_cell_x = OUT_W / GRID_W; // 16
     let px_per_cell_y = OUT_H / GRID_H; // 16
 
-    // wgpu/librashader's quad + framebuffer convention: readback row maps to
-    // texcoord v with no flip (empirically confirmed in
-    // robco-chassis's tests/chassis_metal.rs), so the shader's
+    // The quad's convention: readback row maps to texcoord v with no flip
+    // (confirmed against the oracle in `tests/suite/chassis_metal.rs`), so
+    // the shader's
     // `cell = uv * gridSize` lines up with a plain row-major mapping from
     // output row to grid row.
     for gy in 0..GRID_H {
@@ -115,8 +128,6 @@ fn led_matrix_lit_and_dark_cells_read_correctly() {
 fn led_matrix_spill_band_is_flat_along_an_edge_over_a_checkerboard() {
     const GRID: u32 = 8;
     const OUT: u32 = 128;
-    let preset =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
     let gpu = Locked::new().expect("headless wgpu device");
 
     let mut input = vec![0u8; (GRID * GRID * 4) as usize];
@@ -159,7 +170,8 @@ fn led_matrix_spill_band_is_flat_along_an_edge_over_a_checkerboard() {
         ("spillDeadY", 0.2),
     ];
 
-    let out = render_single_pass_io(&gpu, &preset, params, GRID, GRID, OUT, OUT, &input);
+    let record = record_bytes(&led_record(params, WHOLE));
+    let out = render_wgsl_quad_io(&gpu, &source(), &record, GRID, GRID, OUT, OUT, &input);
 
     // Halfway out into the bottom band (v = 0.875), across the columns the
     // grid spans, a lamp's width in from either end of the band.

@@ -313,7 +313,7 @@ impl Params {
             //   bezel margins, `outerRadius`, the well depth.
             //
             // Folded here rather than sent as a second uniform so the
-            // shader's one division stays one division. `app::column`
+            // shader's one division stays one division. `app::chrome`
             // divides the well it declares to `chassis_metal` by the same
             // DPR, which is what keeps the bezel's grain and the bank
             // casting's one field across the seam at any ratio.

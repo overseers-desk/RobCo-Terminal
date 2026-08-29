@@ -46,7 +46,7 @@
 //! that most of this furniture is made of that is exact, and for the rounded
 //! corners it is the standard smooth-rectangle SDF computation. The output
 //! is premultiplied RGBA8, which is what the mount's blit blends
-//! (`app::column`'s `Blit::over`).
+//! (`app::chrome`'s premultiplied blend).
 
 use crate::color::Rgba;
 use crate::layout::Rect;

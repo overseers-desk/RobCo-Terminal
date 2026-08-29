@@ -1,12 +1,12 @@
 //! Done-test: the tape display kit's own composition -- the proven
-//! `ledTextImage` raster mounted through `tape_label.slang` with
+//! `ledTextImage` raster mounted through `tape_label.wgsl` with
 //! `displays::tape`'s appearance mapping (the double-size raster trick, the
 //! centred glyph rectangle, the fixed shader constants it pins), for a
 //! sampled channel set.
 //!
 //! Unlike `led_matrix`, `tape_label`'s `punched()` dilates the mask by
 //! sampling `Source` at eight neighbor offsets
-//! (`shaders/tape_label/tape_label.slang`), so a single raster pixel does
+//! (`shaders/wgsl/tape_label.wgsl`), so a single raster pixel does
 //! not determine its own output pixel the way it does for the LED grid.
 //! `crates/crt-render/tests/tape_label.rs` sidesteps that with a synthetic
 //! solid block; this test instead builds a small CPU oracle of
@@ -20,9 +20,18 @@
 //! point outside the centred glyph rectangle is the plastic-color check.
 
 use chassis::displays::{raster, tape};
-use crt::harness::render_single_pass_io;
-use gpu::harness::{px_index, Locked};
-use std::path::PathBuf;
+use chassis::params::{record_bytes, tape_record};
+use gpu::harness::{px_index, render_wgsl_quad_io, Locked};
+
+fn source() -> String {
+    format!(
+        "{}{}{}",
+        chassis::shaders::COMMON_WGSL,
+        chassis::shaders::TAPE_LABEL_WGSL,
+        "@group(0) @binding(0) var<uniform> p: TapeParams;\n\
+         fn shade(uv: vec2<f32>) -> vec4<f32> { return tape_label(uv, p); }\n",
+    )
+}
 
 const DISPLAY_HEIGHT: f64 = 44.0; // tape::NATURAL_HEIGHT, a fixture naming no height.
 
@@ -108,8 +117,6 @@ fn find_saturated_interior(
 
 #[test]
 fn tape_display_composes_the_proven_raster_with_tape_label() {
-    let preset =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/tape_label/tape_label.slangp");
     let gpu = Locked::new().expect("headless wgpu device");
 
     let font = term::fonts::font_by_name(tape::FONT_NAME, term::fonts::FontSource::Bundled)
@@ -173,8 +180,9 @@ fn tape_display_composes_the_proven_raster_with_tape_label() {
             ("seed", tape::SEED),
         ];
 
-        let out = render_single_pass_io(
-            &gpu, &preset, params, r.width, r.height, out_w, out_h, &input,
+        let record = record_bytes(&tape_record(params, [0.0, 0.0, 1.0, 1.0]));
+        let out = render_wgsl_quad_io(
+            &gpu, &source(), &record, r.width, r.height, out_w, out_h, &input,
         );
 
         // Body: a point in the end-pad margin, safely outside the centred

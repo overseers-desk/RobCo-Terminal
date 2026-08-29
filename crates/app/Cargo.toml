@@ -69,17 +69,6 @@ robco-chassis = { path = "../chassis" }
 # created with, and the chain the window draws its grid through on the way to
 # the swapchain.
 robco-crt-render = { path = "../crt-render" }
-# The chassis's casting is mounted here rather than in `robco-chassis`, which
-# owns no device and draws nothing (its own module doc), and not in
-# `robco-crt-render`, because the chain stops at the glass. So the one crate
-# that holds a device and a window mounts the one pass that composites over the
-# chain's output. Same version and feature set as the chain's, since both build
-# on the same `wgpu::Device`.
-librashader = { version = "=0.12.0", default-features = false, features = [
-    "runtime-wgpu",
-    "presets",
-    "preprocess",
-] }
 # wgpu is pinned to exactly 30.0.0 by librashader 0.12 (Wave 0, S1). Do not
 # float this: a minor bump breaks the shader chain, not just this crate.
 wgpu = "=30.0.0"

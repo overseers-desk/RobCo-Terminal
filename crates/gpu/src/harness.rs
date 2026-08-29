@@ -253,6 +253,21 @@ fn quad_vs(@builtin(vertex_index) index: u32) -> QuadOut {
 fn quad_fs(input: QuadOut) -> @location(0) vec4<f32> {
     return shade(input.uv);
 }
+
+// The raster read a display body asks the host for. This rig binds one
+// texture holding the piece's own raster, so the atlas rectangle is the whole
+// of it and the body's coordinates are the texture's.
+//
+// `textureSampleLevel` rather than `textureSample`, here and in the mount:
+// the bodies read their raster inside an early-out branch, and a plain sample
+// may only be taken in uniform control flow.
+fn chrome_sample(uv: vec2<f32>, atlas: vec4<f32>) -> vec4<f32> {
+    let p = atlas.xy + clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0)) * atlas.zw;
+    return textureSampleLevel(shade_source, shade_sampler, p, 0.0);
+}
+
+@group(0) @binding(1) var shade_source: texture_2d<f32>;
+@group(0) @binding(2) var shade_sampler: sampler;
 "#;
 
 /// Render one WGSL shader body over a `w`x`h` viewport and read the result
@@ -260,10 +275,9 @@ fn quad_fs(input: QuadOut) -> @location(0) vec4<f32> {
 /// for the passes that draw after the chain rather than inside it.
 ///
 /// `source` is a complete WGSL module that defines `fn shade(uv: vec2<f32>)
-/// -> vec4<f32>`. It may declare, in bind group 0, a uniform block at binding
-/// 0 (filled from `params`), the input texture at binding 1, and a
-/// non-filtering sampler at binding 2; a body that reads none of them
-/// declares none of them, and the layout still carries all three.
+/// -> vec4<f32>`. It may declare a uniform block at binding 0 of bind group 0
+/// (filled from `params`); the input texture and its non-filtering sampler
+/// are the glue's, at bindings 1 and 2, reached through `chrome_sample`.
 ///
 /// `input` is RGBA8, `w * h * 4` bytes. It panics rather than returning a
 /// `Result` for the librashader rig's reason: every caller is a test whose
@@ -272,6 +286,23 @@ pub fn render_wgsl_quad(
     gpu: &Locked,
     source: &str,
     params: &[u8],
+    w: u32,
+    h: u32,
+    input: &[u8],
+) -> Vec<[f32; 4]> {
+    render_wgsl_quad_io(gpu, source, params, w, h, w, h, input)
+}
+
+/// Same as [`render_wgsl_quad`], with the input texture's resolution
+/// (`in_w`/`in_h`) independent of the framebuffer's (`out_w`/`out_h`), the
+/// way a lamp grid is one texel per lamp and is drawn across a strip.
+#[allow(clippy::too_many_arguments)]
+pub fn render_wgsl_quad_io(
+    gpu: &Locked,
+    source: &str,
+    params: &[u8],
+    in_w: u32,
+    in_h: u32,
     w: u32,
     h: u32,
     input: &[u8],
@@ -295,8 +326,8 @@ pub fn render_wgsl_quad(
     });
     gpu.queue.write_buffer(&uniforms, 0, &bytes);
 
-    let texture = gpu.make_input(w.max(1), h.max(1));
-    gpu.upload(&texture, w.max(1), h.max(1), input);
+    let texture = gpu.make_input(in_w.max(1), in_h.max(1));
+    gpu.upload(&texture, in_w.max(1), in_h.max(1), input);
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some("wgsl quad"),

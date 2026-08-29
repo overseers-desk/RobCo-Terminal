@@ -1,6 +1,6 @@
 //! Done-test: the LED display kit's own composition -- the proven
 //! `ledTextImage` raster (`term::fonts::led`) mounted through
-//! `led_matrix.slang` with `displays::led`'s appearance mapping
+//! `led_matrix.wgsl` with `displays::led`'s appearance mapping
 //! (`window_colors`, `spill_strength`, `glow`, the fixed `dotRadius`/
 //! `threshold`/`spillDead` pins), for a sampled channel set.
 //!
@@ -10,8 +10,8 @@
 //! to one of the mixed colors. This test reuses that same precedent but
 //! swaps the checkerboard for the real raster a
 //! real channel title produces, and the shader's own `#pragma` defaults for
-//! the appearance mapping. The `led_matrix.slang` pass reads `Source` with
-//! `filter_linear0 = false` (the preset) at exactly one texel per grid cell
+//! the appearance mapping. The `led_matrix.wgsl` body reads its raster
+//! nearest-sampled at exactly one texel per grid cell
 //! (`texture(Source, (idx+0.5)/gridSize)`), so -- unlike `tape_label`'s
 //! dilating `punched()` -- there is no neighbor bleed to worry about: every
 //! raster pixel independently determines its own cell's expected color,
@@ -20,9 +20,17 @@
 
 use chassis::color::str_to_color;
 use chassis::displays::{led, raster};
-use crt::harness::render_single_pass_io;
-use gpu::harness::{px_index, Locked};
-use std::path::PathBuf;
+use chassis::params::{led_record, record_bytes};
+use gpu::harness::{px_index, render_wgsl_quad_io, Locked};
+
+fn source() -> String {
+    format!(
+        "{}{}",
+        chassis::shaders::LED_MATRIX_WGSL,
+        "@group(0) @binding(0) var<uniform> p: LedParams;\n\
+         fn shade(uv: vec2<f32>) -> vec4<f32> { return led_matrix(uv, p); }\n",
+    )
+}
 
 /// Amber, `robco-config`'s `ScreenSettings` default (`presets.rs:29`,
 /// `"#ff8100"`).
@@ -30,8 +38,6 @@ const AMBER: &str = "#ff8100";
 
 #[test]
 fn led_display_composes_the_proven_raster_with_led_matrix() {
-    let preset =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/led_matrix/led_matrix.slangp");
     let gpu = Locked::new().expect("headless wgpu device");
 
     let font =
@@ -91,8 +97,9 @@ fn led_display_composes_the_proven_raster_with_led_matrix() {
         let px_per_cell = 8;
         let out_w = r.width * px_per_cell;
         let out_h = r.height * px_per_cell;
-        let out = render_single_pass_io(
-            &gpu, &preset, params, r.width, r.height, out_w, out_h, &input,
+        let record = record_bytes(&led_record(params, [0.0, 0.0, 1.0, 1.0]));
+        let out = render_wgsl_quad_io(
+            &gpu, &source(), &record, r.width, r.height, out_w, out_h, &input,
         );
 
         for gy in 0..r.height {

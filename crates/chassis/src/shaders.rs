@@ -1,15 +1,15 @@
-//! The three metals' source, compiled in.
+//! The chassis's shader source, compiled in.
 //!
-//! Each also ships a `.slangp` beside it under `shaders/metal/`, which is how
-//! the per-pass tests mount them: a preset references its `.slang` by a path
-//! relative to its own directory, so a preset needs a directory to be resolved
-//! against and the tests give it `CARGO_MANIFEST_DIR`. That works from a source
-//! checkout and nowhere else.
+//! Two families, and the split is the chain's edge. The bezel is the one
+//! piece of chassis inside the curvature, so it is a `.slang` mounted in the
+//! chain's frame slot, and it ships with a `.slangp` beside it under
+//! `shaders/metal/` for the per-pass test to resolve against
+//! `CARGO_MANIFEST_DIR`. Everything drawn *after* the chain is WGSL under
+//! `shaders/wgsl/`, run by a native pipeline that needs no preset, no cache
+//! directory and no runtime materialisation.
 //!
-//! These constants are the other half, for a host that writes its own preset
-//! and has no source tree to read from. It is the same shape `crt::burn_in`
-//! gives the burn-in pass, and for the same reason: a shipped binary carries
-//! its shaders rather than looking for them.
+//! A shipped binary carries its shaders rather than looking for a source
+//! tree, which is what these constants are for.
 
 /// `frame_metal.slang`: the bezel the screen well is set into.
 ///
@@ -21,28 +21,6 @@
 /// inside the curvature rather than composited over it.
 pub const FRAME_METAL_SLANG: &str = include_str!("../shaders/metal/frame_metal.slang");
 
-/// `chassis_metal.slang`: the casting under the bank column, drawn in the
-/// frame's coordinates so the two read as one poured piece. Uniforms from
-/// [`crate::frame::chassis_params`]. Composited over the presented frame, flat
-/// and square and left of everything: chrome that sits outside the CRT chain
-/// rather than bending with the tube.
-pub const CHASSIS_METAL_SLANG: &str = include_str!("../shaders/metal/chassis_metal.slang");
-
-/// `plate_metal.slang`: the raised plate a shell screws over the casting, the
-/// bank's furniture punched into it. Uniforms from
-/// [`crate::furniture::plate_params`]; which region a shell screws it over is
-/// [`crate::shells::plate_region`].
-pub const PLATE_METAL_SLANG: &str = include_str!("../shaders/metal/plate_metal.slang");
-
-/// `led_matrix.slang`: the lamp grid one channel strip is made of. Uniforms
-/// from [`crate::furniture::led_params`], over the grid raster
-/// [`crate::furniture::led_grid`] composes.
-pub const LED_MATRIX_SLANG: &str = include_str!("../shaders/led_matrix/led_matrix.slang");
-
-/// `tape_label.slang`: the embossed punch tape the switchboard's strips carry
-/// instead of lamps. Uniforms from [`crate::furniture::tape_params`].
-pub const TAPE_LABEL_SLANG: &str = include_str!("../shaders/tape_label/tape_label.slang");
-
 /// `wgsl/common.wgsl`: the metal-surface math shared by everything drawn
 /// after the CRT chain, the twin of `metal_common.slang`. It declares no
 /// bindings and no entry points, so a host concatenates it ahead of a shader
@@ -53,6 +31,21 @@ pub const COMMON_WGSL: &str = include_str!("../shaders/wgsl/common.wgsl");
 /// function over a `ChassisParams` value. The parameter block is
 /// [`crate::params::ChassisMetalParams::record`]'s layout.
 pub const CHASSIS_METAL_WGSL: &str = include_str!("../shaders/wgsl/chassis_metal.wgsl");
+
+/// `wgsl/plate_metal.wgsl`: the raised plate a shell screws over the casting.
+/// Parameter block from [`crate::params::plate_record`]; which region a shell
+/// screws it over is [`crate::shells::plate_region`].
+pub const PLATE_METAL_WGSL: &str = include_str!("../shaders/wgsl/plate_metal.wgsl");
+
+/// `wgsl/led_matrix.wgsl`: the lamp grid one channel strip is made of, over
+/// the grid raster [`crate::furniture::led_grid`] composes. Parameter block
+/// from [`crate::params::led_record`].
+pub const LED_MATRIX_WGSL: &str = include_str!("../shaders/wgsl/led_matrix.wgsl");
+
+/// `wgsl/tape_label.wgsl`: the embossed punch tape the switchboard's strips
+/// carry instead of lamps. Parameter block from
+/// [`crate::params::tape_record`].
+pub const TAPE_LABEL_WGSL: &str = include_str!("../shaders/wgsl/tape_label.wgsl");
 
 /// Include files the shader sources above pull in with `#include`. A host
 /// materializing shaders to disk writes these into the same directory as
@@ -68,33 +61,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_metal_is_compiled_in_whole_and_is_the_one_it_claims() {
-        for (name, src, entry) in [
-            ("frame", FRAME_METAL_SLANG, "frameSize"),
-            ("chassis", CHASSIS_METAL_SLANG, "fieldScale"),
-            ("plate", PLATE_METAL_SLANG, "bevelPx"),
-        ] {
-            // A `.slang` pass declares both stages; a truncated include would
-            // still be a valid `&str` and would fail only at chain-load time.
-            assert!(
-                src.contains("#pragma stage vertex"),
-                "{name} metal has no vertex stage"
-            );
-            assert!(
-                src.contains("#pragma stage fragment"),
-                "{name} metal has no fragment stage"
-            );
-            // ...and a uniform only this one of the three declares, so a
-            // mis-pointed include_str! is caught rather than silently swapped.
-            assert!(src.contains(entry), "{name} metal does not declare {entry}");
-        }
-        // The metalField the three share lives in the include they pull in.
+    fn the_bezel_is_compiled_in_whole_and_is_the_one_it_claims() {
+        // A `.slang` pass declares both stages; a truncated include would
+        // still be a valid `&str` and would fail only at chain-load time.
+        assert!(FRAME_METAL_SLANG.contains("#pragma stage vertex"));
+        assert!(FRAME_METAL_SLANG.contains("#pragma stage fragment"));
+        // ...and a uniform only the bezel declares, so a mis-pointed
+        // `include_str!` is caught rather than silently swapped.
+        assert!(FRAME_METAL_SLANG.contains("frameSize"));
+        // The metalField it shares with the WGSL half lives in the include it
+        // pulls in.
         let (name, common) = INCLUDES[0];
         assert_eq!(name, "metal_common.slang");
         assert!(common.contains("float metalField"));
-        for src in [FRAME_METAL_SLANG, CHASSIS_METAL_SLANG, PLATE_METAL_SLANG] {
-            assert!(src.contains("#include \"metal_common.slang\""));
-        }
+        assert!(FRAME_METAL_SLANG.contains("#include \"metal_common.slang\""));
+        // The one thing the chain still needs from this directory: an include
+        // it can resolve beside the body it writes out.
+        assert_eq!(INCLUDES.len(), 1);
     }
 
     /// The WGSL half carries the same surface math under its own spelling,
@@ -106,7 +89,22 @@ mod tests {
         assert!(COMMON_WGSL.contains("fn rrect_px("));
         assert!(CHASSIS_METAL_WGSL.contains("fn chassis_metal("));
         assert!(CHASSIS_METAL_WGSL.contains("viewport_size"));
-        for src in [COMMON_WGSL, CHASSIS_METAL_WGSL] {
+        assert!(PLATE_METAL_WGSL.contains("fn plate_metal("));
+        assert!(LED_MATRIX_WGSL.contains("fn led_matrix("));
+        assert!(TAPE_LABEL_WGSL.contains("fn tape_label("));
+        // The two display bodies read their raster through the host's one
+        // supplied function rather than a texture of their own.
+        for src in [LED_MATRIX_WGSL, TAPE_LABEL_WGSL] {
+            assert!(src.contains("chrome_sample("));
+            assert!(!src.contains("texture_2d"));
+        }
+        for src in [
+            COMMON_WGSL,
+            CHASSIS_METAL_WGSL,
+            PLATE_METAL_WGSL,
+            LED_MATRIX_WGSL,
+            TAPE_LABEL_WGSL,
+        ] {
             assert!(!src.contains("@group"));
             assert!(!src.contains("@vertex"));
             assert!(!src.contains("@fragment"));

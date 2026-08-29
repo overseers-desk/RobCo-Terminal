@@ -1,4 +1,4 @@
-//! Standalone proof + done-test for `shaders/tape_label/tape_label.slang`.
+//! Standalone proof + done-test for `shaders/wgsl/tape_label.wgsl`.
 //!
 //! Snapshot/threshold tier, not full analytic replication: `punched()`
 //! dilates the glyph mask by sampling `Source` at eight offset points, which
@@ -11,9 +11,18 @@
 //! output color is dominated by `letterColor`/`tapeColor` respectively --
 //! checking "letters read as letters, body reads as body", not exact values.
 
-use crt::harness::render_single_pass;
-use gpu::harness::{px_index, Locked};
-use std::path::PathBuf;
+use chassis::params::{record_bytes, tape_record};
+use gpu::harness::{px_index, render_wgsl_quad, Locked};
+
+fn source() -> String {
+    format!(
+        "{}{}{}",
+        chassis::shaders::COMMON_WGSL,
+        chassis::shaders::TAPE_LABEL_WGSL,
+        "@group(0) @binding(0) var<uniform> p: TapeParams;\n\
+         fn shade(uv: vec2<f32>) -> vec4<f32> { return tape_label(uv, p); }\n",
+    )
+}
 
 const SIZE_W: u32 = 160;
 const SIZE_H: u32 = 32;
@@ -32,8 +41,6 @@ fn uv_of(c: u32, r: u32) -> [f32; 2] {
 
 #[test]
 fn tape_label_letter_and_body_read_correctly() {
-    let preset =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/tape_label/tape_label.slangp");
     let gpu = Locked::new().expect("headless wgpu device");
 
     // Glyph mask (alpha channel): a solid block from x in [60,100), y in
@@ -77,7 +84,8 @@ fn tape_label_letter_and_body_read_correctly() {
         ("seed", 0.0),
     ];
 
-    let out = render_single_pass(&gpu, &preset, params, SIZE_W, SIZE_H, &mask);
+    let record = record_bytes(&tape_record(params, [0.0, 0.0, 1.0, 1.0]));
+    let out = render_wgsl_quad(&gpu, &source(), &record, SIZE_W, SIZE_H, &mask);
 
     // Deep letter interior. The shader never outputs `letterColor` raw: deep
     // inside a solid mask (`mC == mToward == mAway == mAwayFar == 1`, true
