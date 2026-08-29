@@ -161,7 +161,7 @@ fn main() -> ExitCode {
                 // carries nothing to prove.
                 return app::settings_embed::run(&["--selftest"], std::path::Path::new(""));
             }
-            let (program, args) = app::window::settings_command();
+            let (program, args) = app::settings::settings_command();
             let mut command = std::process::Command::new(&program);
             command.args(args);
             // The spawner names itself, as the right-click spawn does, so

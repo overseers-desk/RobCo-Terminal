@@ -11,7 +11,10 @@
 //!    watcher itself -- atomic writes, directory watching, last-good on
 //!    parse failure -- is entirely `crates/config`'s; this module adds
 //!    nothing to that contract, it only seats it in the app.
-//! 3. **The parameter/structural key split** ([`KeyClass`], [`classify`]):
+//! 3. **The companion settings window** ([`SettingsApp`]): what to run to
+//!    put it on the screen, and the one-at-a-time bookkeeping over the child
+//!    that is running it.
+//! 4. **The parameter/structural key split** ([`KeyClass`], [`classify`]):
 //!    a config change either only touches
 //!    live shader uniforms (cheap, no rebuild) or forces a filter-chain
 //!    rebuild (framebuffer format/size or pass topology changes, which also
@@ -20,8 +23,8 @@
 //!    computes it so that consumer doesn't have to re-derive it from the
 //!    schema.
 //!
-//! This module deliberately depends only on `robco-config` (`config` crate)
-//! and the standard library plus `directories`/`log`/`signal-hook`, so it
+//! Beyond spawning that one child, this module deliberately depends only on
+//! `robco-config` (`config` crate) and the standard library plus `directories`/`log`/`signal-hook`, so it
 //! can be lifted into whatever shape `crates/app` eventually takes.
 
 use std::path::PathBuf;
@@ -475,6 +478,144 @@ pub fn install_sigusr1_handler(handle: Arc<SettingsHandle>) -> std::io::Result<(
 #[cfg(not(unix))]
 pub fn install_sigusr1_handler(_handle: Arc<SettingsHandle>) -> std::io::Result<()> {
     Ok(())
+}
+
+/// The companion settings application, a separate executable shipped beside
+/// the terminal's own. The name is fixed rather than taken from
+/// [`crate::identity`]: a renamed copy of the terminal binary is a second
+/// identity for the terminal, and it still edits its settings with the one
+/// settings application the install carries.
+#[cfg(not(all(windows, feature = "embedded-settings")))]
+const SETTINGS_BINARY: &str = if cfg!(windows) {
+    "robco-settings.exe"
+} else {
+    "robco-settings"
+};
+
+/// What to run to put the settings window on the screen: a program and the
+/// arguments it takes.
+///
+/// Two builds, one answer. Where the settings window is linked into this
+/// binary there is no companion executable to find, and the program to run
+/// is this one with `--settings`: a second copy of the terminal that never
+/// becomes a terminal. Everywhere else it is the companion application,
+/// looked for beside this binary first (so an install that is a directory of
+/// files runs its own rather than whichever one happens to be earlier on the
+/// PATH) and by bare name after (the fallback for a packaged install that
+/// puts the two in different directories).
+///
+/// A separate process either way, which is the point: [`SettingsApp::open`]'s
+/// one-at-a-time bookkeeping, its null stdio and its shrug at a missing
+/// binary are the same code for both, and the terminal goes on running while
+/// the window is up.
+#[cfg(all(windows, feature = "embedded-settings"))]
+pub fn settings_command() -> (std::path::PathBuf, Vec<&'static str>) {
+    // A path that cannot be read is not a reason to give up: the binary's own
+    // name is what a launcher would have used, and the PATH is where it looks.
+    let program = std::env::current_exe()
+        .unwrap_or_else(|_| std::path::PathBuf::from(format!("{}.exe", crate::identity())));
+    (program, vec!["--settings"])
+}
+
+/// The same question on a build that ships the settings window beside the
+/// terminal rather than inside it: the companion executable, beside this
+/// binary first and by bare name after, taking no arguments. The whole rule
+/// is on the embedded arm of this function.
+#[cfg(not(all(windows, feature = "embedded-settings")))]
+pub fn settings_command() -> (std::path::PathBuf, Vec<&'static str>) {
+    let beside = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(SETTINGS_BINARY)))
+        .filter(|path| path.is_file());
+    (
+        beside.unwrap_or_else(|| std::path::PathBuf::from(SETTINGS_BINARY)),
+        Vec::new(),
+    )
+}
+
+/// The companion settings window as this process knows it: the child it
+/// started, while that child is still running.
+///
+/// Held for two reasons at once. It is what makes the right press
+/// single-instance, since a child that has not exited means the window is
+/// already open, and holding it is what lets the next press reap it: a
+/// `Child` dropped without a wait leaves a zombie until the terminal itself
+/// exits, and the terminal is a process that can stay up for weeks.
+#[derive(Default)]
+pub struct SettingsApp {
+    child: Option<std::process::Child>,
+}
+
+impl SettingsApp {
+    /// Start the companion settings application, one at a time.
+    ///
+    /// The held child is asked first, and that question doubles as the reaping:
+    /// a `try_wait` that answers `Some` has collected the exit status, so a
+    /// settings window that has been opened and closed a hundred times leaves
+    /// no line in the process table behind it.
+    ///
+    /// A missing binary is not an error worth a notice on the glass. The
+    /// terminal is usable without its settings application, and a build from
+    /// source that ran `cargo build -p robco-app` and nothing else legitimately
+    /// has no `robco-settings` to run, so this says so once in the log and
+    /// leaves the screen alone.
+    pub fn open(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            match child.try_wait() {
+                Ok(None) => {
+                    log::debug!("the settings application is already up");
+                    return;
+                }
+                // Reaped. A status that is not success is the trace of a
+                // window that never reached the screen, and the next right
+                // press is where it can still be said.
+                Ok(Some(status)) => {
+                    if !status.success() {
+                        log::warn!("the settings application exited with {status}");
+                    }
+                    self.child = None;
+                }
+                // The status cannot be read, so whether it is still running is
+                // unknown. Forgetting the handle and starting another one is
+                // the wrong half of that guess to take: a second window is
+                // worse than a right press that did nothing.
+                Err(e) => {
+                    log::debug!("could not ask after the settings application: {e}");
+                    return;
+                }
+            }
+        }
+
+        let (program, args) = settings_command();
+
+        // Detached from this terminal's own input: a child that inherited
+        // stdin would be reading the keystrokes meant for the terminal's own
+        // child, and its stdout has nothing to say to anyone.
+        //
+        // Its stderr is the exception, and passes through to whatever
+        // launched this terminal. A settings program that dies in its own
+        // startup is the one failure this code cannot see: the spawn
+        // succeeded, so nothing below reports it, and a closed stderr turns
+        // a legible complaint from the interpreter into a right press that
+        // did nothing at all.
+        let mut command = std::process::Command::new(&program);
+        command
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null());
+        // The window asks this terminal for what only a terminal can answer
+        // (the machine's faces it can render), so the spawner names itself
+        // rather than leaving the child to guess among the binaries a PATH
+        // may hold. An unreadable own path is not fatal: the child falls
+        // back to the sibling and PATH arms it keeps for hand launches.
+        if let Ok(me) = std::env::current_exe() {
+            command.env("ROBCO_SETTINGS_TERMINAL", me);
+        }
+        match command.spawn() {
+            Ok(child) => self.child = Some(child),
+            Err(e) => log::warn!("could not start {}: {e}", program.display()),
+        }
+    }
 }
 
 #[cfg(test)]
