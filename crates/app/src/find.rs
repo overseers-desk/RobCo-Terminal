@@ -13,7 +13,7 @@
 //! module is the seam either side of it: `regex::escape` and `(?i)` turning
 //! typed text into a literal case-insensitive pattern going in, and rio's
 //! screen-relative `Pos` turning into an absolute [`MarkedRange`] coming
-//! out, the conversion `term::selection::rio` makes for a selection.
+//! out, the conversion [`term::selection::rio`] makes for a selection.
 //!
 //! # The floor
 //!
@@ -52,8 +52,8 @@ pub struct Find {
     /// the scrollback it is searching, so turning the knob leaves it behind
     /// rather than aiming it at another channel's history.
     pub on: (BankId, u32),
-    /// The query the DFAs in `regex` were built from, so a keystroke that
-    /// did not change the query does not rebuild them.
+    /// The query the DFAs below were built from, so a keystroke that did
+    /// not change the query does not rebuild them.
     pattern: String,
     regex: Option<RegexSearch>,
     /// Where a search with nothing found yet starts: the cursor as it stood
@@ -170,7 +170,7 @@ impl Find {
     }
 }
 
-/// The cursor, in the absolute coordinates everything above `term::grid`
+/// The cursor, in the absolute coordinates everything above [`term::grid`]
 /// speaks.
 pub fn caret<U: EventListener>(term: &Crosswords<U>) -> (usize, usize) {
     let pos = term.grid.cursor.pos;

@@ -11,7 +11,7 @@
 //!
 //! Coordinates here are rio-vt's own: `Line(0)` is the top of the screen
 //! and history runs negative. `crates/app/src/find.rs` is where they become
-//! the absolute lines everything above `term::grid` speaks.
+//! the absolute lines everything above [`term::grid`] speaks.
 
 use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::grid::Dimensions;

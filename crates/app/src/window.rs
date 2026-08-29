@@ -1567,7 +1567,6 @@ impl TerminalSurface {
             })
     }
 
-    /// The query standing on the find line, or `None` when no find line is.
     pub fn find_query(&self) -> Option<&str> {
         self.find.as_ref().map(crate::find::Find::query)
     }
