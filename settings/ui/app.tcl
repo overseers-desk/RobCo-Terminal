@@ -47,6 +47,13 @@ proc ::rcsettings::ui::app::start {} {
     # this point, and a message box that cannot be drawn - a display that
     # went away, an image whose Tk failed to load - would otherwise take
     # the reason with it.
+    # The schema is the terminal's to state, so a window with no terminal
+    # to ask has nothing to show and says so by name rather than opening
+    # empty pages.
+    if {[catch {::rcsettings::model::load_schema} err]} {
+        ::rcsettings::diag::fatal \
+            "Cannot find the RobCo Terminal program." $err
+    }
     if {[catch {::rcsettings::model::init} err]} {
         ::rcsettings::diag::fatal \
             "Cannot read the configuration file." $err

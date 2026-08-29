@@ -1,17 +1,18 @@
-# The settings model: the schema this window's coder knows on one side,
-# the user's config file on the other, and the resolution rule from
+# The settings model: the schema the terminal states on one side, the
+# user's config file on the other, and the resolution rule from
 # docs/config.md between them. A key's value is the file's if the file
 # pins it, otherwise the value the table's named preset gives it,
 # otherwise the shipped default.
 #
 # The schema - defaults, presets, enum value lists, the bundled font
-# catalogue - is literal data below, stated as raw TOML values so an
-# edited value can be formatted after its default's own spelling. The
-# terminal's Rust source remains the authority on what these values are:
-# `robco-term --dump-settings` still prints them, and tests/schema.test
-# fails the build the moment the literals and the binary disagree. The
-# one answer that can never be literals is the machine's installed
-# faces, which system_fonts below asks the binary for.
+# catalogue - is asked of the terminal when the window opens: `init` runs
+# `robco-term --dump-settings` and reads what it prints, so the terminal's
+# Rust source is the only place these values are stated and this window
+# cannot hold a copy of them to go stale. The window therefore needs the
+# binary present to open, found the way `candidates` below walks. The
+# machine's installed faces are the same seam asked later, on the font
+# tab, because that answer costs a walk of the platform's font
+# directories.
 #
 # Every write here goes through the machine-write contract
 # (docs/config-format.md): re-read the file, edit the one key's bytes,
@@ -28,8 +29,8 @@ namespace eval ::rcsettings::model {
         set_value reset switch_preset pin_overrides default_config_path \
         ssh_default ssh_hosts set_ssh_default add_ssh_host remove_ssh_host \
         set_ssh_host \
-        shipped has_default table_keys preset_names has_preset preset \
-        enum enum_names fonts system_fonts system_fonts_text
+        load_schema shipped has_default table_keys preset_names has_preset \
+        preset enum enum_names fonts system_fonts system_fonts_text
 
     # The whole model is one document: the GUI edits a single config
     # file, so there is nothing to instantiate.
@@ -49,157 +50,77 @@ namespace eval ::rcsettings::model {
 
     # ------------------------------------------------------- the schema --
     #
-    # Values are raw TOML text, quoting intact, exactly as the binary
-    # prints them. `[ssh_host_defaults]` is not a table of the config
-    # file: it is what one `[[ssh.host]]` row's fields fall back to.
-    # Presets are diffs against their table's defaults, the shape the
-    # terminal's own preset code states them in.
+    # What `--dump-settings` prints, in the shapes it prints it. Values are
+    # raw TOML text, quoting intact, so an edited value can be formatted
+    # after its default's own spelling. `[ssh_host_defaults]` is not a
+    # table of the config file: it is what one `[[ssh.host]]` row's fields
+    # fall back to. Presets arrive with every field resolved, one entry per
+    # preset in the dump's own order.
 
-    variable Defaults {
-        general {
-            effects_frame_skip 3
-            window_scaling 1.0
-            show_terminal_size true
-            font_scaling 1.0
-            show_menubar false
-            bloom_quality 0.5
-            burn_in_quality 0.5
-            use_custom_command false
-            custom_command {""}
-            led_characters 12
-            chassis_shown true
-            grapheme_clustering false
-        }
-        screen {
-            name {"Default Amber"}
-            background_color {"#000000"}
-            font_color {"#ff8100"}
-            flickering 0.1
-            horizontal_sync 0.1
-            static_noise 0.1
-            chroma_color 0.2
-            saturation_color 0.2
-            screen_curvature 0.2
-            glowing_line 0.2
-            burn_in 0.3
-            bloom 0.6
-            rasterization {"no_rasterization"}
-            jitter 0.2
-            rgb_shift 0.0
-            brightness 0.5
-            contrast 0.8
-            ambient_light 0.3
-            window_opacity 1.0
-            font_name {"TERMINESS_SCALED"}
-            font_source {"bundled_fonts"}
-            font_width 1.0
-            line_spacing 0.1
-            margin 0.3
-            blinking_cursor false
-            frame_size 0.1
-            screen_radius 0.1
-            frame_color {"#cfcfcf"}
-            frame_shininess 0.3
-        }
-        chassis {
-            name {"Annunciator"}
-            shell {"annunciator"}
-            channel_indicator {"glow"}
-            channel_display {"led"}
-            frame_size 0.45
-            screen_radius 0.44
-            frame_color {"#001735"}
-            frame_shininess 0.3
-            bank_font_name {"COZETTE_SCALED"}
-        }
-        ssh {
-            default {""}
-            host {[]}
-        }
-        ssh_host_defaults {
-            host {""}
-            user {""}
-            port 22
-            key {""}
-        }
+    variable Defaults [dict create]
+    variable Presets [dict create]
+    variable Values [dict create]
+    variable Fonts {}
+
+    # The dump is one ask per process: what the binary states cannot move
+    # under a window that is already open.
+    variable SchemaLoaded 0
+
+    # The ask itself. `init` runs it, and so does any caller that reads the
+    # schema without a config file to open.
+    proc load_schema {} {
+        variable SchemaLoaded
+        if {$SchemaLoaded} { return }
+        read_schema [run_dump [locate] --dump-settings]
+        set SchemaLoaded 1
+        return
     }
-    variable PresetOrder {
-        screen {
-            {Default Amber}
-            {Monochrome Green}
-            {Deep Blue}
-            {Commodore 64}
-            {Commodore PET}
-            {Apple ][}
-            {Atari 400}
-            {IBM VGA 8x16}
-            {IBM 3278 Reborn}
-            {Neon Cyan}
-            {Ghost Terminal}
-            Plasma
-            Boring
-            E-Ink
+
+    # The parse step alone, so a caller can feed a dump it already holds.
+    proc read_schema {text} {
+        variable Defaults
+        variable Presets
+        variable Values
+        variable Fonts
+        set parsed [::tomledit::parse $text]
+        set Defaults [dict create]
+        foreach table {general screen chassis ssh ssh_host_defaults} {
+            dict set Defaults $table [dict get $parsed tables $table]
         }
-        chassis {
-            Annunciator
-            {Slide Rule}
-            Switchboard
+        set Presets [dict create]
+        foreach {axis rows} {screen screen_presets chassis chassis_presets} {
+            dict set Presets $axis [dict create]
+            foreach entry [dict get $parsed arrays $rows] {
+                dict set Presets $axis \
+                    [::tomledit::plain [dict get $entry name]] $entry
+            }
         }
+        set Values [dict create]
+        dict for {name raw} [dict get $parsed tables values] {
+            dict set Values $name [string_array $raw]
+        }
+        set Fonts [font_pairs [dict get $parsed arrays fonts]]
+        return
     }
-    variable Presets {
-        screen {
-            {Default Amber} {}
-            {Monochrome Green} {font_color {"#0ccc68"} chroma_color 0.0 saturation_color 0.0 screen_curvature 0.3 bloom 0.5 font_name {"DEPARTURE_MONO_SCALED"} screen_radius 0.2 frame_color {"#d4d4d4"} frame_shininess 0.1}
-            {Deep Blue} {font_color {"#7fb4ff"} chroma_color 1.0 screen_curvature 0.4 ambient_light 0.0 font_name {"BIGBLUE_TERMINAL_SCALED"} frame_color {"#ffffff"} frame_shininess 0.9}
-            {Commodore 64} {background_color {"#3b3b8f"} font_color {"#a9a7ff"} horizontal_sync 0.0 chroma_color 0.0 saturation_color 0.0 screen_curvature 0.5 glowing_line 0.1 burn_in 0.1 bloom 0.4 rasterization {"scanline_rasterization"} jitter 0.0 brightness 0.6 contrast 0.7 ambient_light 0.4 font_name {"COMMODORE_64_SCALED"} frame_size 0.5 frame_color {"#999999"} frame_shininess 0.0}
-            {Commodore PET} {font_color {"#ffffff"} flickering 0.2 horizontal_sync 0.2 static_noise 0.2 chroma_color 0.0 saturation_color 0.0 screen_curvature 0.7 glowing_line 0.3 burn_in 0.4 bloom 0.4 rasterization {"scanline_rasterization"} jitter 0.15 ambient_light 0.0 font_name {"COMMODORE_PET_SCALED"} font_width 1.25 margin 0.2 frame_size 0.5 screen_radius 0.3 frame_color {"#000000"} frame_shininess 0.6}
-            {Apple ][} {background_color {"#001100"} font_color {"#4dff6b"} flickering 0.2 horizontal_sync 0.2 static_noise 0.2 chroma_color 0.0 saturation_color 0.0 screen_curvature 0.5 glowing_line 0.3 bloom 0.3 rasterization {"scanline_rasterization"} ambient_light 1.0 font_name {"APPLE_II_SCALED"} font_width 1.25 margin 0.0 frame_size 0.2 screen_radius 0.3 frame_color {"#ffffff"} frame_shininess 0.8}
-            {Atari 400} {background_color {"#0f1f5a"} font_color {"#8ed6ff"} horizontal_sync 0.0 chroma_color 0.0 saturation_color 0.0 screen_curvature 0.4 glowing_line 0.1 burn_in 0.2 bloom 0.1 rasterization {"scanline_rasterization"} jitter 0.0 brightness 0.6 contrast 0.9 ambient_light 0.1 font_name {"ATARI_400_SCALED"} margin 0.2 frame_size 0.4 screen_radius 0.2 frame_color {"#cccccc"}}
-            {IBM VGA 8x16} {font_color {"#c0c0c0"} horizontal_sync 0.0 static_noise 0.0 chroma_color 0.5 saturation_color 0.0 screen_curvature 0.3 glowing_line 0.1 burn_in 0.1 bloom 0.2 rasterization {"scanline_rasterization"} jitter 0.0 rgb_shift 0.1 brightness 0.6 contrast 1.0 ambient_light 0.2 font_name {"IBM_VGA_8x16"} margin 0.2 frame_color {"#ffffff"}}
-            {IBM 3278 Reborn} {font_color {"#3cff7a"} flickering 0.0 horizontal_sync 0.0 static_noise 0.0 chroma_color 0.0 saturation_color 0.0 screen_curvature 0.0 glowing_line 0.0 burn_in 0.5 bloom 0.2 rasterization {"modern_rasterization"} jitter 0.0 ambient_light 0.2 font_name {"IBM_3278"} margin 0.1 frame_size 0.0 screen_radius 0.0 frame_color {"#ffffff"} frame_shininess 0.2}
-            {Neon Cyan} {background_color {"#001018"} font_color {"#52f7ff"} horizontal_sync 0.0 chroma_color 1.0 saturation_color 0.6 screen_curvature 0.0 burn_in 0.1 rasterization {"modern_rasterization"} jitter 0.1 brightness 0.6 contrast 0.9 ambient_light 0.1 window_opacity 0.8 font_name {"IOSEVKA"} margin 0.1 frame_size 0.0 screen_radius 0.0 frame_color {"#c3c3c3"} frame_shininess 0.2}
-            {Ghost Terminal} {background_color {"#0b1014"} font_color {"#a6b3c0"} flickering 0.0 horizontal_sync 0.0 chroma_color 0.0 saturation_color 0.0 screen_curvature 0.0 glowing_line 0.1 burn_in 0.2 bloom 0.3 rasterization {"modern_rasterization"} jitter 0.0 brightness 0.6 contrast 0.5 window_opacity 0.7 font_name {"JETBRAINS_MONO"} margin 0.1 frame_size 0.0 screen_radius 0.0 frame_color {"#a7a7a7"} frame_shininess 0.2}
-            Plasma {background_color {"#070014"} font_color {"#ff9bd6"} horizontal_sync 0.0 chroma_color 1.0 saturation_color 0.8 screen_curvature 0.0 burn_in 0.1 bloom 0.7 rasterization {"modern_rasterization"} jitter 0.1 rgb_shift 0.1 brightness 0.6 ambient_light 0.1 font_name {"FIRA_CODE"} margin 0.1 frame_size 0.0 screen_radius 0.0 frame_color {"#d0d0d0"} frame_shininess 0.2}
-            Boring {font_color {"#ffffff"} flickering 0.0 horizontal_sync 0.0 static_noise 0.0 chroma_color 1.0 saturation_color 0.0 screen_curvature 0.0 glowing_line 0.1 burn_in 0.05 bloom 0.5 rasterization {"modern_rasterization"} jitter 0.0 ambient_light 0.1 font_name {"JETBRAINS_MONO"} margin 0.0 frame_size 0.0 screen_radius 0.0 frame_color {"#c0c0c0"} frame_shininess 0.2}
-            E-Ink {background_color {"#f2f2ec"} font_color {"#101010"} flickering 0.0 horizontal_sync 0.0 static_noise 0.0 chroma_color 0.0 saturation_color 0.0 screen_curvature 0.0 glowing_line 0.0 burn_in 0.6 bloom 0.0 rasterization {"modern_rasterization"} jitter 0.0 brightness 1.0 contrast 0.5 ambient_light 0.6 font_name {"HACK"} margin 0.1 frame_size 0.0 screen_radius 0.0 frame_color {"#cdcdcd"} frame_shininess 0.2}
+
+    # The elements of a TOML array of strings, whose raw text the parser
+    # has already joined onto one line. Only string arrays appear in
+    # `[values]`.
+    proc string_array {raw} {
+        set out {}
+        foreach {- item} [regexp -all -inline {"((?:[^"\\]|\\.)*)"} $raw] {
+            lappend out [::tomledit::plain "\"$item\""]
         }
-        chassis {
-            Annunciator {}
-            {Slide Rule} {shell {"slide-rule"} channel_indicator {"pointer"} frame_size 0.7 screen_radius 1.0 frame_color {"#a77d37"} frame_shininess 0.15}
-            Switchboard {shell {"switchboard"} channel_indicator {"switch"} channel_display {"tape"} frame_size 0.2 screen_radius 0.7 frame_color {"#461725"} frame_shininess 0.2 bank_font_name {"DEPARTURE_MONO_SCALED"}}
-        }
+        return $out
     }
-    variable Values {
-        rasterization {no_rasterization scanline_rasterization pixel_rasterization subpixel_rasterization modern_rasterization}
-        shell {annunciator slide-rule switchboard}
-        channel_indicator {glow pointer switch}
-        channel_display {led tape}
-    }
-    variable Fonts {
-        {TERMINESS_SCALED Terminess}
-        {BIGBLUE_TERMINAL_SCALED {BigBlue Terminal}}
-        {EXCELSIOR_SCALED {Fixedsys Excelsior}}
-        {GREYBEARD_SCALED Greybeard}
-        {COMMODORE_PET_SCALED {Commodore PET}}
-        {GOHU_11_SCALED {Gohu 11}}
-        {COZETTE_SCALED Cozette}
-        {UNSCII_8_SCALED {Unscii 8}}
-        {UNSCII_8_THIN_SCALED {Unscii 8 Thin}}
-        {UNIFONT Unifont}
-        {APPLE_II_SCALED {Apple ][}}
-        {ATARI_400_SCALED {Atari 400-800}}
-        {COMMODORE_64_SCALED {Commodore 64}}
-        {IBM_EGA_8x8 {IBM EGA 8x8}}
-        {IBM_VGA_8x16 {IBM VGA 8x16}}
-        {TERMINESS Terminess}
-        {HACK Hack}
-        {FIRA_CODE {Fira Code}}
-        {IOSEVKA Iosevka}
-        {JETBRAINS_MONO {JetBrains Mono}}
-        {IBM_3278 {IBM 3278}}
-        {SOURCE_CODE_PRO {Source Code Pro}}
-        {DEPARTURE_MONO_SCALED {Departure Mono}}
-        {OPENDYSLEXIC OpenDyslexic}
+
+    # {catalogue_key display_name} pairs from parsed `[[fonts]]` rows. The
+    # bundled catalogue and the machine's own faces are the same shape.
+    proc font_pairs {entries} {
+        return [lmap entry $entries {
+            list [::tomledit::plain [dict get $entry name]] \
+                [::tomledit::plain [dict get $entry text]]
+        }]
     }
 
     # The shipped default of table.key, raw. Asking for a key the schema
@@ -226,14 +147,13 @@ namespace eval ::rcsettings::model {
         return [dict keys [dict get $Defaults $table]]
     }
 
+    # Dump order, which is the order a preset picker should offer.
     proc preset_names {axis} {
-        variable PresetOrder
-        if {![dict exists $PresetOrder $axis]} {
+        variable Presets
+        if {![dict exists $Presets $axis]} {
             error "no presets for axis \"$axis\""
         }
-        # lrange canonicalises the literal above, whose own spelling is
-        # one name per line.
-        return [lrange [dict get $PresetOrder $axis] 0 end]
+        return [dict keys [dict get $Presets $axis]]
     }
 
     proc has_preset {axis name} {
@@ -241,9 +161,8 @@ namespace eval ::rcsettings::model {
         return [dict exists $Presets $axis $name]
     }
 
-    # The preset's own diff against the axis table's defaults: a key it
-    # does not carry falls back to `shipped`, which is what base_raw_under
-    # does with it.
+    # The preset with every field of its table resolved, `name` among
+    # them, which is how the dump states it.
     proc preset {axis name} {
         variable Presets
         if {![has_preset $axis $name]} {
@@ -252,11 +171,10 @@ namespace eval ::rcsettings::model {
         return [dict get $Presets $axis $name]
     }
 
-    # List of {catalogue_key display_name} pairs. lrange canonicalises
-    # the literal above, whose own spelling is one pair per line.
+    # The bundled catalogue: {catalogue_key display_name} pairs.
     proc fonts {} {
         variable Fonts
-        return [lrange $Fonts 0 end]
+        return $Fonts
     }
 
     proc enum_names {} {
@@ -274,14 +192,15 @@ namespace eval ::rcsettings::model {
 
     # ------------------------------------------- the machine's own faces --
     #
-    # The installed system faces are the one schema answer no coder can
-    # know ahead: they are asked of the terminal binary, which is the
-    # authority on which faces it can render. The terminal names itself in
-    # ROBCO_SETTINGS_TERMINAL when it opens this window; a hand launch
-    # falls back to the sibling binary and then PATH.
+    # The installed system faces are asked of the same binary the schema
+    # is, under a flag of their own, because that answer costs a walk of
+    # the platform's font directories: the font tab asks for it, and a
+    # window the user never takes there does not pay for it. The terminal
+    # names itself in ROBCO_SETTINGS_TERMINAL when it opens this window; a
+    # hand launch falls back to the sibling binary and then PATH.
 
     # A binary the suites point this namespace at, so a test can run the
-    # real --list-renderable-fonts against a build tree. Nothing user-facing
+    # real dump and font walk against a build tree. Nothing user-facing
     # sets it.
     variable ForcedBinary ""
 
@@ -358,16 +277,9 @@ namespace eval ::rcsettings::model {
     # pairs, same shape as `fonts`, and an empty list when the array is
     # absent altogether.
     proc system_fonts_text {text} {
-        set out {}
         set parsed [::tomledit::parse $text]
-        if {[dict exists $parsed arrays fonts]} {
-            foreach entry [dict get $parsed arrays fonts] {
-                lappend out [list \
-                    [::tomledit::plain [dict get $entry name]] \
-                    [::tomledit::plain [dict get $entry text]]]
-            }
-        }
-        return $out
+        if {![dict exists $parsed arrays fonts]} { return {} }
+        return [font_pairs [dict get $parsed arrays fonts]]
     }
 
     # ------------------------------------------------- the config file --
@@ -390,9 +302,13 @@ namespace eval ::rcsettings::model {
         return [file join $env(HOME) .config robco-term config.toml]
     }
 
-    # An empty $path takes the platform's default location.
+    # An empty $path takes the platform's default location. The schema
+    # comes first: without it a window has nothing to resolve the file
+    # against, so the binary being absent is a failure to open, not a
+    # window with empty pages.
     proc init {{path ""}} {
         variable Path
+        load_schema
         if {$path eq ""} { set path [default_config_path] }
         set Path $path
         reload
