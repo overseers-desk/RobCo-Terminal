@@ -63,20 +63,22 @@ no other channel. The terminal spawns the app on right-click, or on the
 macOS menu's Settings item, which names the focused window and reaches the
 same spawn (a sibling binary first, then `$PATH`); a second is declined
 while one runs.
-The app knows the schema the way its coder does: the defaults, the preset
-diffs, the font catalogue and the enum value lists are literal data in
-`settings/lib/model.tcl`, so the window opens without running or parsing
-anything. The Rust source stays the authority on those values:
-`robco-term --dump-settings` still prints them, and `tests/schema.test`
-holds the literals to that dump, so a drift fails the tests rather than a
-user's file. The one question left for the running terminal is the
-machine's installed faces, asked over `robco-term --list-renderable-fonts`
-when the user opts into system fonts. For that call the spawning terminal
-names its own binary in `ROBCO_SETTINGS_TERMINAL`; a hand-launched window
-falls back to the sibling executable, under the name the platform gives it
-(`robco-term.exe` on Windows, `robco-term` everywhere else), then to
-`$PATH`, and where the window is embedded in the terminal's own executable
-the terminal is this process and needs no finding.
+The app asks the terminal for the schema when it opens: `robco-term
+--dump-settings` prints the defaults, the presets with every field
+resolved, the enum value lists and the bundled font catalogue, and
+`settings/lib/model.tcl` reads them from that. The Rust source is
+therefore the only statement of those values, and the window cannot show
+a stale one. The price is that the window needs the terminal binary
+present to open, and says so by name when it is not: the binary is the
+one the spawning terminal names in `ROBCO_SETTINGS_TERMINAL`, else the
+sibling executable under the name the platform gives it
+(`robco-term.exe` on Windows, `robco-term` everywhere else), else one on
+`$PATH`, and where the window is embedded in the terminal's own
+executable the terminal is this process and needs no finding. The
+machine's installed faces are a second ask over `robco-term
+--list-renderable-fonts`, made when the user opts into system fonts
+rather than at open, because that answer costs a walk of the platform's
+font directories.
 
 ## Building and shipping it
 

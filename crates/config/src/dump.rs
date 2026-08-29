@@ -5,8 +5,8 @@
 //! a tool showing effective values needs the defaults, the preset tables the
 //! two `name` keys select among, and the value lists for the enum-shaped
 //! keys. All of that lives in this crate (and, for the font catalogue, in
-//! the running binary), so `robco-term --dump-settings` prints it rather
-//! than having every tool keep a copy that drifts.
+//! the running binary), so `robco-term --dump-settings` prints it: the
+//! settings window reads this at open and states none of it itself.
 //!
 //! The output is TOML: `[general]` / `[screen]` / `[chassis]` / `[ssh]`
 //! hold the fully-resolved defaults, `[ssh_host_defaults]` what a fresh
