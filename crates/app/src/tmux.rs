@@ -170,6 +170,33 @@ pub enum GatewayEvent {
     Detached { lost_protocol: bool },
 }
 
+/// Ours and local: `/proc/<pid>` is a process of our uid and the socket path
+/// stats to a socket; anything that will not answer is a no.
+#[cfg(unix)]
+pub fn server_is_local(socket: &str, pid: u32) -> bool {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    let uid = |path: String| std::fs::metadata(path).ok().map(|m| m.uid());
+    let server = uid(format!("/proc/{pid}"));
+    server.is_some()
+        && server == uid("/proc/self".to_string())
+        && std::fs::metadata(socket).is_ok_and(|m| m.file_type().is_socket())
+}
+
+/// No tmux runs on this platform, so no server can be ours and local; the
+/// caller's refusal path is the whole answer.
+#[cfg(not(unix))]
+pub fn server_is_local(_socket: &str, _pid: u32) -> bool {
+    false
+}
+
+/// The server's own binary, so both ends speak one dialect; `tmux` on PATH if `/proc` will not say.
+pub fn tmux_binary(pid: u32) -> String {
+    std::fs::read_link(format!("/proc/{pid}/exe"))
+        .ok()
+        .and_then(|path| path.to_str().map(str::to_string))
+        .unwrap_or_else(|| "tmux".to_string())
+}
+
 /// One `tmux -CC` attachment's client half.
 pub struct Gateway<W: Write> {
     codec: Codec,
