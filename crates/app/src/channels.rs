@@ -156,10 +156,6 @@ pub struct Channels<S> {
     next_bank_id: BankId,
     current_bank: BankId,
     current_channel: u32,
-    /// The bank on view. `None` means this has never been set independently of
-    /// the current bank: a profile with no bank never writes it, and it simply
-    /// follows the air.
-    bank_on_view: Option<BankId>,
     /// The set only flinches once it is on: bringing up the first channel is
     /// not a channel change.
     degauss_armed: bool,
@@ -187,7 +183,6 @@ impl<S> Channels<S> {
             next_bank_id: 1,
             current_bank: 0,
             current_channel: 0,
-            bank_on_view: None,
             degauss_armed: false,
             degauss_pending: false,
             stored: Vec::new(),
@@ -241,16 +236,6 @@ impl<S> Channels<S> {
     /// one of these two without reading the other.
     pub fn on_air(&self) -> (BankId, u32) {
         (self.current_bank, self.current_channel)
-    }
-
-    /// The bank the user is looking at: the pager binds it here while it steps
-    /// without stealing the air.
-    pub fn bank_on_view(&self) -> BankId {
-        self.bank_on_view.unwrap_or(self.current_bank)
-    }
-
-    pub fn set_bank_on_view(&mut self, bank: BankId) {
-        self.bank_on_view = Some(bank);
     }
 
     pub fn len(&self) -> usize {
@@ -481,13 +466,21 @@ impl<S> Channels<S> {
         self.open_channel(0, slot, session)
     }
 
-    /// `:292-301`: what `Ctrl+Shift+T` asks for. A new channel goes to the bank
-    /// on view: on home the lowest free slot with a shell in it, on an
-    /// attachment another window of that session, which is the gateway's to
-    /// give. Returns the bank whose gateway must be asked, or `None` when the
-    /// shell was opened here.
-    pub fn new_channel(&mut self, session: impl FnOnce() -> Option<S>) -> Option<BankId> {
-        let view = self.bank_on_view();
+    /// `:292-301`: what `Ctrl+Shift+T` asks for. A new channel goes to `view`,
+    /// the bank the user is looking at: on home the lowest free slot with a
+    /// shell in it, on an attachment another window of that session, which is
+    /// the gateway's to give. Returns the bank whose gateway must be asked, or
+    /// `None` when the shell was opened here.
+    ///
+    /// The view is the pager's (`crate::bank::BankPager::view`) and is passed
+    /// in rather than held: it is derived from this model plus how many rows
+    /// the window fits, and a copy kept here would be a second answer to
+    /// re-synchronise.
+    pub fn new_channel(
+        &mut self,
+        view: BankId,
+        session: impl FnOnce() -> Option<S>,
+    ) -> Option<BankId> {
         if self.ask_for_window(view) {
             return Some(view);
         }
@@ -670,9 +663,6 @@ impl<S> Channels<S> {
             && !self.rows.iter().any(|r| r.bank == bank)
         {
             self.banks.retain(|b| b.id != bank);
-            if self.bank_on_view == Some(bank) {
-                self.bank_on_view = None;
-            }
         }
     }
 
@@ -927,9 +917,6 @@ impl<S> Channels<S> {
             let was_here = self.current_bank == bank;
             self.rows.retain(|r| r.bank != bank);
             self.banks.remove(i);
-            if self.bank_on_view == Some(bank) {
-                self.bank_on_view = None;
-            }
             if was_here {
                 if let Some(next) = self.nearest_row(at, 0) {
                     let (b, c) = (self.rows[next].bank, self.rows[next].channel);
@@ -946,9 +933,6 @@ impl<S> Channels<S> {
             self.resort();
         }
         self.banks.remove(i);
-        if self.bank_on_view == Some(bank) {
-            self.bank_on_view = None;
-        }
         self.set_current(home_bank, home_slot);
         self.degauss_armed = armed;
         Some((home_bank, home_slot))
@@ -1375,12 +1359,10 @@ mod tests {
         let bank = set.attach(0, 1, "prime").unwrap();
         // The air is on an attachment, but the pager has stepped back to home:
         // the new channel is a PTY shell, not a tmux window.
-        set.set_bank_on_view(0);
-        assert_eq!(set.new_channel(|| Some(7)), None);
+        assert_eq!(set.new_channel(0, || Some(7)), None);
         assert_eq!(set.slot_title(0, 2), Some(""));
         // Viewing the attachment, the same key asks its gateway instead.
-        set.set_bank_on_view(bank);
-        assert_eq!(set.new_channel(|| Some(8)), Some(bank));
+        assert_eq!(set.new_channel(bank, || Some(8)), Some(bank));
         assert!(matches!(
             set.manager_of(bank),
             Some(Manager::Tmux {

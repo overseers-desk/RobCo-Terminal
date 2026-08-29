@@ -2388,7 +2388,7 @@ impl TerminalSurface {
         // channel of that connection, resolved locally: channel numbering
         // is the client's, so unlike a tmux window there is no round trip
         // to wait on.
-        let view = self.channels.bank_on_view();
+        let view = self.pager.view(&self.channels).bank;
         if self.channels.manager_of(view).is_some_and(Manager::is_ssh) {
             self.open_ssh_channel(view);
             self.channel_changed();
@@ -2407,7 +2407,7 @@ impl TerminalSurface {
             }
         }
         let (config, size) = (self.session_now(), self.viewport.term_size());
-        if let Some(bank) = self.channels.new_channel(|| spawn(&config, size)) {
+        if let Some(bank) = self.channels.new_channel(view, || spawn(&config, size)) {
             // The model set the bank's `new_window_pending` flag; the window
             // tmux answers with will take the air when it lands
             // (`open_tmux_window`).
@@ -2572,11 +2572,9 @@ impl TerminalSurface {
         self.settle_bank();
     }
 
-    /// The half of the above that a pager step also needs: the bank on view is
-    /// the one `Ctrl+Shift+T` acts on, and a moved stretch cancels the chord.
+    /// The half of the above that a pager step also needs: a stretch of
+    /// numerals that moved abandons the digits typed against the old ones.
     fn settle_bank(&mut self) {
-        let bank = self.pager.view(&self.channels).bank;
-        self.channels.set_bank_on_view(bank);
         if self.pager.refresh(&self.channels) {
             self.chord.cancel();
         }
