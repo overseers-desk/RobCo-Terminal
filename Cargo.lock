@@ -3666,7 +3666,6 @@ name = "robco-chassis"
 version = "0.1.0"
 dependencies = [
  "robco-config",
- "robco-crt-render",
  "robco-gpu",
  "robco-shader-oracle",
  "robco-term",

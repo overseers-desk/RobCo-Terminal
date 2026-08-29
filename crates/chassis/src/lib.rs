@@ -2,10 +2,10 @@
 //!
 //! The appliance is a screen well with a column of furniture to its left
 //! (the channel bank) and a metal casting wrapped around both. This crate owns
-//! that casting's geometry and the metal it is poured from. It owns no device
-//! and draws nothing itself: it turns a window size and a profile into
-//! rectangles and named shader uniforms, and whoever holds the wgpu device
-//! mounts the passes.
+//! that casting's geometry, the metal it is poured from, and the furniture
+//! that stands on it. It owns no device and draws nothing itself: it turns a
+//! window size and a profile into rectangles, named shader parameters and
+//! drawing descriptions, and whoever holds the wgpu device draws them.
 //!
 //! # What lives where
 //!
@@ -20,8 +20,11 @@
 //!   screen region in whole-character steps.
 //! - [`frame`]: the bezel's and the chassis metal's uniform sets, and the
 //!   derivations that sit between a stored setting and a shader.
-//! - [`params`]: the uniform-payload structs for the three metals, the
-//!   independent-formula side of their per-pass tests.
+//! - [`params`]: the parameter-record structs for the three metals and the
+//!   two display kits, the independent-formula side of their per-pass tests.
+//! - [`paint`]: the drawing vocabulary the furniture that is not a shader is
+//!   described in: rounded rectangles with gradients, arcs, filled paths and
+//!   lines of text.
 //! - [`displays`]: the two channel-display kits, LED and tape: the raster
 //!   each one composes over `term::fonts::led`'s proven glyphs, and the
 //!   appearance mapping that colours it.
@@ -29,14 +32,16 @@
 //!   its drawing recipe, i.e. which regions it paints and with which of the
 //!   three metals.
 //!
-//! `shaders/metal/` carries the three procedural metals: `frame_metal` (the
-//! bezel), `chassis_metal` (the casting under the bank) and `plate_metal` (the
-//! raised plate a shell screws over it). Each ships its own `.slangp` and
-//! mounts standalone. [`shaders`] compiles the three sources in, for a host
-//! that writes its own preset and has no source tree to read one from.
-//! `shaders/led_matrix/` and `shaders/tape_label/` are the two channel
-//! displays' passes, on the same terms; both arrived from `crt-render` with
-//! the metals, since the chain stops at the glass and these paint chrome.
+//! The shader sources are split by which side of the chain they are drawn
+//! on, and [`shaders`] compiles both families in for a host with no source
+//! tree to read them from. `shaders/metal/` carries `frame_metal`, the bezel,
+//! which is the one piece of cabinet inside the curvature and so is a `.slang`
+//! the chain mounts. `shaders/wgsl/` carries everything drawn after it:
+//! `chassis_metal` (the casting under the bank), `plate_metal` (the raised
+//! plate a shell screws over it), `led_matrix` and `tape_label` (the two
+//! channel displays), and `vector` (the drawn furniture). Those five are
+//! function bodies with no bindings and no entry points, so the host that
+//! concatenates them decides what they read.
 //!
 //! # The order the numbers come in
 //!
@@ -63,15 +68,15 @@
 //!
 //! # Where the chassis stops
 //!
-//! Chassis chrome lives outside the CRT chain and composites over the
-//! glass. That is why this crate is meant to depend on no part of `crt`, not
-//! even for the two small functions the `robco-shader-oracle` crate carries
-//! once for both, which the shaders' own `.frag` files duplicate between themselves
-//! for the same reason. The one piece that is genuinely in both worlds is
-//! the bezel; [`frame`]'s module doc says what it is doing there. [`color`]
-//! is the same trade made once for the whole crate: the two colour helpers
-//! both halves of the chrome need, rather than a dependency on
-//! `crt::color`.
+//! Chassis chrome lives outside the CRT chain and composites over the glass,
+//! in a native pass the application owns (`app::chrome`). That is why this
+//! crate depends on no part of `crt` at all, shipped or dev: not for the two
+//! small functions the `robco-shader-oracle` crate carries once for both, and
+//! not for a rig, since the one pass of ours the chain mounts is measured on
+//! the chain's side of the tree. The piece genuinely in both worlds is the
+//! bezel; [`frame`]'s module doc says what it is doing there. [`color`] is the
+//! same trade made once for the whole crate: the two colour helpers both
+//! halves of the chrome need, rather than a dependency on `crt::color`.
 
 pub mod bank;
 pub mod cabinet;

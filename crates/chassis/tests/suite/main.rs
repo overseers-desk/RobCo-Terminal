@@ -4,9 +4,7 @@
 //! weighed 21GB that way.
 
 mod bank_frame_geometry;
-mod bank_frame_render;
 mod chassis_metal;
-mod frame_metal;
 mod gpu_annunciator;
 mod led_display;
 mod led_matrix;

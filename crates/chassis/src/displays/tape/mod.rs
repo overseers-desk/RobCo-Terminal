@@ -1,5 +1,5 @@
 //! The tape-label kit. A channel title stamped as embossed punch tape,
-//! rendered through `shaders/tape_label/tape_label.slang`. Unlike the LED
+//! drawn by `shaders/wgsl/tape_label.wgsl`. Unlike the LED
 //! strip, tape reads nothing from the profile: font, colours and light
 //! direction are the kit's own -- tape is paint, not light.
 //!

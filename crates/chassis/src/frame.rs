@@ -2,9 +2,12 @@
 //! that continues it leftwards under the bank.
 //!
 //! Both the bezel and the chassis metal are shaded surfaces over the metals
-//! now in `shaders/metal/`, so this module turns a window layout and a
-//! profile into the named parameters `frame_metal.slang` and
-//! `chassis_metal.slang` take, and whoever owns the device mounts the pass.
+//! so this module turns a window layout and a profile into the named
+//! parameters `shaders/metal/frame_metal.slang` and
+//! `shaders/wgsl/chassis_metal.wgsl` take, and whoever owns the device mounts
+//! the pass. The two live in different languages because they sit on
+//! different sides of the chain: the bezel is inside the curvature and the
+//! casting is drawn after it.
 //!
 //! Two things about the frame are easy to get backwards.
 //!

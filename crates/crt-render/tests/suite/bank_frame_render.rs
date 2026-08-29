@@ -1,12 +1,12 @@
 //! Done-test: the bank frame drawn, at sampled window sizes, with the uniforms
 //! the geometry produces.
 //!
-//! `bank_frame_geometry.rs` proves the arithmetic. This proves the arithmetic
-//! reaches the glass: the frame is rendered offscreen through the chain
-//! crate's measurement rig with the uniform set [`chassis::frame::frame_params`]
-//! builds from a real [`WindowLayout`], and the screen opening it leaves is
-//! measured off the readback and compared against what the distortion
-//! formula says it should be.
+//! `robco-chassis`'s `bank_frame_geometry.rs` proves the arithmetic. This
+//! proves the arithmetic reaches the glass: the frame is rendered offscreen
+//! through this crate's own measurement rig with the uniform set
+//! [`chassis::frame::frame_params`] builds from a real [`WindowLayout`], and
+//! the screen opening it leaves is measured off the readback and compared
+//! against what the distortion formula says it should be.
 //!
 //! Why the opening is predictable without reimplementing the shader:
 //!
@@ -134,7 +134,7 @@ fn the_moulding_lands_where_the_geometry_puts_it() {
     let bank = stock_bank_width();
     let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("shaders/metal/frame_metal.slangp");
+        .join("../chassis/shaders/metal/frame_metal.slangp");
 
     for (win_w, win_h) in WINDOW_SIZES {
         let layout = WindowLayout::new(win_w, win_h, bank);
@@ -191,7 +191,7 @@ fn the_drawn_frame_agrees_with_the_oracle_on_uniforms_the_geometry_chose() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("shaders/metal/frame_metal.slangp");
+        .join("../chassis/shaders/metal/frame_metal.slangp");
     let input = vec![0u8; (w * h * 4) as usize];
     let out = render_single_pass(&gpu, &preset, &params, w, h, &input);
 
@@ -229,7 +229,7 @@ fn a_wider_bank_thickens_the_moulding_it_leaves() {
 
     let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("shaders/metal/frame_metal.slangp");
+        .join("../chassis/shaders/metal/frame_metal.slangp");
 
     let mut measured = Vec::new();
     // The stock bank, and the bank at roughly twice and four times the
@@ -273,7 +273,7 @@ fn curvature_pushes_the_glass_edge_out_under_the_moulding() {
     // never arrived, or arrived with the sign flipped.
     let gpu = Locked::new().expect("headless wgpu device");
     let preset = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("shaders/metal/frame_metal.slangp");
+        .join("../chassis/shaders/metal/frame_metal.slangp");
     let layout = WindowLayout::new(1440.0, 900.0, stock_bank_width());
     let w = layout.crt.width as u32;
     let h = layout.crt.height as u32;

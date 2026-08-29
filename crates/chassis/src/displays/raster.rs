@@ -3,9 +3,9 @@
 //! wants.
 //!
 //! The convention is premultiplied white, `[a, a, a, a]` per pixel -- both
-//! shaders read `Source` this way: `led_matrix.slang` takes
-//! `max(glyph.r, glyph.g, glyph.b)`, `tape_label.slang` takes only
-//! `texture(Source, guv).a` -- so one conversion serves both.
+//! bodies read their raster this way: `led_matrix.wgsl` takes
+//! `max(glyph.r, glyph.g, glyph.b)`, `tape_label.wgsl` takes only the alpha
+//! -- so one conversion serves both.
 
 use term::fonts::led::LedRaster;
 

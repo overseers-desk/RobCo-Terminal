@@ -3,10 +3,15 @@
 //! Two families, and the split is the chain's edge. The bezel is the one
 //! piece of chassis inside the curvature, so it is a `.slang` mounted in the
 //! chain's frame slot, and it ships with a `.slangp` beside it under
-//! `shaders/metal/` for the per-pass test to resolve against
-//! `CARGO_MANIFEST_DIR`. Everything drawn *after* the chain is WGSL under
-//! `shaders/wgsl/`, run by a native pipeline that needs no preset, no cache
-//! directory and no runtime materialisation.
+//! `shaders/metal/` for the per-pass test in `robco-crt-render`'s suite to
+//! mount. Everything drawn *after* the chain is WGSL under `shaders/wgsl/`,
+//! run by a native pipeline that needs no preset, no cache directory and no
+//! runtime materialisation.
+//!
+//! The WGSL family is function bodies: no bindings, no entry points, one
+//! function per thing that can be drawn. A host concatenates them with its
+//! own glue, which is what lets the same text serve a per-piece instanced
+//! pass and a single-quad measurement rig.
 //!
 //! A shipped binary carries its shaders rather than looking for a source
 //! tree, which is what these constants are for.

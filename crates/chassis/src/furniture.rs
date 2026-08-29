@@ -66,11 +66,11 @@ use config::Config;
 /// at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pass {
-    /// `plate_metal.slang`.
+    /// `plate_metal.wgsl`.
     Plate,
-    /// `led_matrix.slang`.
+    /// `led_matrix.wgsl`.
     LedMatrix,
-    /// `tape_label.slang`.
+    /// `tape_label.wgsl`.
     TapeLabel,
     /// Not a shader: a [`crate::paint::Painting`], rasterised by the mount at
     /// the window's own ratio and blitted like the rest. This is the vector
@@ -162,7 +162,7 @@ pub fn font_color(cfg: &Config) -> Rgba {
     )
 }
 
-/// `plate_metal.slang`'s uniforms, by name.
+/// `plate_metal.wgsl`'s parameters, by name.
 pub fn plate_params(p: &PlateMetalParams) -> Vec<Param> {
     vec![
         ("sizePxX", p.size_px[0]),
@@ -193,7 +193,7 @@ pub fn plate_params(p: &PlateMetalParams) -> Vec<Param> {
     ]
 }
 
-/// `led_matrix.slang`'s uniforms, by name, for one window.
+/// `led_matrix.wgsl`'s parameters, by name, for one window.
 ///
 /// `spill` is the margin in pixels the drawn rectangle stands proud of the
 /// strip on each side; the shader wants it as a fraction of that grown
@@ -240,7 +240,7 @@ pub fn led_params(
     ]
 }
 
-/// `tape_label.slang`'s uniforms, by name, for one label of `size` pixels
+/// `tape_label.wgsl`'s parameters, by name, for one label of `size` pixels
 /// whose glyph box is `glyph_rect`.
 pub fn tape_params(size: (f64, f64), glyph_rect: (f32, f32, f32, f32)) -> Vec<Param> {
     let tape_color = tape::tape_color();

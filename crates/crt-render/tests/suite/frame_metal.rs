@@ -1,5 +1,12 @@
-//! Standalone proof + done-test for `shaders/metal/frame_metal.slang`.
-//! Fully analytic, no `sin` in this shader either.
+//! Standalone proof + done-test for `robco-chassis`'s
+//! `shaders/metal/frame_metal.slang`. Fully analytic, no `sin` in this shader
+//! either.
+//!
+//! It is measured here rather than beside its own crate because this is the
+//! crate that mounts it: the bezel is the one piece of cabinet inside the
+//! curvature, so it is a `.slang` in the chain's frame slot, and the rig that
+//! mounts a single pass is the chain's. `robco-chassis` reaches nothing in
+//! this half of the tree.
 
 use oracle;
 use crt::harness::render_single_pass;
@@ -9,16 +16,19 @@ use std::path::PathBuf;
 const W: u32 = 96;
 const H: u32 = 64;
 
-/// See `tests/chassis_metal.rs`'s `uv_of` for the empirical confirmation
-/// that this mapping (no y-flip between readback row and texcoord v) is
-/// what wgpu/librashader's quad actually produces.
+/// See `robco-chassis`'s `tests/suite/chassis_metal.rs`'s `uv_of` for the
+/// empirical confirmation that this mapping (no y-flip between readback row
+/// and texcoord v) is what wgpu/librashader's quad actually produces.
 fn uv_of(c: u32, r: u32) -> [f32; 2] {
     [(c as f32 + 0.5) / W as f32, (r as f32 + 0.5) / H as f32]
 }
 
 #[test]
 fn frame_metal_matches_oracle() {
-    let preset = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("shaders/metal/frame_metal.slangp");
+    // The pass is `robco-chassis`'s, mounted here because the chain is what
+    // mounts it: the bezel is the one piece of cabinet inside the curvature.
+    let preset = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../chassis/shaders/metal/frame_metal.slangp");
     let gpu = Locked::new().expect("headless wgpu device");
 
     let params = oracle::FrameMetalParams {

@@ -3,7 +3,7 @@
 //! ~200MB copy of the dependency stack, and this workspace's suite once
 //! weighed 21GB that way.
 
-mod bank_column;
+mod bank_chrome;
 mod bank_furniture;
 mod channel_bank;
 mod clipboard_keys;

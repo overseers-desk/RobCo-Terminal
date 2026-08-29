@@ -29,10 +29,9 @@ robco-term = { path = "../term" }
 [dev-dependencies]
 robco-shader-oracle = { path = "../shader-oracle" }
 # The offscreen device and the machine-wide lock the shader done-tests hold it
-# under, and the librashader rig that mounts one of this crate's `.slangp`
-# presets on it. Note the direction: both are dev-dependencies only, so no
-# shipped chrome reaches into the glass chain's half of the tree, and
-# `robco-crt-render`'s own `[dependencies]` on this crate is unaffected.
+# under. A dev-dependency only, so nothing shipped from here creates a device.
+# The crate reaches the glass chain's half of the tree nowhere at all now: the
+# two tests that mounted a `.slangp` through the chain's rig live in
+# `robco-crt-render`'s suite, which is where the chain that mounts them is.
 robco-gpu = { path = "../gpu", features = ["harness"] }
-robco-crt-render = { path = "../crt-render", features = ["harness"] }
 wgpu = "=30.0.0"

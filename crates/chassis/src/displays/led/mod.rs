@@ -1,5 +1,5 @@
 //! The LED strip kit. A channel title read off the bundled pixel font, one
-//! image pixel per lamp, rendered through `shaders/led_matrix/led_matrix.slang`.
+//! image pixel per lamp, drawn by `shaders/wgsl/led_matrix.wgsl`.
 //!
 //! [`metrics`] is the width/height quantisation contract. This module is
 //! the state-to-appearance mapping: the function that turns
@@ -86,8 +86,8 @@ pub fn glow(bright: bool) -> f32 {
 }
 
 /// Fixed shader constants -- pinned at the call site, not the shader's own
-/// `#pragma parameter` defaults (`dotRadius 0.35`, `threshold 0.5` in
-/// `led_matrix.slang`).
+/// own defaults (`dot_radius 0.35`, `threshold 0.5` in
+/// `led_matrix.wgsl`).
 pub const DOT_RADIUS: f32 = 0.50;
 pub const THRESHOLD: f32 = 0.4;
 /// No dead band: the throw starts at the window's lip.

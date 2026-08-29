@@ -11,7 +11,7 @@ One process holds one `wgpu` device and a `winit` window. Inside it:
 - Glyphs are rasterised through `cosmic-text` and `swash` into an atlas this workspace owns, uploaded as a texture, and drawn by one WGSL shader into an offscreen grid texture. The atlas thresholds coverage to binary for the bitmap faces and scales them by integer arithmetic, which is what keeps pixel type exact at any window scale or device pixel ratio.
 - That grid texture is the input to a CRT pass chain, expressed as slang shaders run by `librashader`. The chain carries the picture's identity: curvature, phosphor persistence, bloom, scan line, chroma, rasterisation modes.
 - Phosphor persistence is a feedback pass. An alias hands the pass its own previous frame, which it samples against the live source, so the decay is state the chain holds rather than something the application recomputes.
-- The chassis composites over the chain's output. It is flat, square, and outside the curvature, because a cabinet that bent with the tube would read as painted onto the glass rather than standing around it.
+- The chassis composites over the chain's output, in one native pass of its own: the casting, every piece of furniture standing on it, and the transient badges over the glass, as instances of a single draw in the plan's own order. It is flat, square, and outside the curvature, because a cabinet that bent with the tube would read as painted onto the glass rather than standing around it.
 
 ## Crates
 
@@ -21,13 +21,13 @@ One process holds one `wgpu` device and a `winit` window. Inside it:
 | `term` | Everything that is a terminal and nothing that is a window: the session, the PTY loop, the grid read-back seam, the DCS tap, the glyph atlas, selection, hotspots, and the pointer distortion math. |
 | `crt-render` | The pass graph, the persistence feedback pass inside it, and materialising the preset and shader bodies into the cache directory. |
 | `gpu` | The wgpu device concerns every crate shares: the feature set a device is created with, the offscreen target and its readback, and, for tests only, the machine-wide device lock. |
-| `chassis` | The cabinet: bank geometry, shells, channel displays, and the procedural metal. It holds no device and draws nothing. |
+| `chassis` | The cabinet: bank geometry, shells, channel displays, the procedural metal, and the furniture drawn over it as descriptions. It holds no device and draws nothing. |
 | `tmux-cc` | The control-mode protocol codec, and nothing else. Session and window policy live with the gateway that uses it. |
 | `app` | The process: command line, window shell, single-instance arbitration, input, crash logger, and the tmux gateway. |
 | `xtask` | The evaluation harness and the packaging targets. |
 | `shader-oracle` | CPU reimplementations of the shader math, as a development dependency. Tests render a pixel on the GPU and compare it against the same closed form computed here. |
 
-Four boundaries carry weight. The chain stops at the glass, so `chassis` computes geometry and colour without depending on the render chain in anything it ships; it reaches the chain's measurement rig as a development dependency only, to mount its own passes on a device. The protocol codec holds no policy, so it can be driven from recorded transcripts. The configuration plumbing is schema-agnostic, operating on a TOML document and on any deserializable type, so the schema and the file mechanics can change independently. The oracle is a development dependency, so no reference implementation ships in a binary.
+Four boundaries carry weight. The chain stops at the glass, so `chassis` computes geometry and colour without depending on the render chain at all, shipped or dev. What keeps the cabinet out of the curvature is not the chain's own machinery but the order of the frame: the chassis is drawn by one native `wgpu` pass in `app`, after the chain has finished, scissored to the bank column and composited with `LoadOp::Load`. Its shader bodies are WGSL, which no preset and no cache directory stand between. The one pass of the cabinet's that *is* slang is the bezel, because the bezel sits inside the curvature; the chain mounts it, and measures it. The protocol codec holds no policy, so it can be driven from recorded transcripts. The configuration plumbing is schema-agnostic, operating on a TOML document and on any deserializable type, so the schema and the file mechanics can change independently. The oracle is a development dependency, so no reference implementation ships in a binary.
 
 ## No widget toolkit
 

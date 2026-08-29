@@ -109,7 +109,7 @@ impl WindowLayout {
     /// not two that meet at a seam.
     ///
     /// Returns `(viewport_size, field_scale, field_offset)`, the three uniforms
-    /// `chassis_metal.slang` takes for that continuation.
+    /// `chassis_metal.wgsl` takes for that continuation.
     pub fn chassis_field(&self) -> ([f32; 2], [f32; 2], [f32; 2]) {
         // The frame's own size, floored at one pixel so the divides below
         // are defined before the window has been laid out.

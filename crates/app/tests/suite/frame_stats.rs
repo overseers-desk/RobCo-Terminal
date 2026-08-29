@@ -6,7 +6,7 @@
 //! real hardware, and that the fallback behavior ("absent
 //! = instrument reports unavailable, never panics") holds on a real device,
 //! not only in the pure-logic unit tests `frame_stats`'s own module carries.
-//! So this builds its own bare device, the same way `tests/bank_column.rs`
+//! So this builds its own bare device, the same way `tests/suite/bank_chrome.rs`
 //! and `gpu::harness` do: no surface, no window, `GpuLock`-serialised
 //! against every other GPU test in the workspace.
 

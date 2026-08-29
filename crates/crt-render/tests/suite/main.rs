@@ -4,10 +4,12 @@
 //! weighed 21GB that way.
 
 mod support;
+mod bank_frame_render;
 mod bloom;
 mod burn_in;
 mod burn_in_chain;
 mod contracts;
+mod frame_metal;
 mod glyph_survival;
 mod mount;
 mod pass_graph;

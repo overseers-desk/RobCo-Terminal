@@ -1,20 +1,27 @@
-//! Done-test for the composite: the bank column is drawn onto a frame that is
+//! Done-test for the composite: the chrome pass is drawn onto a frame that is
 //! already there, and it leaves the rest of that frame alone.
 //!
 //! This turns the "chassis chrome sits outside the CRT chain" rule into a
-//! measurement rather than a claim. The casting is chrome:
-//! it is not a stage the picture passes through, it goes on afterwards. Two
-//! things follow, and both are checked here on real GPU pixels:
+//! measurement rather than a claim. The casting is chrome: it is not a stage
+//! the picture passes through, it goes on afterwards. Two things follow, and
+//! both are checked here on real GPU pixels:
 //!
 //! - the column's own rectangle carries the shell's metal, matching
 //!   `oracle::chassis_metal` at sampled points, which is only true if
 //!   the two sizes went into the mount the right way round (the drawn rectangle
 //!   is the bank's, `viewport_size` is the screen well's; see `app::chrome`);
-//! - every pixel outside that rectangle is exactly what was on the frame
-//!   before, to the bit. That is what the chrome pass's `LoadOp::Load` and
-//!   its scissor at the column's rectangle buy, and it is why the chassis is
-//!   drawn by a pass of its own rather than by a second filter chain, whose
-//!   last pass would clear the attachment first.
+//! - every pixel right of the seam is exactly what was on the frame before, to
+//!   the bit. That is what the pass's `LoadOp::Load` and its scissor at the
+//!   column's rectangle buy, and it is the claim that has to be measured
+//!   rather than read: a piece is allowed to hang off the column and one
+//!   routinely does, so what keeps a spill margin off the glass is the
+//!   scissor and nothing else.
+//!
+//! The furniture standing on the casting is here as composition -- a plate
+//! over the casting, lamps in their own cells, a row's description over the
+//! plate, a screw whose corners leave the plate showing. What each piece
+//! *draws* is `bank_furniture.rs`, which reads one piece at a time over
+//! nothing.
 //!
 //! And the hidden-chassis state, which is not a column of no width but no
 //! column: nothing is drawn at all, and the frame comes back untouched.
@@ -726,78 +733,6 @@ fn the_tape_shell_stamps_its_label_and_screws_on_no_plate() {
         "{struck} of {total} pixels in the glyph box are struck, which is a fill, \
          not a letter"
     );
-}
-
-/// A slot is reusable only by the kind of piece that built it.
-///
-/// The mount keeps one slot vector, and two functions build into it: a shaded
-/// piece gets a scratch and a `bind`, a painted piece gets a source texture and
-/// a `source_bind`. `ensure_painted_slot` reused any slot whose geometry
-/// matched, so a strip that had been shaded at this index handed the painted
-/// piece a slot with no `source_bind` -- the painting uploaded into it, and
-/// `draw_furniture`, which blits a painted piece through `source_bind` alone,
-/// drew nothing at all and logged nothing either. `chassis.channel_indicator`
-/// flips a strip between a shaded pass and a painted one at one geometry, so
-/// this is a live-reload away.
-///
-/// The two frames deliberately carry one piece each at one index: that is what
-/// makes the second piece land on the first one's slot.
-#[test]
-fn a_painted_piece_reaching_a_slot_a_shaded_piece_built_still_draws() {
-    let cfg = Config::default();
-    let cabinet = Cabinet::from_config(&cfg, f64::from(WINDOW_W), f64::from(WINDOW_H));
-    let params = cabinet.chassis_params();
-
-    let gpu = Locked::new().expect("headless wgpu device");
-    let mut column = Chrome::new(&gpu.device, gpu::harness::OUTPUT_FORMAT);
-
-    // One rectangle, well inside the bank, for both pieces.
-    let rect = chassis::Rect::new(40.0, 60.0, 64.0, 32.0);
-    let (rx, ry) = (rect.x as u32, rect.y as u32);
-    let (rw, rh) = (rect.width as u32, rect.height as u32);
-
-    // The shaded piece, with a source raster the size of its own rectangle:
-    // that is what makes the stale slot's `source_size` match and the reuse
-    // fire. (A pass whose source is smaller, like the plate's, never could.)
-    let shaded = chassis::Piece::shaded(
-        chassis::Pass::LedMatrix,
-        rect,
-        Vec::new(),
-        Some(chassis::furniture::Raster {
-            width: rw,
-            height: rh,
-            rgba: vec![0u8; (rw * rh * 4) as usize],
-        }),
-    );
-
-    // The painted piece: an opaque rectangle in a colour no metal and no lamp
-    // produces, filling the piece exactly.
-    let mut painting = chassis::paint::Painting::new();
-    painting.rect(chassis::paint::RectOp::solid(
-        chassis::Rect::new(0.0, 0.0, rect.width, rect.height),
-        0.0,
-        chassis::color::Rgba::new(1.0, 0.0, 1.0, 1.0),
-    ));
-    let painted = chassis::Piece::painted(rect, painting);
-
-    let bare = frame_with_column(&gpu, &mut column, BANK, 1.0, &params);
-    // Frame 1 builds the slot at index 0 as a shaded one...
-    let _ = frame_with_furniture(&gpu, &mut column, BANK, 1.0, &params, &[shaded]);
-    // ...and frame 2 asks for a painted piece at the same index and geometry.
-    let frame = frame_with_furniture(&gpu, &mut column, BANK, 1.0, &params, &[painted]);
-
-    for &(dx, dy) in &[(rw / 2, rh / 2), (2, 2), (rw - 3, rh - 3)] {
-        let i = px_index(WINDOW_W, rx + dx, ry + dy);
-        assert!(
-            (frame[i][0] - 1.0).abs() < 0.02
-                && frame[i][1].abs() < 0.02
-                && (frame[i][2] - 1.0).abs() < 0.02,
-            "the painting is not on the casting at ({dx},{dy}): got {:?}, and the \
-             bare casting there reads {:?}",
-            &frame[i][0..3],
-            &bare[i][0..3]
-        );
-    }
 }
 
 #[test]
