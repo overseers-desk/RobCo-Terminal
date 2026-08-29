@@ -507,6 +507,35 @@ struct Pending {
     line: crate::prompt::Line,
 }
 
+/// What a bank runs on, outside the rows the channel model holds: the
+/// transport that carries it and the question standing on it.
+///
+/// One record per bank, and [`TerminalSurface::sweep_bank_runtimes`] is the
+/// whole of when it exists: a bank has a record exactly while
+/// [`Channels::manager_of`] answers for it. Dropping the record is what the
+/// disconnect and the cancel are made of -- the `Link` is the connection
+/// thread's lifetime, and the `AskDesk` going releases whichever thread is
+/// parked on a question -- so a bank swept out of the model takes its wire
+/// and its prompt with it in one move rather than in four sweeps that could
+/// disagree.
+#[derive(Default)]
+struct BankRuntime {
+    /// A tmux attachment's client half. The write side is a second handle
+    /// onto the gateway's PTY (`term::Session::control_mode_writer`); the
+    /// read side arrives through the gateway's DCS tap on every
+    /// [`TerminalSurface::pump`].
+    gateway: Option<Gateway<Box<dyn std::io::Write + Send>>>,
+    /// One SSH connection, whose drop is the disconnect.
+    link: Option<Link>,
+    /// The answering end of the connection's question channel, drained on the
+    /// same pump as everything else.
+    desk: Option<AskDesk>,
+    /// The question standing right now and the line being typed into it. At
+    /// most one: the transport asks one thing at a time, because it is
+    /// blocked on the answer to the last one.
+    prompt: Option<Pending>,
+}
+
 pub struct TerminalSurface {
     /// `None` in a headless surface (see [`TerminalSurface::headless`]).
     /// It is read for the window's own size on a DPI change, and it is
@@ -517,22 +546,9 @@ pub struct TerminalSurface {
     /// air (`crate::channels`). Empty only where the first session could not be
     /// spawned.
     channels: Channels<AppSession>,
-    /// Each tmux attachment's client half, keyed by the bank it raised. The
-    /// write side is a second handle onto the gateway's PTY
-    /// (`term::Session::control_mode_writer`); the read side arrives through the
-    /// gateway's DCS tap on every [`TerminalSurface::pump`].
-    gateways: HashMap<BankId, Gateway<Box<dyn std::io::Write + Send>>>,
-    /// One SSH connection per bank, beside the gateways: the `Link` is the
-    /// connection thread's lifetime, and dropping it is the disconnect.
-    ssh_links: HashMap<BankId, Link>,
-    /// The answering end of each connection's question channel, drained on
-    /// the same pump as everything else. The connection thread is parked on
-    /// the other side of it while a question stands.
-    asks: HashMap<BankId, AskDesk>,
-    /// The question standing on a bank right now, and the line being typed
-    /// into it. At most one per bank: the transport asks one thing at a
-    /// time, because it is blocked on the answer to the last one.
-    prompts: HashMap<BankId, Pending>,
+    /// What each bank runs on: its gateway or its link, and the question
+    /// standing on it ([`BankRuntime`]).
+    banks: HashMap<BankId, BankRuntime>,
     /// The destination picker while it stands: the home slot its page holds,
     /// and everything the user has said to it. `Shift+Alt+T` raises it; a
     /// digit, a typed destination or `Esc` retires it.
@@ -938,10 +954,7 @@ impl TerminalSurface {
             window,
             gpu,
             channels,
-            gateways: HashMap::new(),
-            ssh_links: HashMap::new(),
-            asks: HashMap::new(),
-            prompts: HashMap::new(),
+            banks: HashMap::new(),
             picker: None,
             find: None,
             sessions: HashMap::new(),
@@ -1030,7 +1043,11 @@ impl TerminalSurface {
                 // to collapse the bank (`gateway_died`), and a client with no
                 // channel under it has no wire. No client half at all means a
                 // tmux this surface started that never opened its envelope.
-                let had = self.gateways.remove(&bank).is_some();
+                let had = self
+                    .banks
+                    .get_mut(&bank)
+                    .and_then(|runtime| runtime.gateway.take())
+                    .is_some();
                 if !had {
                     log::warn!("tmux: bank {bank}'s client died before the protocol opened");
                 }
@@ -1041,10 +1058,8 @@ impl TerminalSurface {
             }
         }
         // A dead row may have been an SSH bank's last: the model swept the
-        // bank, and the link follows it here. Dropping the link is the
-        // disconnect, so a bank closed by hand hangs up too.
-        self.ssh_links
-            .retain(|bank, _| self.channels.manager_of(*bank).is_some());
+        // bank, and what the bank ran on follows it here.
+        self.sweep_bank_runtimes();
         // Then, and only then, what the connections are asking: the wire
         // events above carry the lines that explain the questions below.
         self.pump_asks();
@@ -1260,7 +1275,11 @@ impl TerminalSurface {
 
     /// Another channel on an SSH bank's connection, from its own link.
     fn open_ssh_channel(&mut self, bank: BankId) {
-        let Some(link) = self.ssh_links.get(&bank) else {
+        let Some(link) = self
+            .banks
+            .get(&bank)
+            .and_then(|runtime| runtime.link.as_ref())
+        else {
             log::warn!("bank {bank} asked for an ssh channel with no link standing");
             return;
         };
@@ -1341,9 +1360,22 @@ impl TerminalSurface {
             )))
         });
         if let Some(bank) = bank {
-            self.ssh_links.insert(bank, link);
-            self.asks.insert(bank, desk);
+            let runtime = self.banks.entry(bank).or_default();
+            runtime.link = Some(link);
+            runtime.desk = Some(desk);
         }
+    }
+
+    /// One record per bank the model still holds, and none for any it does
+    /// not. The rule is the whole of when a [`BankRuntime`] exists, so it is
+    /// stated once and applied in one place.
+    ///
+    /// Dropping the record hangs up the connection and cancels whatever
+    /// question was standing on it, which is what releases the thread parked
+    /// on the far side of it.
+    fn sweep_bank_runtimes(&mut self) {
+        self.banks
+            .retain(|bank, _| self.channels.manager_of(*bank).is_some());
     }
 
     /// Drain what the connections are asking, after their wires have been
@@ -1361,17 +1393,25 @@ impl TerminalSurface {
     /// whatever the user is doing on another channel; instead the question
     /// waits where it belongs, and turning the knob back finds it standing.
     fn pump_asks(&mut self) {
-        let banks: Vec<BankId> = self.asks.keys().copied().collect();
+        let banks: Vec<BankId> = self
+            .banks
+            .iter()
+            .filter(|(_, runtime)| runtime.desk.is_some())
+            .map(|(bank, _)| *bank)
+            .collect();
         for bank in banks {
             loop {
                 // A bank already holding a question is not asked another:
                 // the thread that asked is blocked until this one is
                 // answered, so there cannot be a second, and refusing to
                 // take one is cheaper than reasoning about whether there is.
-                if self.prompts.contains_key(&bank) {
+                let Some(runtime) = self.banks.get_mut(&bank) else {
+                    break;
+                };
+                if runtime.prompt.is_some() {
                     break;
                 }
-                let Some(ask) = self.asks.get_mut(&bank).and_then(AskDesk::take) else {
+                let Some(ask) = runtime.desk.as_mut().and_then(AskDesk::take) else {
                     break;
                 };
                 match ask {
@@ -1383,16 +1423,13 @@ impl TerminalSurface {
                         let bytes = crate::prompt::paint(question.prompt());
                         self.feed_prompt_channel(bank, &bytes);
                         let line = crate::prompt::Line::new(question.kind() != Answer::Secret);
-                        self.prompts.insert(bank, Pending { question, line });
+                        if let Some(runtime) = self.banks.get_mut(&bank) {
+                            runtime.prompt = Some(Pending { question, line });
+                        }
                     }
                 }
             }
         }
-        // A desk whose bank is gone goes with it; the questions on it are
-        // cancelled by the drop, which is what unblocks the thread.
-        self.asks
-            .retain(|bank, _| self.channels.manager_of(*bank).is_some());
-        self.prompts.retain(|bank, _| self.asks.contains_key(bank));
     }
 
     /// Put local bytes on the channel a connection's questions belong to,
@@ -1415,11 +1452,11 @@ impl TerminalSurface {
     /// blocked -- so a keystroke that fell through to the wire would be
     /// typing at a shell that does not exist yet.
     fn prompt_key(&mut self, logical: &winit::keyboard::Key, text: Option<&str>) -> bool {
-        let bank = self.channels.current_bank();
-        if self.channels.current_channel() != 1 || !self.prompts.contains_key(&bank) {
+        let (bank, channel) = self.channels.on_air();
+        if channel != 1 {
             return false;
         }
-        let Some(pending) = self.prompts.get_mut(&bank) else {
+        let Some(pending) = self.prompt_mut(bank) else {
             return false;
         };
         let (stroke, echo) = pending.line.key(logical, text);
@@ -1428,7 +1465,7 @@ impl TerminalSurface {
         }
         match stroke {
             crate::prompt::Stroke::Commit => {
-                if let Some(mut pending) = self.prompts.remove(&bank) {
+                if let Some(mut pending) = self.take_prompt(bank) {
                     let answer = pending.line.take();
                     pending.question.answer(answer);
                 }
@@ -1438,7 +1475,7 @@ impl TerminalSurface {
                 // transport's own supervisor does the rest: it says so on
                 // the wire and Eofs the channel. The row stays under the
                 // Eof law, wearing why it is dead.
-                if let Some(pending) = self.prompts.remove(&bank) {
+                if let Some(pending) = self.take_prompt(bank) {
                     pending.question.cancel();
                 }
             }
@@ -1568,8 +1605,34 @@ impl TerminalSurface {
     /// Whether a question is standing on the channel currently on the air.
     /// What the clipboard consults before it decides where a paste goes.
     fn prompt_on_air(&self) -> bool {
-        self.channels.current_channel() == 1
-            && self.prompts.contains_key(&self.channels.current_bank())
+        let (bank, channel) = self.channels.on_air();
+        channel == 1
+            && self
+                .banks
+                .get(&bank)
+                .is_some_and(|runtime| runtime.prompt.is_some())
+    }
+
+    /// The question standing on a bank, for whoever is about to type into it.
+    fn prompt_mut(&mut self, bank: BankId) -> Option<&mut Pending> {
+        self.banks
+            .get_mut(&bank)
+            .and_then(|runtime| runtime.prompt.as_mut())
+    }
+
+    /// The question off the bank: answering or cancelling it ends it, and the
+    /// caller holds the only copy while it does.
+    fn take_prompt(&mut self, bank: BankId) -> Option<Pending> {
+        self.banks
+            .get_mut(&bank)
+            .and_then(|runtime| runtime.prompt.take())
+    }
+
+    /// A bank's tmux client, for the keys and the closes that command it.
+    fn gateway_mut(&mut self, bank: BankId) -> Option<&mut Gateway<Box<dyn std::io::Write + Send>>> {
+        self.banks
+            .get_mut(&bank)
+            .and_then(|runtime| runtime.gateway.as_mut())
     }
 
     fn watch_the_write_queues(&mut self) {
@@ -1581,7 +1644,12 @@ impl TerminalSurface {
                 _ => pty += row.session.sheds(),
             }
         }
-        let tmux: u64 = self.gateways.values().map(|gateway| gateway.sheds()).sum();
+        let tmux: u64 = self
+            .banks
+            .values()
+            .filter_map(|runtime| runtime.gateway.as_ref())
+            .map(Gateway::sheds)
+            .sum();
         let seen = self.sheds_seen;
         self.sheds_seen = (pty, tmux, ssh);
         if pty > seen.0 {
@@ -1616,7 +1684,11 @@ impl TerminalSurface {
         }
         for (bank, channel) in detected {
             // A gateway row on a standing bank is a client this surface started.
-            if channel == 1 && !self.gateways.contains_key(&bank) && self.is_tmux(bank) {
+            let banked = self
+                .banks
+                .get(&bank)
+                .is_some_and(|runtime| runtime.gateway.is_some());
+            if channel == 1 && !banked && self.is_tmux(bank) {
                 if !self.start_gateway(bank) {
                     self.collapse_bank(bank, false);
                 }
@@ -1625,7 +1697,12 @@ impl TerminalSurface {
             }
         }
 
-        let banks: Vec<BankId> = self.gateways.keys().copied().collect();
+        let banks: Vec<BankId> = self
+            .banks
+            .iter()
+            .filter(|(_, runtime)| runtime.gateway.is_some())
+            .map(|(bank, _)| *bank)
+            .collect();
         let mut visible = 0;
         for bank in banks {
             visible += self.pump_gateway(bank);
@@ -1659,7 +1736,7 @@ impl TerminalSurface {
             .and_then(|r| r.session.control_writer());
         match writer {
             Some(Ok(writer)) => {
-                self.gateways.insert(bank, Gateway::new(writer));
+                self.banks.entry(bank).or_default().gateway = Some(Gateway::new(writer));
                 self.set_client_size();
                 true
             }
@@ -1762,7 +1839,11 @@ impl TerminalSurface {
     fn pump_gateway(&mut self, bank: BankId) -> usize {
         let current = self.channels.on_air();
         let mut visible = 0;
-        let Some(mut gateway) = self.gateways.remove(&bank) else {
+        let Some(mut gateway) = self
+            .banks
+            .get_mut(&bank)
+            .and_then(|runtime| runtime.gateway.take())
+        else {
             return visible;
         };
         // The peeled envelope body, and whether an `ST` closed it, off the
@@ -1879,7 +1960,7 @@ impl TerminalSurface {
         if let Some(lost_protocol) = collapse {
             self.collapse_bank(bank, lost_protocol);
         } else {
-            self.gateways.insert(bank, gateway);
+            self.banks.entry(bank).or_default().gateway = Some(gateway);
         }
         visible
     }
@@ -1913,8 +1994,10 @@ impl TerminalSurface {
         let size = self.viewport.term_size();
         let columns = size.cols().min(u16::MAX as usize) as u16;
         let rows = size.rows().min(u16::MAX as usize) as u16;
-        for gateway in self.gateways.values_mut() {
-            gateway.set_client_size(columns, rows);
+        for runtime in self.banks.values_mut() {
+            if let Some(gateway) = runtime.gateway.as_mut() {
+                gateway.set_client_size(columns, rows);
+            }
         }
     }
 
@@ -2363,7 +2446,7 @@ impl TerminalSurface {
         }
         let bank = self.channels.current_bank();
         if matches!(logical, Key::Named(NamedKey::Enter)) {
-            match self.gateways.get_mut(&bank) {
+            match self.gateway_mut(bank) {
                 Some(gateway) => gateway.detach(),
                 // The row is a gateway with no client standing only between a
                 // teardown and the collapse that follows it; the bank is going
@@ -2411,7 +2494,7 @@ impl TerminalSurface {
             // The model set the bank's `new_window_pending` flag; the window
             // tmux answers with will take the air when it lands
             // (`open_tmux_window`).
-            match self.gateways.get_mut(&bank) {
+            match self.gateway_mut(bank) {
                 Some(gateway) => gateway.new_window(),
                 None => log::warn!("bank {bank} asked for a window with no gateway standing"),
             }
@@ -2429,14 +2512,14 @@ impl TerminalSurface {
             // A gateway detaches its bank: tmux keeps the session, the channel
             // comes home when `%exit` echoes back through the pump.
             Close::Detach(bank) => {
-                if let Some(gateway) = self.gateways.get_mut(&bank) {
+                if let Some(gateway) = self.gateway_mut(bank) {
                     gateway.detach();
                 }
             }
             // A tmux window is tmux's to kill; its row goes when the close
             // notification lands, not here.
             Close::KillWindow { bank, window } => {
-                if let Some(gateway) = self.gateways.get_mut(&bank) {
+                if let Some(gateway) = self.gateway_mut(bank) {
                     gateway.kill_window(&window);
                 }
             }
@@ -3682,7 +3765,7 @@ impl TerminalSurface {
                 // of a server that never asked for it.
                 if self.prompt_on_air() {
                     let bank = self.channels.current_bank();
-                    let echo = match self.prompts.get_mut(&bank) {
+                    let echo = match self.prompt_mut(bank) {
                         Some(pending) => pending.line.paste(&text),
                         None => Vec::new(),
                     };
