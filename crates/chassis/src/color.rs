@@ -131,7 +131,7 @@ fn substring(s: &str, from: usize, to: usize) -> &str {
 /// literal (see the module doc's divisor rule), not a profile's stored
 /// colour string.
 ///
-/// Slices through [`substring`] for the same reason its neighbour does: an
+/// Slices through `substring` for the same reason its neighbour does: an
 /// invalid colour should answer a colour rather than panicking, and while
 /// most callers here hand over a literal from this repository,
 /// [`crate::metrics`] and `shells::common::rgb` pass a string through from a

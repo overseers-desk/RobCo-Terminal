@@ -1,7 +1,7 @@
 //! What stands on the casting: the shell's plate, and one channel display per
 //! row.
 //!
-//! [`bank`] and [`layout`](crate::layout) divide the window and measure the
+//! [`bank`](crate::bank) and [`layout`](crate::layout) divide the window and measure the
 //! bank's footprint; this module is the next question, which is what goes
 //! *inside* that footprint: one shell's plate and rows of `ChannelRow`s,
 //! reduced to what a host with a device needs and nothing more: a rectangle,

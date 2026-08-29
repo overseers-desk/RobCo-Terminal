@@ -105,7 +105,7 @@ pub fn plate_region(
 /// slide rule's lit bevel line sits in the air *below* the hole and the
 /// switchboard's plate and spill stand proud of the band at both ends. The
 /// piece's rectangle is the raster's bounds, so it is grown by
-/// [`row_overhang`] and the painting shifted down into it; a row cut at its
+/// `row_overhang` and the painting shifted down into it; a row cut at its
 /// own height would swallow those. The rows are still painted in order, so
 /// a row's overhang lands under the next row's furniture exactly as a
 /// simple top-to-bottom stack puts it.

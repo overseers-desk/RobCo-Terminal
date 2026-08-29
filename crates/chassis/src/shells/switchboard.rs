@@ -63,7 +63,7 @@ pub mod metrics {
 /// This shell's pager measures, the three the bank's foot needs.
 ///
 /// The only one of the three that reads its own metrics back:
-/// `implicit_height = pager_height - 15`, so [`NATURAL_HEIGHT`] is derived
+/// `implicit_height = pager_height - 15`, so [`pager::NATURAL_HEIGHT`] is derived
 /// from [`metrics::PAGER_HEIGHT`] here rather than restated as a literal.
 /// [`crate::metrics::shells::switchboard`] composes these into
 /// `ShellMetrics`.
