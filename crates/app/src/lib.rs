@@ -37,8 +37,9 @@
 //! - [`input`], [`mouse`], [`clipboard`] -- keyboard encoding,
 //!   mouse reporting, and copy/paste. Composed input
 //!   (an IME's committed text) comes in beside the keyboard rather than
-//!   through it, at [`window::TerminalSurface::ime_input`], which is also
-//!   where the record of what is *not* drawn yet lives.
+//!   through it, at [`window::TerminalSurface::ime_input`]; [`ime`] holds the
+//!   record of what is *not* drawn yet, and where the caret was last
+//!   published.
 //! - [`distortion`] -- the inverse screen-curvature transform that turns a
 //!   window pixel back into a flat-screen one before it becomes a cell.
 //! - [`picker`] / [`prompt`] / [`find`] -- the three things the glass asks the
@@ -71,6 +72,7 @@ pub mod find;
 pub mod frame_stats;
 pub mod geometry;
 pub mod gpu;
+pub mod ime;
 pub mod input;
 pub mod instance;
 pub mod menu;

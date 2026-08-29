@@ -112,6 +112,11 @@ use crate::ssh::{notice_bytes, KnownHosts, SshRequest, WireAdapter};
 use crate::tmux::{Gateway, GatewayEvent};
 use crate::{clipboard, mouse, paths};
 
+/// Re-exported from where it was defined until the module split, because
+/// [`TerminalSurface::ime_state`] answers with one and that is the name every
+/// caller reaches it by.
+pub use crate::ime::ImeState;
+
 /// How often the loop wakes to drain the PTY when nothing else is
 /// happening. ~125 Hz: comfortably below a frame at 60 Hz, so output
 /// never waits a frame longer than it has to, and cheap enough to idle
@@ -414,33 +419,6 @@ struct Glass {
 /// is the X11/GTK desktop default an application would otherwise be handed.
 const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
-/// The surface the binary runs behind the
-/// [`crate::shell::Surface`] seam: the shell owns the event loop and the
-/// window, this owns what is inside it.
-/// What the input method has told this surface so far.
-///
-/// Deliberately small. The commit is written straight through and kept nowhere;
-/// what is held is what a caller may need to *ask* about -- whether composition
-/// is open, and what the half-typed word is. The frame reads the word every
-/// redraw and draws it at the cursor, so this is the composition's one home
-/// rather than a copy of one.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct ImeState {
-    /// The input method has taken the keyboard: `Ime::Enabled` arrived and no
-    /// `Ime::Disabled` has since.
-    pub enabled: bool,
-    /// The uncommitted composition string, `""` when there is none.
-    pub preedit: String,
-    /// The cursor/selection inside the pre-edit, in byte offsets, as winit
-    /// reports it; `None` is the input method asking for no caret inside the
-    /// composition.
-    ///
-    /// Kept and not drawn: the whole pre-edit is painted as a single block, so
-    /// this offset is stored for a caller that might want it but is not
-    /// consulted to draw the composition.
-    pub cursor: Option<(usize, usize)>,
-}
-
 /// A question a connection asked, standing on the glass while the answer
 /// is typed.
 ///
@@ -483,6 +461,9 @@ struct BankRuntime {
     prompt: Option<Pending>,
 }
 
+/// The surface the binary runs behind the
+/// [`crate::shell::Surface`] seam: the shell owns the event loop and the
+/// window, this owns what is inside it.
 pub struct TerminalSurface {
     /// `None` in a headless surface (see [`TerminalSurface::headless`]).
     /// It is read for the window's own size on a DPI change, and it is
@@ -645,10 +626,6 @@ pub struct TerminalSurface {
     /// from the loop's clock and is spent on the next frame
     /// ([`crate::shell::Surface::set_size_badge`]).
     size_badge: (String, f32),
-    /// The caret rectangle the input method was last told about, in whole
-    /// physical pixels, so a caret that has not moved is not republished every
-    /// turn of the loop. See [`TerminalSurface::publish_ime_cursor`].
-    ime_area: Option<(i32, i32, i32, i32)>,
     /// The second badge in the stack: what this appliance has to say for itself
     /// right now (a write queue shedding, a look saved). Raised here and drawn
     /// by [`Self::draw_frame`]; see [`crate::overlay::Notice`] for why it is the
@@ -939,7 +916,6 @@ impl TerminalSurface {
             output_pending: false,
             glass: None,
             size_badge: (String::new(), 0.0),
-            ime_area: None,
             notice: crate::overlay::Notice::default(),
             sheds_seen: (0, 0, 0),
             settings_app: settings::SettingsApp::default(),
@@ -2075,61 +2051,16 @@ impl TerminalSurface {
             .is_some_and(|row| self.channels.is_gateway(row))
     }
 
-    /// One thing the input method said, applied.
+    /// One thing the input method said, applied. The state is
+    /// [`ImeState::apply`]'s; what a commit produced is typed at the child
+    /// here, because only the surface has one.
     ///
-    /// `key_input`'s counterpart, and public for the same reason: winit's
-    /// `KeyEvent` cannot be built outside winit, but `Ime` can, so this is the
-    /// seam a test drives without a display server. [`Surface::ime`] is one
-    /// line calling it.
-    ///
-    /// **What is here.** `Ime::Commit` is the composed text, and it is written
-    /// to the PTY as UTF-8, unchanged and unencoded: a commit is text the user
-    /// finished choosing, not a keystroke, so it is carried as bytes and
-    /// nothing else -- it is neither run through the keytab (there is no key
-    /// to bind) nor escaped. In particular it is not bracketed: a program
-    /// that reads a paste bracket where the user typed a word is worse off
-    /// than one that reads the word.
-    ///
-    /// **What the pre-edit does.** It is held here and drawn at the cursor, in
-    /// the grid, by `term::render::GridRenderer::set_preedit`, so the
-    /// half-typed word appears where it is being typed, through the curvature
-    /// and in the phosphor, and vanishes on the commit or the abandon. The frame
-    /// reads this field on every redraw ([`Self::draw_frame`]) rather than being
-    /// pushed at from here: the composition is state, not an event, and the
-    /// cursor it stands at can move underneath it.
-    ///
-    /// Winit's inner cursor offsets (`ImeState::cursor`) are kept and not
-    /// drawn: the whole composition is painted as one block, so the offset
-    /// inside it is not consulted.
-    ///
-    /// The other half is [`Self::publish_ime_cursor`], which tells the
-    /// platform where the caret is so the candidate window follows it.
+    /// Public for the reason `key_input` is: winit's `KeyEvent` cannot be
+    /// built outside winit, but `Ime` can, so this is the seam a test drives
+    /// without a display server. [`Surface::ime`] is one line calling it.
     pub fn ime_input(&mut self, event: &Ime) {
-        match event {
-            Ime::Enabled => {
-                self.ime = ImeState {
-                    enabled: true,
-                    ..ImeState::default()
-                };
-            }
-            Ime::Preedit(text, cursor) => {
-                self.ime.preedit.clear();
-                self.ime.preedit.push_str(text);
-                self.ime.cursor = *cursor;
-            }
-            Ime::Commit(text) => {
-                // The composition is over whether or not a `Preedit("")`
-                // follows, and every input method sends the two in a different
-                // order. Clearing here means the state is never a stale word
-                // the user already committed.
-                self.ime.preedit.clear();
-                self.ime.cursor = None;
-                if !text.is_empty() {
-                    let bytes = text.as_bytes().to_vec();
-                    self.type_bytes(&bytes);
-                }
-            }
-            Ime::Disabled => self.ime = ImeState::default(),
+        if let Some(bytes) = self.ime.apply(event) {
+            self.type_bytes(&bytes);
         }
     }
 
@@ -2189,41 +2120,30 @@ impl TerminalSurface {
         ))
     }
 
-    /// Tell the platform where the caret is, if it has moved since last time.
+    /// Tell the platform where the caret is, so the candidate window follows
+    /// it. [`ImeState::publish`] does the telling; the rectangle is this
+    /// surface's, off [`Self::ime_cursor_area`].
     ///
     /// Called once per turn of the loop rather than from [`Self::ime_input`],
-    /// because the caret moves for reasons the input method never hears about:
-    /// the shell echoing a character, a program repainting, a resize. Rounded to
-    /// whole pixels before the comparison, since that is the resolution the
-    /// question is asked at, and a caret that has not moved must not cost a
-    /// round trip to the input method 120 times a second.
+    /// because the caret moves for reasons the input method never hears
+    /// about: the shell echoing a character, a program repainting, a resize.
     ///
-    /// Only while an input method has the keyboard (`Ime::Enabled` arrived and
-    /// no `Ime::Disabled` since), because only then is anyone reading the
-    /// answer, and deriving it costs a settings snapshot. The first composition
-    /// after the method takes the keyboard is one loop turn away, which is
-    /// under ten milliseconds and before any candidate window is up.
+    /// Only while an input method has the keyboard, because only then is
+    /// anyone reading the answer, and deriving the rectangle costs a settings
+    /// snapshot. The first composition after the method takes the keyboard is
+    /// one loop turn away, which is under ten milliseconds and before any
+    /// candidate window is up.
     fn publish_ime_cursor(&mut self) {
         if !self.ime.enabled {
             return;
         }
-        let Some(window) = self.window.as_ref() else {
+        let Some(window) = self.window.clone() else {
             return;
         };
-        let Some((position, size)) = self.ime_cursor_area() else {
+        let Some(area) = self.ime_cursor_area() else {
             return;
         };
-        let area = (
-            position.x.round() as i32,
-            position.y.round() as i32,
-            size.width.round() as i32,
-            size.height.round() as i32,
-        );
-        if self.ime_area == Some(area) {
-            return;
-        }
-        self.ime_area = Some(area);
-        window.set_ime_cursor_area(position, size);
+        self.ime.publish(&window, area);
     }
 
     /// What the appliance is saying on its own behalf right now, if anything.
