@@ -41,9 +41,11 @@
 //!   where the record of what is *not* drawn yet lives.
 //! - [`distortion`] -- the inverse screen-curvature transform that turns a
 //!   window pixel back into a flat-screen one before it becomes a cell.
-//! - [`picker`] / [`prompt`] -- the two things the glass asks the user: which
-//!   destination, and the answer to a question the connection raised. Both
-//!   are pure state over keys, painted through a channel's own parser.
+//! - [`picker`] / [`prompt`] / [`find`] -- the three things the glass asks the
+//!   user: which destination, the answer to a question the connection
+//!   raised, and what to look for in the scrollback. All three are pure
+//!   state over keys, painted through a channel's own parser, and the last
+//!   two share the one line editor.
 //! - [`ssh`] / [`ssh_config`] -- the SSH policy this program applies, and
 //!   what `~/.ssh/config` is allowed to say about a destination before the
 //!   connection is dialled.
@@ -65,6 +67,7 @@ pub mod clipboard;
 pub mod column;
 pub mod crashlog;
 pub mod distortion;
+pub mod find;
 pub mod frame_stats;
 pub mod geometry;
 pub mod gpu;

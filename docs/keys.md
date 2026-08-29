@@ -95,6 +95,33 @@ shortcuts rather than keys the glass reads: the menu takes them before the
 grid sees them. Nothing here exists on Linux or Windows, which draw no such
 bar.
 
+## Searching
+
+| Key | What it does |
+|---|---|
+| `Ctrl`+`Shift`+`F` | Open the find line |
+| `Enter` | The next hit, down the history |
+| `Shift`+`Enter` | The previous hit, back up it |
+| `Esc` | Close the find line and clear the hit |
+
+The find line is a `Find:` prompt on the glass, on the channel it was
+raised on, and it takes every key while it stands: what you type is the
+text to look for, and `Enter` walks the hits rather than sending a newline
+anywhere. The text is looked for literally and without regard to case, so
+`.` is a full stop and `ERROR` finds `error`.
+
+`Enter` steps forward from the last hit, or from the cursor when there is
+no last hit, and wraps once when it reaches the end of the scrollback;
+`Shift`+`Enter` walks the same list the other way. A hit is marked the way
+a selection is marked, and the view moves the least it can to bring it onto
+the screen, so a hit two rows above the top brings those two rows down
+rather than jumping.
+
+The query is drawn on the channel's own grid, which is where every other
+thing this terminal says to you is drawn. It is therefore in the scrollback
+like anything else, and hits on the find line's own rows are the query
+reading itself back: those are stepped over, never shown.
+
 ## Scrollback
 
 | Key | What it does |

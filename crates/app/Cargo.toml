@@ -86,6 +86,11 @@ wgpu = "=30.0.0"
 # Default features stay on: the event loop needs a platform backend.
 winit = "0.30"
 libc = "0.2"
+# `regex::escape` alone, for the find line: what the user types is looked for
+# literally, so the query is escaped before it reaches rio-vt's regex search.
+# The same version `robco-term` pins, and already in the graph through it, so
+# this is a name for a dependency rather than a new one.
+regex = "1.13"
 directories = "5"
 log = "0.4"
 env_logger = "0.11"

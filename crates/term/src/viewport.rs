@@ -169,6 +169,34 @@ impl ScrollPosition {
         self.settle(term, self.pos + rows);
     }
 
+    /// Move the view the least it can to put an absolute line on the
+    /// screen, and leave it where it is when the line is already there.
+    ///
+    /// The least it can, because the line a search found is not the only
+    /// thing the eye is reading: a hit two rows above the top of the view
+    /// should bring those two rows down, not jump the hit to the middle of
+    /// a screen the user has to re-read. Absolute lines are
+    /// [`crate::grid`]'s, 0 at the oldest line still in scrollback.
+    pub fn reveal<L: EventListener>(&mut self, term: &mut Crosswords<L>, line: usize) {
+        let history = term.history_size() as i64;
+        let screen = term.screen_lines() as i64;
+        let line = line as i64;
+        // With the view held `d` lines above the bottom, the screen shows
+        // absolute lines `history - d` down to `history + screen - 1 - d`,
+        // so the offsets that show this one run from "on the bottom row" to "on
+        // the top row", and the view is already right whenever it is in
+        // that band.
+        let on_the_bottom_row = history - line;
+        let on_the_top_row = history + screen - 1 - line;
+        let here = self.offset() as i64;
+        let there = here
+            .clamp(on_the_bottom_row, on_the_top_row.max(on_the_bottom_row))
+            .clamp(0, history);
+        if there != here {
+            self.scroll(term, (there - here) as i32);
+        }
+    }
+
     pub fn page_up<L: EventListener>(&mut self, term: &mut Crosswords<L>) {
         self.glide = None;
         self.apply(term, Scroll::PageUp);

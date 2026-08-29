@@ -537,6 +537,10 @@ pub struct TerminalSurface {
     /// and everything the user has said to it. `Shift+Alt+T` raises it; a
     /// digit, a typed destination or `Esc` retires it.
     picker: Option<crate::picker::Picker>,
+    /// The find line while it stands: the query being typed and the hit it
+    /// has marked. `Ctrl+Shift+F` raises it, `Esc` takes it down, and it
+    /// answers to one channel only ([`crate::find`]).
+    find: Option<crate::find::Find>,
     /// Every session seen, by socket, server pid and id: banked, in flight, or
     /// owed; the model holds banks, so a listing is read against this.
     sessions: HashMap<(String, u32, SessionId), SessionSlot>,
@@ -942,6 +946,7 @@ impl TerminalSurface {
             asks: HashMap::new(),
             prompts: HashMap::new(),
             picker: None,
+            find: None,
             sessions: HashMap::new(),
             on_air,
             session_config: session.clone(),
@@ -1448,6 +1453,125 @@ impl TerminalSurface {
         true
     }
 
+    // ---- the find line -----------------------------------------------
+
+    /// `Ctrl+Shift+F`. Raise the find line on the channel on the air, or
+    /// leave the one already standing where it is: a second press is a hand
+    /// reaching for a line that is already in front of it.
+    ///
+    /// The caret is read before the prompt is painted and the floor after,
+    /// which is the whole of what [`crate::find::Find`] needs to know about
+    /// the grid: where a search with no hit behind it starts, and which rows
+    /// hold the query itself.
+    fn open_find(&mut self) {
+        if self.find.is_some() {
+            return;
+        }
+        let on = (self.channels.current_bank(), self.channels.current_channel());
+        let Some(session) = self.channels.session_mut() else {
+            return;
+        };
+        let caret = crate::find::caret(session.term());
+        session.feed(&crate::prompt::paint(crate::find::PROMPT));
+        let floor = crate::find::caret(session.term()).1;
+        self.find = Some(crate::find::Find::new(on, caret, floor));
+    }
+
+    /// The find line's keyboard, on the [`Self::prompt_key`] model: only
+    /// while the line stands on the channel it was raised on, and every key
+    /// swallowed rather than passed on. Answers whether the key was the
+    /// find line's.
+    ///
+    /// Enter and Escape are read here rather than through
+    /// [`crate::prompt::Line`], which would answer them with the `\r\n` that
+    /// ends a question. A find line is not answered once: Enter steps to
+    /// the next hit and the query stays where it is, to be stepped again.
+    fn find_key(
+        &mut self,
+        logical: &winit::keyboard::Key,
+        text: Option<&str>,
+        modifiers: ModifiersState,
+    ) -> bool {
+        use winit::keyboard::{Key, NamedKey};
+
+        let on = (self.channels.current_bank(), self.channels.current_channel());
+        if self.find.as_ref().map(|find| find.on) != Some(on) {
+            return false;
+        }
+        match logical {
+            Key::Named(NamedKey::Enter) => self.find_step(!modifiers.shift_key()),
+            Key::Named(NamedKey::Escape) => self.close_find(),
+            _ => {
+                let Some(find) = self.find.as_mut() else {
+                    return false;
+                };
+                let (_, echo) = find.line.key(logical, text);
+                if !echo.is_empty() {
+                    if let Some(session) = self.channels.session_mut() {
+                        session.feed(&echo);
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Enter, or Shift+Enter the other way: step to the next hit and bring
+    /// it onto the screen.
+    ///
+    /// The view moves through the same [`ScrollPosition`] the wheel and the
+    /// scroll keys move, so a hit found in history leaves the viewport
+    /// exactly where a user who had scrolled there by hand would have left
+    /// it.
+    fn find_step(&mut self, forward: bool) {
+        let Some(find) = self.find.as_mut() else {
+            return;
+        };
+        let Some(session) = self.channels.session_mut() else {
+            return;
+        };
+        let Some(range) = find.step(session.term(), forward) else {
+            return;
+        };
+        self.scroll.reveal(session.term_mut(), range.start.1);
+    }
+
+    /// Escape. The line comes down, its mark comes off the glass with it,
+    /// and the cursor leaves the query's row so whatever the channel says
+    /// next says it on a row of its own.
+    fn close_find(&mut self) {
+        if self.find.take().is_none() {
+            return;
+        }
+        if let Some(session) = self.channels.session_mut() {
+            session.feed(b"\r\n");
+        }
+    }
+
+    /// What the glass paints as marked: the find line's hit while it has
+    /// one, and the pointer's selection otherwise.
+    ///
+    /// The find line wins because it is the thing the user is looking at:
+    /// a search raised over an old selection is a new question, and two
+    /// highlights at once would leave the answer to it unreadable.
+    pub fn marked_range(&self) -> Option<term::MarkedRange> {
+        let on = (self.channels.current_bank(), self.channels.current_channel());
+        self.find
+            .as_ref()
+            .filter(|find| find.on == on)
+            .and_then(crate::find::Find::mark)
+            .or_else(|| {
+                self.channels
+                    .session()
+                    .and_then(|session| self.selection.range(session.term()))
+            })
+    }
+
+    /// The query standing on the find line, or `None` when no find line is.
+    pub fn find_query(&self) -> Option<&str> {
+        self.find.as_ref().map(crate::find::Find::query)
+    }
+
     /// Whether a question is standing on the channel currently on the air.
     /// What the clipboard consults before it decides where a paste goes.
     fn prompt_on_air(&self) -> bool {
@@ -1879,6 +2003,13 @@ impl TerminalSurface {
         if self.prompt_key(logical, text) {
             return;
         }
+        // Then the find line, on the same terms: while it stands it holds
+        // every key that is not a window shortcut, because a find line is
+        // typed into and Enter means "the next one" rather than a newline
+        // for the child.
+        if self.find_key(logical, text, modifiers) {
+            return;
+        }
         // Then the gateway's own keyboard, which stands between the shortcuts
         // and the keytab: it holds the focus in the terminal's place, so the
         // emulation never sees a key at all, while the window's own
@@ -2135,6 +2266,7 @@ impl TerminalSurface {
     /// | key | handler |
     /// |---|---|
     /// | `Ctrl+Shift+C` | [`Self::copy_selection`] |
+    /// | `Ctrl+Shift+F` | [`Self::open_find`] |
     /// | `Ctrl+Shift+V` | [`Self::paste_from`] |
     /// | `Ctrl+Shift+T` | [`Self::new_channel`] |
     /// | `Ctrl+Shift+W` | [`Self::close_channel`] |
@@ -2145,9 +2277,9 @@ impl TerminalSurface {
     /// | `Alt+Shift+<digit>` | [`Self::chord_digit`] (store) |
     /// | `Alt+Shift+T` | [`Self::open_picker`] |
     ///
-    /// The clipboard pair and the tab-moving arrows are the chords Konsole
-    /// and GNOME Terminal both put here, so a hand arriving from either
-    /// finds them where it left them.
+    /// The clipboard pair, the find line and the tab-moving arrows are the
+    /// chords Konsole and GNOME Terminal both put here, so a hand arriving
+    /// from either finds them where it left them.
     ///
     /// `Ctrl+Shift+N`/`Q` and `F11` are the *shell*'s (a window, not a
     /// channel) and never reach here; [`crate::shell`] takes them first.
@@ -2201,6 +2333,10 @@ impl TerminalSurface {
             }
             Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("c") => {
                 self.copy_selection();
+                true
+            }
+            Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("f") => {
+                self.open_find();
                 true
             }
             Key::Character(c) if ctrl && shift && c.eq_ignore_ascii_case("v") => {
@@ -2890,9 +3026,7 @@ impl TerminalSurface {
         // shows no highlight at all.
         let top_line = self.top_line();
         let marked = self
-            .channels
-            .session()
-            .and_then(|session| self.selection.range(session.term()))
+            .marked_range()
             .map(|range| Marked { range, top_line });
 
         let Some(gpu) = self.gpu.as_mut() else { return };

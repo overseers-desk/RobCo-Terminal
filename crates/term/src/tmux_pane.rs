@@ -139,6 +139,17 @@ impl<T: DcsTap> ChannelSession<T> {
         }
     }
 
+    /// Bytes the terminal puts on this slot's grid itself, reaching no
+    /// child, no wire and no tmux server: a question asked on the glass,
+    /// the find line, and the echo of what is typed into either.
+    pub fn feed(&mut self, bytes: &[u8]) {
+        match self {
+            ChannelSession::Pty(s) => s.feed(bytes),
+            ChannelSession::TmuxPane(s) => s.feed(bytes),
+            ChannelSession::Ssh(s) => s.feed(bytes),
+        }
+    }
+
     /// Bytes from the keyboard (or a paste, or a mouse report). A PTY's go
     /// to the child; a pane's queue for `send-keys`.
     pub fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {

@@ -643,6 +643,17 @@ impl<T: DcsTap> Session<T> {
         self.term.history_size()
     }
 
+    /// Put bytes on this session's grid without them ever reaching the
+    /// child: what the terminal itself says on the glass, as against what
+    /// the program below said.
+    ///
+    /// The DCS tap is not fed, for the reason [`crate::SshChannel::feed`]
+    /// gives at more length: control mode is a remote program's envelope,
+    /// and nothing written at this glass may open one.
+    pub fn feed(&mut self, bytes: &[u8]) {
+        self.processor.advance(&mut self.term, bytes);
+    }
+
     pub fn term(&self) -> &Term {
         &self.term
     }
