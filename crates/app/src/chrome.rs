@@ -58,9 +58,11 @@
 //! re-strikes nothing.
 //!
 //! Compositing for text is single-alpha premultiplied, on a coverage that is
-//! the largest of the three subpixel channels. Where a line lies on the plate
-//! that is the result component-alpha reached anyway, since the seam that
-//! carried the raster to the GPU had one alpha channel to put it in.
+//! the largest of the three subpixel channels. This is a narrowing: the CPU
+//! rasteriser blended each stripe against the plate under it, so a numeral on
+//! an opaque plate carried a real colour fringe, and the largest of the three
+//! also sets a heavier edge than their mean would. What a host with no
+//! subpixel geometry saw is what every host sees now.
 //!
 //! # The badges
 //!
@@ -242,7 +244,14 @@ const CHROME_WGSL: &str = r#"
 // raster inside an early-out branch, and a plain sample may only be taken in
 // uniform control flow.
 fn chrome_sample(uv: vec2<f32>, rect: vec4<f32>) -> vec4<f32> {
-    let p = rect.xy + clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0)) * rect.zw;
+    // Clamped to the raster's own outermost texel centres, not to its rect:
+    // the rect's far edge is the gutter between entries, and a body reading
+    // its spill band takes taps past 1.0 that have to land on the last lamp
+    // the way a per-piece texture's clamp-to-edge put them.
+    let half = 0.5 / vec2<f32>(textureDimensions(atlas, 0));
+    let lo = rect.xy + half;
+    let hi = max(lo, rect.xy + rect.zw - half);
+    let p = clamp(rect.xy + uv * rect.zw, lo, hi);
     return textureSampleLevel(atlas, atlas_sampler, p, 0.0);
 }
 
