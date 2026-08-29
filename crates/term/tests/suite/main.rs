@@ -13,6 +13,7 @@ mod pointer_tests;
 mod preedit;
 mod rio_grid_tests;
 mod scrollback;
+mod search_tests;
 mod selection_konsole_tests;
 mod selection_paint;
 mod selection_rio_tests;
