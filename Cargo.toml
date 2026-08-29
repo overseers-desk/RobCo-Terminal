@@ -4,6 +4,7 @@ members = [
     "crates/app",
     "crates/chassis",
     "crates/config",
+    "crates/critters",
     "crates/crt-render",
     "crates/gpu",
     "crates/shader-oracle",
