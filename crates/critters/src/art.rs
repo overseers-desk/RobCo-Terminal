@@ -16,13 +16,13 @@
 //! and a line shorter than the box is transparent to the box's right edge.
 //!
 //! Whether a **space** shows through is the piece's own business
-//! ([`Art::solid`]), because the two sources disagree and each is right about
-//! its own art. The sea pieces are drawn as outlines and rendered with spaces
+//! ([`Art::solid`]), because the sources disagree and each is right about its
+//! own art. The sea pieces are drawn as outlines and rendered with spaces
 //! transparent, so the session's text swims behind a whale rather than being
 //! erased by its belly; that is how those figures have always looked. The
-//! locomotive is drawn as a machine and written to the screen a whole line at
-//! a time, spaces and all, so its boiler is solid and the text goes behind
-//! it. Reading either one the other way spoils it.
+//! locomotive and Pac-Man are drawn as solid things and written to the screen
+//! a whole line at a time, spaces and all, so a boiler is a boiler and the
+//! text goes behind it. Reading either kind the other way spoils it.
 //!
 //! # Speed
 //!
@@ -185,11 +185,8 @@ impl Crossing {
 
 /// The eight, in the order they are drawn from.
 ///
-/// `step_ms` is chosen for each so that `width * step_ms` lands within a
-/// hundred milliseconds of a second: that product is how long a critter
-/// stands on one cell, and standing on a cell somebody is reading is the one
-/// thing this feature may not do. It is why the locomotive is fast and the
-/// swan is not.
+/// Each row's `step_ms` is set by the rule under **Speed** above, which is
+/// why the locomotive is fast and the swan is not.
 pub static ART: [Art; 8] = [
     Art {
         name: "dolphins",
@@ -359,9 +356,7 @@ mod tests {
         }
     }
 
-    /// A cell is covered for the width of the piece times its step, and the
-    /// whole feature rests on that staying about a second: a critter is
-    /// uninvited, and may not sit on a line somebody is reading.
+    /// The rule under **Speed**, asserted of every row of the table.
     #[test]
     fn no_piece_stands_on_a_cell_for_longer_than_a_second() {
         for art in &ART {

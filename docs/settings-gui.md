@@ -25,8 +25,8 @@ started rather than the ones already running.
 The **Critters** tab is where the appliance's own company is settled: whether
 anything crosses the glass, how long on average between one and the next, and
 which of the eight pieces are still in the cast. The interval is an average
-and not a period, so a critter is never due; [the config
-file](config.md) says more about why.
+and not a period, so a critter is never due; [`[critters]`](config.md#critters)
+says more about why, and names each piece.
 
 ## How it behaves
 

@@ -651,7 +651,7 @@ impl GridRenderer {
     /// Being in the grid is also what puts it through the CRT chain with
     /// everything else on the tube: it bends with the curvature and glows
     /// with the phosphor, where a figure composited over the finished picture
-    /// (`app::badge`) would sit flat on the glass in front of it.
+    /// (`app::chrome`'s badges) would sit flat on the glass in front of it.
     ///
     /// `cells` is row-major and holds a character per cell it wants. Rows are
     /// rebuilt only where the critter arrived or left, so a critter that has

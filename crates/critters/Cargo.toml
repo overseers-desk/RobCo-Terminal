@@ -11,10 +11,7 @@ publish = false
 name = "critters"
 path = "src/lib.rs"
 
-# No dependencies, deliberately, and the same reason `tmux-cc` has none: what
-# this crate does is arithmetic on a clock the caller owns. A generator of
-# random numbers is twenty lines here (`rng`), and the alternative was to make
-# `rand` -- which reaches no shipped binary in this workspace today, being a
-# dev-dependency and an optional test feature -- a runtime dependency of the
-# terminal, to save them.
+# No dependencies, and the same reason `tmux-cc` has none: what this crate
+# does is arithmetic on a clock the caller owns. The generator it needs is
+# twenty lines in `rng`.
 [dependencies]

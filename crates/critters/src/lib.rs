@@ -14,12 +14,11 @@
 //!
 //! # The promise it keeps
 //!
-//! A critter is uninvited. It may therefore land on the very line somebody is
-//! reading, and the only thing that makes that acceptable is that it does not
-//! stay: every piece is off any cell it touches within about a second, which
-//! is the rule [`art::ART`] is tuned to and a test holds it to. It follows
-//! that nothing here needs to know what is on the screen, or where the cursor
-//! is, or whether anybody is typing.
+//! A critter is uninvited, so it may land on the very line somebody is
+//! reading. What makes that acceptable is that it does not stay; [`art`]
+//! carries the rule and the number that keeps it. Nothing here therefore
+//! needs to know what is on the screen, where the cursor is, or whether
+//! anybody is typing.
 //!
 //! # What this crate is
 //!

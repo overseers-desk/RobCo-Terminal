@@ -35,7 +35,6 @@ pub const DOLPHINS_RIGHT: [&str; 2] = [
     ````\)~^^`"#,
 ];
 
-//
 pub const DOLPHINS_LEFT: [&str; 2] = [
     r#"     ,
    _/(__
@@ -60,7 +59,6 @@ pub const DUCKS_RIGHT: [&str; 3] = [
  \~~= ')????\~~= ')????\~~= ')"#,
 ];
 
-//
 pub const DUCKS_LEFT: [&str; 3] = [
     r#"  _??????????_??????????_
 >(')____,??=(')____,??=(')____,
@@ -82,7 +80,6 @@ pub const SWAN_RIGHT: [&str; 1] = [r#"       ___
 (\_   `   \
  \   -=~  /"#];
 
-//
 pub const SWAN_LEFT: [&str; 1] = [r#" ___
 /,_ \    _,
 |/ )/   / |
@@ -179,7 +176,6 @@ pub const WHALE_RIGHT: [&str; 12] = [
 \`._/          ,__)"#,
 ];
 
-//
 pub const WHALE_LEFT: [&str; 12] = [
     r#"
 
@@ -275,7 +271,6 @@ pub const SHIP_RIGHT: [&str; 1] = [r#"     |    |    |
 _____|____|____|____\\\\\__
 \                   /"#];
 
-//
 pub const SHIP_LEFT: [&str; 1] = [r#"         |    |    |
         (_(  (_(  (_(
       /(___((___((___(
@@ -307,7 +302,6 @@ pub const MONSTER_RIGHT: [&str; 4] = [
   \ \?????|     |???|  ||  |????|     |?????/   \????|     |"#,
 ];
 
-//
 pub const MONSTER_LEFT: [&str; 4] = [
     r#"    ____
   /  o   \??????????????????????????????????????????__

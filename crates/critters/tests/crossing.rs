@@ -7,10 +7,9 @@
 //! in a millisecond.
 //!
 //! Two claims are worth more than the rest and are made several ways. A
-//! crossing **ends** -- there is no size of screen, no resize, no cadence of
-//! calls that leaves a critter standing on somebody's text. And a critter is
-//! **off any cell within about a second**, which is the whole of what makes
-//! an uninvited animation acceptable over a line somebody is reading.
+//! crossing **ends**: no size of screen, no resize and no cadence of calls
+//! leaves a critter standing on somebody's text. And a critter is **off any
+//! cell within about a second**, the rule `critters::art` states.
 
 use std::time::{Duration, Instant};
 

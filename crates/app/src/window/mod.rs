@@ -678,9 +678,8 @@ impl Glass {
 
 /// A seed for one window's critters.
 ///
-/// The wall clock's nanoseconds, which is all the unpredictability wanted
-/// here: nobody is attacking a duck. Two windows opened in the same
-/// nanosecond would keep the same company, and would deserve each other.
+/// The wall clock's nanoseconds. Two windows opened in the same nanosecond
+/// would keep the same company, and would deserve each other.
 fn critter_seed() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1607,11 +1606,9 @@ impl TerminalSurface {
 
         // The critter, off the same instant as the chain's clock above, and
         // painted into the cells for the reason the pre-edit just was: in the
-        // grid it wears the phosphor and bends with the tube, where a figure
-        // laid over the finished picture would sit flat on the glass in front
-        // of it. The renderer rebuilds only the rows it arrived on or left,
-        // so the frames where it has not moved -- most of them, at this
-        // cadence -- cost nothing.
+        // grid it wears the phosphor and bends with the tube. The renderer
+        // rebuilds only the rows it arrived on or left, so the frames where
+        // it has not moved, which is most of them, cost nothing.
         let (cols, rows) = (glass.renderer.cols(), glass.renderer.rows());
         self.critters.tick(now, cols, rows);
         glass.renderer.set_critter(
@@ -2113,10 +2110,8 @@ impl Surface for TerminalSurface {
         // The critters' own deadline: the next column of a crossing in hand,
         // or the instant the next one is due. The effects clock above happens
         // to wake this window often enough today, but a critter that owes the
-        // screen a step should say so itself rather than live on somebody
-        // else's frames -- the size badge's own wake was removed once for
-        // animating an opacity nothing drew, and a critter left standing
-        // mid-screen is what the same tidy-up would cost here.
+        // screen a step says so itself rather than living on somebody else's
+        // frames.
         if let Some(at) = self.critters.wake_at() {
             wake_at = wake_at.min(at);
         }

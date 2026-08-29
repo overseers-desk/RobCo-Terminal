@@ -292,7 +292,7 @@ the shipped fifteen, gaps of two minutes and of fifty are both ordinary.
 | Key | Default | What it does |
 |---|---|---|
 | `enabled` | `true` | Whether anything crosses the glass at all. Off is the same silence as a build with none of this in it. |
-| `mean_minutes` | `15.0` | The average wait between one critter and the next. Set it low to watch them; set it high for a rarer surprise. |
+| `mean_minutes` | `15.0` | The average wait between one critter and the next. Set it low to watch them; set it high for a rarer surprise. The settings window's slider runs 1 to 120; the file takes any number, and anything under a second is read as a second. |
 | `dolphins` | `true` | A pair leaping and going back in, asciiquarium's. |
 | `ducks` | `true` | Three abreast, quacking down the line, asciiquarium's. |
 | `swan` | `true` | asciiquarium's, and the only one that needs no animating to look alive. |

@@ -7,21 +7,18 @@
 //!
 //! # The wait
 //!
-//! Memoryless, mean fifteen minutes by default ([`crate::rng::wait`]). A
-//! fixed timer would be a metronome: a user who has seen two critters would
-//! know when the third was due, and knowing is the end of the joke. The
-//! clock restarts when a piece walks off rather than when it walked on, so
-//! two never overlap and the gap between them is still shapeless.
+//! Drawn from [`crate::rng::wait`], which says why it is drawn rather than
+//! counted. The clock restarts when a piece walks off rather than when it
+//! walked on, so two never overlap and the gap between them is still
+//! shapeless.
 //!
 //! # Where it walks
 //!
 //! Any row, the cursor's included. There is no quiet corner of a terminal to
 //! prefer: a shell writes at the bottom, a full-screen program writes
-//! everywhere, and a rule that kept critters out of the busy half would put
-//! them all in one place, which is the one thing they may not do. What makes
-//! this safe is not the choice of row but the speed: a piece is off any cell
-//! it touches within a second, so a covered word is back before it is
-//! wanted, and a critter is never on the glass long enough to be waited for.
+//! everywhere, and a rule keeping critters out of the busy half would put
+//! them all in one place. What makes a free choice of row safe is the speed
+//! rule in [`crate::art`], not the choice itself.
 //!
 //! A piece that does not fit the screen is clipped rather than passed over.
 //! A locomotive on a six-row window shows the band of itself that fits,
@@ -83,8 +80,7 @@ impl Critters {
     }
 
     /// Advance to `now` on a screen this size, and say whether the cells
-    /// differ from the last tick -- which is the caller's answer to whether
-    /// it owes the screen a frame.
+    /// differ from the last tick.
     pub fn tick(&mut self, now: Instant, cols: usize, rows: usize) -> bool {
         let before = self.cells.len();
         let was_where = self.now;
