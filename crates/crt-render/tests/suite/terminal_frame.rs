@@ -17,7 +17,7 @@ const H: u32 = 64;
 
 /// wgpu/librashader's quad + framebuffer convention: readback row `r`
 /// corresponds to texcoord `v = (r + 0.5) / H` directly, no y-flip.
-/// Empirically confirmed in `robco-chassis`'s `tests/chassis_metal.rs`, where
+/// Empirically confirmed in `robco-chassis`'s `tests/suite/chassis_metal.rs`, where
 /// the metals now live: the flipped hypothesis was off by ~0.05 at every
 /// off-center sample against that oracle, the un-flipped one by <0.0001.
 fn uv_of(c: u32, r: u32) -> [f32; 2] {

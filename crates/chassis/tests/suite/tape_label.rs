@@ -27,7 +27,7 @@ fn source() -> String {
 const SIZE_W: u32 = 160;
 const SIZE_H: u32 = 32;
 
-/// See `uv_of` in `robco-chassis`'s `tests/chassis_metal.rs` for the empirical
+/// See `uv_of` in `robco-chassis`'s `tests/suite/chassis_metal.rs` for the empirical
 /// confirmation that readback row maps to texcoord v with no flip. (Unused here beyond
 /// documentation -- `tape_label`'s glyph mask is uploaded with the matching
 /// no-flip convention, so mask row `y` lines up with output row `y`.)

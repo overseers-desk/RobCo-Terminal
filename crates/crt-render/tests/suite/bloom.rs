@@ -24,7 +24,7 @@ use std::path::PathBuf;
 const W: u32 = 64;
 const H: u32 = 64;
 
-/// See `uv_of` in `robco-chassis`'s `tests/chassis_metal.rs` for the empirical
+/// See `uv_of` in `robco-chassis`'s `tests/suite/chassis_metal.rs` for the empirical
 /// confirmation that readback row maps to texcoord v with no flip.
 fn uv_of(c: u32, r: u32, w: u32, h: u32) -> [f32; 2] {
     [(c as f32 + 0.5) / w as f32, (r as f32 + 0.5) / h as f32]

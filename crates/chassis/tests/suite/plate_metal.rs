@@ -19,7 +19,7 @@ fn source() -> String {
     )
 }
 
-/// See `tests/chassis_metal.rs`'s `uv_of` for the empirical confirmation
+/// See `tests/suite/chassis_metal.rs`'s `uv_of` for the empirical confirmation
 /// that readback row maps to texcoord v with no flip.
 fn uv_of(c: u32, r: u32) -> [f32; 2] {
     [(c as f32 + 0.5) / W as f32, (r as f32 + 0.5) / H as f32]
