@@ -65,6 +65,10 @@ robco-config = { path = "../config" }
 # The cabinet the screen is set into, reached as `chassis`: the bank's
 # geometry, the seam, and the minimum-size floor the window hint is built on.
 robco-chassis = { path = "../chassis" }
+# What crosses the glass every so often, reached as `critters`: the art, and
+# the clock that decides when. It holds no renderer and no terminal, so the
+# window asks it for cells and stamps them itself.
+robco-critters = { path = "../critters" }
 # The CRT pass graph, reached as `crt`: what the wgpu device has to be
 # created with, and the chain the window draws its grid through on the way to
 # the swapchain.

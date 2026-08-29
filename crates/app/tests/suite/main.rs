@@ -7,6 +7,7 @@ mod bank_chrome;
 mod bank_furniture;
 mod channel_bank;
 mod clipboard_keys;
+mod critters;
 mod find_keys;
 mod frame_stats;
 mod fullscreen_pointer;

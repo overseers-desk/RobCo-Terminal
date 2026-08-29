@@ -76,7 +76,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chassis::Cabinet;
-use config::Config;
+use config::{Config, CritterSettings};
+use critters::Critters;
 use crt::{Chain, Degauss, Geometry, Pacing, Params};
 use term::distortion;
 use term::fonts::sizing::{ScalePolicy, SizingRequest};
@@ -429,6 +430,11 @@ pub struct TerminalSurface {
     /// The channel-change transient. Triggered here, sampled by the frame; see
     /// [`Glass`] for why it does not live there.
     degauss: Degauss,
+    /// This window's critters: what walks across the glass, and when. Here
+    /// beside the degauss and for its reason -- triggered here, sampled by
+    /// the frame -- and per window rather than per application, so two
+    /// windows keep their own company.
+    critters: Critters,
     /// The pair the glass was last showing, so the work that follows a switch
     /// runs on a switch and not on every pump.
     on_air: (BankId, u32),
@@ -670,6 +676,56 @@ impl Glass {
     }
 }
 
+/// A seed for one window's critters.
+///
+/// The wall clock's nanoseconds, which is all the unpredictability wanted
+/// here: nobody is attacking a duck. Two windows opened in the same
+/// nanosecond would keep the same company, and would deserve each other.
+fn critter_seed() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0x5EED)
+}
+
+/// This window's critters as they ship, before the settings file has been
+/// read. `apply_live_settings` replaces this on the first frame; it is here
+/// so the shipped values have one home, which is the schema.
+fn shipped_critters() -> Critters {
+    let shipped = CritterSettings::default();
+    Critters::new(
+        critter_seed(),
+        shipped.enabled,
+        Duration::from_secs_f64(shipped.mean_minutes * 60.0),
+        critter_cast(&shipped),
+    )
+}
+
+/// Which pieces the config leaves switched on, in `critters::ART`'s order.
+///
+/// The one place the table's key names and the art's names are held against
+/// each other. A piece added to the art without a key to retire it would
+/// arrive here unmatched and be left off, and
+/// `crates/app/tests/suite/critters.rs` is what stops that happening
+/// quietly.
+fn critter_cast(settings: &CritterSettings) -> [bool; critters::ART.len()] {
+    let mut cast = [false; critters::ART.len()];
+    for (on, art) in cast.iter_mut().zip(critters::ART.iter()) {
+        *on = match art.name {
+            "dolphins" => settings.dolphins,
+            "ducks" => settings.ducks,
+            "swan" => settings.swan,
+            "whale" => settings.whale,
+            "ship" => settings.ship,
+            "monster" => settings.monster,
+            "pacman" => settings.pacman,
+            "locomotive" => settings.locomotive,
+            _ => false,
+        };
+    }
+    cast
+}
+
 impl TerminalSurface {
     /// Builds a surface for a window the shell has already created.
     /// Failure to get a GPU or a PTY is logged and leaves an empty
@@ -808,6 +864,7 @@ impl TerminalSurface {
             chord: ChordInput::new(),
             chord_modifier: false,
             degauss: Degauss::new(),
+            critters: shipped_critters(),
             viewport,
             window_size,
             cabinet,
@@ -1364,6 +1421,11 @@ impl TerminalSurface {
     /// would, on the thread that is allowed to act on it.
     fn apply_live_settings(&mut self) {
         let cfg = self.live_config();
+        self.critters.configure(
+            cfg.critters.enabled,
+            Duration::from_secs_f64((cfg.critters.mean_minutes * 60.0).max(1.0)),
+            critter_cast(&cfg.critters),
+        );
 
         // The cabinet first: it decides how much of the window is glass, and
         // the font sizing below is measured against the glass.
@@ -1542,6 +1604,22 @@ impl TerminalSurface {
         // with the rest of the tube rather than floating flat over it
         // (`term::render::GridRenderer::set_preedit`).
         glass.renderer.set_preedit(&gpu.queue, &self.ime.preedit);
+
+        // The critter, off the same instant as the chain's clock above, and
+        // painted into the cells for the reason the pre-edit just was: in the
+        // grid it wears the phosphor and bends with the tube, where a figure
+        // laid over the finished picture would sit flat on the glass in front
+        // of it. The renderer rebuilds only the rows it arrived on or left,
+        // so the frames where it has not moved -- most of them, at this
+        // cadence -- cost nothing.
+        let (cols, rows) = (glass.renderer.cols(), glass.renderer.rows());
+        self.critters.tick(now, cols, rows);
+        glass.renderer.set_critter(
+            &gpu.device,
+            &gpu.queue,
+            &mut glass.font,
+            self.critters.cells(),
+        );
 
         // The grid is centred in the target at a whole-pixel origin: the
         // remainder of dividing the window by the cell is padding, and half a
@@ -2030,6 +2108,17 @@ impl Surface for TerminalSurface {
                     wake_at = wake_at.min(now + interval);
                 }
             }
+        }
+
+        // The critters' own deadline: the next column of a crossing in hand,
+        // or the instant the next one is due. The effects clock above happens
+        // to wake this window often enough today, but a critter that owes the
+        // screen a step should say so itself rather than live on somebody
+        // else's frames -- the size badge's own wake was removed once for
+        // animating an opacity nothing drew, and a critter left standing
+        // mid-screen is what the same tidy-up would cost here.
+        if let Some(at) = self.critters.wake_at() {
+            wake_at = wake_at.min(at);
         }
 
         // The output governor (see [`Self::next_output_frame`]): output asks
