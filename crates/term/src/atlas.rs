@@ -1,6 +1,6 @@
 //! Glyph atlas: cosmic-text does the shaping and the rasterising, we own the
 //! bytes between swash and the GPU. Upload takes a borrowed device/queue
-//! rather than owning a `Gpu`, and the packer reports how full it is.
+//! rather than owning a `Gpu`.
 //!
 //! That ownership is the entire reason this module exists instead of a call to
 //! glyphon. swash hands back an 8-bit coverage mask (`Format::Alpha`), which is
