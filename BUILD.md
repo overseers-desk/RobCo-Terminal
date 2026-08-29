@@ -40,8 +40,18 @@ CARGO_PROFILE_RELEASE_DEBUG=2 cargo build --release
 
 The override lives in the environment rather than in `Cargo.toml`, so a local choice cannot follow the tree into a release. It costs several times the binary's size, in sections the loader does not page in. The C++ dependencies are a separate matter: `cc` passes `-g` whenever the profile carries any debug information, so their full DWARF is present either way, and it is the bulk of what an unstripped build weighs.
 
-`cargo run -p xtask -- install --prefix <dir>` installs whatever the build produced. That route does not strip; `dist` is the one that does. For a Debian package that keeps its symbols, debhelper reads the standard knob:
+Either build above produces a binary and no package. `cargo run -p xtask -- install --prefix <dir>` puts that binary in place as it stands, symbols and all, because `install` does not strip; `dist` is the route that does.
+
+A package is its own command, and debhelper strips unless told otherwise. `nostrip` alone keeps the line tables and the C++ dependencies' own DWARF:
 
 ```bash
 DEB_BUILD_OPTIONS=nostrip dpkg-buildpackage -us -uc -b
 ```
+
+Both switches together carry the full DWARF for this project's own code into the package as well:
+
+```bash
+DEB_BUILD_OPTIONS=nostrip CARGO_PROFILE_RELEASE_DEBUG=2 dpkg-buildpackage -us -uc -b
+```
+
+The package name has no field for any of this. A debug build overwrites the ordinary one at the same path, so read the size rather than the name: measured here, 120.8 MB against 24 MB stripped.
