@@ -84,7 +84,7 @@ namespace eval ::rcsettings::model {
         variable Fonts
         set parsed [::tomledit::parse $text]
         set Defaults [dict create]
-        foreach table {general screen chassis ssh ssh_host_defaults} {
+        foreach table {general screen chassis ssh ssh_host_defaults critters} {
             dict set Defaults $table [dict get $parsed tables $table]
         }
         set Presets [dict create]

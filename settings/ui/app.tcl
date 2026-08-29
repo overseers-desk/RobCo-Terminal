@@ -119,11 +119,11 @@ proc ::rcsettings::ui::app::build {} {
         [list ::rcsettings::ui::app::say] [list ::rcsettings::ui::app::wrote]
 
     ttk::notebook .nb -padding {8 8 8 0}
-    foreach {table title} {general General screen Screen chassis Chassis} {
+    foreach {table title} {general General screen Screen chassis Chassis critters Critters} {
         .nb add [::rcsettings::ui::form::page .nb $table] -text $title
     }
     # The SSH tab is a list of rows rather than a page of keys, so it is its
-    # own page rather than a fourth entry in the form's layout.
+    # own page rather than another entry in the form's layout.
     .nb add [::rcsettings::ui::ssh_page::page .nb] -text "SSH"
 
     # Landing on Screen or Chassis is one of the three gates the system font

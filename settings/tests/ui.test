@@ -36,6 +36,7 @@ set ::unshown {
     general {show_menubar use_custom_command custom_command}
     screen  {blinking_cursor name}
     chassis {name}
+    critters {}
 }
 
 proc layout_keys {table} {
@@ -48,7 +49,7 @@ proc layout_keys {table} {
 
 proc layout_rows {} {
     set out {}
-    foreach table {general screen chassis} {
+    foreach table {general screen chassis critters} {
         foreach {title rows} [dict get $::rcsettings::ui::form::Layout $table] {
             foreach {key kind label arg} $rows { lappend out [list $table $key $kind $arg] }
         }
@@ -60,7 +61,7 @@ test layout-1.1 {every key the schema carries is either a row or a named omissio
     tk realBinary
 } -body {
     set missing {}
-    foreach table {general screen chassis} {
+    foreach table {general screen chassis critters} {
         set shown [layout_keys $table]
         foreach key [::rcsettings::model::table_keys $table] {
             if {$key in $shown} { continue }

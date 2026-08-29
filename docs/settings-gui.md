@@ -4,10 +4,10 @@ Right-clicking the glass opens `robco-settings`, a separate program shipped
 in every official package beside `robco-term`. On macOS the same window is
 also under the application menu, at **Settings…** or `Cmd`+`,`, where a Mac
 looks for it. It is the graphical face of
-[the config file](config.md): four tabs (General, Screen, Chassis, SSH), a
-preset picker at the head of each look axis, sliders and pickers for every
-key the build reads, a marker on each value the file pins away from its
-preset, and a per-row reset that unpins one.
+[the config file](config.md): a tab per table -- General, Screen, Chassis,
+SSH, Critters -- a preset picker at the head of each look axis, sliders and
+pickers for every key the build reads, a marker on each value the file pins
+away from its preset, and a per-row reset that unpins one.
 
 The **SSH** tab is a list rather than a form, `[[ssh.host]]` being a table
 per server. The checked radio is where a new session starts: localhost at
@@ -21,6 +21,12 @@ diff-against-defaults rule the other tabs follow, while the host is written
 whatever it holds, being what the row is identified by. The terminal reads
 the table when it launches, so a change here reaches the next session
 started rather than the ones already running.
+
+The **Critters** tab is where the appliance's own company is settled: whether
+anything crosses the glass, how long on average between one and the next, and
+which of the eight pieces are still in the cast. The interval is an average
+and not a period, so a critter is never due; [the config
+file](config.md) says more about why.
 
 ## How it behaves
 

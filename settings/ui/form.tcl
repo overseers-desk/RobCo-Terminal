@@ -103,6 +103,22 @@ namespace eval ::rcsettings::ui::form {
                 frame_shininess frac  "Shininess"     {}
             }
         }
+        critters {
+            {When they visit} {
+                enabled      bool "Let them visit"                {}
+                mean_minutes scale "Minutes apart, on average"    {1.0 120.0}
+            }
+            {Who visits} {
+                dolphins   bool "Dolphins"        {}
+                ducks      bool "Ducks"           {}
+                swan       bool "Swan"            {}
+                whale      bool "Whale"           {}
+                ship       bool "Ship"            {}
+                monster    bool "Sea monster"     {}
+                pacman     bool "Pac-Man"         {}
+                locomotive bool "Locomotive"      {}
+            }
+        }
     }
 
     # id ("table.key") -> the row's widgets and what it needs to write itself.
