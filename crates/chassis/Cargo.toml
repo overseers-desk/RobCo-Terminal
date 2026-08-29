@@ -22,8 +22,7 @@ robco-term = { path = "../term" }
 
 # Nothing from `robco-crt-render` here: decision (b) is that the chassis stays
 # off the glass chain, in the dependency graph as well as in the pixels. Its
-# measurement rig is a dev-dependency below, which no shipped chrome links. The
-# two
+# measurement rig is a dev-dependency below, which no shipped chrome links. The two
 # `utils.js` helpers both halves of the chrome need are in `src/color.rs`, and
 # the metal oracles came here whole with their shaders.
 
