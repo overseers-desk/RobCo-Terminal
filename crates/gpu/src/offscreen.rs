@@ -11,9 +11,10 @@
 //! the comparison.
 //!
 //! A target carries its format, so one device serves both the grid's
-//! `Rgba8Unorm` and the measurement rig's `Rgba32Float`: [`Target::read_rgba`]
-//! and [`Target::read_rgba_f32`] are the two readings of one padded copy path,
-//! which differs only in bytes per pixel.
+//! `Rgba8Unorm` and the measurement rig's `Rgba32Float`. Both are read back
+//! through one padded copy path, which differs only in bytes per pixel:
+//! [`Target::read_rgba`] takes the grid's, and the rig reads its own through
+//! [`crate::harness`].
 
 use wgpu::util::DeviceExt as _;
 
@@ -231,11 +232,6 @@ impl Target {
         }
     }
 
-    /// Read a float32 target back as RGBA f32, row padding removed.
-    pub fn read_rgba_f32(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<[f32; 4]> {
-        let bytes = read_back(device, queue, &self.texture, self.width, self.height, 16);
-        decode_rgba_f32(&bytes)
-    }
 }
 
 /// Tightly packed `Rgba32Float` bytes as pixels.
