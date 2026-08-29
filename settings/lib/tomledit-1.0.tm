@@ -1,3 +1,9 @@
+# tomledit is published on the teatotal module shelf,
+# <https://github.com/teatotal/teatotal>, where its test suite, man page and
+# updates live. A copy carried inside another project is vendored from there.
+#
+# Copyright (c) 2025 Weiwu Zhang. SPDX-License-Identifier: MIT
+
 package require Tcl 9
 package provide tomledit 1.0
 
