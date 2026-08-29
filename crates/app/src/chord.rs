@@ -32,6 +32,21 @@
 
 use std::time::{Duration, Instant};
 
+use winit::keyboard::ModifiersState;
+
+/// Whether the chord modifier is held: Alt everywhere but macOS, where the
+/// Alt key composes text and Meta is the one a shortcut may take.
+///
+/// The one place that rule is written. The keyboard reads it to route a
+/// digit, and the modifier-change edge reads it to commit on the release.
+pub fn modifier_down(modifiers: ModifiersState) -> bool {
+    if cfg!(target_os = "macos") {
+        modifiers.super_key()
+    } else {
+        modifiers.alt_key()
+    }
+}
+
 /// Commits the chord if the modifier release is never observed.
 pub const COMMIT_TIMEOUT: Duration = Duration::from_millis(900);
 

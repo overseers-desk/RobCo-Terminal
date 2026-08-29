@@ -2278,12 +2278,7 @@ impl TerminalSurface {
 
         let ctrl = modifiers.control_key();
         let shift = modifiers.shift_key();
-        // The chord modifier is Alt everywhere but macOS, where it is Meta.
-        let chord_mod = if cfg!(target_os = "macos") {
-            modifiers.super_key()
-        } else {
-            modifiers.alt_key()
-        };
+        let chord_mod = crate::chord::modifier_down(modifiers);
 
         match logical {
             Key::Named(NamedKey::PageUp) if chord_mod => self.step_bank(-1),
@@ -4227,11 +4222,7 @@ impl Surface for TerminalSurface {
     /// taken off the modifier state the shell already tracks: the modifier
     /// was down, and now it is not.
     fn modifiers_changed(&mut self, modifiers: ModifiersState) {
-        let down = if cfg!(target_os = "macos") {
-            modifiers.super_key()
-        } else {
-            modifiers.alt_key()
-        };
+        let down = crate::chord::modifier_down(modifiers);
         let released = self.chord_modifier && !down;
         self.chord_modifier = down;
         if released {
