@@ -86,6 +86,22 @@ machine's installed faces are a second ask over `robco-term
 rather than at open, because that answer costs a walk of the platform's
 font directories.
 
+## Why Tcl/Tk and not a second Rust binary
+
+Tk is the toolkit, and it stays. Writing this window as another binary in
+the workspace would put the choice of widget set back on the table, and the
+sets a Rust program reaches for are Qt and GTK. Neither belongs in this
+repository: `docs/arch.md` states why the terminal links no toolkit, and a
+sibling binary that linked one would bring it back through the packaging,
+the build hosts and the licence surface even though the terminal itself
+stayed clean. Tk draws the platform's stock widgets, ships as one
+self-contained executable per platform, and asks nothing of the terminal's
+own dependency graph.
+
+The cost is a second language, and the price it charges is real: the
+window's own value model, its build scripts and its interpreter packaging
+are lines this repository maintains. The schema is no longer among them.
+
 ## Building and shipping it
 
 The app is Tcl/Tk 9, under `settings/` in this repository: `lib/` is the
