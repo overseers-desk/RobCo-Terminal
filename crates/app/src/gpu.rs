@@ -166,14 +166,6 @@ impl Gpu {
         self.stats.enabled()
     }
 
-    /// Whether this adapter can actually be GPU-timed: `--frame-stats` is on
-    /// *and* the device carries both timestamp features. `false` is a
-    /// documented, non-panicking fallback (see `frame_stats`'s module doc),
-    /// not an error.
-    pub fn frame_stats_available(&self) -> bool {
-        self.stats.gpu_available()
-    }
-
     /// The rolling window's p50/p99s: `--frame-stats`'s periodic log line
     /// reads this, and so does a test that wants the numbers without
     /// scraping the log.

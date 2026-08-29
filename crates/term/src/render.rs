@@ -516,11 +516,6 @@ impl GridRenderer {
         self.bound_generation = self.atlas.generation;
     }
 
-    pub fn set_scheme(&mut self, queue: &wgpu::Queue, scheme: Scheme) {
-        self.scheme = scheme;
-        self.upload_all(queue);
-    }
-
     pub fn resize(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, cols: usize, rows: usize) {
         if cols == self.cols && rows == self.rows {
             return;
@@ -542,17 +537,6 @@ impl GridRenderer {
         (
             self.cols as u32 * self.atlas.cell.width * self.scale,
             self.rows as u32 * self.atlas.cell.height * self.scale,
-        )
-    }
-
-    /// How many whole cells fit in a surface of this many physical pixels.
-    /// The inverse of `pixel_size`, and the function a resize handler needs.
-    pub fn cells_for_pixels(&self, width: u32, height: u32) -> (usize, usize) {
-        let cw = self.atlas.cell.width * self.scale;
-        let ch = self.atlas.cell.height * self.scale;
-        (
-            (width / cw.max(1)).max(1) as usize,
-            (height / ch.max(1)).max(1) as usize,
         )
     }
 

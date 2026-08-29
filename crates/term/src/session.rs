@@ -184,9 +184,6 @@ pub struct Pumped {
 }
 
 impl Pumped {
-    pub fn is_idle(&self) -> bool {
-        self.bytes == 0 && !self.eof
-    }
 }
 
 /// A live terminal session.

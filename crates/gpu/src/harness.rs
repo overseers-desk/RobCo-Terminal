@@ -153,22 +153,6 @@ impl Locked {
         Ok(Self { gpu, _lock: lock })
     }
 
-    /// Whether a blending pipeline can be built against [`OUTPUT_FORMAT`] on
-    /// this machine. A test that composites has to say so rather than assert
-    /// through a validation panic.
-    pub fn blends_float32(&self) -> bool {
-        self.gpu
-            .device
-            .features()
-            .contains(wgpu::Features::FLOAT32_BLENDABLE)
-    }
-
-    /// Whether this device can carry an fp32 accumulator through a filtering
-    /// sampler. Without it that is a validation error, not a slower path.
-    pub fn float32_filterable(&self) -> bool {
-        crate::supports_fp32_accumulator(&self.gpu.device)
-    }
-
     /// A chain's input. librashader copies this texture into its history ring,
     /// so it needs `COPY_SRC` on top of the obvious sampling and upload usages.
     pub fn make_input(&self, w: u32, h: u32) -> wgpu::Texture {

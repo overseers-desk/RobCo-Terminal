@@ -444,12 +444,6 @@ impl Shell {
         event_loop.run_app(&mut self)
     }
 
-    /// How many windows stand. Only meaningful to tests and to the
-    /// last-window-closes rule.
-    pub fn window_count(&self) -> usize {
-        self.windows.len()
-    }
-
     fn open_window(
         &mut self,
         event_loop: &ActiveEventLoop,

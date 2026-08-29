@@ -63,8 +63,3 @@ pub fn supports_fp32_accumulator(device: &wgpu::Device) -> bool {
         .features()
         .contains(wgpu::Features::FLOAT32_FILTERABLE)
 }
-
-/// Whether librashader's shader cache is safe to enable on this device.
-pub fn supports_pipeline_cache(device: &wgpu::Device) -> bool {
-    device.features().contains(wgpu::Features::PIPELINE_CACHE)
-}

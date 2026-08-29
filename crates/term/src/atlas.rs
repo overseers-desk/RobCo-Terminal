@@ -437,12 +437,6 @@ impl GlyphAtlas {
         self.generation += 1;
     }
 
-    pub fn distinct_values(&self) -> Vec<u8> {
-        (0..=255u8)
-            .filter(|v| self.value_histogram[*v as usize] > 0)
-            .collect()
-    }
-
     pub fn intermediate_value_count(&self) -> u64 {
         (1..255u8).map(|v| self.value_histogram[v as usize]).sum()
     }

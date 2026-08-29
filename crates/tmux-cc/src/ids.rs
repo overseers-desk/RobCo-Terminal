@@ -11,9 +11,6 @@ macro_rules! tmux_id {
         pub struct $name(String);
 
         impl $name {
-            /// The sigil this id must carry.
-            pub const SIGIL: char = $sigil;
-
             /// Take a token from the wire. `None` unless it is the sigil
             /// followed by at least one digit: tmux numbers these, and a
             /// non-numeric tail is a field boundary gone wrong.

@@ -473,10 +473,6 @@ pub fn frame_metal(uv: [f32; 2], viewport: [f32; 2], p: &FrameMetalParams) -> ([
     (color, alpha)
 }
 
-fn rand2(v: [f32; 2]) -> f32 {
-    frac((v[0] * 12.9898 + v[1] * 78.233).sin() * 43758.5453)
-}
-
 
 pub struct TerminalFrameParams {
     pub screen_curvature: f32,
@@ -548,14 +544,6 @@ pub fn terminal_frame(
     (color, alpha)
 }
 
-
-/// Same computation, but returns the pieces needed to add the tolerance band
-/// the `rand2`-based noise term needs: the un-noised tint plus the noise
-/// value itself (computed the same way the shader does, `sin`-precision
-/// caveats and all -- see the test for how the tolerance is set).
-pub fn terminal_frame_noise(uv: [f32; 2], viewport: [f32; 2]) -> f32 {
-    rand2([uv[0] * viewport[0], uv[1] * viewport[1]]) - 0.5
-}
 
 
 /// The bloom passes' kernel (`bloom_h.slang` / `bloom_v.slang`) as a

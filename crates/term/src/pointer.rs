@@ -77,12 +77,6 @@ impl PointerContext {
         }
     }
 
-    /// Whether the pointer should show as an I-beam: true exactly when
-    /// marking is active.
-    pub fn shows_ibeam_cursor(&self) -> bool {
-        self.marks_selection()
-    }
-
     /// The emulation marks unless the program asked for the mouse.
     fn mouse_marks(&self) -> bool {
         !self.terminal_uses_mouse

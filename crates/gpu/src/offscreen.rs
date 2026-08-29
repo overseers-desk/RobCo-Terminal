@@ -346,37 +346,6 @@ impl Image {
         }
     }
 
-    /// A readback the numbers cannot check: whether the text is legible.
-    /// Every structural property the pixel tests check would still hold if the
-    /// atlas were mapping every character to the same glyph.
-    pub fn ascii_preview(&self, cols: u32, rows: u32) -> String {
-        let mut s = String::new();
-        for y in 0..rows.min(self.height) {
-            for x in 0..cols.min(self.width) {
-                let px = self.pixel(x, y);
-                let luma = px[0].max(px[1]).max(px[2]);
-                s.push(match luma {
-                    0 => ' ',
-                    255 => '#',
-                    _ => '+',
-                });
-            }
-            s.push('\n');
-        }
-        s
-    }
-
-    /// Binary netpbm (P5, 8-bit grey) so the renders can be eyeballed without
-    /// pulling an image encoder into the dependency list.
-    pub fn write_pgm(&self, path: &std::path::Path) -> std::io::Result<()> {
-        use std::io::Write as _;
-        let mut out = Vec::with_capacity(self.pixels.len() / 4 + 32);
-        write!(out, "P5\n{} {}\n255\n", self.width, self.height)?;
-        for px in self.pixels.chunks_exact(4) {
-            out.push(px[0].max(px[1]).max(px[2]));
-        }
-        std::fs::write(path, out)
-    }
 }
 
 pub struct Diff {

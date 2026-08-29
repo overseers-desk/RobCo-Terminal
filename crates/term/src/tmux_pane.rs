@@ -223,23 +223,9 @@ impl<T: DcsTap> ChannelSession<T> {
         }
     }
 
-    pub fn pty_mut(&mut self) -> Option<&mut Session<T>> {
-        match self {
-            ChannelSession::Pty(s) => Some(s),
-            _ => None,
-        }
-    }
-
     pub fn tmux_pane_mut(&mut self) -> Option<&mut TmuxPane> {
         match self {
             ChannelSession::TmuxPane(s) => Some(s),
-            _ => None,
-        }
-    }
-
-    pub fn ssh_mut(&mut self) -> Option<&mut SshChannel<T>> {
-        match self {
-            ChannelSession::Ssh(s) => Some(s),
             _ => None,
         }
     }
