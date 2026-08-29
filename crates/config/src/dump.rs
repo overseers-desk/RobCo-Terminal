@@ -8,9 +8,10 @@
 //! the running binary), so `robco-term --dump-settings` prints it: the
 //! settings window reads this at open and states none of it itself.
 //!
-//! The output is TOML: `[general]` / `[screen]` / `[chassis]` / `[ssh]`
-//! hold the fully-resolved defaults, `[ssh_host_defaults]` what a fresh
-//! `[[ssh.host]]` row holds (row defaults, not a fifth config table),
+//! The output is TOML: `[general]` / `[screen]` / `[chassis]` / `[ssh]` /
+//! `[critters]` hold the fully-resolved defaults, `[ssh_host_defaults]`
+//! what a fresh `[[ssh.host]]` row holds (row defaults, not a config table
+//! of its own),
 //! `[[screen_presets]]` / `[[chassis_presets]]` the built-in presets with
 //! every field resolved (a consumer never redoes the diff-against-default
 //! resolution `presets.rs` states them in), `[[fonts]]` the bundled font
@@ -51,6 +52,7 @@ struct Dump {
     screen: ScreenSettings,
     chassis: ChassisSettings,
     ssh: crate::schema::SshSettings,
+    critters: crate::schema::CritterSettings,
     /// What a fresh `[[ssh.host]]` row holds before the user types: the
     /// shipped `[ssh]` table has no rows, so the per-row defaults appear
     /// nowhere else in this dump.
@@ -69,6 +71,7 @@ pub fn dump(fonts: Vec<FontListing>) -> String {
         screen: ScreenSettings::default(),
         chassis: ChassisSettings::default(),
         ssh: crate::schema::SshSettings::default(),
+        critters: crate::schema::CritterSettings::default(),
         ssh_host_defaults: crate::schema::SshHost::default(),
         screen_presets: crate::presets::screen_presets(),
         chassis_presets: crate::presets::chassis_presets(),

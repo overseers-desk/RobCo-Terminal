@@ -270,6 +270,41 @@ port = 22
 key = ""
 ```
 
+### `[critters]`
+
+Every so often something drawn walks across the glass and leaves. A whale
+spouts, three ducks paddle past, a locomotive runs through. It is not a
+screen saver and it does not wait for you to stop typing: a critter is drawn
+over the terminal's picture rather than into it, so text scrolls behind one,
+a keystroke does not chase it away, and a selection copied across one gives
+you back what the session wrote. Nothing is interrupted, so there is nothing
+to protect by hiding.
+
+What makes an uninvited animation acceptable over a line you are reading is
+that it does not stay. Every piece is off any cell it touches within about a
+second, which is why the wide ones cross faster than the small ones, and why
+there is no key here for how fast they go.
+
+`mean_minutes` is an average, not a period. The wait is drawn fresh each
+time from a distribution with no shape to it, so a critter is never due: at
+the shipped fifteen, gaps of two minutes and of fifty are both ordinary.
+
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | Whether anything crosses the glass at all. Off is the same silence as a build with none of this in it. |
+| `mean_minutes` | `15.0` | The average wait between one critter and the next. Set it low to watch them; set it high for a rarer surprise. |
+| `dolphins` | `true` | A pair leaping and going back in, asciiquarium's. |
+| `ducks` | `true` | Three abreast, quacking down the line, asciiquarium's. |
+| `swan` | `true` | asciiquarium's, and the only one that needs no animating to look alive. |
+| `whale` | `true` | asciiquarium's, which swims a while and then blows. |
+| `ship` | `true` | A three-master, asciiquarium's. |
+| `monster` | `true` | The sea monster, its humps travelling down its back, asciiquarium's. |
+| `pacman` | `true` | Chomping, with the ghost behind him, from jbanana's `anims`. He is being chased, so he only ever goes left. |
+| `locomotive` | `true` | The D51 from `sl`, rods turning once a column as `sl` turns them. It has run right to left since 1993 and still does. |
+
+Turning one off makes the others correspondingly more likely rather than
+leaving a gap in the schedule where it used to be.
+
 ## A worked example
 
 ```toml

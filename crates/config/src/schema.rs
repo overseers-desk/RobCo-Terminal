@@ -324,3 +324,48 @@ impl Default for SshHost {
         }
     }
 }
+
+/// The `[critters]` table: whether the appliance amuses itself, how often,
+/// and with which of its eight pieces.
+///
+/// One key per piece rather than a list of names, because the settings
+/// window's rows are keys and a list would need a page of its own for eight
+/// checkboxes. The names are `critters::ART`'s, and a test in
+/// `crates/app` holds the two lists to each other so a piece cannot be
+/// added to the art without a switch to turn it off.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CritterSettings {
+    /// Whether anything crosses the glass at all.
+    pub enabled: bool,
+    /// The average wait between one critter and the next, in minutes. It is
+    /// an average and not a period: the wait is drawn afresh each time from
+    /// a distribution with no shape to it, because a critter you can predict
+    /// is a critter that has stopped being funny.
+    pub mean_minutes: f64,
+    pub dolphins: bool,
+    pub ducks: bool,
+    pub swan: bool,
+    pub whale: bool,
+    pub ship: bool,
+    pub monster: bool,
+    pub pacman: bool,
+    pub locomotive: bool,
+}
+
+impl Default for CritterSettings {
+    fn default() -> Self {
+        CritterSettings {
+            enabled: true,
+            mean_minutes: 15.0,
+            dolphins: true,
+            ducks: true,
+            swan: true,
+            whale: true,
+            ship: true,
+            monster: true,
+            pacman: true,
+            locomotive: true,
+        }
+    }
+}

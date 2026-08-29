@@ -33,18 +33,17 @@ pub mod watch;
 pub use profile::Profile;
 
 pub use schema::{
-    ChannelDisplay, ChannelIndicator, ChassisSettings, FontSource, GeneralSettings, Rasterization,
-    ScreenSettings, Shell, SshHost, SshSettings,
+    ChannelDisplay, ChannelIndicator, ChassisSettings, CritterSettings, FontSource,
+    GeneralSettings, Rasterization, ScreenSettings, Shell, SshHost, SshSettings,
 };
 
-/// The three settings groups together: the shape a config file written by
-/// this crate takes, one unit for its `[general]` / `[screen]` /
-/// `[chassis]` tables.
+/// Every settings table together: the shape a config file written by this
+/// crate takes, one unit for the tables it carries.
 ///
 /// Deliberately excludes custom profiles; see the module comment.
 ///
-/// `#[serde(default)]` here, and on each of `GeneralSettings`,
-/// `ScreenSettings`, `ChassisSettings`, is what actually makes the
+/// `#[serde(default)]` here, and on each table's own struct, is what
+/// actually makes the
 /// diff-against-defaults contract in `docs/config-format.md` hold for a
 /// *partial* file, not just a missing one: without it, serde requires every
 /// field of a struct present in the input, so a file containing only
@@ -62,6 +61,7 @@ pub struct Config {
     pub screen: ScreenSettings,
     pub chassis: ChassisSettings,
     pub ssh: SshSettings,
+    pub critters: CritterSettings,
 }
 
 impl Config {
@@ -243,9 +243,21 @@ key = "/home/overseer/.ssh/id_gw"
         assert_eq!(original, restored);
     }
 
+    /// A file that names one critter and nothing else still leaves the
+    /// other seven switched on: the shipped state is every piece in the
+    /// cast, and retiring one is a diff against that like any other key.
+    #[test]
+    fn retiring_one_critter_leaves_the_rest_of_the_cast() {
+        let config: Config = toml::from_str("[critters]\nlocomotive = false\n").unwrap();
+        assert!(!config.critters.locomotive);
+        assert!(config.critters.pacman);
+        assert!(config.critters.enabled);
+        assert_eq!(config.critters.mean_minutes, 15.0);
+    }
+
     /// The diff-against-defaults contract (`docs/config-format.md`) means a
     /// file naming only one key of one table must deserialize, filling
-    /// every other field -- in that table and the two untouched tables --
+    /// every other field -- in that table and the untouched ones --
     /// from the built-in defaults. This is what
     /// `#[serde(default)]` on `Config`/`GeneralSettings`/`ScreenSettings`/
     /// `ChassisSettings` buys: without it, a partial table is a hard
@@ -352,15 +364,15 @@ key = "/home/overseer/.ssh/id_gw"
             }
         }
 
-        // The doc's three tables. A section opens at `### `...`[name]``; a
-        // data row is `| `key` | `default` | ... |`.
+        // The doc's tables. A section opens at `### `...`[name]``; a data
+        // row is `| `key` | `default` | ... |`.
         let doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/config.md"));
         let strip = |cell: &str| cell.trim().trim_matches('`').to_string();
         let mut documented: BTreeMap<(String, String), String> = BTreeMap::new();
         let mut section = String::new();
         for line in doc.lines() {
             if line.starts_with("### ") {
-                section = ["general", "screen", "chassis", "ssh"]
+                section = ["general", "screen", "chassis", "ssh", "critters"]
                     .into_iter()
                     .find(|s| line.contains(&format!("[{s}]")))
                     .unwrap_or("")
