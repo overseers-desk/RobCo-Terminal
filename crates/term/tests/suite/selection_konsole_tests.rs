@@ -1,14 +1,16 @@
-//! Selection, over scripted grids: the select-copy round trip,
-//! plus the gestures that produce a selection and the pointer
-//! routing that decides whether a press produces one at all.
+//! The Konsole selection model, over scripted grids: the select-copy round
+//! trip and the gestures that produce a selection.
+//!
+//! One arm of `term::selection`; the sibling `selection_rio_tests.rs` puts
+//! the same questions to the other. What is proved here is Konsole's own
+//! arithmetic: a click points at a cell, a rightward drag stops before the
+//! cell under the pointer and a leftward one includes it, and the word
+//! characters are Konsole's.
 
 use term::grid::{GridView, ScriptedGrid};
-use term::pointer::{
-    column_selection_mode, control_click_is_secondary, on_press, preserve_line_breaks, Button,
-    Modifiers, PointerAction,
-    PointerContext,
-};
-use term::selection::{char_class, Selection, SelectionController, TripleClickMode, Window};
+use term::pointer::{preserve_line_breaks, Modifiers};
+use term::selection::konsole::{char_class, Konsole, Selection, TripleClickMode};
+use term::selection::Window;
 
 const COLS: usize = 40;
 
@@ -23,7 +25,7 @@ fn win(grid: &ScriptedGrid) -> Window {
 #[test]
 fn drag_right_then_copy_returns_what_was_dragged_over() {
     let g = ScriptedGrid::new(COLS, &["hello world", "second line"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
 
     // Press on 'h', drag to the space after "hello". A rightward drag stops
     // before the cell under the pointer, so this is exactly "hello".
@@ -35,7 +37,7 @@ fn drag_right_then_copy_returns_what_was_dragged_over() {
 #[test]
 fn drag_left_then_copy_returns_the_same_span() {
     let g = ScriptedGrid::new(COLS, &["hello world"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
 
     // Press just past "hello" and drag back to its start. Leftward, the cell
     // under the pointer is included and the anchor's is not, so the same five
@@ -48,7 +50,7 @@ fn drag_left_then_copy_returns_the_same_span() {
 #[test]
 fn a_drag_that_crosses_back_over_its_anchor_follows_the_pointer() {
     let g = ScriptedGrid::new(COLS, &["abcdefghij"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
 
     c.press(5, 0);
     c.drag_to(&g, win(&g), 8, 0);
@@ -68,7 +70,7 @@ fn a_drag_that_crosses_back_over_its_anchor_follows_the_pointer() {
 #[test]
 fn a_multi_line_selection_round_trips_with_its_line_breaks() {
     let g = ScriptedGrid::new(COLS, &["first", "second", "third"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
 
     c.press(0, 0);
     c.drag_to(&g, win(&g), 5, 2);
@@ -95,7 +97,7 @@ fn join_lines() -> Modifiers {
 #[test]
 fn the_join_lines_chord_makes_a_wrapped_command_paste_as_one() {
     let g = ScriptedGrid::new(COLS, &["make -j8 ", "--target release"]).wrap(&[0]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     c.preserve_line_breaks = preserve_line_breaks(join_lines());
 
     c.press(0, 0);
@@ -108,7 +110,7 @@ fn a_wrapped_line_takes_no_line_break_even_with_breaks_preserved() {
     // LINE_WRAPPED means the line did not end, so no newline is produced
     // whatever the copy mode: the text was always one line.
     let g = ScriptedGrid::new(COLS, &["make -j8 ", "--target release"]).wrap(&[0]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     c.press(0, 0);
     c.drag_to(&g, win(&g), 16, 1);
     assert_eq!(c.release(&g).as_deref(), Some("make -j8 --target release"));
@@ -117,7 +119,7 @@ fn a_wrapped_line_takes_no_line_break_even_with_breaks_preserved() {
 #[test]
 fn double_click_selects_the_word_under_the_pointer() {
     let g = ScriptedGrid::new(COLS, &["cargo test --package term"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     let w = win(&g);
 
     assert_eq!(c.double_click(&g, w, 8, 0).as_deref(), Some("test"));
@@ -129,7 +131,7 @@ fn double_click_selects_the_word_under_the_pointer() {
 #[test]
 fn double_click_keeps_a_path_and_a_url_whole() {
     let g = ScriptedGrid::new(COLS, &["see /usr/local/bin/foo for it"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     assert_eq!(
         c.double_click(&g, win(&g), 8, 0).as_deref(),
         Some("/usr/local/bin/foo")
@@ -141,14 +143,14 @@ fn double_click_drops_a_trailing_at_sign() {
     // The reason double-clicking a username in `user@host` does not hand
     // you the separator.
     let g = ScriptedGrid::new(COLS, &["user@ host"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     assert_eq!(c.double_click(&g, win(&g), 1, 0).as_deref(), Some("user"));
 }
 
 #[test]
 fn double_click_then_drag_extends_by_whole_words() {
     let g = ScriptedGrid::new(COLS, &["alpha beta gamma"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     let w = win(&g);
 
     assert_eq!(c.double_click(&g, w, 7, 0).as_deref(), Some("beta"));
@@ -165,7 +167,7 @@ fn double_click_crosses_a_wrap_but_not_a_line_end() {
     // A line that wrapped is full width by definition: it wrapped because it
     // ran out of columns, so the word continues at column 0 of the next.
     let g = ScriptedGrid::new(8, &["longword", "s here", "other"]).wrap(&[0]);
-    let mut c = SelectionController::new(8);
+    let mut c = Konsole::new(8);
     let w = Window {
         top_line: 0,
         lines: 3,
@@ -175,14 +177,14 @@ fn double_click_crosses_a_wrap_but_not_a_line_end() {
 
     // Line 1 did not wrap, so the word stops at its end.
     let g2 = ScriptedGrid::new(8, &["abc", "def"]);
-    let mut c2 = SelectionController::new(8);
+    let mut c2 = Konsole::new(8);
     assert_eq!(c2.double_click(&g2, w, 1, 0).as_deref(), Some("abc"));
 }
 
 #[test]
 fn triple_click_takes_the_whole_logical_line() {
     let g = ScriptedGrid::new(20, &["one two three ", "four five", "next"]).wrap(&[0]);
-    let mut c = SelectionController::new(20);
+    let mut c = Konsole::new(20);
     let w = Window {
         top_line: 0,
         lines: 3,
@@ -198,7 +200,7 @@ fn triple_click_takes_the_whole_logical_line() {
 #[test]
 fn triple_click_forwards_from_cursor_starts_at_the_word() {
     let g = ScriptedGrid::new(20, &["alpha beta gamma"]);
-    let mut c = SelectionController::new(20);
+    let mut c = Konsole::new(20);
     c.triple_click_mode = TripleClickMode::SelectForwardsFromCursor;
     let w = win(&g);
     assert_eq!(c.triple_click(&g, w, 7, 0).as_deref(), Some("beta gamma\n"));
@@ -209,7 +211,7 @@ fn selection_spans_the_scrollback_boundary_without_a_seam() {
     // Lines 0 and 1 are history, 2 and 3 are the screen. The linear index runs
     // straight through, so a selection across the boundary is one range.
     let g = ScriptedGrid::with_history(COLS, 2, &["old one", "old two", "new one", "new two"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     let w = win(&g);
 
     c.press(4, 1);
@@ -235,7 +237,7 @@ fn block_selection_takes_a_rectangle() {
 #[test]
 fn is_selected_agrees_with_the_copied_text() {
     let g = ScriptedGrid::new(COLS, &["hello world", "second line"]);
-    let mut c = SelectionController::new(COLS);
+    let mut c = Konsole::new(COLS);
     c.press(6, 0);
     c.drag_to(&g, win(&g), 6, 1);
 
@@ -259,7 +261,7 @@ fn is_selected_agrees_with_the_copied_text() {
 
 #[test]
 fn char_class_groups_words_and_separates_punctuation() {
-    let wc = term::selection::DEFAULT_WORD_CHARACTERS;
+    let wc = term::selection::konsole::DEFAULT_WORD_CHARACTERS;
     assert_eq!(char_class('a', wc), 'a');
     assert_eq!(char_class('7', wc), 'a');
     assert_eq!(
@@ -272,132 +274,4 @@ fn char_class_groups_words_and_separates_punctuation() {
     assert_eq!(char_class('\t', wc), ' ', "all whitespace is one class");
     assert_eq!(char_class('!', wc), '!', "punctuation is its own class");
     assert_ne!(char_class('!', wc), char_class('?', wc));
-}
-
-// ---------------------------------------------------------------------------
-// pointer routing
-// ---------------------------------------------------------------------------
-
-#[test]
-fn a_program_that_asked_for_the_mouse_gets_it() {
-    let ctx = PointerContext {
-        terminal_uses_mouse: true,
-        frozen_glass: false,
-    };
-    assert!(!ctx.marks_selection());
-    assert_eq!(
-        on_press(ctx, Button::Left, Modifiers::NONE, false),
-        PointerAction::ReportToProgram
-    );
-    // Shift is the user's override.
-    assert_eq!(
-        on_press(ctx, Button::Left, Modifiers::NONE.with_shift(), false),
-        PointerAction::Mark
-    );
-}
-
-#[test]
-fn frozen_glass_holds_shift_down_for_the_user() {
-    let ctx = PointerContext {
-        terminal_uses_mouse: true,
-        frozen_glass: true,
-    };
-    assert!(ctx.marks_selection(), "an anchor always marks");
-    assert!(ctx.marking(Modifiers::NONE).shift);
-    assert_eq!(
-        on_press(ctx, Button::Left, Modifiers::NONE, false),
-        PointerAction::Mark
-    );
-    assert_eq!(
-        on_press(ctx, Button::Middle, Modifiers::NONE, false),
-        PointerAction::Ignore,
-        "a paste is inert on an anchor, so the event never reaches the core"
-    );
-    assert_eq!(
-        on_press(ctx, Button::Right, Modifiers::NONE, false),
-        PointerAction::OpenSettings,
-        "an anchor is still glass the user is looking at, so the right press \
-         reaches the settings application rather than the program"
-    );
-}
-
-#[test]
-fn a_right_press_on_plain_glass_opens_the_settings_application() {
-    let ctx = PointerContext {
-        terminal_uses_mouse: false,
-        frozen_glass: false,
-    };
-    assert_eq!(
-        on_press(ctx, Button::Right, Modifiers::NONE, false),
-        PointerAction::OpenSettings
-    );
-    assert_eq!(
-        on_press(ctx, Button::Right, Modifiers::NONE.with_shift(), false),
-        PointerAction::Ignore,
-        "Shift is the chord a marking drag is held with, and it keeps the \
-         right press inert so no window opens over the drag"
-    );
-}
-
-#[test]
-fn a_program_tracking_the_mouse_still_gets_the_right_button() {
-    let ctx = PointerContext {
-        terminal_uses_mouse: true,
-        frozen_glass: false,
-    };
-    assert_eq!(
-        on_press(ctx, Button::Right, Modifiers::NONE, false),
-        PointerAction::ReportToProgram,
-        "vim asked for the mouse, so its own menu wins over the appliance's"
-    );
-}
-
-#[test]
-fn a_left_press_on_a_link_anchors_and_activates() {
-    let ctx = PointerContext {
-        terminal_uses_mouse: false,
-        frozen_glass: false,
-    };
-    assert_eq!(
-        on_press(ctx, Button::Left, Modifiers::NONE, true),
-        PointerAction::MarkAndActivateHotSpot
-    );
-}
-
-#[test]
-fn the_copy_modifiers_match_the_recorded_chords() {
-    assert!(preserve_line_breaks(Modifiers::NONE));
-    assert!(!preserve_line_breaks(join_lines()));
-    assert!(
-        preserve_line_breaks(Modifiers {
-            control: true,
-            alt: true,
-            ..Modifiers::NONE
-        }),
-        "Ctrl+Alt is the block-selection chord, not the join-lines one"
-    );
-    assert!(column_selection_mode(Modifiers {
-        control: true,
-        alt: true,
-        ..Modifiers::NONE
-    }));
-}
-
-/// Control with the left button is macOS's secondary click and nothing
-/// anywhere else, so the two platforms disagree about this press on purpose.
-#[test]
-fn control_with_the_left_button_is_the_secondary_click_on_macos() {
-    let control = Modifiers {
-        control: true,
-        ..Modifiers::NONE
-    };
-    assert_eq!(control_click_is_secondary(control), cfg!(target_os = "macos"));
-    assert!(
-        !control_click_is_secondary(Modifiers {
-            alt: true,
-            ..control
-        }),
-        "Ctrl+Alt drags a rectangle on every platform, macOS included"
-    );
-    assert!(!control_click_is_secondary(Modifiers::NONE));
 }

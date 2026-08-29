@@ -4,7 +4,7 @@
 
 use term::grid::ScriptedGrid;
 use term::search::{literal_pattern, search};
-use term::selection::Selection;
+use term::selection::konsole::Selection;
 
 const COLS: usize = 40;
 

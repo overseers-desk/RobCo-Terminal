@@ -1,40 +1,25 @@
-//! Selection: the anchor/extent state, and the pointer gestures that drive
-//! it.
+//! The Konsole selection model: the anchor/extent state, and the pointer
+//! gestures that drive it.
 //!
 //! Two layers, kept deliberately apart:
 //!
 //! - [`Selection`] is three integers plus block mode. It knows nothing about
 //!   the mouse.
-//! - [`SelectionController`] is the gesture half: the drag anchor, the
-//!   word/line modes a double or triple click puts it in, and the
-//!   swap-detection that lets a drag cross back over its own start.
+//! - [`Konsole`] is the gesture half: the drag anchor, the word/line modes a
+//!   double or triple click puts it in, and the swap-detection that lets a
+//!   drag cross back over its own start.
 //!
 //! Coordinates here are absolute (see [`crate::grid`]) rather than
 //! window-relative with a separately added scroll offset; doing it
 //! absolutely throughout cancels the scroll term out of the drag arithmetic,
 //! at the cost of having to be told the window's extent explicitly: that is
-//! [`Window`].
+//! [`super::Window`].
+//!
+//! This whole file is one arm of [`super::SelectionModel`] and is written to
+//! be deletable; [`super`]'s module documentation lists what goes with it.
 
-use crate::grid::{write_range, Count, GridView};
-
-/// The visible window a gesture happened in. A UI layer would read these off
-/// the widget and its scrollbar; a headless caller passes them directly.
-#[derive(Clone, Copy, Debug)]
-pub struct Window {
-    /// Absolute index of the line at the top of the window.
-    pub top_line: usize,
-    /// How many lines the window shows.
-    pub lines: usize,
-    /// How many columns hold text.
-    pub columns: usize,
-}
-
-impl Window {
-    /// The last line the window shows, absolutely.
-    pub fn bottom_line(&self) -> usize {
-        self.top_line + self.lines.saturating_sub(1)
-    }
-}
+use super::Window;
+use crate::grid::{write_range, GridView};
 
 /// The selection state: an anchor and the normalised range around it.
 ///
@@ -242,7 +227,7 @@ enum Mode {
 /// pointer reported). Which of the two becomes the selection's start depends
 /// on which side of the anchor the head is on, and that is recomputed on every
 /// move so the selection follows a pointer that crosses back over its anchor.
-pub struct SelectionController {
+pub struct Konsole {
     pub selection: Selection,
     pub word_characters: String,
     pub triple_click_mode: TripleClickMode,
@@ -258,7 +243,7 @@ pub struct SelectionController {
     triple_sel_begin: (usize, usize),
 }
 
-impl SelectionController {
+impl Konsole {
     pub fn new(columns: usize) -> Self {
         Self {
             selection: Selection::new(columns),
@@ -551,12 +536,4 @@ impl SelectionController {
 /// Reading order: is `a` before `b` on the grid?
 fn before(a: (usize, usize), b: (usize, usize)) -> bool {
     a.1 < b.1 || (a.1 == b.1 && a.0 < b.0)
-}
-
-/// The same machinery also lets a caller ask for one line of plain text
-/// without a selection: handy for a status line or a test.
-pub fn line_text(grid: &impl GridView, line: usize) -> String {
-    let mut out = String::new();
-    crate::grid::copy_line(grid, line, 0, Count::ToEndOfLine, false, false, &mut out);
-    out
 }

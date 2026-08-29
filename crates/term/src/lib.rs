@@ -89,7 +89,7 @@ pub use search::{search, SearchHit};
 // Both are common words that mean something else one crate up (a winit
 // `Window`, a pixel point), and neither is asked for often enough to be
 // worth the collision at the root.
-pub use selection::{Selection, SelectionController, TripleClickMode};
+pub use selection::{Kind, MarkedRange, SelectionModel};
 pub use session::{Pumped, Replies, ReplyListener, Session, SessionConfig, Term, INPUT_CAP};
 pub use size::{CellSize, TermSize, Viewport, FLOOR_COLS, FLOOR_ROWS};
 pub use ssh_channel::{SshChannel, SshEvent, SshWire};

@@ -34,7 +34,7 @@ use term::fonts::{font_by_name, FontSource};
 use term::fonts::sizing::{self, ScalePolicy, SizingRequest};
 use gpu::{Gpu, Image};
 use term::render::{GridRenderer, Marked};
-use term::selection::Selection;
+use term::selection::MarkedRange;
 use term::viewport::ScrollPosition;
 use term::{ascii_charset, FontContext, DEFAULT_THRESHOLD};
 
@@ -111,14 +111,15 @@ fn terminal() -> (Crosswords<VoidListener>, Processor) {
 }
 
 /// A run of cells on one line, as the pointer would have left it: the
-/// selection plus the absolute line the top of the screen is showing, which
+/// range plus the absolute line the top of the screen is showing, which
 /// with no history scrolled back is line zero.
 fn marked(from: usize, to: usize, row: usize) -> Marked {
-    let mut selection = Selection::new(COLS);
-    selection.set_start(from, row, false);
-    selection.set_end(to, row);
     Marked {
-        selection,
+        range: MarkedRange {
+            start: (from, row),
+            end: (to, row),
+            block: false,
+        },
         top_line: 0,
     }
 }
@@ -303,7 +304,7 @@ fn a_selection_repaints_the_rows_it_crossed_and_no_others() {
     // is a run over the whole grid, so crossing onto the next line takes the
     // rest of the first line with it, and both have changed.
     let mut grown = marked(0, 4, 1);
-    grown.selection.set_end(4, 2);
+    grown.range.end = (4, 2);
     let stats = renderer.sync(
         &gpu.device,
         &gpu.queue,

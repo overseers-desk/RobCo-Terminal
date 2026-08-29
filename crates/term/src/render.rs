@@ -26,7 +26,7 @@ use crate::atlas::{FontContext, GlyphAtlas};
 use crate::cells::{Cell, CellGrid, CursorShape, CursorState};
 use crate::color::{Rgba, Scheme};
 use gpu::{Gpu, Image, Target, TARGET_FORMAT};
-use crate::selection::Selection;
+use crate::selection::MarkedRange;
 
 /// One quad. All integers: the CPU decides the exact pixels, the GPU only
 /// fills them in.
@@ -115,17 +115,19 @@ pub struct SyncStats {
 
 /// What the pointer has marked, as the renderer is told it once a frame.
 ///
-/// The renderer is handed a copy of the range and never the controller that
-/// produced it: the drag anchor, the word mode and the swap detection are the
-/// window layer's business, and a renderer holding them would be a second
-/// place to ask what is selected. This is the whole of what painting needs.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// The renderer is handed the range and never the model that produced it:
+/// the drag anchor, the word mode and the swap detection are the window
+/// layer's business, and a renderer holding them would be a second place to
+/// ask what is selected. It is also what keeps the two selection models
+/// ([`crate::selection`]) out of the painting path: they agree on a
+/// [`MarkedRange`] and disagree about everything upstream of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Marked {
-    /// The range, in the absolute grid coordinates [`Selection`] works in.
-    pub selection: Selection,
+    /// The marked cells, in absolute lines.
+    pub range: MarkedRange,
     /// The absolute index of the line the top row of the screen is showing.
-    /// It is what turns a screen row into the absolute y
-    /// [`Selection::is_selected`] asks about, and it is the caller's because
+    /// It is what turns a screen row into the absolute line
+    /// [`MarkedRange::contains`] asks about, and it is the caller's because
     /// the renderer has no idea how far back the view is scrolled.
     pub top_line: usize,
 }
@@ -135,7 +137,7 @@ pub struct Marked {
 /// A free function rather than a method because the row-invalidation below
 /// asks it of the *old* marking and the new one in the same breath.
 fn marked_at(marked: Option<&Marked>, row: usize, col: usize) -> bool {
-    marked.is_some_and(|m| m.selection.is_selected(col, m.top_line + row))
+    marked.is_some_and(|m| m.range.contains(col, m.top_line + row))
 }
 
 /// Whether a row is marked differently than it was: the damage a change of

@@ -16,7 +16,8 @@ use term::grid::GridView;
 use term::hotspots::UrlFilterChain;
 use term::rio_grid::RioGrid;
 use term::search::{literal_pattern, search};
-use term::selection::{SelectionController, Window};
+use term::selection::konsole::Konsole;
+use term::selection::Window;
 
 #[derive(Clone, Copy)]
 struct Size {
@@ -68,7 +69,7 @@ fn untouched_cells_never_reach_a_text_path_as_nul() {
 fn a_selection_over_a_live_grid_copies_what_is_on_it() {
     let term = term_with(b"hello world\r\nsecond line\r\n", 40, 6);
     let g = RioGrid::new(&term);
-    let mut c = SelectionController::new(g.columns());
+    let mut c = Konsole::new(g.columns());
     let w = Window {
         top_line: 0,
         lines: g.total_lines(),

@@ -82,12 +82,13 @@ use crt::{Chain, Degauss, Geometry, Pacing, Params};
 use term::distortion::{self, correct_distortion, DistortionParams};
 use term::fonts::sizing::{ScalePolicy, SizingRequest};
 use term::pointer::{self, on_press, PointerAction, PointerContext};
+use term::rio_vt::crosswords::pos::Side;
 use term::rio_vt::crosswords::Mode;
-use term::selection::{self, SelectionController};
+use term::selection::{self, Gesture, Kind, SelectionModel};
 use ssh_link::{Ask, AskDesk, Answer, Link, Question, SshTarget};
 use term::{
     CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, Marked,
-    ResolvedFont, RioGrid, Scheme, ScrollPosition, Session, SessionConfig, SshChannel, Target,
+    ResolvedFont, Scheme, ScrollPosition, Session, SessionConfig, SshChannel, Target,
     TmuxPane, Viewport,
 };
 use tmux_cc::{PaneId, SessionId};
@@ -602,7 +603,7 @@ pub struct TerminalSurface {
     eof: bool,
     /// Where the view sits in the scrollback. The wheel moves it.
     scroll: ScrollPosition,
-    selection: SelectionController,
+    selection: SelectionModel,
     /// The absolute cell the pointer was last over.
     pointer_cell: (usize, usize),
     /// The left button is down and a move extends the selection.
@@ -615,8 +616,10 @@ pub struct TerminalSurface {
     /// the release: a Control let go while the button is still down would
     /// otherwise send a program a right press and a left release.
     secondary_press: bool,
-    /// When and where the last left press landed, for the double click.
-    last_click: Option<(Instant, (usize, usize))>,
+    /// When and where the last left press landed, and how many presses deep
+    /// the run is: 1 a click, 2 a double, 3 a triple. A fourth press on the
+    /// same cell starts a new run at 1, which is what every terminal does.
+    last_click: Option<(Instant, (usize, usize), u8)>,
     /// What the last completed selection said. The clipboard is the real
     /// destination; this is what a test with no display can read.
     last_selection: Option<String>,
@@ -955,7 +958,7 @@ impl TerminalSurface {
             ime: ImeState::default(),
             eof: false,
             scroll: ScrollPosition::default(),
-            selection: SelectionController::new(columns),
+            selection: SelectionModel::new(Kind::Konsole, columns),
             pointer_cell: (0, 0),
             dragging: false,
             secondary_press: false,
@@ -2414,7 +2417,7 @@ impl TerminalSurface {
             self.on_air = on_air;
             // A mark is a region of one grid and means nothing on another, the
             // same reason a resize clears it (`sync_geometry`).
-            self.selection.selection.clear();
+            self.selection.clear();
             // The view offset's authority is rio-vt's own `display_offset`,
             // which is the channel's, not the window's: `ScrollPosition` is a
             // mirror of it, so the channel coming to the screen brings its own
@@ -2844,10 +2847,12 @@ impl TerminalSurface {
         // and the renderer is about to be held mutably. A selection that has
         // been cleared, or was never made, leaves this `None` and the glass
         // shows no highlight at all.
-        let marked = self.selection.selection.is_valid().then(|| Marked {
-            selection: self.selection.selection.clone(),
-            top_line: self.top_line(),
-        });
+        let top_line = self.top_line();
+        let marked = self
+            .channels
+            .session()
+            .and_then(|session| self.selection.range(session.term()))
+            .map(|range| Marked { range, top_line });
 
         let Some(gpu) = self.gpu.as_mut() else { return };
         let Some(mut frame) = gpu.acquire() else {
@@ -3051,8 +3056,8 @@ impl TerminalSurface {
         // A selection is a linear index over a grid of a given width, so
         // it means something else at a new one. Konsole cleared it on
         // resize for exactly that reason, and `set_columns` does.
-        if self.selection.selection.columns() != size.cols() {
-            self.selection.selection.set_columns(size.cols());
+        if self.selection.columns() != size.cols() {
+            self.selection.set_columns(size.cols());
         }
         // Every channel, not only the one on the air. There is one rectangle
         // of glass in the appliance and every channel is laid into it, so a
@@ -3165,7 +3170,12 @@ impl TerminalSurface {
     /// glass's own: the distortion is the curvature of a tube that starts where
     /// the casting ends, and a click 200 px into a window with a 247 px bank is
     /// not on the glass at all.
-    fn cell_at(&self, position: PhysicalPosition<f64>) -> (usize, usize) {
+    /// The cell under the pointer, and which half of it the pointer is on.
+    ///
+    /// The side is what the rio selection model anchors on: it points at the
+    /// seam between two cells, so a drag begun on the right half of a
+    /// character starts after that character. The Konsole model ignores it.
+    fn cell_side_at(&self, position: PhysicalPosition<f64>) -> ((usize, usize), Side) {
         let x = position.x - f64::from(self.bank_physical());
         let point = correct_distortion(x, position.y, &self.distortion_params());
         let size = self.viewport.term_size();
@@ -3183,7 +3193,8 @@ impl TerminalSurface {
             size.rows().saturating_sub(1)
         };
         let row = row.clamp(0.0, last as f64) as usize;
-        (column, self.top_line() + row)
+        let side = term::selection::rio::side_of(point.x, f64::from(size.cell_width));
+        ((column, self.top_line() + row), side)
     }
 
     /// How far up the picture is drawn from the grid's rectangle, in
@@ -3416,26 +3427,67 @@ impl TerminalSurface {
         }
     }
 
-    fn drag_selection_to(&mut self, cell: (usize, usize)) {
+    /// One pointer gesture's context: the grid on the air, the window it is
+    /// shown through, and the half of the cell the pointer is on. Assembled
+    /// at each call site rather than held, because the window is read off
+    /// `self` and the grid is borrowed out of the channel model.
+    fn begin_selection(&mut self, cell: (usize, usize), side: Side, mods: pointer::Modifiers) {
         let win = self.selection_window();
-        let Some(session) = self.channels.session() else {
+        let Some(session) = self.channels.session_mut() else {
             return;
         };
-        let grid = RioGrid::new(session.term());
-        self.selection.drag_to(&grid, win, cell.0, cell.1);
+        let gesture = Gesture {
+            term: session.term_mut(),
+            win,
+            side,
+        };
+        self.selection.press(gesture, cell, mods);
     }
 
-    fn select_word_at(&mut self, cell: (usize, usize)) -> Option<String> {
+    fn drag_selection_to(&mut self, cell: (usize, usize), side: Side) {
         let win = self.selection_window();
-        let session = self.channels.session()?;
-        let grid = RioGrid::new(session.term());
-        self.selection.double_click(&grid, win, cell.0, cell.1)
+        let Some(session) = self.channels.session_mut() else {
+            return;
+        };
+        let gesture = Gesture {
+            term: session.term_mut(),
+            win,
+            side,
+        };
+        self.selection.drag_to(gesture, cell);
     }
 
-    fn end_selection(&mut self) -> Option<String> {
-        let session = self.channels.session()?;
-        let grid = RioGrid::new(session.term());
-        self.selection.release(&grid)
+    fn select_word_at(&mut self, cell: (usize, usize), side: Side) -> Option<String> {
+        let win = self.selection_window();
+        let session = self.channels.session_mut()?;
+        let gesture = Gesture {
+            term: session.term_mut(),
+            win,
+            side,
+        };
+        self.selection.double_click(gesture, cell)
+    }
+
+    fn select_line_at(&mut self, cell: (usize, usize), side: Side) -> Option<String> {
+        let win = self.selection_window();
+        let session = self.channels.session_mut()?;
+        let gesture = Gesture {
+            term: session.term_mut(),
+            win,
+            side,
+        };
+        self.selection.triple_click(gesture, cell)
+    }
+
+    fn end_selection(&mut self, side: Side) -> Option<String> {
+        let win = self.selection_window();
+        let session = self.channels.session_mut()?;
+        let gesture = Gesture {
+            term: session.term_mut(),
+            win,
+            side,
+        };
+        self.selection.release(gesture)
     }
 
     /// Konsole copies on select rather than on a keystroke. The clipboard
@@ -3713,7 +3765,7 @@ impl Surface for TerminalSurface {
         let Some(button) = pointer_button(button) else {
             return;
         };
-        let cell = self.cell_at(position);
+        let (cell, side) = self.cell_side_at(position);
         self.pointer_cell = cell;
 
         // `over_hot_spot` is false until the renderer owns a per-frame
@@ -3724,23 +3776,32 @@ impl Surface for TerminalSurface {
         match on_press(self.pointer_context(), button, mods, false) {
             PointerAction::Mark | PointerAction::MarkAndActivateHotSpot => {
                 let now = Instant::now();
-                let doubled = self.last_click.is_some_and(|(at, at_cell)| {
-                    at_cell == cell && now.duration_since(at) < DOUBLE_CLICK_INTERVAL
-                });
-                if doubled {
+                let count = match self.last_click {
+                    Some((at, at_cell, count))
+                        if at_cell == cell
+                            && count < 3
+                            && now.duration_since(at) < DOUBLE_CLICK_INTERVAL =>
+                    {
+                        count + 1
+                    }
+                    _ => 1,
+                };
+                match count {
                     // The word under the pointer, and word mode stays on
                     // so a drag afterwards extends by whole words.
-                    let text = self.select_word_at(cell);
-                    self.copy_on_select(text);
-                    self.dragging = true;
-                    self.last_click = None;
-                } else {
-                    self.selection.preserve_line_breaks = pointer::preserve_line_breaks(mods);
-                    self.selection.column_selection_mode = pointer::column_selection_mode(mods);
-                    self.selection.press(cell.0, cell.1);
-                    self.dragging = true;
-                    self.last_click = Some((now, cell));
+                    2 => {
+                        let text = self.select_word_at(cell, side);
+                        self.copy_on_select(text);
+                    }
+                    // The whole logical line, wrapping and all.
+                    3 => {
+                        let text = self.select_line_at(cell, side);
+                        self.copy_on_select(text);
+                    }
+                    _ => self.begin_selection(cell, side, mods),
                 }
+                self.dragging = true;
+                self.last_click = Some((now, cell, count));
             }
             PointerAction::ReportToProgram => {
                 self.report_mouse(report_button(button), cell, mods, true)
@@ -3775,14 +3836,15 @@ impl Surface for TerminalSurface {
             return;
         };
         let mods = modifiers_from(modifiers);
-        let cell = self.cell_at(position);
+        let (cell, side) = self.cell_side_at(position);
         self.pointer_cell = cell;
 
         if button == pointer::Button::Left && self.dragging {
             self.dragging = false;
-            // Konsole copies here, not on a keystroke: the selection is
-            // the clipboard the moment the button comes up.
-            let text = self.end_selection();
+            // The selection goes to the primary selection here, not on a
+            // keystroke: it is what a middle click pastes the moment the
+            // button comes up.
+            let text = self.end_selection(side);
             self.copy_on_select(text);
             return;
         }
@@ -3797,7 +3859,7 @@ impl Surface for TerminalSurface {
         if self.seam_moved(position) {
             return;
         }
-        let cell = self.cell_at(position);
+        let (cell, side) = self.cell_side_at(position);
         // Every pointer path is expressed in cells, so a move within one
         // cell has nothing to say, including to a program tracking
         // motion, which is addressed in cells too.
@@ -3807,7 +3869,7 @@ impl Surface for TerminalSurface {
         self.pointer_cell = cell;
 
         if self.dragging {
-            self.drag_selection_to(cell);
+            self.drag_selection_to(cell, side);
             return;
         }
         let mods = modifiers_from(modifiers);
