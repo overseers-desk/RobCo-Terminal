@@ -23,3 +23,25 @@ Fonts, shaders, presets and the noise texture are compiled in, which is what mak
 `cargo run -p xtask -- dist` rolls the same layout into a tarball, and requires `--settings-binary`: the self-contained robco-settings image that `settings/zipfs/build-selfcontained.sh` builds from static Tcl/Tk, because a tarball promises to run on a host with nothing installed.
 
 `dpkg-buildpackage -us -uc -b` builds the Debian package through `debian/rules`, which stages the layout via `cargo run -p xtask -- stage-deb`. debhelper strips the binary, and `--no-automatic-dbgsym` keeps what it removes out of a package of its own, debug information being no part of what this project distributes; `dh_shlibdeps` reads the C dependencies out of the built binary rather than a hand-kept list; the settings window ships as Tcl sources running on the distribution's own `tcl9.0`/`tk9.0`, declared in `debian/control`. Artifacts land in the parent directory, dpkg-buildpackage's convention.
+
+## Symbols, for a build you intend to debug
+
+Nothing this project distributes carries debug information. The deb is stripped by debhelper, `xtask dist` strips the tarball, and the Windows and macOS artifacts never held any. Symbols come from building here.
+
+Two levels answer two different questions.
+
+A crash log asks where a frame was. Line tables answer that, and the release profile already carries them, so `addr2line` resolves a logged frame to file and line against any build that has not been stripped. `cargo build --release` is the whole recipe.
+
+A debugger asks what a variable held. That takes full DWARF, which the release profile deliberately omits:
+
+```bash
+CARGO_PROFILE_RELEASE_DEBUG=2 cargo build --release
+```
+
+The override lives in the environment rather than in `Cargo.toml`, so a local choice cannot follow the tree into a release. It costs several times the binary's size, in sections the loader does not page in. The C++ dependencies are a separate matter: `cc` passes `-g` whenever the profile carries any debug information, so their full DWARF is present either way, and it is the bulk of what an unstripped build weighs.
+
+`cargo run -p xtask -- install --prefix <dir>` installs whatever the build produced. That route does not strip; `dist` is the one that does. For a Debian package that keeps its symbols, debhelper reads the standard knob:
+
+```bash
+DEB_BUILD_OPTIONS=nostrip dpkg-buildpackage -us -uc -b
+```
