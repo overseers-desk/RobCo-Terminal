@@ -1,19 +1,17 @@
 //! Settings schema for the terminal's three persisted configuration groups.
 //!
-//! The schema boundary follows the JSON import format's own three top-level
-//! groups, which are the single place that says what is persisted:
+//! Three groups, and the boundary between them is the single place that
+//! says what is persisted:
 //!
-//! - [`GeneralSettings`] mirrors the `_CURRENT_SETTINGS` storage key.
-//! - [`ScreenSettings`] mirrors the `_CURRENT_SCREEN` storage key.
-//! - [`ChassisSettings`] mirrors the `_CURRENT_CHASSIS` storage key.
+//! - [`GeneralSettings`], the `[general]` table: the user's own settings.
+//! - [`ScreenSettings`], the `[screen]` table: everything behind the glass.
+//! - [`ChassisSettings`], the `[chassis]` table: the cabinet.
 //!
-//! Everything else in that format -- values derived from other properties
+//! Everything else -- values derived from other properties
 //! (e.g. a frame color computed from a hex string, a screen radius computed
 //! from a slider) -- is runtime/derived state, not schema, and is
-//! deliberately not modelled here.
-//!
-//! `_CUSTOM_PROFILES` (the user's saved screen+chassis pairs) is
-//! deliberately deferred; see the module comment in `lib.rs`.
+//! deliberately not modelled here. A saved look (a screen and chassis pair
+//! under a name) is [`crate::profile`]'s.
 
 use serde::{Deserialize, Serialize};
 
@@ -90,7 +88,7 @@ pub enum FontSource {
     SystemFonts,
 }
 
-/// The `_CURRENT_SCREEN` blob. "Everything behind the glass": phosphor,
+/// The `[screen]` table. "Everything behind the glass": phosphor,
 /// geometry, type, the effects that age them, and the moulding the tube
 /// itself came out of the factory in (used as the frame when no chassis is
 /// shown). A screen says nothing about the cabinet it may be mounted in, so
@@ -169,7 +167,7 @@ pub enum Shell {
     Switchboard,
 }
 
-/// The `_CURRENT_CHASSIS` blob. "The cabinet the screen is mounted in": its
+/// The `[chassis]` table. "The cabinet the screen is mounted in": its
 /// casting, its bezel, and the way its bank marks the channel on air.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -185,9 +183,6 @@ pub struct ChassisSettings {
     pub frame_color: String,
     pub frame_shininess: f64,
     /// The face this cabinet letters its channel bank in.
-    ///
-    /// Declared last so the profile snapshot, which renders these fields in
-    /// declaration order, keeps the shape its format test pins.
     ///
     /// A name matching no bundled face falls back to the kit's own: the lamp
     /// strip's shipped face, or the tape's, depending on which display the
@@ -269,7 +264,6 @@ impl Default for ChassisSettings {
             .expect("chassis_presets() always yields at least Annunciator")
     }
 }
-
 
 /// The `[ssh]` table: the pre-configured servers a new session can start
 /// on. Read at launch by the terminal; written by the settings window

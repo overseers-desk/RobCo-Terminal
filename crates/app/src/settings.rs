@@ -421,20 +421,14 @@ impl SettingsHandle {
     /// grew a multi-key form rather than the save making 37 single-key
     /// writes.
     ///
-    /// Returns the [`Tuning`] mark the caller should adopt: the look on air,
-    /// just kept under a name of the user's choosing, becomes the new
-    /// baseline appliance, so the Modified badge clears and the tuning
-    /// starts again from there.
-    ///
     /// The file goes beside the one this handle watches, which in a real run is
     /// the directory [`config_path_for_profile`] reads from -- so what is saved
     /// here is what `--profile <name>` finds. A handle pointed somewhere else (a
     /// test's temp directory) saves there and not into the user's own config
     /// directory, which is the only behaviour that lets this be tested at all.
-    pub fn save_profile_as(&self, name: &str) -> Result<config::Tuning, ConfigError> {
+    pub fn save_profile_as(&self, name: &str) -> Result<(), ConfigError> {
         let profile = config::Profile::from_config(&self.current());
-        config::profile::save_to(&self.look_path(name), &profile)?;
-        Ok(config::Tuning::handed_over(&profile))
+        config::profile::save_to(&self.look_path(name), &profile)
     }
 
     /// Where a look saved under `name` lands: a sibling of the watched file.
@@ -447,7 +441,6 @@ impl SettingsHandle {
             .unwrap_or_else(|| PathBuf::from("."));
         profile_path_in(&dir, name)
     }
-
 }
 
 /// Install a Unix SIGUSR1 handler that calls `handle.force_reload()`.

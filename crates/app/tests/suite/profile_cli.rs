@@ -29,7 +29,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use app::settings::{self, ProfileSelection};
-use config::{Profile, Tuning};
+use config::Profile;
 
 const BINARY: &str = env!("CARGO_BIN_EXE_robco-term");
 
@@ -283,10 +283,10 @@ fn the_preset_resolution_survives_a_live_edit() {
 }
 
 /// Keeping the look on air under a name, then coming back to it: the save
-/// writes an appliance the next `--profile` finds, and reloading it leaves
-/// the Modified badge clear.
+/// writes an appliance the next `--profile` finds, and reloading it gives
+/// the same look back.
 #[test]
-fn a_saved_look_is_what_the_flag_finds_and_reloads_unmodified() {
+fn a_saved_look_is_what_the_flag_finds_and_reloads_as_itself() {
     let _guard = XDG_CONFIG_HOME_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -310,9 +310,10 @@ fn a_saved_look_is_what_the_flag_finds_and_reloads_unmodified() {
     .unwrap();
     let handle = settings::SettingsHandle::spawn(live, |_, _, _| {}).expect("watcher should start");
 
-    let tuning = handle
+    handle
         .save_profile_as("workshop")
         .expect("saving the current look should succeed");
+    let saved = Profile::from_config(&handle.current());
 
     // The flag now finds it as a saved appliance.
     match settings::select_profile("workshop", true) {
@@ -321,11 +322,9 @@ fn a_saved_look_is_what_the_flag_finds_and_reloads_unmodified() {
             // save wrote: it is what `overlay` will lay over the user's own
             // config, so it is the thing worth comparing.
             let reloaded = *look;
-            assert!(
-                !tuning.is_modified(&reloaded),
-                "a saved look came back as a different look:\n{}\nvs\n{}",
-                tuning.loaded(),
-                reloaded.snapshot()
+            assert_eq!(
+                reloaded, saved,
+                "a saved look came back as a different look"
             );
             assert_eq!(reloaded.screen.bloom, 0.9);
             assert_eq!(reloaded.screen.jitter, 0.65);
@@ -333,58 +332,6 @@ fn a_saved_look_is_what_the_flag_finds_and_reloads_unmodified() {
         }
         other => panic!("expected a saved appliance, got {other:?}"),
     }
-}
-
-/// The Modified flag over a live session, which is what a badge would
-/// actually read: the look the app was handed, then one measure moved in
-/// the file, then the flag.
-#[test]
-fn the_modified_flag_follows_a_live_edit_of_the_look() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("config.toml");
-    std::fs::write(&path, "[screen]\nname = \"Deep Blue\"\n").unwrap();
-
-    let handle =
-        settings::SettingsHandle::spawn(path.clone(), |_, _, _| {}).expect("watcher should start");
-    let tuning = Tuning::handed_over(&Profile::from_config(&handle.current()));
-    assert!(!tuning.is_modified(&Profile::from_config(&handle.current())));
-
-    // A general setting is not part of a look, so moving one must not
-    // light the badge.
-    let tmp = dir.path().join(".config.toml.tmp");
-    std::fs::write(
-        &tmp,
-        "[screen]\nname = \"Deep Blue\"\n\n[general]\nled_characters = 40\n",
-    )
-    .unwrap();
-    std::fs::rename(&tmp, &path).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline && handle.current().general.led_characters != 40 {
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    assert_eq!(handle.current().general.led_characters, 40);
-    assert!(
-        !tuning.is_modified(&Profile::from_config(&handle.current())),
-        "the LED bank is the user's, not the look's: it must not mark the profile modified"
-    );
-
-    // A screen measure is.
-    let tmp = dir.path().join(".config.toml.tmp2");
-    std::fs::write(
-        &tmp,
-        "[screen]\nname = \"Deep Blue\"\nbloom = 0.42\n\n[general]\nled_characters = 40\n",
-    )
-    .unwrap();
-    std::fs::rename(&tmp, &path).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline && handle.current().screen.bloom != 0.42 {
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    assert_eq!(handle.current().screen.bloom, 0.42);
-    assert!(
-        tuning.is_modified(&Profile::from_config(&handle.current())),
-        "a moved screen measure must mark the profile modified"
-    );
 }
 
 /// The whole point of a profile being a look: relaunching under one must not

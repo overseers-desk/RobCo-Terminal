@@ -8,23 +8,19 @@
 //! that follow from that are written up for third-party tool authors in
 //! `docs/config-format.md`.
 //!
-//! The schema half models the settings that round-trip through the profile
-//! JSON export format's four blobs (`_CURRENT_SETTINGS`, `_CURRENT_SCREEN`,
-//! `_CURRENT_CHASSIS`, `_CUSTOM_PROFILES`). See `src/schema.rs` for the
-//! boundary rule and the types, and `src/presets.rs` for the built-in
-//! screen and chassis presets.
+//! The schema half models the three persisted settings groups. See
+//! `src/schema.rs` for the boundary rule and the types, and
+//! `src/presets.rs` for the built-in screen and chassis presets.
 //!
 //! The plumbing half (`src/toml.rs`, `src/watch.rs`) is deliberately
 //! schema-agnostic: it operates on `toml_edit::DocumentMut` and on
 //! `T: serde::de::DeserializeOwned`, never on a concrete settings type.
 //!
-//! `_CUSTOM_PROFILES` (the user's saved screen+chassis pairs under a name)
-//! is modelled in [`profile`] as the appliance split along two axes, with a
-//! profile's own snapshot/modified equality, and JSON import/export against
-//! that blob format. Rather than keeping the whole roster inside one JSON
-//! value, the rebuild keeps one profile per TOML file beside the config
-//! file, because the file is the source of truth here and a roster inside a
-//! value would be a second store with its own rules.
+//! A user's saved look (a screen and chassis pair under a name) is modelled
+//! in [`profile`] as the appliance split along two axes, kept one profile
+//! per TOML file beside the config file: the file is the source of truth
+//! here, and a roster inside one value would be a second store with its
+//! own rules.
 
 pub mod dump;
 pub mod presets;
@@ -34,17 +30,15 @@ pub mod structural;
 pub mod toml;
 pub mod watch;
 
-pub use profile::{Profile, Tuning};
+pub use profile::Profile;
 
 pub use schema::{
     ChannelDisplay, ChannelIndicator, ChassisSettings, FontSource, GeneralSettings, Rasterization,
     ScreenSettings, Shell, SshHost, SshSettings,
 };
 
-/// The three modelled settings blobs together: the shape a config file
-/// written by this crate would take. Not itself a concept from the JSON
-/// import format -- there these are three separate stored blobs -- but a
-/// convenient unit for a single config file's `[general]` / `[screen]` /
+/// The three settings groups together: the shape a config file written by
+/// this crate takes, one unit for its `[general]` / `[screen]` /
 /// `[chassis]` tables.
 ///
 /// Deliberately excludes custom profiles; see the module comment.
