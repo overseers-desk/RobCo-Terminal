@@ -322,6 +322,11 @@ program writing it. A copy of the screen holds what the screen holds. A search
 of the scrollback reads everything that arrived. Nothing is queued anywhere
 inside the terminal waiting to be drawn.
 
+How far a program runs ahead before it blocks is the platform's own buffer
+rather than the rate: a Unix tty holds a few kilobytes, and on Windows the
+pipe behind the console host holds 64 KiB, which at 19200 is half a minute of
+screen. The picture arrives at the rate on both.
+
 It reaches a local shell and nothing else. A channel on SSH, and a tmux window
 arriving through control mode, have had their bytes read off a transport
 before they reach a grid, so metering them there would hold back bytes already

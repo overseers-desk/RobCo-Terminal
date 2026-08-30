@@ -391,6 +391,12 @@ impl<T: DcsTap> Session<T> {
     /// given, which is what keeps a copy of the screen, a search of the
     /// scrollback and an interrupt meaning what they mean at full speed.
     ///
+    /// How far the child runs ahead before it blocks is the platform's
+    /// buffer rather than this rate: a Unix tty holds a few kilobytes, and
+    /// the thread behind ConPTY holds 64 KiB, which is half a minute of a
+    /// 19200 line. The glass fills at the rate on both; what differs is when
+    /// the program filling it stops.
+    ///
     /// The line starts empty on every change: a rate set mid-session earns
     /// from the moment it is set rather than from what the last one banked.
     pub fn set_rate(&mut self, rate: Option<u32>) {

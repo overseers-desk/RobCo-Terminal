@@ -339,8 +339,8 @@ impl Default for SshHost {
 /// loop takes what the rate has earned and leaves the rest in the tty
 /// buffer, so a program blocks in `write` once that fills, the way it would
 /// behind a serial line. It is the reading that is slowed and never the
-/// drawing: what the glass shows is what the session has sent, at a rate as
-/// at full speed. `term::Session::set_rate` carries the rest.
+/// drawing, so what the glass shows is what the session sent, whether the
+/// line is slow or not. `term::Session::set_rate` carries the rest.
 ///
 /// A remote shell is not reached by this. An SSH channel's bytes and a tmux
 /// pane's have been read off their transport by the time they arrive, and
