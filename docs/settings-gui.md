@@ -5,9 +5,9 @@ in every official package beside `robco-term`. On macOS the same window is
 also under the application menu, at **Settings…** or `Cmd`+`,`, where a Mac
 looks for it. It is the graphical face of
 [the config file](config.md): a tab per table -- General, Screen, Chassis,
-SSH, Critters -- a preset picker at the head of each look axis, sliders and
-pickers for every key the build reads, a marker on each value the file pins
-away from its preset, and a per-row reset that unpins one.
+SSH, Critters, Serial -- a preset picker at the head of each look axis,
+sliders and pickers for every key the build reads, a marker on each value the
+file pins away from its preset, and a per-row reset that unpins one.
 
 The **SSH** tab is a list rather than a form, `[[ssh.host]]` being a table
 per server. The checked radio is where a new session starts: localhost at
@@ -27,6 +27,15 @@ anything crosses the glass, how long on average between one and the next, and
 which of the eight pieces are still in the cast. The interval is an average
 and not a period, so a critter is never due; [`[critters]`](config.md#critters)
 says more about why, and names each piece.
+
+The **Serial** tab puts the terminal on a slow line: a switch, and the rate
+beside it as the standard baud figures a wire ran at. It is the reading that
+slows and not the drawing, so what the tab changes is how fast a local shell's
+output is taken, and a program blocks when the buffer between them fills, as
+it would have. A remote shell is not reached by it, for the reason
+[`[serial]`](config.md#serial) gives. The rate is a picker over an ordinary
+integer key, so a figure the list does not offer can still be written by hand
+and the window will show it.
 
 ## How it behaves
 

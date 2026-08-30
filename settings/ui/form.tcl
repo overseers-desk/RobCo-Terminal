@@ -119,6 +119,13 @@ namespace eval ::rcsettings::ui::form {
                 locomotive bool "Locomotive"      {}
             }
         }
+        serial {
+            {The line} {
+                enabled bool "Slow the line"                 {}
+                baud    choice "Baud"
+                    {300 1200 2400 4800 9600 19200 38400 57600 115200}
+            }
+        }
     }
 
     # id ("table.key") -> the row's widgets and what it needs to write itself.
@@ -346,9 +353,20 @@ proc ::rcsettings::ui::form::build_row {g r table key kind label arg} {
                 -onvalue $on -offvalue $off -text "" \
                 -command [list ::rcsettings::ui::form::on_toggle $id]
         }
-        enum - font {
-            set names [expr {$kind eq "font"
-                ? [font_keys] : [::rcsettings::model::enum $key]}]
+        enum - font - choice {
+            # `enum` is a key the schema states as an enum, and its names
+            # come from the dump's own list. `choice` is a key of ordinary
+            # type whose usable values are a convention rather than a
+            # schema fact, and the row states them itself: serial's baud is
+            # the rates a wire ran at, over an integer the terminal would
+            # take any value of.
+            if {$kind eq "font"} {
+                set names [font_keys]
+            } elseif {$kind eq "choice"} {
+                set names $arg
+            } else {
+                set names [::rcsettings::model::enum $key]
+            }
             set shown [expr {$kind eq "font" ? [font_labels] : $names}]
             set w $g.ctl_$key
             ttk::combobox $w -state readonly -values $shown -exportselection 0
@@ -641,7 +659,7 @@ proc ::rcsettings::ui::form::refresh_row {id} {
                 }
                 [dict get $row readout] configure -text ""
             }
-            enum - font {
+            enum - font - choice {
                 set i [lsearch -exact [dict get $row names] $value]
                 if {$i >= 0} {
                     $w current $i

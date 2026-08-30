@@ -37,6 +37,7 @@ set ::unshown {
     screen  {blinking_cursor name}
     chassis {name}
     critters {}
+    serial   {}
 }
 
 proc layout_keys {table} {
@@ -49,7 +50,7 @@ proc layout_keys {table} {
 
 proc layout_rows {} {
     set out {}
-    foreach table {general screen chassis critters} {
+    foreach table {general screen chassis critters serial} {
         foreach {title rows} [dict get $::rcsettings::ui::form::Layout $table] {
             foreach {key kind label arg} $rows { lappend out [list $table $key $kind $arg] }
         }
@@ -61,7 +62,7 @@ test layout-1.1 {every key the schema carries is either a row or a named omissio
     tk realBinary
 } -body {
     set missing {}
-    foreach table {general screen chassis critters} {
+    foreach table {general screen chassis critters serial} {
         set shown [layout_keys $table]
         foreach key [::rcsettings::model::table_keys $table] {
             if {$key in $shown} { continue }
@@ -111,7 +112,7 @@ test layout-2.1 {each row's widget matches the type of the key it writes} -const
     # string enum of two names, not a TOML boolean, which is what the arg
     # itself tells apart from the plain 1/0 checkbutton.
     set want {frac float scale float int int bool bool color string enum string \
-        font string}
+        font string choice int}
     set wrong {}
     foreach row [layout_rows] {
         lassign $row table key kind arg
@@ -126,15 +127,25 @@ test layout-2.1 {each row's widget matches the type of the key it writes} -const
     set wrong
 } -result {}
 
-test layout-2.2 {every enum row has a value list, every colour row a colour} -constraints {
+test layout-2.2 {every picker row has a value list, every colour row a colour} -constraints {
     tk realBinary
 } -body {
     set wrong {}
     foreach row [layout_rows] {
-        lassign $row table key kind
+        lassign $row table key kind arg
         set value [::tomledit::plain \
             [::rcsettings::model::shipped $table $key]]
         switch -exact -- $kind {
+            choice {
+                # The row carries the list, so the row is what has to hold
+                # the default: a picker whose current value is not among its
+                # own entries shows an empty box on open.
+                if {$arg eq ""} {
+                    lappend wrong "$table.$key has no values on its row"
+                } elseif {$value ni $arg} {
+                    lappend wrong "$table.$key defaults outside its own list"
+                }
+            }
             enum {
                 if {$key ni [::rcsettings::model::enum_names]} {
                     lappend wrong "$table.$key has no \[values\] list"

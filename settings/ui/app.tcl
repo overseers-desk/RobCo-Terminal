@@ -119,7 +119,9 @@ proc ::rcsettings::ui::app::build {} {
         [list ::rcsettings::ui::app::say] [list ::rcsettings::ui::app::wrote]
 
     ttk::notebook .nb -padding {8 8 8 0}
-    foreach {table title} {general General screen Screen chassis Chassis critters Critters} {
+    foreach {table title} {
+        general General screen Screen chassis Chassis critters Critters serial Serial
+    } {
         .nb add [::rcsettings::ui::form::page .nb $table] -text $title
     }
     # The SSH tab is a list of rows rather than a page of keys, so it is its
