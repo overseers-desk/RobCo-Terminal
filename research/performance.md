@@ -40,15 +40,16 @@ Take the floor as somewhere between a seventh and a third. Roughly two thirds of
 
 The CRT shader chain covers only the well, not the bank: the chain's output goes to the window at the bank's right edge. So the bank's 13.8% is the cost of drawing the chrome, not of any shader pass over it.
 
-## States that cost full price
+## What each state costs
 
-| state | cost | throttled? |
+| state | throttled by | measured before the throttle existed |
 |---|---|---|
-| focused, visible | 2.88% | no |
-| unfocused, visible | 3.16% | no |
-| minimised | 0.35% | yes, by the compositor |
+| focused, touched within the half minute | nothing, this is the user's own cadence | 2.88% |
+| unfocused | `unfocused_frame_skip` | 3.16% |
+| untouched for half a minute | `idle_frame_skip` | 3.16% |
+| minimised | the compositor, which stops asking for frames | 0.35% |
 
-The difference between focused and unfocused is noise: nothing in the code reads focus, and the two runs bracket each other. A terminal sitting in view that nobody has touched for an hour animates at the same rate as one being typed into. A minimised one costs nothing, but that is the compositor withholding frames rather than the terminal deciding to stop.
+The right-hand column is what those states cost when the effects clock ran at one cadence whatever was in front of it. The two visible rows bracketed each other, which is what no throttling looks like. A minimised window has always been free, and that is the compositor withholding frames rather than the terminal deciding to stop, so there is nothing there to reclaim in code.
 
 ## What the bank used to spend, and on what
 
