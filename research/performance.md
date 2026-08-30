@@ -4,17 +4,32 @@ Every number here was measured on this project's own binary. The methods and the
 
 Machine: 16 cores, NVIDIA RTX 2070 SUPER, GNOME on Wayland with Xwayland. Percentages are of one core, taken from `utime + stime` in `/proc/<pid>/stat` over a fixed interval. A terminal running `sh -c 'sleep N'` with no output, on the shipped defaults, unless a row says otherwise.
 
-## The shape of the cost
+## What a terminal costs, by who is attending it
 
-An idle terminal costs roughly 2.5% to 3% of one core, and about nine tenths as much again in the compositor.
+The glass paces itself to whoever is in front of it. `effects_frame_skip` counts in 60ths of a second and ships at 3, so a terminal being used animates twenty times a second. `unfocused_frame_skip` multiplies that once another window holds the keyboard, and `idle_frame_skip` once the glass has gone half a minute without a keystroke, click or scroll.
+
+| state | factor | rate | cost |
+|---|---|---|---|
+| focused, being typed into | 1 | 20 Hz | 2.22% |
+| unfocused, touched within the half minute | 2 | 10 Hz | not measured separately |
+| unfocused and untouched | 4 | 5 Hz | 1.56% |
+| minimised | the compositor stops asking | none | 0.35% |
+
+The middle row sits between the two either side of it and has not been measured on its own. Three attention states in one run needs three windows placed so none covers another, which is harder to get right than it looks.
+
+A minimised window has always been free, and that is the compositor withholding frames rather than the terminal deciding to stop, so there is nothing there to reclaim in code.
+
+## The compositor pays most of the bill
+
+An idle terminal's own row understates it by about ten times.
 
 | what | no terminal | one idle terminal |
 |---|---|---|
-| the terminal itself | — | 0.5% |
+| the terminal itself | none running | 0.5% |
 | `gnome-shell` | 6.0% | 11.1% |
 | `Xwayland` | 3.6% | 4.0% |
 
-The terminal redraws its whole window twenty times a second whether or not anything changed, because the CRT effects animate. The compositor recomposites the screen each time. Someone watching a single process's row in `top` will not see the terminal as the cause of its own cost.
+Every frame the terminal draws is a frame the compositor recomposites. Someone watching a single process's row in `top` will not see the terminal as the cause of its own cost, and anything that removes frames removes the compositor's share with them. Measured before the attention throttle existed, so these are the figures for a terminal animating at a flat twenty frames a second.
 
 The work is single-threaded. Of 25 threads, the main one carries all of it: 4.8% of a 5.3% total on a fullscreen window. The rest are wgpu and runtime pools that stay parked.
 
@@ -27,9 +42,7 @@ Cost divides into a fixed floor and per-frame work. Two independent measurements
 | `effects_frame_skip` 3 (20 Hz) against 6 (10 Hz) | 2.42% against 1.60%, 34% less | halving the frames removes about a third, so the floor is near a third of the total |
 | visible against minimised | 2.45% against 0.35% | the floor is nearer a seventh |
 
-Take the floor as somewhere between a seventh and a third. Roughly two thirds of the cost is per-frame, and that per-frame work is the CRT chain running over the glass, which is the picture the appliance exists to draw.
-
-`effects_frame_skip` counts in 60ths of a second and ships at 3, so the glass animates twenty times a second.
+Take the floor as somewhere between a seventh and a third. Roughly two thirds of the cost is per-frame, and that per-frame work is the CRT chain running over the glass, which is the picture the appliance exists to draw. The frame rate is therefore the only lever large enough to halve the total, which is why it is spent on the states where nobody is looking rather than on the shipped cadence.
 
 ## What each part is worth
 
@@ -38,22 +51,13 @@ Take the floor as somewhere between a seventh and a third. Roughly two thirds of
 | the bank column | 2.35% with it, 2.03% without (`chassis_shown`) | 13.8% of total |
 | the glass and everything else | the remainder | 86.2% |
 
-The CRT shader chain covers only the well, not the bank: the chain's output goes to the window at the bank's right edge. So the bank's 13.8% is the cost of drawing the chrome, not of any shader pass over it.
+The CRT shader chain covers only the well, not the bank: the chain's output goes to the window at the bank's right edge. So the bank's 13.8% is the cost of drawing the chrome, not of any shader pass over it. Measured before the bank's records were kept, so it is the ceiling that work aimed at rather than what the bank costs now.
 
-## What each state costs
+## Why the bank is remembered
 
-| state | throttled by | measured before the throttle existed |
-|---|---|---|
-| focused, touched within the half minute | nothing, this is the user's own cadence | 2.88% |
-| unfocused | `unfocused_frame_skip` | 3.16% |
-| untouched for half a minute | `idle_frame_skip` | 3.16% |
-| minimised | the compositor, which stops asking for frames | 0.35% |
+`Cabinet::furniture` keeps the pieces it built and the arguments it built them from. `Chrome` keeps the records built from those pieces, appending the badges to them each frame and cutting them away again, and skips any atlas upload whose bytes it already holds. `Raster` carries its bytes in an `Arc`, so handing the same pieces back is a refcount bump and the atlas compares by pointer rather than by content.
 
-The right-hand column is what those states cost when the effects clock ran at one cadence whatever was in front of it. The two visible rows bracketed each other, which is what no throttling looks like. A minimised window has always been free, and that is the compositor withholding frames rather than the terminal deciding to stop, so there is nothing there to reclaim in code.
-
-## What the bank used to spend, and on what
-
-Before the pieces were remembered, a profile of an idle fullscreen window put a third of all cycles in one place:
+The evidence that bought this arrangement: a profile of an idle fullscreen window, before any of it, put a third of all cycles in one place.
 
 | symbol | share |
 |---|---|
@@ -63,35 +67,36 @@ Before the pieces were remembered, a profile of an idle fullscreen window put a 
 | `DeviceTextureTracker::set_single` | 1.5% |
 | `Queue::write_staging_buffer_impl` | 1.0% |
 
-Every piece of furniture was rasterised to RGBA and written to the chrome atlas on every frame, and each write cost a texture transition. Alongside it sat the rasterising itself: `to_rgba8` at 4.7%, `skrifa`'s autohinting at 1.7%, `read_fonts`'s cmap iteration at 1.0%, and about 9% in the allocator feeding them.
+Every piece of furniture was rasterised to RGBA and written to the chrome atlas on every frame, and each write cost a texture transition. Alongside it sat the rasterising: `to_rgba8` at 4.7%, `skrifa`'s autohinting at 1.7%, `read_fonts`'s cmap iteration at 1.0%, and about 9% in the allocator feeding them. The profile now is flat and none of those symbols appear in it. What sits at the top is swapchain acquisition, the librashader filter passes, and event-loop syscalls.
 
-Remembering the pieces, sharing the raster bytes, and skipping an upload the atlas already holds took 12.5% off the total: 2.95% against 2.58%, both builds running at once. The profile afterwards is flat, and the symbols above are gone from it. What sits at the top now is swapchain acquisition, the librashader filter passes, and event-loop syscalls.
+The draw itself still runs every frame. A frame goes into one of several rotating swapchain images, and one that omitted the column would leave an older frame showing; wgpu does not say which image it handed over, so skipping the draw would need hal-level bookkeeping.
 
-## What the attention throttle and the record cache bought
+## What the two rounds of work came to
 
-From 0.1.9 the effects clock is multiplied by a factor that depends on who is attending: the window's own step while another holds the keyboard, a second step once the glass has gone half a minute untouched, and the larger of the two rather than their product. Separately, the cabinet's records are built once and kept, with the badges appended to them each frame and cut away again.
+Measured against the release before each, both builds running at once so they share the machine.
 
-Both measured against the released 0.1.8, the two builds running at once at 900x950.
+| round | state | before | after | less |
+|---|---|---|---|---|
+| pieces remembered, bytes shared, uploads skipped | idle | 2.95% | 2.58% | 12.5% |
+| records kept, clock watches attention | focused, being typed into | 2.72% | 2.22% | 18.3% |
+| records kept, clock watches attention | unfocused and untouched | 3.00% | 1.56% | 48.1% |
 
-| state | 0.1.8 | 0.1.9 | less |
-|---|---|---|---|
-| focused, being typed into | 2.72% | 2.22% | 18.3% |
-| unfocused and untouched | 3.00% | 1.56% | 48.1% |
-
-The first row is the record cache alone, since the attention factor is one while a hand is on it. The second is the cache and both throttle steps together.
-
-Compounded with the 12.5% 0.1.8 itself took, an unattended terminal costs 54.6% less than it did before either change, and one being typed into costs 28.5% less with no change to the picture at any moment.
+Compounded, an unattended terminal costs 54.6% less than before either round, and one being typed into costs 28.5% less with no change to the picture at any moment.
 
 ## Measuring this without being misled
 
-Four traps, each of which produced a wrong number here before it was understood.
+Five traps, each of which produced a wrong number here before it was understood.
 
 **A second launch joins the first.** The terminal is single-instance: it finds the socket in `$XDG_RUNTIME_DIR`, hands its request over, and exits, so the measured process dies at once and a window appears in somebody else's session. Give every instance under measurement its own `XDG_RUNTIME_DIR`. The module doc in `crates/app/src/instance.rs` states the rule; separate runtime directories never collide.
 
-**Windows that overlap stop drawing.** An occluded window reads about 0.35%, the same as a minimised one, and it looks exactly like a large improvement. A harness that leaves windows stacked will report the second and third runs as free. Place windows so none covers another, and treat any reading near 0.35% as occlusion until proved otherwise.
+**Windows that overlap stop drawing.** An occluded window reads about 0.35%, the same as a minimised one, and it looks exactly like a large improvement. A harness that leaves windows stacked reports the later runs as nearly free. Place windows so none covers another, and treat any reading near that floor as occlusion until proved otherwise.
 
-**The machine drifts.** The same binary measured 4.00% and then 2.80% with nothing changed. Sequential A against B cannot resolve an effect of 10 or 20%. Run both builds at once, at the same window size, and compare them within the run.
+**A window the harness never found reads the same floor.** A run that fails to resolve its window ids sizes, moves and focuses nothing, and every instance in it reads about 0.67% whatever state it was meant to be in. `xdotool` prints `BadWindow` when this happens, among output that otherwise looks like a result. Check each id is non-empty before trusting the run.
+
+**The machine drifts.** The same binary measured 4.00% and then 2.80% with nothing changed, and a run comparing attention states one after another put the cheapest state highest while `gnome-shell` tripled underneath it. Sequential A against B cannot resolve an effect of 10 or 20%. Run every arm at once, at the same window size, and compare them within the one interval.
 
 **Software rendering measures the wrong thing.** Under Xvfb with `LIBGL_ALWAYS_SOFTWARE=1` the shading runs on the CPU, which is the work a GPU would otherwise do. Measure on a real display and confirm the adapter: the log line reads `wgpu adapter … on Vulkan`.
 
 A profile needs symbols, which the shipped packages do not carry. `DEB_BUILD_OPTIONS=nostrip CARGO_PROFILE_RELEASE_DEBUG=2 dpkg-buildpackage -us -uc -b` builds a package that has them; `BUILD.md` covers the rest. `perf record -F 997 -p <pid>` with a flat report is enough to find a hot symbol. DWARF call graphs on a binary of that size take longer to unwind than they are worth.
+
+To hold a window in a chosen attention state while measuring it, `xdotool key --window <id> shift` stamps the input clock without typing anything into the shell, and reaches a window that does not hold the keyboard.
