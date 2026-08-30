@@ -1277,6 +1277,12 @@ impl TerminalSurface {
         self.live_config().general.grapheme_clustering
     }
 
+    /// The speed a local shell's output is taken at, as the settings stand.
+    /// `None` is as fast as the child writes, which is the shipped state.
+    fn serial_rate(&self) -> Option<u32> {
+        self.live_config().serial.rate()
+    }
+
     /// Which selection model the pointer follows, as the settings stand at
     /// this moment. Read at the start of a gesture rather than carried from
     /// startup, so an edit in the settings window reaches the next drag.
@@ -1305,6 +1311,7 @@ impl TerminalSurface {
     fn session_now(&self) -> SessionConfig {
         SessionConfig {
             grapheme_clustering: self.grapheme_clustering(),
+            rate: self.serial_rate(),
             ..self.session_config.clone()
         }
     }
@@ -1483,6 +1490,15 @@ impl TerminalSurface {
             critter_mean(cfg.critters.mean_minutes),
             critter_cast(&cfg.critters),
         );
+
+        // Every channel and not only the one on the air: an unattended
+        // channel is still reading its shell, and a rate that reached only
+        // the visible one would be a different terminal depending on which
+        // knob position it was left at.
+        let rate = cfg.serial.rate();
+        for row in self.channels.rows_mut() {
+            row.session.set_rate(rate);
+        }
 
         // The cabinet first: it decides how much of the window is glass, and
         // the font sizing below is measured against the glass.
