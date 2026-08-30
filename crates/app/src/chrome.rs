@@ -433,6 +433,8 @@ pub struct Chrome {
     /// most of it is a fixed nameplate, and every write costs a texture
     /// transition, so the cheap frame is the one that writes nothing.
     uploaded: HashMap<Placed, ((u32, u32), Arc<[u8]>)>,
+    /// The cabinet's half of the last frame, kept for the next one.
+    cabinet: Option<CabinetDraw>,
 }
 
 impl Chrome {
@@ -610,6 +612,7 @@ impl Chrome {
             bind_group,
             text: HashMap::new(),
             uploaded: HashMap::new(),
+            cabinet: None,
         }
     }
 
@@ -648,7 +651,7 @@ impl Chrome {
         well: (u32, u32),
         scale_factor: f64,
         casting: Option<&ChassisMetalParams>,
-        pieces: &[Piece],
+        pieces: &std::sync::Arc<[Piece]>,
         badges: Option<Badges>,
     ) -> Vec<Option<BadgeRect>> {
         let mut rects = vec![None; badges.as_ref().map_or(0, |b| b.entries.len())];
@@ -656,175 +659,216 @@ impl Chrome {
             return rects;
         }
         let cabinet = column.0 > 0 && column.1 > 0;
+        let kept = std::sync::Arc::clone(pieces);
         let pieces: &[Piece] = if cabinet { pieces } else { &[] };
         let casting = if cabinet { casting } else { None };
 
-        // Where each piece lands, asked once and read three times below.
-        let dests: Vec<Option<(i32, i32, u32, u32)>> = pieces
-            .iter()
-            .map(|p| scale_rect(p.rect, scale_factor, column))
-            .collect();
-
-        // The lines of text first: a run this frame asks for and has not
-        // struck before goes through swash here, and the atlas is packed
-        // after, because a record carries where its mask landed.
-        let runs = self.strike_text(pieces, &dests, scale_factor);
-        let plan = pack(pieces, &runs, &self.text);
-        let regrown = self.fit_atlas(device, plan.size);
-        // A new texture holds none of what the old one did.
-        if regrown {
-            self.uploaded.clear();
-        }
-        for (what, at) in &plan.places {
-            if let Some(raster) = raster_of(pieces, &self.text, what.clone()) {
-                // The very same bytes, not merely equal ones: the bank hands
-                // back the rasters it built earlier, so the common answer is
-                // yes and it costs a pointer comparison.
-                let held = self.uploaded.get(what);
-                if held.is_some_and(|(was, bytes)| was == at && Arc::ptr_eq(bytes, &raster.rgba)) {
-                    continue;
-                }
-                upload(queue, &self.atlas, raster, *at);
-                self.uploaded
-                    .insert(what.clone(), (*at, Arc::clone(&raster.rgba)));
-            }
-        }
-        let uv_of = |what: Placed| -> [f32; 4] {
-            let (w, h) = (self.atlas_size.0 as f32, self.atlas_size.1 as f32);
-            match plan.places.iter().find(|(p, _)| *p == what) {
-                Some((_, (x, y))) => match raster_of(pieces, &self.text, what) {
-                    Some(r) => [
-                        *x as f32 / w,
-                        *y as f32 / h,
-                        r.width.max(1) as f32 / w,
-                        r.height.max(1) as f32 / h,
-                    ],
-                    None => [0.0, 0.0, 1.0, 1.0],
-                },
-                None => [0.0, 0.0, 1.0, 1.0],
-            }
+        let key = CabinetKey {
+            pieces: pieces.as_ptr(),
+            count: pieces.len(),
+            column,
+            well,
+            scale: scale_factor.to_bits(),
+            casting: casting.copied(),
+            atlas: self.atlas_size,
+            struck: self.text.len(),
         };
 
-        let mut castings: Vec<[f32; CHASSIS_RECORD_FLOATS]> = Vec::new();
-        let mut plates: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
-        let mut leds: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
-        let mut tapes: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
-        let mut vectors: Vec<VectorRecord> = Vec::new();
-        let mut stops: Vec<StopRecord> = Vec::new();
-        let mut points: Vec<[f32; 2]> = Vec::new();
-        let mut instances: Vec<Instance> = Vec::new();
+        // The cabinet is the same picture until a channel changes or the
+        // window is resized, so its records are built against the key above
+        // and kept. `regrown` stays false on a reuse: the atlas cannot have
+        // moved without the key moving with it.
+        let mut regrown = false;
+        if self.cabinet.as_ref().is_none_or(|c| c.key != key) {
+            // Where each piece lands, asked once and read three times below.
+            let dests: Vec<Option<(i32, i32, u32, u32)>> = pieces
+                .iter()
+                .map(|p| scale_rect(p.rect, scale_factor, column))
+                .collect();
 
-        // The casting is the bank's floor, so it goes first and everything
-        // else keeps the plan's own order: one draw, painter's order, no sort.
-        if let Some(casting) = casting {
-            let ruler = well_ruler(well, scale_factor);
-            castings.push(casting.record([ruler.0 as f32, ruler.1 as f32]));
-            instances.push(Instance {
-                rect: [0.0, 0.0, column.0 as f32, column.1 as f32],
-                kind: KIND_CHASSIS,
-                index: 0,
-                _pad: [0, 0],
-            });
-        }
-
-        let scale = if scale_factor > 0.0 {
-            scale_factor
-        } else {
-            1.0
-        };
-        for (i, piece) in pieces.iter().enumerate() {
-            let Some(dest) = dests[i] else {
-                continue;
-            };
-            let rect = [dest.0 as f32, dest.1 as f32, dest.2 as f32, dest.3 as f32];
-            let (kind, index) = match piece.params {
-                Some(PieceParams::Plate(p)) => {
-                    plates.push(p.record());
-                    (KIND_PLATE, plates.len() - 1)
-                }
-                Some(PieceParams::Led(p)) => {
-                    leds.push(p.record(uv_of(Placed::Source(i))));
-                    (KIND_LED, leds.len() - 1)
-                }
-                Some(PieceParams::Tape(p)) => {
-                    tapes.push(p.record(uv_of(Placed::Source(i))));
-                    (KIND_TAPE, tapes.len() - 1)
-                }
-                None => {
-                    let Some(painting) = piece.paint.as_ref() else {
+            // The lines of text first: a run this frame asks for and has not
+            // struck before goes through swash here, and the atlas is packed
+            // after, because a record carries where its mask landed.
+            let runs = self.strike_text(pieces, &dests, scale_factor);
+            let plan = pack(pieces, &runs, &self.text);
+            regrown = self.fit_atlas(device, plan.size);
+            // A new texture holds none of what the old one did.
+            if regrown {
+                self.uploaded.clear();
+            }
+            for (what, at) in &plan.places {
+                if let Some(raster) = raster_of(pieces, &self.text, what.clone()) {
+                    // The very same bytes, not merely equal ones: the bank hands
+                    // back the rasters it built earlier, so the common answer is
+                    // yes and it costs a pointer comparison.
+                    let held = self.uploaded.get(what);
+                    if held.is_some_and(|(was, bytes)| was == at && Arc::ptr_eq(bytes, &raster.rgba)) {
                         continue;
-                    };
-                    for (o, op) in painting.ops.iter().enumerate() {
-                        let text = runs.get(&(i, o)).and_then(|k| self.text.get(k));
-                        let atlas = match runs.get(&(i, o)) {
-                            Some(k) => uv_of(Placed::Run(k.clone())),
-                            None => [0.0, 0.0, 1.0, 1.0],
-                        };
-                        let Some((kind, record, span)) =
-                            op_record(op, scale, dest, text, atlas, stops.len(), points.len())
-                        else {
-                            continue;
-                        };
-                        let Some(rect) = span.rect else {
-                            continue;
-                        };
-                        stops.extend(span.stops);
-                        points.extend(span.points);
-                        vectors.push(record);
-                        instances.push(Instance {
-                            rect,
-                            kind,
-                            index: (vectors.len() - 1) as u32,
-                            _pad: [0, 0],
-                        });
                     }
-                    continue;
+                    upload(queue, &self.atlas, raster, *at);
+                    self.uploaded
+                        .insert(what.clone(), (*at, Arc::clone(&raster.rgba)));
+                }
+            }
+            let uv_of = |what: Placed| -> [f32; 4] {
+                let (w, h) = (self.atlas_size.0 as f32, self.atlas_size.1 as f32);
+                match plan.places.iter().find(|(p, _)| *p == what) {
+                    Some((_, (x, y))) => match raster_of(pieces, &self.text, what) {
+                        Some(r) => [
+                            *x as f32 / w,
+                            *y as f32 / h,
+                            r.width.max(1) as f32 / w,
+                            r.height.max(1) as f32 / h,
+                        ],
+                        None => [0.0, 0.0, 1.0, 1.0],
+                    },
+                    None => [0.0, 0.0, 1.0, 1.0],
                 }
             };
-            instances.push(Instance {
-                rect,
-                kind,
-                index: index as u32,
-                _pad: [0, 0],
+
+            let mut castings: Vec<[f32; CHASSIS_RECORD_FLOATS]> = Vec::new();
+            let mut plates: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
+            let mut leds: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
+            let mut tapes: Vec<[f32; PIECE_RECORD_FLOATS]> = Vec::new();
+            let mut vectors: Vec<VectorRecord> = Vec::new();
+            let mut stops: Vec<StopRecord> = Vec::new();
+            let mut points: Vec<[f32; 2]> = Vec::new();
+            let mut instances: Vec<Instance> = Vec::new();
+
+            // The casting is the bank's floor, so it goes first and everything
+            // else keeps the plan's own order: one draw, painter's order, no sort.
+            if let Some(casting) = casting {
+                let ruler = well_ruler(well, scale_factor);
+                castings.push(casting.record([ruler.0 as f32, ruler.1 as f32]));
+                instances.push(Instance {
+                    rect: [0.0, 0.0, column.0 as f32, column.1 as f32],
+                    kind: KIND_CHASSIS,
+                    index: 0,
+                    _pad: [0, 0],
+                });
+            }
+
+            let scale = if scale_factor > 0.0 {
+                scale_factor
+            } else {
+                1.0
+            };
+            for (i, piece) in pieces.iter().enumerate() {
+                let Some(dest) = dests[i] else {
+                    continue;
+                };
+                let rect = [dest.0 as f32, dest.1 as f32, dest.2 as f32, dest.3 as f32];
+                let (kind, index) = match piece.params {
+                    Some(PieceParams::Plate(p)) => {
+                        plates.push(p.record());
+                        (KIND_PLATE, plates.len() - 1)
+                    }
+                    Some(PieceParams::Led(p)) => {
+                        leds.push(p.record(uv_of(Placed::Source(i))));
+                        (KIND_LED, leds.len() - 1)
+                    }
+                    Some(PieceParams::Tape(p)) => {
+                        tapes.push(p.record(uv_of(Placed::Source(i))));
+                        (KIND_TAPE, tapes.len() - 1)
+                    }
+                    None => {
+                        let Some(painting) = piece.paint.as_ref() else {
+                            continue;
+                        };
+                        for (o, op) in painting.ops.iter().enumerate() {
+                            let text = runs.get(&(i, o)).and_then(|k| self.text.get(k));
+                            let atlas = match runs.get(&(i, o)) {
+                                Some(k) => uv_of(Placed::Run(k.clone())),
+                                None => [0.0, 0.0, 1.0, 1.0],
+                            };
+                            let Some((kind, record, span)) =
+                                op_record(op, scale, dest, text, atlas, stops.len(), points.len())
+                            else {
+                                continue;
+                            };
+                            let Some(rect) = span.rect else {
+                                continue;
+                            };
+                            stops.extend(span.stops);
+                            points.extend(span.points);
+                            vectors.push(record);
+                            instances.push(Instance {
+                                rect,
+                                kind,
+                                index: (vectors.len() - 1) as u32,
+                                _pad: [0, 0],
+                            });
+                        }
+                        continue;
+                    }
+                };
+                instances.push(Instance {
+                    rect,
+                    kind,
+                    index: index as u32,
+                    _pad: [0, 0],
+                });
+            }
+
+            self.cabinet = Some(CabinetDraw {
+                key,
+                _pieces: kept,
+                castings,
+                plates,
+                leds,
+                tapes,
+                vectors,
+                stops,
+                points,
+                instances,
             });
         }
-
-        // The cabinet's own draw ends here; what follows goes over the glass
-        // under a scissor of its own.
-        let cabinet_count = instances.len();
+        let mut draw = self
+            .cabinet
+            .take()
+            .expect("the cabinet is built just above when its key has moved");
+        let cabinet_count = draw.instances.len();
+        let cabinet_vectors = draw.vectors.len();
+        // The cabinet's own draw ends at `cabinet_count`; what follows goes
+        // over the glass under a scissor of its own. The badges are appended
+        // to the kept records and cut away again below, so a settled bank
+        // reaches this point without allocating.
         if let Some(badges) = badges.as_ref() {
             rects = badge_instances(
                 badges,
                 (column.0 as i32, 0, well.0, well.1),
                 scale_factor,
-                &mut vectors,
-                &mut instances,
+                &mut draw.vectors,
+                &mut draw.instances,
             );
         }
 
-        let mut rebind = self.fit(device, 0, castings.len(), CHASSIS_RECORD_FLOATS);
-        rebind |= self.fit(device, 1, plates.len(), PIECE_RECORD_FLOATS);
-        rebind |= self.fit(device, 2, leds.len(), PIECE_RECORD_FLOATS);
-        rebind |= self.fit(device, 3, tapes.len(), PIECE_RECORD_FLOATS);
-        rebind |= self.fit(device, 4, vectors.len(), VECTOR_RECORD_FLOATS);
-        rebind |= self.fit(device, 5, stops.len(), STOP_RECORD_FLOATS);
-        rebind |= self.fit(device, 6, points.len(), POINT_RECORD_FLOATS);
-        if instances.len() > self.capacity {
-            self.capacity = instances.len().next_power_of_two();
+        let mut rebind = self.fit(device, 0, draw.castings.len(), CHASSIS_RECORD_FLOATS);
+        rebind |= self.fit(device, 1, draw.plates.len(), PIECE_RECORD_FLOATS);
+        rebind |= self.fit(device, 2, draw.leds.len(), PIECE_RECORD_FLOATS);
+        rebind |= self.fit(device, 3, draw.tapes.len(), PIECE_RECORD_FLOATS);
+        rebind |= self.fit(device, 4, draw.vectors.len(), VECTOR_RECORD_FLOATS);
+        rebind |= self.fit(device, 5, draw.stops.len(), STOP_RECORD_FLOATS);
+        rebind |= self.fit(device, 6, draw.points.len(), POINT_RECORD_FLOATS);
+        if draw.instances.len() > self.capacity {
+            self.capacity = draw.instances.len().next_power_of_two();
             self.instances = make_instances(device, self.capacity);
         }
         if rebind || regrown {
             self.rebind(device);
         }
 
-        write_records(queue, &self.castings, &castings);
-        write_records(queue, &self.plates, &plates);
-        write_records(queue, &self.leds, &leds);
-        write_records(queue, &self.tapes, &tapes);
-        write_slice(queue, &self.vectors, &vectors);
-        write_slice(queue, &self.stops, &stops);
-        write_slice(queue, &self.points, &points);
+        write_records(queue, &self.castings, &draw.castings);
+        write_records(queue, &self.plates, &draw.plates);
+        write_records(queue, &self.leds, &draw.leds);
+        write_records(queue, &self.tapes, &draw.tapes);
+        write_slice(queue, &self.vectors, &draw.vectors);
+        write_slice(queue, &self.stops, &draw.stops);
+        write_slice(queue, &self.points, &draw.points);
+        let instances = std::mem::take(&mut draw.instances);
         if instances.is_empty() {
+            draw.instances = instances;
+            self.keep(draw, cabinet_count, cabinet_vectors);
             return rects;
         }
         queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instances));
@@ -902,7 +946,17 @@ impl Chrome {
             pass.draw(0..6, cabinet_count as u32..instances.len() as u32);
         }
         drop(pass);
+        draw.instances = instances;
+        self.keep(draw, cabinet_count, cabinet_vectors);
         rects
+    }
+
+    /// Put the cabinet's records back with the badges cut off them, ready to
+    /// be reused as they are on the next frame.
+    fn keep(&mut self, mut draw: CabinetDraw, instances: usize, vectors: usize) {
+        draw.instances.truncate(instances);
+        draw.vectors.truncate(vectors);
+        self.cabinet = Some(draw);
     }
 
     /// Grow one kind's parameter buffer to hold `wanted` records; `true` when
@@ -1173,6 +1227,41 @@ fn badge_instances(
         });
     }
     rects
+}
+
+/// What the cabinet's half of a frame was built from. A frame whose key
+/// matches the one in hand would rebuild the same records from the same
+/// pieces, so it reuses them instead.
+///
+/// The pieces are identified by the address of their allocation, and
+/// [`CabinetDraw`] holds the `Arc` alive so that no later allocation can
+/// take that address and pass for it.
+#[derive(PartialEq)]
+struct CabinetKey {
+    pieces: *const Piece,
+    count: usize,
+    column: (u32, u32),
+    well: (u32, u32),
+    scale: u64,
+    casting: Option<ChassisMetalParams>,
+    atlas: (u32, u32),
+    struck: usize,
+}
+
+/// The cabinet's records, and what they were built from. The badges' own
+/// records are appended to these each frame and truncated away again, so the
+/// vectors keep their capacity and a settled bank allocates nothing.
+struct CabinetDraw {
+    key: CabinetKey,
+    _pieces: std::sync::Arc<[Piece]>,
+    castings: Vec<[f32; CHASSIS_RECORD_FLOATS]>,
+    plates: Vec<[f32; PIECE_RECORD_FLOATS]>,
+    leds: Vec<[f32; PIECE_RECORD_FLOATS]>,
+    tapes: Vec<[f32; PIECE_RECORD_FLOATS]>,
+    vectors: Vec<VectorRecord>,
+    stops: Vec<StopRecord>,
+    points: Vec<[f32; 2]>,
+    instances: Vec<Instance>,
 }
 
 /// One thing in the atlas: a display piece's own raster, or a struck line.

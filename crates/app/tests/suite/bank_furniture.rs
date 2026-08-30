@@ -110,7 +110,7 @@ fn render_piece(gpu: &Locked, chrome: &mut Chrome, piece: &Piece, scale: f64) ->
         (w, h),
         scale,
         None,
-        std::slice::from_ref(&at_origin),
+        &std::sync::Arc::from(vec![at_origin.clone()]),
         None,
     );
     let index = gpu.queue.submit([encoder.finish()]);

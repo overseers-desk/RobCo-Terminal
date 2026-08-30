@@ -126,7 +126,7 @@ fn frame_with_badge(
         (WINDOW_W - BANK, WINDOW_H),
         1.0,
         None,
-        &[],
+        &std::sync::Arc::from(Vec::new()),
         Some(Badges {
             atlas: &fx.atlas,
             scale: fx.scale,
@@ -318,7 +318,7 @@ fn two_badges_stack_and_neither_is_drawn_with_the_others_uniforms() {
         (WINDOW_W - BANK, WINDOW_H),
         1.0,
         None,
-        &[],
+        &std::sync::Arc::from(Vec::new()),
         Some(Badges {
             atlas: &fx.atlas,
             scale: fx.scale,

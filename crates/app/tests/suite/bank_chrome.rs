@@ -141,7 +141,7 @@ fn frame_with_furniture(
         (WINDOW_W - bank, WINDOW_H),
         scale_factor,
         Some(params),
-        pieces,
+        &std::sync::Arc::from(pieces.to_vec()),
         None,
     );
 
