@@ -1504,12 +1504,12 @@ impl TerminalSurface {
     /// Recompute the well's grid inset from the live settings and this
     /// window's DPR, and say whether it moved.
     ///
-    /// `settings::distortion_margin` -- the same derivation
-    /// [`TerminalSurface::distortion_params`] already reads for the pointer
-    /// path, so there is exactly one copy of the formula -- is logical;
-    /// [`Viewport::margin`] is physical, so it is scaled by
-    /// `scale_factor` here, the same boundary [`Viewport::physical_cell`]
-    /// crosses for the cell.
+    /// `settings::distortion_margin` is logical; [`Viewport::margin`] is
+    /// physical, so it is scaled by `scale_factor` here, the same boundary
+    /// [`Viewport::physical_cell`] crosses for the cell. This is the only
+    /// place that reads `distortion_margin`: the pointer path picks the
+    /// result up from [`Viewport::margin`] instead, by way of
+    /// [`Viewport::term_size`].
     fn ensure_margin(&mut self, cfg: &Config) -> bool {
         let margin = settings::distortion_margin(cfg) * self.viewport.scale_factor;
         if (margin - self.viewport.margin).abs() > f64::EPSILON {
@@ -2298,9 +2298,8 @@ mod tests {
     /// on every edge before its own column/row count is taken -- the space
     /// the grid is sized from shrinks by twice the margin on each axis,
     /// `margin` itself being a lerp between two configured bounds plus a
-    /// curvature term ([`settings::distortion_margin`], the one derivation
-    /// both this and the pointer's [`TerminalSurface::distortion_params`]
-    /// read).
+    /// curvature term ([`settings::distortion_margin`], the same derivation
+    /// [`TerminalSurface::ensure_margin`] reads to set [`Viewport::margin`]).
     ///
     /// The margin is logical; [`Viewport::margin`] is physical, so it is
     /// scaled by the sampled DPR here the same way a caller wiring this up
