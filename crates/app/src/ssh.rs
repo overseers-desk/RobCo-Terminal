@@ -120,11 +120,12 @@ pub(crate) fn key_path(row_key: &str) -> Vec<std::path::PathBuf> {
 /// `[host]:port`, which is the whole of the grammar `ssh` reads here.
 ///
 /// The brackets are what an address made of colons needs before a colon
-/// can also mean "port", so they are read wherever OpenSSH reads them and
-/// written back by [`SshRequest::spec`] under the same condition. Bare, an
-/// address of more than one colon is itself and carries no port: nothing
-/// else it could be, and reading its last group as a port is how
-/// `2001:db8::1` became a name that no resolver has ever heard of.
+/// can also mean "port", so they are read wherever `ssh` itself reads
+/// them and written back by [`SshRequest::spec`] under the same
+/// condition. Bare, an address of more than one colon is itself and
+/// carries no port: nothing else it could be, and reading its last group
+/// as a port is how `2001:db8::1` became a name that no resolver has ever
+/// heard of.
 fn split_host_port<'a>(rest: &'a str, spec: &str) -> Result<(&'a str, Option<u16>), String> {
     let port = |text: &str| {
         text.parse::<u16>()
