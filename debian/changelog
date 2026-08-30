@@ -1,5 +1,10 @@
 robco-term (0.2.0) unstable; urgency=medium
 
+  * A destination can be an IPv6 address. `--ssh 2001:db8::1` goes where
+    it says, and the brackets carry a port the way `ssh` spells one,
+    `--ssh [2001:db8::1]:2222`. Before this the last group of the address
+    was read as a port number and what was left went to the resolver,
+    which had never heard of it.
   * The Serial tab says what the rate does not reach. A shell reached over
     SSH, and a tmux window under `tmux -CC`, have had their output read off
     a transport before this terminal holds it, so neither is slowed. The
@@ -19,11 +24,6 @@ robco-term (0.1.9) unstable; urgency=medium
     stops the program writing it. A screen copied or searched holds what
     the screen holds. A shell reached over SSH and a tmux window are not
     slowed. The settings window has a Serial tab for both keys.
-  * A destination can be an IPv6 address. `--ssh 2001:db8::1` goes where
-    it says, and the brackets carry a port the way `ssh` spells one,
-    `--ssh [2001:db8::1]:2222`. Before this the last group of the address
-    was read as a port number and what was left went to the resolver,
-    which had never heard of it.
   * The glass slows down when nobody is watching it. Clicking away to
     another window halves the rate the CRT animates at, and half a minute
     without a keystroke halves it again; a keystroke or a click brings it
