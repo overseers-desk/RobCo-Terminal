@@ -5,6 +5,11 @@ robco-term (0.1.8) unstable; urgency=medium
     click near the top of the screen was right and one further down took
     a row above the one under the cursor, by more the lower it fell and
     by more the wider the screen margin was set.
+  * The bank costs about a tenth less to keep on screen. It was
+    rasterised and uploaded to the graphics card again on every frame,
+    twenty times a second, to put back the pixels already there; it is
+    now built again only when a channel changes or the window is
+    resized.
 
  -- Weiwu Zhang <a@colourful.land>  Sun, 30 Aug 2026 13:22:50 +1000
 

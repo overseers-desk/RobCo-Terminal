@@ -429,10 +429,9 @@ pub struct Chrome {
     /// The lines of text struck so far, by run.
     text: HashMap<RunKey, StruckRun>,
     /// What the atlas already holds: where each raster was written and the
-    /// bytes written there. The bank's plan repeats frame after frame, and
-    /// most of it is a fixed nameplate that never changes at all, so a frame
-    /// that re-wrote the whole atlas was paying wgpu for a texture
-    /// transition per piece to put back what was already there.
+    /// bytes written there. The bank's plan repeats frame after frame and
+    /// most of it is a fixed nameplate, and every write costs a texture
+    /// transition, so the cheap frame is the one that writes nothing.
     uploaded: HashMap<Placed, ((u32, u32), Arc<[u8]>)>,
 }
 

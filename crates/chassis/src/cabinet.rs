@@ -183,9 +183,9 @@ pub struct Cabinet {
     /// The last furniture built and what it was built from. The bank is a
     /// nameplate over a column of channel windows: it changes when a channel
     /// does, or when the window is resized, and not on the twenty frames a
-    /// second the glass's own flicker asks for. Rasterising every lamp grid
-    /// and every engraved line again to hand back the same pixels cost more
-    /// than remembering them.
+    /// second the glass's own flicker asks for, so every one of those frames
+    /// would otherwise widen the same lamp grids and strike the same
+    /// engraved lines to arrive back where it started.
     remembered: std::cell::RefCell<Option<(FurnitureKey, std::sync::Arc<[crate::Piece]>)>>,
 }
 
