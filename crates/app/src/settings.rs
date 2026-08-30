@@ -240,9 +240,9 @@ pub fn screen_radius(config: &Config) -> f64 {
     lint(lo, hi, config.raw_screen_radius())
 }
 
-/// The pixel value [`term::distortion::DistortionParams::margin`] wants
-/// directly, with no `normalized_screen_scale` factor applied on top,
-/// unlike `frame_size` below:
+/// The pixel value [`term::Viewport::margin`] wants directly (scaled by
+/// `scale_factor` at that boundary), with no `normalized_screen_scale`
+/// factor applied on top, unlike `frame_size` below:
 ///
 /// ```text
 /// margin = lint(1.0, 40.0, screen.margin) + (1.0 - sqrt(0.5)) * screen_radius
