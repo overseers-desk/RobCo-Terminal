@@ -44,6 +44,15 @@ use super::TerminalSurface;
 const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
 impl TerminalSurface {
+    /// Someone is here. Stamped by every path a hand reaches the glass
+    /// through, and it drops the standing effects deadline: a throttled one
+    /// can be a fifth of a second out, which is long enough to watch the
+    /// picture catch up rather than simply find it running.
+    pub(super) fn attended(&mut self) {
+        self.last_input = Instant::now();
+        self.next_effects_frame = None;
+    }
+
     /// The captured state a distortion computation needs, as this window
     /// supplies it: the well's own pixel size, the grid's size within it,
     /// and whatever [`TerminalSurface::set_settings`] last attached. No
@@ -220,6 +229,7 @@ impl TerminalSurface {
         position: PhysicalPosition<f64>,
         modifiers: ModifiersState,
     ) {
+        self.attended();
         // macOS's secondary click, before anything downstream reads the
         // button: Control with the left button is a right press for the whole
         // window, the seam and the bank's strips included, exactly as the
@@ -365,6 +375,7 @@ impl TerminalSurface {
     }
 
     pub(super) fn on_mouse_wheel(&mut self, delta: MouseScrollDelta, modifiers: ModifiersState) {
+        self.attended();
         let mods = modifiers_from(modifiers);
         let cell_height = f64::from(self.viewport.term_size().cell_height).max(1.0);
 
@@ -420,6 +431,13 @@ impl TerminalSurface {
     }
 
     pub(super) fn on_focus_changed(&mut self, focused: bool) {
+        self.focused = focused;
+        if focused {
+            // Back at the glass: the throttled deadline standing from a
+            // moment ago would otherwise hold the picture for a fifth of a
+            // second after the window is live again.
+            self.attended();
+        }
         if !focused {
             // A window that loses focus never sees the button come up,
             // so a drag left running would resume on the next move. The seam's

@@ -31,6 +31,12 @@ use serde::{Deserialize, Serialize};
 pub struct GeneralSettings {
     /// How many frames the shader-effect chain skips between redraws.
     pub effects_frame_skip: i32,
+    /// What [`GeneralSettings::effects_frame_skip`] is multiplied by while
+    /// the window does not hold the keyboard, and again once it has gone
+    /// half a minute untouched. Either at `1` leaves that state at the
+    /// ordinary cadence.
+    pub unfocused_frame_skip: i32,
+    pub idle_frame_skip: i32,
     pub window_scaling: f64,
     pub show_terminal_size: bool,
     pub font_scaling: f64,
@@ -213,6 +219,8 @@ impl Default for GeneralSettings {
     fn default() -> Self {
         GeneralSettings {
             effects_frame_skip: 3,
+            unfocused_frame_skip: 2,
+            idle_frame_skip: 4,
             window_scaling: 1.0,
             show_terminal_size: true,
             font_scaling: 1.0,

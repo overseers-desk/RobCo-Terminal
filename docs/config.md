@@ -154,6 +154,8 @@ profile switch.
 | Key | Default | What it does |
 |---|---|---|
 | `effects_frame_skip` | `3` | How many frames the effects clock holds a value before jumping. The CRT animates at 60/skip Hz, so the shipped `3` is 20 Hz. Lower it for a faster-moving picture at more GPU cost. |
+| `unfocused_frame_skip` | `2` | Multiplies `effects_frame_skip` while another window holds the keyboard, so the shipped pair animate at 10 Hz once you click away. `1` keeps the ordinary cadence. |
+| `idle_frame_skip` | `4` | Multiplies `effects_frame_skip` once the glass has gone half a minute without a keystroke, click or scroll, whether or not it is focused. The shipped pair give 5 Hz. A keystroke restores the full rate at once. `1` keeps the ordinary cadence. |
 | `window_scaling` | `1.0` | Scales the whole appliance: glass, chassis and all. |
 | `font_scaling` | `1.0` | Scales the type, and so the number of rows and columns the window holds. |
 | `show_terminal_size` | `true` | Whether the size badge appears in the well while you drag the window. |

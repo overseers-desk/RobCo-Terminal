@@ -143,6 +143,29 @@ const POLL_INTERVAL: Duration = Duration::from_millis(8);
 /// setting means.
 const EFFECTS_BASE_FRAME: Duration = Duration::from_micros(16_667);
 
+/// How long the glass goes untouched before it counts as unattended. Not a
+/// setting: the two factors either side of it are what change the picture,
+/// and a third knob for one behaviour is more than the behaviour is worth.
+const UNATTENDED_AFTER: Duration = Duration::from_secs(30);
+
+/// What the user's own `effects_frame_skip` is multiplied by, given who is
+/// attending the glass.
+///
+/// The steps multiply rather than pin, so a glass someone set to run at 60 Hz
+/// still moves faster unattended than a default one does at its best. A
+/// window that is both unfocused and untouched takes the larger of the two
+/// rather than their product, because it is one screen nobody is watching and
+/// not two.
+fn attention_factor(focused: bool, since_input: Duration, unfocused: i32, idle: i32) -> i32 {
+    let away = if focused { 1 } else { unfocused.max(1) };
+    let untouched = if since_input >= UNATTENDED_AFTER {
+        idle.max(1)
+    } else {
+        1
+    };
+    away.max(untouched)
+}
+
 /// What the badge says when a PTY channel's write queue sheds: the child this
 /// program spawned has stopped reading its tty and the keystrokes aimed at it
 /// are being thrown away. See [`TerminalSurface::watch_the_write_queues`] for
@@ -539,6 +562,13 @@ pub struct TerminalSurface {
     /// output left behind, which is a still photograph of a CRT rather than a
     /// CRT.
     next_effects_frame: Option<Instant>,
+    /// Whether this window has the keyboard, and when it was last touched.
+    /// Together they say whether anyone is attending the glass, which is what
+    /// the effects clock paces itself against: a screen nobody is looking at
+    /// animates for nobody. A surface with no window to lose focus from
+    /// starts attended, so a headless one keeps the cadence it always had.
+    focused: bool,
+    last_input: Instant,
     /// The output governor: when child output may next ask for a frame, and
     /// whether any arrived since the last one it asked for. The PTY is
     /// polled at ~125 Hz and a flood would otherwise paint
@@ -909,6 +939,8 @@ impl TerminalSurface {
             settings: None,
             base: Config::default(),
             next_effects_frame: None,
+            focused: true,
+            last_input: Instant::now(),
             next_output_frame: None,
             output_pending: false,
             glass: None,
@@ -2015,6 +2047,7 @@ impl Surface for TerminalSurface {
     }
 
     fn key_pressed(&mut self, event: &winit::event::KeyEvent, modifiers: ModifiersState) {
+        self.attended();
         self.key_input(&event.logical_key, key_text(event), modifiers);
     }
 
@@ -2118,11 +2151,18 @@ impl Surface for TerminalSurface {
         // it keeps to drawing only what changed.
         let mut effects_due = false;
         if self.glass.is_some() {
-            let skip = match self.settings.as_ref() {
-                Some(handle) => handle.current().general.effects_frame_skip,
-                None => Config::default().general.effects_frame_skip,
+            let cfg = match self.settings.as_ref() {
+                Some(handle) => handle.current().general,
+                None => Config::default().general,
             };
-            let interval = EFFECTS_BASE_FRAME * skip.max(1) as u32;
+            let attention = attention_factor(
+                self.focused,
+                now.duration_since(self.last_input),
+                cfg.unfocused_frame_skip,
+                cfg.idle_frame_skip,
+            );
+            let interval =
+                EFFECTS_BASE_FRAME * (cfg.effects_frame_skip.max(1) * attention) as u32;
             match self.next_effects_frame {
                 Some(at) if at > now => wake_at = wake_at.min(at),
                 _ => {
@@ -2203,6 +2243,33 @@ impl Surface for TerminalSurface {
 
 #[cfg(test)]
 mod tests {
+    /// The shipped steps, against the states a window passes through. The
+    /// numbers on the right are what the glass runs at with the shipped
+    /// `effects_frame_skip` of 3, which is 20 Hz at a factor of one.
+    #[test]
+    fn the_glass_steps_out_only_while_nobody_is_attending() {
+        use super::{attention_factor, UNATTENDED_AFTER};
+        use std::time::Duration;
+        let just_now = Duration::from_secs(1);
+        let a_while = UNATTENDED_AFTER + Duration::from_secs(1);
+
+        // Focused and being typed into: the user's own cadence, 20 Hz.
+        assert_eq!(attention_factor(true, just_now, 2, 4), 1);
+        // Focused but untouched for half a minute: 5 Hz.
+        assert_eq!(attention_factor(true, a_while, 2, 4), 4);
+        // Clicked away from a moment ago: 10 Hz.
+        assert_eq!(attention_factor(false, just_now, 2, 4), 2);
+        // Away and untouched takes the larger step, not the product: 5 Hz,
+        // not the 1.25 Hz that multiplying them would give.
+        assert_eq!(attention_factor(false, a_while, 2, 4), 4);
+
+        // Either step at 1 switches that state off, and a step below 1 is
+        // read as 1 rather than dividing the interval away to nothing.
+        assert_eq!(attention_factor(false, just_now, 1, 4), 1);
+        assert_eq!(attention_factor(true, a_while, 2, 1), 1);
+        assert_eq!(attention_factor(false, a_while, 0, -3), 1);
+    }
+
     use super::*;
     use crt::{DegaussState, Geometry, Params};
 
