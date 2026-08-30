@@ -9,7 +9,7 @@
 //! settings window reads this at open and states none of it itself.
 //!
 //! The output is TOML: `[general]` / `[screen]` / `[chassis]` / `[ssh]` /
-//! `[critters]` hold the fully-resolved defaults, `[ssh_host_defaults]`
+//! `[critters]` / `[serial]` hold the fully-resolved defaults, `[ssh_host_defaults]`
 //! what a fresh `[[ssh.host]]` row holds (row defaults, not a config table
 //! of its own),
 //! `[[screen_presets]]` / `[[chassis_presets]]` the built-in presets with
@@ -53,6 +53,7 @@ struct Dump {
     chassis: ChassisSettings,
     ssh: crate::schema::SshSettings,
     critters: crate::schema::CritterSettings,
+    serial: crate::schema::SerialSettings,
     /// What a fresh `[[ssh.host]]` row holds before the user types: the
     /// shipped `[ssh]` table has no rows, so the per-row defaults appear
     /// nowhere else in this dump.
@@ -72,6 +73,7 @@ pub fn dump(fonts: Vec<FontListing>) -> String {
         chassis: ChassisSettings::default(),
         ssh: crate::schema::SshSettings::default(),
         critters: crate::schema::CritterSettings::default(),
+        serial: crate::schema::SerialSettings::default(),
         ssh_host_defaults: crate::schema::SshHost::default(),
         screen_presets: crate::presets::screen_presets(),
         chassis_presets: crate::presets::chassis_presets(),

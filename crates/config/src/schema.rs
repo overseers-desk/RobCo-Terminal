@@ -333,6 +333,46 @@ impl Default for SshHost {
     }
 }
 
+/// The `[serial]` table: the speed a local shell's output is taken at.
+///
+/// Unset, a build behaves as one without any of this in it. Set, the read
+/// loop takes what the rate has earned and leaves the rest in the tty
+/// buffer, so a program blocks in `write` once that fills, the way it would
+/// behind a serial line. It is the reading that is slowed and never the
+/// drawing: what the glass shows is what the session has sent, at a rate as
+/// at full speed. `term::Session::set_rate` carries the rest.
+///
+/// A remote shell is not reached by this. An SSH channel's bytes and a tmux
+/// pane's have been read off their transport by the time they arrive, and
+/// holding them back then would be a picture of a slow line rather than one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SerialSettings {
+    /// Whether output is metered at all.
+    pub enabled: bool,
+    /// Bits a second. Eight data bits, no parity and one stop bit is ten
+    /// bits a character, so a tenth of this is the bytes a second the
+    /// terminal reads; 19200 fills an 80 by 25 screen in a second.
+    pub baud: u32,
+}
+
+impl Default for SerialSettings {
+    fn default() -> Self {
+        SerialSettings {
+            enabled: false,
+            baud: 19200,
+        }
+    }
+}
+
+impl SerialSettings {
+    /// Bytes a second for the read loop, or `None` for as fast as the child
+    /// writes. The one place the ten bits a character are divided out.
+    pub fn rate(&self) -> Option<u32> {
+        self.enabled.then(|| self.baud / 10)
+    }
+}
+
 /// The `[critters]` table: whether the appliance amuses itself, how often,
 /// and with which of its eight pieces.
 ///

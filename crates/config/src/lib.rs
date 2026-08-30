@@ -34,7 +34,7 @@ pub use profile::Profile;
 
 pub use schema::{
     ChannelDisplay, ChannelIndicator, ChassisSettings, CritterSettings, FontSource,
-    GeneralSettings, Rasterization, ScreenSettings, Shell, SshHost, SshSettings,
+    GeneralSettings, Rasterization, ScreenSettings, SerialSettings, Shell, SshHost, SshSettings,
 };
 
 /// Every settings table together: the shape a config file written by this
@@ -62,6 +62,7 @@ pub struct Config {
     pub chassis: ChassisSettings,
     pub ssh: SshSettings,
     pub critters: CritterSettings,
+    pub serial: SerialSettings,
 }
 
 impl Config {
@@ -255,6 +256,18 @@ key = "/home/overseer/.ssh/id_gw"
         assert_eq!(config.critters.mean_minutes, 15.0);
     }
 
+    /// A rate named without the switch is a rate and not a slow terminal:
+    /// the table is a diff against defaults like any other, and the default
+    /// is off. Anyone reading the file sees what it would be if switched on.
+    #[test]
+    fn a_baud_without_the_switch_leaves_the_line_at_full_speed() {
+        let config: Config = toml::from_str("[serial]\nbaud = 300\n").unwrap();
+        assert_eq!(config.serial.baud, 300);
+        assert!(!config.serial.enabled);
+        assert_eq!(config.serial.rate(), None);
+        assert_eq!(SerialSettings::default().baud, 19200);
+    }
+
     /// The diff-against-defaults contract (`docs/config-format.md`) means a
     /// file naming only one key of one table must deserialize, filling
     /// every other field -- in that table and the untouched ones --
@@ -372,7 +385,7 @@ key = "/home/overseer/.ssh/id_gw"
         let mut section = String::new();
         for line in doc.lines() {
             if line.starts_with("### ") {
-                section = ["general", "screen", "chassis", "ssh", "critters"]
+                section = ["general", "screen", "chassis", "ssh", "critters", "serial"]
                     .into_iter()
                     .find(|s| line.contains(&format!("[{s}]")))
                     .unwrap_or("")

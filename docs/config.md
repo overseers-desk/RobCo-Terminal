@@ -307,6 +307,33 @@ the shipped fifteen, gaps of two minutes and of fifty are both ordinary.
 Turning one off makes the others correspondingly more likely rather than
 leaving a gap in the schedule where it used to be.
 
+### `[serial]`
+
+A terminal on a serial line took its characters at the speed of the wire, and
+a screen arrived a line at a time rather than all at once. This table puts the
+terminal back on one. It ships off, and off it costs nothing: the glass fills
+as fast as the machine can fill it.
+
+What is slowed is the reading and never the drawing. The terminal takes what
+the rate has earned and leaves the rest in the tty's buffer, so the program
+blocks once that fills, exactly as it would have. Everything liveable about
+this follows from that. `Ctrl`+`C` stops the output because it stops the
+program writing it. A copy of the screen holds what the screen holds. A search
+of the scrollback reads everything that arrived. Nothing is queued anywhere
+inside the terminal waiting to be drawn.
+
+It reaches a local shell and nothing else. A channel on SSH, and a tmux window
+arriving through control mode, have had their bytes read off a transport
+before they reach a grid, so metering them there would hold back bytes already
+in hand instead of leaving them unread at the far end. The gateway channel a
+`tmux -CC` opens is exempt for the same reason: its own PTY carries tmux's
+protocol rather than a picture of a shell.
+
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `false` | Whether output is metered at all. Off is a build with none of this in it. |
+| `baud` | `19200` | Bits a second. At eight data bits, no parity and one stop bit, a character is ten bits, so the terminal reads a tenth of this many bytes a second and 19200 fills an 80 by 25 screen in about a second. The settings window offers the standard rates from 300 to 115200; the file takes any number. |
+
 ## A worked example
 
 ```toml
