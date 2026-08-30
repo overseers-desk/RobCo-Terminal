@@ -986,6 +986,16 @@ impl TerminalSurface {
         visible_bytes += self.pump_gateways();
         self.channel_changed();
         self.watch_the_write_queues();
+        // The grid's inset follows the live settings here as well as in
+        // `apply_live_settings`, because a surface with no window never
+        // redraws and would otherwise count its columns against a margin
+        // the settings have moved off. The pointer reads that same grid.
+        // A surface that attached no handle keeps the neutral inset, which
+        // is the geometry it was built with.
+        if let Some(handle) = self.settings.as_ref() {
+            let cfg = handle.current();
+            self.ensure_margin(&cfg);
+        }
         visible_bytes
     }
 

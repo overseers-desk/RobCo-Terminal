@@ -11,11 +11,12 @@
 //!
 //! `screen.margin` is the proof key: with curvature and frame size held at
 //! (approximately) zero, `term::distortion::correct_distortion` reduces to
-//! `x_grid = x_widget - margin` exactly (see
-//! `crates/term/src/distortion.rs`'s `zero_curvature_reduces_to_the_margin_frame_linear_map`
-//! test), so a margin change shifts which grid column a fixed widget pixel
-//! lands on by a predictable number of cells -- turning a settings edit
-//! into a different selection.
+//! `x_grid = x_well - grid_origin` exactly (see
+//! `crates/term/src/distortion.rs`'s `zero_curvature_reduces_to_the_frame_origin_linear_map`
+//! test), and the margin sets that origin by shrinking the grid the
+//! renderer centres in the well. So a margin change shifts which grid
+//! column a fixed well pixel lands on by a predictable number of cells,
+//! turning a settings edit into a different selection.
 
 use std::fs;
 use std::sync::Arc;
@@ -162,6 +163,10 @@ fn a_config_edit_changes_the_pointer_mapping_without_restart() {
         || settings::distortion_margin(&handle.current()) > baseline_margin + 4.0 * CELL_W,
         Duration::from_secs(5)
     ));
+    // The margin reaches the pointer by way of the grid it sizes, which the
+    // surface recomputes on its own tick. The event loop ticks between a
+    // reload and the next click; here the tick is asked for.
+    surface.pump();
 
     let after = select_at_fixed_pixels(&mut surface, 10, 15);
     assert_ne!(
@@ -177,14 +182,12 @@ fn a_config_edit_changes_the_pointer_mapping_without_restart() {
 /// The same click, on the same glass, at two device pixel ratios.
 ///
 /// `DistortionParams` is entirely physical: its `width`/`height` are the
-/// viewport's physical pixels and `correct_distortion` subtracts `margin`
-/// from a physical pointer position. The margin setting is logical, and every
-/// other place that crosses that boundary scales it (`Viewport::margin` is
-/// documented as physical and `ensure_margin` multiplies by `scale_factor`) --
-/// but `distortion_params` passed it straight through. On a HiDPI screen the
-/// pointer was therefore measured against half the inset the glass was drawn
-/// with, and the cell the click reported drifted from the cell under the
-/// cursor, by more the further right you clicked.
+/// viewport's physical pixels, and the grid it measures against is sized
+/// from `Viewport::margin`, which `ensure_margin` scales by `scale_factor`
+/// at that boundary. A margin left logical anywhere along that path would
+/// measure the pointer against half the inset the glass was drawn with, and
+/// the cell the click reported would drift from the cell under the cursor,
+/// by more the further right you clicked.
 ///
 /// The margin here is deliberately large (`margin = 1.0`, about 40 logical
 /// pixels, more than four cells) so a half-sized inset cannot hide inside

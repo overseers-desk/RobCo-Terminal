@@ -45,42 +45,33 @@ const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
 impl TerminalSurface {
     /// The captured state a distortion computation needs, as this window
-    /// supplies it: the window's own pixel size plus whatever
-    /// [`TerminalSurface::set_settings`] last attached. No handle (any
-    /// pointer test written before this settings handle existed, and any
-    /// headless surface that never opts in) means every derived term is the
-    /// neutral/identity value: zero margin, zero frame inset, zero
-    /// curvature -- the map is window pixels onto grid-texture pixels,
-    /// exactly this method's original behavior.
+    /// supplies it: the well's own pixel size, the grid's size within it,
+    /// and whatever [`TerminalSurface::set_settings`] last attached. No
+    /// handle means both derived terms are the neutral value, zero frame
+    /// inset and zero curvature, leaving the map as flat glass in a bare
+    /// cabinet.
+    ///
+    /// The margin is not among them. It reaches the pointer the same way it
+    /// reaches the picture, by shrinking `term_size` and so moving where the
+    /// renderer centres the grid in the well (`term::distortion`).
     pub(super) fn distortion_params(&self) -> DistortionParams {
         let (grid_width, grid_height) = self.viewport.term_size().pixel_size();
         let width = self.viewport.width as f64;
         let height = self.viewport.height as f64;
         let normalized_screen_scale = distortion::normalized_screen_scale(width, height);
 
-        let (margin, frame_size, screen_curvature) = match self.settings.as_ref() {
+        let (frame_size, screen_curvature) = match self.settings.as_ref() {
             Some(handle) => {
                 let config = handle.current();
                 (
-                    // Physical, like every other field of `DistortionParams`:
-                    // `width` and `height` just above are the viewport's own
-                    // physical pixels, and `correct_distortion` subtracts the
-                    // margin from a physical pointer position. The setting is
-                    // logical, so it is scaled here the way `Viewport::margin`
-                    // is scaled at its own boundary (`ensure_margin`, and
-                    // `new`). Unscaled, a HiDPI pointer was measured against
-                    // half the inset the glass was drawn with, and the cell it
-                    // landed on drifted from the cell under the cursor.
-                    settings::distortion_margin(&config) * self.viewport.scale_factor,
                     settings::unscaled_frame_size(&config) * normalized_screen_scale,
                     config.screen.screen_curvature,
                 )
             }
-            None => (0.0, 0.0, 0.0),
+            None => (0.0, 0.0),
         };
 
         DistortionParams {
-            margin,
             width,
             height,
             frame_size,
