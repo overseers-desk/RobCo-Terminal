@@ -102,6 +102,20 @@ test layout-1.3 {a row that is omitted is omitted on purpose} -constraints {
     set stale
 } -result {}
 
+test layout-1.4 {a page note names a page that exists} -constraints {
+    tk realBinary
+} -body {
+    # The sibling of 1.3: a note keyed to a table the form no longer builds
+    # is drawn nowhere, and says nothing while looking like it does.
+    set stale {}
+    dict for {table text} $::rcsettings::ui::form::Notes {
+        if {![dict exists $::rcsettings::ui::form::Layout $table]} {
+            lappend stale $table
+        }
+    }
+    set stale
+} -result {}
+
 test layout-2.1 {each row's widget matches the type of the key it writes} -constraints {
     tk realBinary
 } -body {

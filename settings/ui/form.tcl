@@ -128,6 +128,15 @@ namespace eval ::rcsettings::ui::form {
         }
     }
 
+    # table -> a sentence under that page's last group, for a page whose
+    # rows do less than their labels promise. A note states a limit of the
+    # thing being configured, never how a widget works.
+    variable Notes {
+        serial {A local shell only. Output reaching the glass from an SSH\
+            channel, or from a tmux window under tmux -CC, has been read off\
+            its transport before this terminal holds it, and is not slowed.}
+    }
+
     # id ("table.key") -> the row's widgets and what it needs to write itself.
     variable Rows [dict create]
     # The order rows were built in, per table, so a repaint follows the page.
@@ -245,6 +254,16 @@ proc ::rcsettings::ui::form::page {parent table} {
             build_row $g $r $table $key $kind $label $arg
             incr r
         }
+    }
+    variable Notes
+    if {[dict exists $Notes $table]} {
+        # Wrapped against the canvas's own width, which is what the rows
+        # above are laid out in; a fixed pixel wraplength would break at the
+        # scaling this window is built to survive.
+        ttk::label $body.note -text [dict get $Notes $table] \
+            -wraplength [expr {32 * [font metrics TkDefaultFont -linespace]}] \
+            -justify left -padding {2 0 2 4}
+        pack $body.note -side top -fill x
     }
     refresh_table $table
     return $outer

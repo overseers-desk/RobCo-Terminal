@@ -32,10 +32,12 @@ The **Serial** tab puts the terminal on a slow line: a switch, and the rate
 beside it as the standard baud figures a wire ran at. It is the reading that
 slows and not the drawing, so what the tab changes is how fast a local shell's
 output is taken, and a program blocks when the buffer between them fills, as
-it would have. A remote shell is not reached by it, for the reason
-[`[serial]`](config.md#serial) gives. The rate is a picker over an ordinary
-integer key, so a figure the list does not offer can still be written by hand
-and the window will show it.
+it would have. A shell reached over SSH, and a tmux window under `tmux -CC`,
+are not slowed; the tab says so in a note under its rows, that being where
+somebody turning the switch on is looking, and [`[serial]`](config.md#serial)
+gives the reason. The rate is a picker over an ordinary integer key, so a
+figure the list does not offer can still be written by hand and the window
+will show it.
 
 ## How it behaves
 
