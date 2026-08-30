@@ -159,6 +159,10 @@ pub struct SessionConfig {
     /// Whether the grid measures by grapheme cluster (mode 2027) rather
     /// than by code point. See [`new_term`].
     pub grapheme_clustering: bool,
+    /// Bytes a second to take the child's output at, or `None` to take it
+    /// as fast as the pty gives it up. See [`Session::set_rate`], which is
+    /// how a rate changed under a running session reaches it.
+    pub rate: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -170,6 +174,7 @@ impl Default for SessionConfig {
             env: vec![("TERM".to_string(), "xterm-256color".to_string())],
             scrollback: 10_000,
             grapheme_clustering: false,
+            rate: None,
         }
     }
 }
@@ -203,6 +208,16 @@ pub struct Session<T: DcsTap> {
     /// How many writes have been refused because the queue was full.
     /// See [`Session::sheds`].
     sheds: u64,
+    /// The rate the child's output is taken at, or `None` for as fast as
+    /// it is written. See [`Session::set_rate`].
+    rate: Option<u32>,
+    /// Bytes this session may still take, earned at `rate` since
+    /// [`Session::credited`]. Fractional because a slow line earns less
+    /// than a byte between pumps: 300 baud against the host's 125 Hz poll
+    /// is a quarter of one.
+    credit: f64,
+    /// When `credit` was last brought up to date.
+    credited: Instant,
     eof: bool,
 }
 
@@ -253,6 +268,9 @@ impl<T: DcsTap> Session<T> {
             input: Vec::new(),
             replies,
             sheds: 0,
+            rate: config.rate,
+            credit: 0.0,
+            credited: Instant::now(),
             eof: false,
         })
     }
@@ -280,8 +298,24 @@ impl<T: DcsTap> Session<T> {
             log::warn!("could not write to the pty: {e}");
         }
 
+        // What this pump may take. `None` is the whole buffer and no
+        // arithmetic: the unconfigured path, and the one a gateway keeps
+        // whatever the rate says. An open control-mode envelope carries
+        // tmux's protocol rather than a picture of a shell, and a capture
+        // of a thousand lines is not something to meter out at reading
+        // speed.
+        let mut budget = self.budget();
+        if self.dcs.tap().in_control_mode() {
+            budget = None;
+        }
+
         loop {
-            match self.pty.reader().read(&mut self.buf[..]) {
+            let want = match budget {
+                Some(0) => break,
+                Some(bytes) => bytes.min(READ_BUF),
+                None => READ_BUF,
+            };
+            match self.pty.reader().read(&mut self.buf[..want]) {
                 // A zero-length read: on Unix no slave fd is open, which
                 // is usually the child having closed its end, but not
                 // always; on Windows the buffering pipe answers zero
@@ -296,6 +330,10 @@ impl<T: DcsTap> Session<T> {
                 }
                 Ok(n) => {
                     out.bytes += n;
+                    if let Some(bytes) = budget.as_mut() {
+                        *bytes -= n;
+                        self.credit -= n as f64;
+                    }
                     // Copy out so the two consumers can each take
                     // `&mut self`-adjacent borrows without fighting the
                     // borrow checker over `self.buf`.
@@ -304,7 +342,7 @@ impl<T: DcsTap> Session<T> {
                     self.processor.advance(&mut self.term, &chunk);
                     // A short read means the buffer was not filled, so
                     // there is nothing queued behind it.
-                    if n < READ_BUF {
+                    if n < want {
                         break;
                     }
                 }
@@ -341,6 +379,41 @@ impl<T: DcsTap> Session<T> {
 
         self.expire_sync();
         out
+    }
+
+    /// Take the child's output at `rate` bytes a second, or as fast as it
+    /// is written when `None`.
+    ///
+    /// The throttle is the read and never a queue. A pump takes what the
+    /// rate has earned and leaves the rest where it was, so the tty buffer
+    /// fills and the child blocks in `write` exactly as it would behind a
+    /// slow line. Nothing is held here that the grid has not already been
+    /// given, which is what keeps a copy of the screen, a search of the
+    /// scrollback and an interrupt meaning what they mean at full speed.
+    ///
+    /// The line starts empty on every change: a rate set mid-session earns
+    /// from the moment it is set rather than from what the last one banked.
+    pub fn set_rate(&mut self, rate: Option<u32>) {
+        if self.rate == rate {
+            return;
+        }
+        self.rate = rate;
+        self.credit = 0.0;
+        self.credited = Instant::now();
+    }
+
+    /// What this pump may take, `None` being no limit.
+    ///
+    /// A pause banks no more than one second's worth, so a channel that sat
+    /// off the screen for a minute comes back at its rate instead of
+    /// emptying its tty buffer into the grid in one frame.
+    fn budget(&mut self) -> Option<usize> {
+        let now = Instant::now();
+        let elapsed = now.saturating_duration_since(self.credited).as_secs_f64();
+        self.credited = now;
+        let rate = f64::from(self.rate?);
+        self.credit = (self.credit + elapsed * rate).min(rate);
+        Some(self.credit as usize)
     }
 
     /// Send the child what the grid owes it.

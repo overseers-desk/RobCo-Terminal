@@ -53,6 +53,7 @@ fn scripted() -> SessionConfig {
         scrollback: 1000,
         grapheme_clustering: false,
     }
+    rate: None,
 }
 
 fn none() -> ModifiersState {

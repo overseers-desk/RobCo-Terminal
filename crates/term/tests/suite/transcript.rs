@@ -33,6 +33,7 @@ fn config() -> SessionConfig {
         ],
         scrollback: 1000,
         grapheme_clustering: false,
+        rate: None,
     }
 }
 
@@ -241,6 +242,7 @@ fn a_paste_far_past_the_ttys_buffer_reaches_the_child_whole() {
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
         grapheme_clustering: false,
+        rate: None,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), NoopTap::default()).expect("spawn");
@@ -292,6 +294,7 @@ fn a_child_that_never_reads_bounds_the_queue_instead_of_growing_it() {
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
         grapheme_clustering: false,
+        rate: None,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), NoopTap::default()).expect("spawn");
@@ -324,6 +327,99 @@ fn a_child_that_never_reads_bounds_the_queue_instead_of_growing_it() {
     assert!(!session.is_finished(), "the child outlived the shed");
 }
 
+/// A rate bounds the read itself, and nothing queues behind it.
+///
+/// Measured against an unthrottled session of the same age running the same
+/// program, because what a machine moves in a fixed interval is not a
+/// constant, and the ratio between the two is what a rate claims to set. At
+/// 120 bytes a second, 1200 baud, the throttled session is owed 36 bytes
+/// over the 300 ms this runs, with a second's worth of credit as the
+/// ceiling above that.
+#[test]
+fn a_rate_bounds_what_the_read_loop_takes() {
+    let viewport = Viewport::new(800, 480, 1.0, CellSize::new(10.0, 20.0));
+    let dumping = |rate| SessionConfig {
+        program: Some("/bin/sh".to_string()),
+        args: vec![
+            "-c".to_string(),
+            "stty raw -echo; yes x | head -c 20000".to_string(),
+        ],
+        working_directory: None,
+        env: vec![("TERM".to_string(), "xterm-256color".to_string())],
+        scrollback: 1000,
+        grapheme_clustering: false,
+        rate,
+    };
+    let size = viewport.term_size();
+    let mut free = Session::spawn(&dumping(None), size, NoopTap::default()).expect("spawn");
+    let mut slow = Session::spawn(&dumping(Some(120)), size, NoopTap::default()).expect("spawn");
+
+    let (mut free_bytes, mut slow_bytes) = (0usize, 0usize);
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while Instant::now() < deadline {
+        free_bytes += free.pump().bytes;
+        slow_bytes += slow.pump().bytes;
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    assert!(
+        free_bytes > 5_000,
+        "the unthrottled session took {free_bytes} bytes of the dump, so the \
+         comparison is measuring something other than the rate"
+    );
+    assert!(
+        slow_bytes < 500,
+        "the throttled session took {slow_bytes} bytes where 120 a second \
+         earns about 36"
+    );
+}
+
+/// The rate lifts while the control-mode envelope is open.
+///
+/// A gateway's PTY carries tmux's protocol rather than a picture of a
+/// shell. The capture that fills a session's windows arrives as one burst
+/// for the gateway to parse, and metering that at reading speed would hold
+/// a whole bank off the screen for a minute.
+#[test]
+fn control_mode_lifts_the_rate() {
+    let viewport = Viewport::new(800, 480, 1.0, CellSize::new(10.0, 20.0));
+    let config = SessionConfig {
+        program: Some("/bin/sh".to_string()),
+        args: vec![
+            "-c".to_string(),
+            "stty raw -echo; printf '\\033P1000p'; yes x | head -c 20000".to_string(),
+        ],
+        working_directory: None,
+        env: vec![("TERM".to_string(), "xterm-256color".to_string())],
+        scrollback: 1000,
+        grapheme_clustering: false,
+        rate: Some(120),
+    };
+    let mut session = Session::spawn(&config, viewport.term_size(), ControlModeTap::default())
+        .expect("spawn");
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !session.tap().in_control_mode() {
+        assert!(
+            Instant::now() < deadline,
+            "the child never opened the envelope"
+        );
+        session.pump();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let mut bytes = 0usize;
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while Instant::now() < deadline {
+        bytes += session.pump().bytes;
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        bytes > 5_000,
+        "the gateway's stream was metered at the rate: {bytes} bytes in 300 ms"
+    );
+}
+
 /// Control mode takes the wire, and the queue lets go of it.
 ///
 /// The gateway writes this PTY through its own `dup` of the master while the
@@ -352,6 +448,7 @@ fn control_mode_opening_takes_the_queued_input_with_it() {
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
         grapheme_clustering: false,
+        rate: None,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), ControlModeTap::default()).expect("spawn");
@@ -467,6 +564,7 @@ fn a_query_from_the_child_is_answered_on_the_wire() {
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 1000,
         grapheme_clustering: false,
+        rate: None,
     };
     let mut session =
         Session::spawn(&config, viewport.term_size(), NoopTap::default()).expect("spawn");

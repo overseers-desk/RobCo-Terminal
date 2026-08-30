@@ -87,6 +87,7 @@ fn shell() -> SessionConfig {
         program: Some("/bin/sh".into()),
         ..SessionConfig::default()
     }
+    rate: None,
 }
 
 fn surface() -> TerminalSurface {

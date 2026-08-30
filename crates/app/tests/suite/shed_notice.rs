@@ -47,6 +47,7 @@ fn surface() -> TerminalSurface {
             ],
             scrollback: 1000,
             grapheme_clustering: false,
+            rate: None,
         },
         viewport,
     )

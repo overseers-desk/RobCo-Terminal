@@ -139,6 +139,22 @@ impl<T: DcsTap> ChannelSession<T> {
         }
     }
 
+    /// Take this slot's output at `rate` bytes a second, where the slot
+    /// has a source of its own to take it from.
+    ///
+    /// Only the PTY has one. A pane's bytes and an SSH channel's have
+    /// already been read by the time they arrive here, a gateway's parse
+    /// and a connection thread's queue respectively, so slowing either
+    /// arm would hold read bytes back from the grid rather than leave
+    /// them unread at the source. That is the display emulation this is
+    /// not: see [`Session::set_rate`].
+    pub fn set_rate(&mut self, rate: Option<u32>) {
+        match self {
+            ChannelSession::Pty(s) => s.set_rate(rate),
+            ChannelSession::TmuxPane(_) | ChannelSession::Ssh(_) => {}
+        }
+    }
+
     /// Bytes the terminal puts on this slot's grid itself, reaching no
     /// child, no wire and no tmux server: a question asked on the glass,
     /// the find line, and the echo of what is typed into either.

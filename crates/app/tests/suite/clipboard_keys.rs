@@ -48,6 +48,7 @@ fn scripted() -> SessionConfig {
         scrollback: 200,
         grapheme_clustering: false,
     }
+    rate: None,
 }
 
 fn surface() -> TerminalSurface {

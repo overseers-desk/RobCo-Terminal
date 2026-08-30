@@ -22,6 +22,7 @@ fn surface() -> TerminalSurface {
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 100,
         grapheme_clustering: false,
+        rate: None,
     };
     let viewport = Viewport::new(720, 490, 1.0, CellSize::new(9.0, 18.0));
     TerminalSurface::headless(&config, viewport)

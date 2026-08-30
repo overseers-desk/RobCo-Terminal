@@ -156,6 +156,7 @@ fn shell() -> SessionConfig {
         scrollback: 500,
         grapheme_clustering: false,
     }
+    rate: None,
 }
 
 fn surface() -> TerminalSurface {
