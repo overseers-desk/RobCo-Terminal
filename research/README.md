@@ -13,6 +13,7 @@ The folder was produced by the PLACE methodology (Poll, Landscape, Audit, Contra
 - `use-case-survey.md`: the pain taxonomy and per-pain demand signal. Holds the canonical pain numbers. Dated snapshot.
 - `discussion-drivers.md`: what a terminal launch draws on Hacker News, what pulls replies, and the specific precedent for a retro CRT terminal. Dated snapshot.
 - `status.md`: RobCo Terminal's coverage of each pain with source paths and ceilings, the feature catalogue, the rarity of each capability against the field, the gaps, the known issues a reader of the code meets, and the positioning that follows. The only file written from the code.
+- `performance.md`: what an idle terminal costs, where the cost sits, what each part is worth, and the traps that make a naive re-measurement disagree.
 
 ## The pain-category numbering
 
