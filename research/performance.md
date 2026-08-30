@@ -66,6 +66,21 @@ Every piece of furniture was rasterised to RGBA and written to the chrome atlas 
 
 Remembering the pieces, sharing the raster bytes, and skipping an upload the atlas already holds took 12.5% off the total: 2.95% against 2.58%, both builds running at once. The profile afterwards is flat, and the symbols above are gone from it. What sits at the top now is swapchain acquisition, the librashader filter passes, and event-loop syscalls.
 
+## What the attention throttle and the record cache bought
+
+From 0.1.9 the effects clock is multiplied by a factor that depends on who is attending: the window's own step while another holds the keyboard, a second step once the glass has gone half a minute untouched, and the larger of the two rather than their product. Separately, the cabinet's records are built once and kept, with the badges appended to them each frame and cut away again.
+
+Both measured against the released 0.1.8, the two builds running at once at 900x950.
+
+| state | 0.1.8 | 0.1.9 | less |
+|---|---|---|---|
+| focused, being typed into | 2.72% | 2.22% | 18.3% |
+| unfocused and untouched | 3.00% | 1.56% | 48.1% |
+
+The first row is the record cache alone, since the attention factor is one while a hand is on it. The second is the cache and both throttle steps together.
+
+Compounded with the 12.5% 0.1.8 itself took, an unattended terminal costs 54.6% less than it did before either change, and one being typed into costs 28.5% less with no change to the picture at any moment.
+
 ## Measuring this without being misled
 
 Four traps, each of which produced a wrong number here before it was understood.
