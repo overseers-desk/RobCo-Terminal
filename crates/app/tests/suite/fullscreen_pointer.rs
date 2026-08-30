@@ -69,14 +69,12 @@ const SCREENS: &[(&str, u32, u32, f64)] = &[
 /// table above.
 fn scripted(width: u32, height: u32, scale: f64) -> SessionConfig {
     stream("", width, height, scale)
-    rate: None,
 }
 
 /// The same stream behind a program that has turned mouse reporting on, which
 /// is the state Shift exists to override.
 fn scripted_reporting_the_mouse(width: u32, height: u32, scale: f64) -> SessionConfig {
     stream("printf '\\033[?1000h\\033[?1006h'; ", width, height, scale)
-    rate: None,
 }
 
 /// Enough of the rule to fill this screen half again over, and no more. The
@@ -105,8 +103,8 @@ fn stream(prefix: &str, width: u32, height: u32, scale: f64) -> SessionConfig {
         ],
         scrollback: 1000,
         grapheme_clustering: false,
+        rate: None,
     }
-    rate: None,
 }
 
 /// A bare surface the size a window of this shape and density is, told its

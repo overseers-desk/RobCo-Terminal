@@ -155,8 +155,8 @@ fn shell() -> SessionConfig {
         env: vec![("TERM".to_string(), "xterm-256color".to_string())],
         scrollback: 500,
         grapheme_clustering: false,
+        rate: None,
     }
-    rate: None,
 }
 
 fn surface() -> TerminalSurface {

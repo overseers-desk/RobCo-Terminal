@@ -69,8 +69,8 @@ fn scripted() -> SessionConfig {
         ],
         scrollback: 200,
         grapheme_clustering: false,
+        rate: None,
     }
-    rate: None,
 }
 
 fn surface_of_height(height: u32) -> TerminalSurface {
