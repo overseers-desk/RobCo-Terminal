@@ -1,3 +1,17 @@
+robco-term (0.1.9) unstable; urgency=medium
+
+  * The glass slows down when nobody is watching it. Clicking away to
+    another window halves the rate the CRT animates at, and half a minute
+    without a keystroke halves it again; a keystroke or a click brings it
+    straight back. The steps multiply whatever `effects_frame_skip` is
+    set to, so a screen tuned to run fast still runs faster than a
+    default one does. Set `unfocused_frame_skip` or `idle_frame_skip` to
+    1 to switch either step off.
+  * The bank's records are built once and kept, instead of being rebuilt
+    from the pieces on every frame to draw the same picture.
+
+ -- Weiwu Zhang <a@colourful.land>  Sun, 30 Aug 2026 16:40:00 +1000
+
 robco-term (0.1.8) unstable; urgency=medium
 
   * A click lands on the row it is over. The pointer measured the glass
