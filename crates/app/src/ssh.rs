@@ -116,8 +116,44 @@ pub(crate) fn key_path(row_key: &str) -> Vec<std::path::PathBuf> {
     vec![std::path::PathBuf::from(row_key)]
 }
 
+/// The host and the port out of `host`, `host:port`, `[host]` or
+/// `[host]:port`, which is the whole of the grammar `ssh` reads here.
+///
+/// The brackets are what an address made of colons needs before a colon
+/// can also mean "port", so they are read wherever OpenSSH reads them and
+/// written back by [`SshRequest::spec`] under the same condition. Bare, an
+/// address of more than one colon is itself and carries no port: nothing
+/// else it could be, and reading its last group as a port is how
+/// `2001:db8::1` became a name that no resolver has ever heard of.
+fn split_host_port<'a>(rest: &'a str, spec: &str) -> Result<(&'a str, Option<u16>), String> {
+    let port = |text: &str| {
+        text.parse::<u16>()
+            .map_err(|_| format!("'{text}' is not a port number"))
+    };
+    if let Some(inside) = rest.strip_prefix('[') {
+        let Some((host, after)) = inside.split_once(']') else {
+            return Err(format!("no closing ']' in '{spec}'"));
+        };
+        return match after {
+            "" => Ok((host, None)),
+            _ => match after.strip_prefix(':') {
+                Some(text) => Ok((host, Some(port(text)?))),
+                None => Err(format!("'{after}' follows the ']' in '{spec}'")),
+            },
+        };
+    }
+    if rest.matches(':').count() > 1 {
+        return Ok((rest, None));
+    }
+    match rest.rsplit_once(':') {
+        Some((host, text)) => Ok((host, Some(port(text)?))),
+        None => Ok((rest, None)),
+    }
+}
+
 impl SshRequest {
-    /// Parse `[user@]host[:port]`. The user defaults to the invoking
+    /// Parse `[user@]host[:port]`, the host bracketed as `[host]` where it
+    /// is an address of its own colons. The user defaults to the invoking
     /// user's name and the port to 22, which is what the same spelling
     /// means to `ssh` itself -- and both defaults are recorded as unsaid,
     /// because a default is a gap `~/.ssh/config` is entitled to fill.
@@ -132,15 +168,7 @@ impl SshRequest {
             Some(_) => return Err(format!("no user before the '@' in '{spec}'")),
             None => (None, spec),
         };
-        let (host, port) = match rest.rsplit_once(':') {
-            Some((host, port)) => {
-                let port = port
-                    .parse::<u16>()
-                    .map_err(|_| format!("'{port}' is not a port number"))?;
-                (host, Some(port))
-            }
-            None => (rest, None),
-        };
+        let (host, port) = split_host_port(rest, spec)?;
         if host.is_empty() {
             return Err(format!("no host in '{spec}'"));
         }
@@ -180,7 +208,13 @@ impl SshRequest {
             spec.push_str(&self.user);
             spec.push('@');
         }
-        spec.push_str(&self.host);
+        // A port after an address of colons needs the brackets to be a
+        // port at all; without one the address stands as it is written.
+        if self.host.contains(':') && !self.unsaid.port {
+            spec.push_str(&format!("[{}]", self.host));
+        } else {
+            spec.push_str(&self.host);
+        }
         if !self.unsaid.port {
             spec.push_str(&format!(":{}", self.port));
         }
@@ -565,13 +599,42 @@ mod tests {
         assert!(run("vault:notaport").is_err());
     }
 
+    /// An address of colons reaches the socket whole, because a socket
+    /// that is handed anything else asks a resolver about it and the
+    /// resolver has never heard of it.
+    #[test]
+    fn an_address_of_colons_keeps_its_colons() {
+        std::env::set_var(USER_VAR, "resident");
+        let bare = run("2001:db8::1").unwrap();
+        assert_eq!(bare.host, "2001:db8::1");
+        assert_eq!(bare.port, 22);
+        assert!(bare.unsaid.port);
+
+        let ported = run("overseer@[2001:db8::1]:2222").unwrap();
+        assert_eq!(ported.host, "2001:db8::1");
+        assert_eq!(ported.port, 2222);
+
+        assert_eq!(run("[::1]").unwrap().host, "::1");
+        assert_eq!(run("192.168.1.5").unwrap().host, "192.168.1.5");
+        assert!(run("[::1").is_err());
+        assert!(run("[::1]22").is_err());
+        assert!(run("[::1]:notaport").is_err());
+    }
+
     /// What was not spelled has to still read as unspelled after a round
     /// trip through the string a new window is handed, or the file would
     /// be outranked by a default nobody typed.
     #[test]
     fn a_spelling_survives_the_round_trip_carrying_what_it_left_out() {
         std::env::set_var(USER_VAR, "resident");
-        for spec in ["overseer@vault:2222", "overseer@vault", "vault:2222", "vault"] {
+        for spec in [
+            "overseer@vault:2222",
+            "overseer@vault",
+            "vault:2222",
+            "vault",
+            "2001:db8::1",
+            "overseer@[2001:db8::1]:2222",
+        ] {
             let req = run(spec).unwrap();
             assert_eq!(req.spec(), spec);
             assert_eq!(run(&req.spec()).unwrap(), req);

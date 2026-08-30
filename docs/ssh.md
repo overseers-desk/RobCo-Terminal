@@ -1,6 +1,6 @@
 # SSH
 
-`robco-term --ssh [user@]host[:port]` opens the first channel on an SSH connection the terminal itself owns, instead of a local shell. The user defaults to `$USER` and the port to 22, the same spelling `ssh` reads. The connection is a bank of its own: its channel sits at slot 1, the bank strip shows it beside the home bank, and closing its last channel hangs the connection up. Connection progress, authentication results and every failure are printed on the channel's own glass, dim and bracketed, in scrollback like everything else that happened there.
+`robco-term --ssh [user@]host[:port]` opens the first channel on an SSH connection the terminal itself owns, instead of a local shell. The user defaults to `$USER` and the port to 22, the same spelling `ssh` reads. An address made of colons is bracketed to carry a port, `[2001:db8::1]:2222`, and stands bare without one. The connection is a bank of its own: its channel sits at slot 1, the bank strip shows it beside the home bank, and closing its last channel hangs the connection up. Connection progress, authentication results and every failure are printed on the channel's own glass, dim and bracketed, in scrollback like everything else that happened there.
 
 A connection that fails before it ever produces a remote byte keeps its channel, wearing the refusal, until you close it (`Ctrl`+`Shift`+`W`): the slot is the only place the reason is readable. A connection that dies after working ends its channel the way a local shell's exit does.
 
