@@ -28,6 +28,10 @@ The type is real work rather than a font pick. Bitmap faces are drawn from
 their embedded strikes at integer scale, so an 8-pixel face renders as
 8-pixel pixels and not as a blurred outline pretending to be one.
 
+**The line.** Ask for it and the terminal reads a local shell no faster than
+a wire would have delivered it, at a baud rate you pick. Off unless you turn
+it on.
+
 **The chassis.** The cabinets that ship are `Annunciator`, `Slide Rule` and
 `Switchboard`. Each has its own casting, bezel, furniture and channel bank,
 and each marks the live channel its own way (a glow, a pointer, a thrown
