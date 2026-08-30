@@ -1,5 +1,14 @@
 robco-term (0.1.9) unstable; urgency=medium
 
+  * The terminal will run on a slow line if you ask it to. Switch on
+    `[serial]` and a local shell's output arrives at the baud rate you
+    name, 19200 by default, which fills an 80 by 25 screen in about a
+    second. It is the reading that is slowed and not the drawing, so a
+    program blocks when the buffer between you fills, exactly as it would
+    have behind a real wire, and `Ctrl`+`C` stops the output because it
+    stops the program writing it. A screen copied or searched holds what
+    the screen holds. A shell reached over SSH and a tmux window are not
+    slowed. The settings window has a Serial tab for both keys.
   * The glass slows down when nobody is watching it. Clicking away to
     another window halves the rate the CRT animates at, and half a minute
     without a keystroke halves it again; a keystroke or a click brings it
@@ -10,7 +19,7 @@ robco-term (0.1.9) unstable; urgency=medium
   * The bank's records are built once and kept, instead of being rebuilt
     from the pieces on every frame to draw the same picture.
 
- -- Weiwu Zhang <a@colourful.land>  Sun, 30 Aug 2026 16:40:00 +1000
+ -- Weiwu Zhang <a@colourful.land>  Sun, 30 Aug 2026 18:15:00 +1000
 
 robco-term (0.1.8) unstable; urgency=medium
 
