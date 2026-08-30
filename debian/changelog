@@ -1,3 +1,13 @@
+robco-term (0.2.0) unstable; urgency=medium
+
+  * The Serial tab says what the rate does not reach. A shell reached over
+    SSH, and a tmux window under `tmux -CC`, have had their output read off
+    a transport before this terminal holds it, so neither is slowed. The
+    note sits under the tab's own rows, where somebody turning the switch
+    on is looking.
+
+ -- Weiwu Zhang <a@colourful.land>  Sun, 30 Aug 2026 23:39:38 +1000
+
 robco-term (0.1.9) unstable; urgency=medium
 
   * The terminal will run on a slow line if you ask it to. Switch on
