@@ -110,7 +110,11 @@ impl PieceParams {
 pub struct Raster {
     pub width: u32,
     pub height: u32,
-    pub rgba: Vec<u8>,
+    /// Shared rather than owned: the bank hands the same pieces back frame
+    /// after frame (`Cabinet::furniture` remembers them), and a consumer that
+    /// holds one from an earlier frame can ask whether these are the very
+    /// bytes it already has rather than compare them.
+    pub rgba: std::sync::Arc<[u8]>,
 }
 
 /// One thing to draw on the casting.
@@ -290,7 +294,7 @@ pub fn led_grid(
     Raster {
         width: grid_w,
         height: grid_h,
-        rgba: widened,
+        rgba: widened.into(),
     }
 }
 
@@ -622,7 +626,7 @@ fn tape_piece(
     let source = raster.map(|r| Raster {
         width: r.width,
         height: r.height,
-        rgba: raster::to_rgba8(&r),
+        rgba: raster::to_rgba8(&r).into(),
     });
     Some(Piece::shaded(
         rect,
@@ -632,7 +636,7 @@ fn tape_piece(
         Some(source.unwrap_or(Raster {
             width: 1,
             height: 1,
-            rgba: vec![0, 0, 0, 0],
+            rgba: vec![0, 0, 0, 0].into(),
         })),
     ))
 }

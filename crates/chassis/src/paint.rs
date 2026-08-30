@@ -397,7 +397,7 @@ pub fn text_raster(op: &TextOp, scale: f64) -> Option<(Raster, i32, i32)> {
         Raster {
             width: raster.width,
             height: raster.height,
-            rgba,
+            rgba: rgba.into(),
         },
         x,
         y,

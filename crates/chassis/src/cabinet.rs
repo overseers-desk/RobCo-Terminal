@@ -155,6 +155,19 @@ pub struct SeamUpdate {
     pub bank_width: u32,
 }
 
+/// What [`Cabinet::furniture`] was last built from. Every argument
+/// `furniture::bank_pieces` reads, so a key that matches means the pieces it
+/// would return are the ones already in hand.
+#[derive(Clone, Debug, PartialEq)]
+struct FurnitureKey {
+    cfg: Config,
+    display: Display,
+    shell: ShellMetrics,
+    geometry: BankGeometry,
+    bank: (f64, f64),
+    strips: crate::BankStrips,
+}
+
 /// The assembled cabinet.
 #[derive(Clone, Debug)]
 pub struct Cabinet {
@@ -167,6 +180,13 @@ pub struct Cabinet {
     layout: WindowLayout,
     well_minimum: (i32, i32),
     seam: SeamDrag,
+    /// The last furniture built and what it was built from. The bank is a
+    /// nameplate over a column of channel windows: it changes when a channel
+    /// does, or when the window is resized, and not on the twenty frames a
+    /// second the glass's own flicker asks for. Rasterising every lamp grid
+    /// and every engraved line again to hand back the same pixels cost more
+    /// than remembering them.
+    remembered: std::cell::RefCell<Option<(FurnitureKey, std::sync::Arc<[crate::Piece]>)>>,
 }
 
 impl Cabinet {
@@ -196,6 +216,7 @@ impl Cabinet {
             layout,
             well_minimum,
             seam: SeamDrag::new(),
+            remembered: std::cell::RefCell::new(None),
         }
     }
 
@@ -440,18 +461,35 @@ impl Cabinet {
     /// the one that takes an argument from outside the chassis:
     /// [`crate::BankStrips`] is the channel model's half. See
     /// [`crate::furniture`] for that seam and for what is drawn here.
-    pub fn furniture(&self, strips: &crate::BankStrips) -> Vec<crate::Piece> {
+    pub fn furniture(&self, strips: &crate::BankStrips) -> std::sync::Arc<[crate::Piece]> {
         if !self.is_shown() {
-            return Vec::new();
+            return std::sync::Arc::from(Vec::new());
         }
-        crate::furniture::bank_pieces(
-            &self.cfg,
-            &self.shell,
-            &self.display,
-            &self.geometry,
-            (self.layout.bank.width, self.layout.bank.height),
-            strips,
-        )
+        let bank = (self.layout.bank.width, self.layout.bank.height);
+        let key = FurnitureKey {
+            cfg: self.cfg.clone(),
+            display: self.display,
+            shell: self.shell,
+            geometry: self.geometry,
+            bank,
+            strips: strips.clone(),
+        };
+        if let Some((held, pieces)) = self.remembered.borrow().as_ref() {
+            if *held == key {
+                return std::sync::Arc::clone(pieces);
+            }
+        }
+        let pieces: std::sync::Arc<[crate::Piece]> =
+            std::sync::Arc::from(crate::furniture::bank_pieces(
+                &self.cfg,
+                &self.shell,
+                &self.display,
+                &self.geometry,
+                bank,
+                strips,
+            ));
+        *self.remembered.borrow_mut() = Some((key, std::sync::Arc::clone(&pieces)));
+        pieces
     }
 
     /// Which row's window a press at `(x, y)` landed in, both in the bank

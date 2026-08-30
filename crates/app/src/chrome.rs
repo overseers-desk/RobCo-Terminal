@@ -106,6 +106,7 @@
 //! be read as the other.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use chassis::furniture::{Piece, PieceParams, Raster};
@@ -427,6 +428,12 @@ pub struct Chrome {
     bind_group: wgpu::BindGroup,
     /// The lines of text struck so far, by run.
     text: HashMap<RunKey, StruckRun>,
+    /// What the atlas already holds: where each raster was written and the
+    /// bytes written there. The bank's plan repeats frame after frame, and
+    /// most of it is a fixed nameplate that never changes at all, so a frame
+    /// that re-wrote the whole atlas was paying wgpu for a texture
+    /// transition per piece to put back what was already there.
+    uploaded: HashMap<Placed, ((u32, u32), Arc<[u8]>)>,
 }
 
 impl Chrome {
@@ -603,6 +610,7 @@ impl Chrome {
             sampler,
             bind_group,
             text: HashMap::new(),
+            uploaded: HashMap::new(),
         }
     }
 
@@ -664,9 +672,22 @@ impl Chrome {
         let runs = self.strike_text(pieces, &dests, scale_factor);
         let plan = pack(pieces, &runs, &self.text);
         let regrown = self.fit_atlas(device, plan.size);
+        // A new texture holds none of what the old one did.
+        if regrown {
+            self.uploaded.clear();
+        }
         for (what, at) in &plan.places {
             if let Some(raster) = raster_of(pieces, &self.text, what.clone()) {
+                // The very same bytes, not merely equal ones: the bank hands
+                // back the rasters it built earlier, so the common answer is
+                // yes and it costs a pointer comparison.
+                let held = self.uploaded.get(what);
+                if held.is_some_and(|(was, bytes)| was == at && Arc::ptr_eq(bytes, &raster.rgba)) {
+                    continue;
+                }
                 upload(queue, &self.atlas, raster, *at);
+                self.uploaded
+                    .insert(what.clone(), (*at, Arc::clone(&raster.rgba)));
             }
         }
         let uv_of = |what: Placed| -> [f32; 4] {
