@@ -12,6 +12,18 @@
 //!   pure function winit-key → bytes, mapping `winit::keyboard::Key` to
 //!   [`PhysicalKey`] and delegating to [`encode_key`]. It carries no window
 //!   state, so it is exercised directly in tests without an event loop.
+//!
+//! # Meta is not a keytab rule
+//!
+//! Holding Alt puts an ESC in front of the bytes, which is what readline,
+//! zsh and emacs read as a Meta key and what xterm calls `metaSendsEscape`.
+//! No line of the keytab format says so: Konsole and xterm both settle Alt
+//! outside the table. It lands here anyway, because the keytab's own bytes
+//! are what the ESC has to sit in front of, and a caller holding the table
+//! at arm's length would have to know which rules spent the modifier on a
+//! CSI parameter already. [`KeyboardModes::alt_is_meta`] carries the
+//! answer in, so this stays a pure function that can be read both ways;
+//! [`alt_is_meta`] is where the platform picks one.
 
 use winit::keyboard::{Key, NamedKey};
 
@@ -118,19 +130,43 @@ pub struct KeyboardModes {
     /// Alternate screen active (`+AppScreen` / `-AppScreen`): Shift+Up/Down
     /// /PageUp/PageDown only scroll history when this is false.
     pub app_screen: bool,
+    /// Whether Alt puts an ESC in front of the bytes (see the module notes).
+    /// Not a terminal mode and not a keytab condition: it is the platform's
+    /// answer, carried in so the table itself stays platform-free and both
+    /// readings are testable. [`alt_is_meta`] is what a caller fills it from.
+    pub alt_is_meta: bool,
 }
 
 impl Default for KeyboardModes {
     /// Matches a freshly reset terminal: ANSI mode, normal (not
-    /// application) cursor keys, no newline mode, primary screen.
+    /// application) cursor keys, no newline mode, primary screen, and Alt
+    /// meaning Meta wherever this build runs.
     fn default() -> Self {
         KeyboardModes {
             ansi: true,
             application_cursor_keys: false,
             new_line_mode: false,
             app_screen: false,
+            alt_is_meta: alt_is_meta(),
         }
     }
+}
+
+/// Whether the Alt key means Meta on this platform.
+///
+/// It does everywhere but macOS, where Option composes the character the
+/// session is meant to receive: winit hands over `NSEvent.characters()`, so
+/// Option+8 is the `{` a German layout puts there, and an ESC in front of it
+/// would cost a Mac the brace rather than buy it a Meta key. Apple's
+/// Terminal and iTerm2 both ship that way, and the gesture that needs no
+/// setting at all -- Escape, released, then the key -- reaches readline the
+/// same on every platform.
+///
+/// [`crate::chord::modifier_down`] turns on the same fact from the other
+/// side: the chord takes Cmd on macOS for the same reason Meta declines
+/// Option there.
+pub fn alt_is_meta() -> bool {
+    !cfg!(target_os = "macos")
 }
 
 /// What a keytab entry produces: bytes to write to the pty, or one of the
@@ -148,6 +184,23 @@ pub enum KeyAction {
 impl KeyAction {
     fn bytes(s: &str) -> KeyAction {
         KeyAction::Bytes(s.as_bytes().to_vec())
+    }
+}
+
+/// Alt as Meta, for the keytab rules that encode no modifier of their own.
+///
+/// The rules that reach [`csi_letter`], [`csi_tilde`] and [`function_key`]
+/// have already spent Alt on a CSI parameter, so they are not wrapped: an
+/// ESC in front of `\E[1;3D` would be one modifier reported twice, and the
+/// program on the other end would read the second as a keystroke.
+fn meta(action: KeyAction, modifiers: Modifiers, modes: KeyboardModes) -> KeyAction {
+    match action {
+        KeyAction::Bytes(bytes) if modifiers.alt && modes.alt_is_meta => {
+            let mut out = vec![0x1b];
+            out.extend_from_slice(&bytes);
+            KeyAction::Bytes(out)
+        }
+        other => other,
     }
 }
 
@@ -206,7 +259,7 @@ pub fn encode_key(
 
     match key {
         // key Escape : "\E"
-        Escape => Some(KeyAction::bytes("\x1b")),
+        Escape => Some(meta(KeyAction::bytes("\x1b"), modifiers, modes)),
 
         // key Tab -Shift : "\t"
         // key Tab +Shift+Ansi : "\E[Z"
@@ -215,24 +268,26 @@ pub fn encode_key(
         // key Backtab -Ansi : "\t"
         // (Backtab is winit's Shift+Tab; folded into the Tab arm below.)
         Tab => {
-            if modifiers.shift && modes.ansi {
-                Some(KeyAction::bytes("\x1b[Z"))
+            let bytes = if modifiers.shift && modes.ansi {
+                KeyAction::bytes("\x1b[Z")
             } else {
-                Some(KeyAction::bytes("\t"))
-            }
+                KeyAction::bytes("\t")
+            };
+            Some(meta(bytes, modifiers, modes))
         }
 
         // key Return-Shift-NewLine : "\r"
         // key Return-Shift+NewLine : "\r\n"
         // key Return+Shift : "\EOM"
         Return => {
-            if modifiers.shift {
-                Some(KeyAction::bytes("\x1bOM"))
+            let bytes = if modifiers.shift {
+                KeyAction::bytes("\x1bOM")
             } else if modes.new_line_mode {
-                Some(KeyAction::bytes("\r\n"))
+                KeyAction::bytes("\r\n")
             } else {
-                Some(KeyAction::bytes("\r"))
-            }
+                KeyAction::bytes("\r")
+            };
+            Some(meta(bytes, modifiers, modes))
         }
 
         // Keypad Enter is not a separate keytab entry in this "risc" table --
@@ -241,7 +296,7 @@ pub fn encode_key(
         Enter => encode_key(Return, modifiers, modes),
 
         // key Backspace : "\x7f"  (unconditional)
-        Backspace => Some(KeyAction::bytes("\x7f")),
+        Backspace => Some(meta(KeyAction::bytes("\x7f"), modifiers, modes)),
 
         // Arrow keys: VT52 mode (-Ansi) vs ANSI mode (+Ansi), and within
         // ANSI mode, Application vs Normal Cursor Keys, and AnyMod overrides
@@ -357,7 +412,7 @@ pub fn encode_key(
         // key Space +Control : "\x00"
         Space => {
             if modifiers.control {
-                Some(KeyAction::Bytes(vec![0x00]))
+                Some(meta(KeyAction::Bytes(vec![0x00]), modifiers, modes))
             } else {
                 None
             }
@@ -445,6 +500,25 @@ mod tests {
             application_cursor_keys: app_cu,
             new_line_mode: new_line,
             app_screen,
+            // Stated rather than taken from the platform, so every
+            // assertion below reads the same on a Mac as on a Linux box.
+            alt_is_meta: true,
+        }
+    }
+
+    /// The modes a Mac runs in, where Option composes the character instead
+    /// of standing for Meta.
+    fn composing() -> KeyboardModes {
+        KeyboardModes {
+            alt_is_meta: false,
+            ..modes(true, false, false, false)
+        }
+    }
+
+    fn alt() -> Modifiers {
+        Modifiers {
+            alt: true,
+            ..Modifiers::NONE
         }
     }
 
@@ -552,6 +626,67 @@ mod tests {
         assert_eq!(
             encode_key(Backspace, m, KeyboardModes::default()),
             Some(KeyAction::Bytes(vec![0x7f]))
+        );
+    }
+
+    // Alt as Meta, on the rules that encode no modifier of their own. The
+    // first of these is what readline reads as backward-kill-word, and the
+    // rest are the same key with the same ESC in front of it.
+    #[test]
+    fn alt_puts_an_escape_in_front_of_the_keys_that_spend_no_modifier() {
+        let m = modes(true, false, false, false);
+        assert_eq!(
+            encode_key(Backspace, alt(), m),
+            Some(bytes("\x1b\x7f")),
+            "Alt+Backspace is the word behind the cursor"
+        );
+        assert_eq!(encode_key(Escape, alt(), m), Some(bytes("\x1b\x1b")));
+        assert_eq!(encode_key(Return, alt(), m), Some(bytes("\x1b\r")));
+        assert_eq!(encode_key(Enter, alt(), m), Some(bytes("\x1b\r")));
+
+        let shift_alt = Modifiers {
+            shift: true,
+            ..alt()
+        };
+        assert_eq!(encode_key(Tab, shift_alt, m), Some(bytes("\x1b\x1b[Z")));
+
+        let ctrl_alt = Modifiers {
+            control: true,
+            ..alt()
+        };
+        assert_eq!(
+            encode_key(Space, ctrl_alt, m),
+            Some(KeyAction::Bytes(vec![0x1b, 0x00]))
+        );
+    }
+
+    // A rule that already carries Alt in its CSI parameter takes no ESC as
+    // well: the program on the other end would read the second report as a
+    // keystroke of its own.
+    #[test]
+    fn a_key_that_reports_alt_as_a_parameter_is_not_prefixed_too() {
+        let m = modes(true, false, false, false);
+        assert_eq!(encode_key(Up, alt(), m), Some(bytes("\x1b[1;3A")));
+        assert_eq!(encode_key(PageUp, alt(), m), Some(bytes("\x1b[5;3~")));
+        assert_eq!(encode_key(Home, alt(), m), Some(bytes("\x1b[1;3H")));
+    }
+
+    // Where Option composes the character instead, every one of those keys
+    // sends what it sends with no modifier at all.
+    #[test]
+    fn option_composing_leaves_the_bytes_where_they_were() {
+        assert_eq!(
+            encode_key(Backspace, alt(), composing()),
+            Some(bytes("\x7f"))
+        );
+        assert_eq!(encode_key(Escape, alt(), composing()), Some(bytes("\x1b")));
+        assert_eq!(encode_key(Return, alt(), composing()), Some(bytes("\r")));
+        assert_eq!(encode_key(Tab, alt(), composing()), Some(bytes("\t")));
+        // The parameterised rules are the platform's business either way:
+        // Option+Left reports its modifier on a Mac the same as anywhere.
+        assert_eq!(
+            encode_key(Left, alt(), composing()),
+            Some(bytes("\x1b[1;3D"))
         );
     }
 

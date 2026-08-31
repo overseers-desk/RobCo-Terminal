@@ -81,10 +81,18 @@ impl TerminalSurface {
             return;
         }
         // Everything the keytab does not bind is ordinary text, which is
-        // the path winit's own `text` field already decoded for us.
+        // the path winit's own `text` field already decoded for us. Alt puts
+        // an ESC in front of it, which is the whole of Meta for a printable
+        // key: `Alt+.` is readline's last argument, `Alt+f` its word
+        // forward. The chords the window keeps are already gone above, so
+        // this only ever prefixes a key the appliance has no use for.
         if let Some(text) = text {
             if !text.is_empty() {
-                let bytes = text.as_bytes().to_vec();
+                let mut bytes = Vec::with_capacity(text.len() + 1);
+                if mods.alt && crate::input::alt_is_meta() {
+                    bytes.push(0x1b);
+                }
+                bytes.extend_from_slice(text.as_bytes());
                 self.type_bytes(&bytes);
             }
         }
@@ -104,6 +112,7 @@ impl TerminalSurface {
             application_cursor_keys: self.mode_contains(Mode::APP_CURSOR),
             new_line_mode: self.mode_contains(Mode::LINE_FEED_NEW_LINE),
             app_screen: self.mode_contains(Mode::ALT_SCREEN),
+            alt_is_meta: crate::input::alt_is_meta(),
         }
     }
 
