@@ -412,22 +412,25 @@ fn a_fourth_press_starts_a_fresh_selection() {
     assert_eq!(surface.last_selection(), Some("hello"));
 }
 
-/// A mark belongs to the grid it was made on, so it waits there while the
-/// user is elsewhere: the channel that made it gets it back, and the channel
-/// visited in between never wears it.
+/// A mark is a region of one grid and does not survive the glass turning to
+/// another: the channel visited never wears it, and it is gone on the way
+/// back too -- its absolute lines decay as the ring evicts, and a mark in
+/// the wrong place looks exactly like a mark in the right one. What the
+/// drag copied is safe regardless: the release wrote it to the primary
+/// selection, which the middle button pastes on any channel.
 ///
 /// Read through `marked_range` rather than `last_selection`, which answers
 /// off the clipboard and would say the same thing whether the mark was kept
 /// or thrown away.
 #[test]
-fn a_mark_waits_on_its_own_channel_and_is_there_on_the_way_back() {
+fn a_mark_clears_with_the_switch_and_its_text_stays_on_primary() {
     let mut surface = surface("printf 'hello world\\n'", 24);
     wait_for_screen(&mut surface, "hello world");
 
     surface.mouse_pressed(MouseButton::Left, at(0, 0), none());
     surface.cursor_moved(at(11, 0), none());
     surface.mouse_released(MouseButton::Left, at(11, 0), none());
-    let marked = surface.marked_range().expect("the drag marked nothing");
+    assert!(surface.marked_range().is_some(), "the drag marked nothing");
 
     let ctrl_shift = ModifiersState::CONTROL.union(ModifiersState::SHIFT);
     surface.key_input(&Key::Character("T".into()), Some("T"), ctrl_shift);
@@ -440,7 +443,12 @@ fn a_mark_waits_on_its_own_channel_and_is_there_on_the_way_back() {
     surface.key_input(&Key::Named(NamedKey::PageUp), None, ModifiersState::CONTROL);
     assert_eq!(
         surface.marked_range(),
-        Some(marked),
-        "the mark did not come back with its own channel"
+        None,
+        "a mark does not survive the glass turning away and back"
+    );
+    assert_eq!(
+        surface.last_selection(),
+        Some("hello world"),
+        "the copied text outlives the mark on the primary selection"
     );
 }
