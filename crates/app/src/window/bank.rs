@@ -1,6 +1,6 @@
 //! The channel commands and the bank in front of them: opening, closing,
-//! cycling and moving a channel, the chord typed against the engraved
-//! numerals, and everything that follows the pair on the air moving.
+//! cycling and moving a channel, the digit chord that names one, and
+//! everything that follows the pair on the air moving.
 //!
 //! The paging arithmetic is [`crate::bank::BankPager`]'s and the chord's own
 //! state machine is [`crate::chord`]'s; what is here is what those two mean
@@ -12,8 +12,8 @@
 //! pair the glass was last showing, so a switch's work runs on a switch;
 //! `degauss`, the flinch a switch triggers; `selection` and `scroll`, which
 //! belong to the channel that is leaving; `find`, which comes down with it;
-//! and `cabinet`, because a window
-//! with no bank shown has no numerals to type against.
+//! and `cabinet`, which the pager keys ask about because a page nobody can
+//! see is not worth turning.
 
 use std::time::Instant;
 
@@ -120,11 +120,10 @@ impl TerminalSurface {
         self.channel_changed();
     }
 
-    /// Whether this window has a bank at all. The chord input and the two
-    /// pager shortcuts belong to the bank, and the bank does not show at all
-    /// when the chassis is hidden: no bank, no numerals, no chord. The two
-    /// window shortcuts (`Ctrl+Shift+T`/`W`) and `Ctrl+PgUp`/`PgDown` are the
-    /// window's own and stand either way.
+    /// Whether this window has a bank at all. The two pager shortcuts are
+    /// the only keys that need one: a page nobody can see is not worth
+    /// turning. Every other shortcut stands whether the chassis is drawn or
+    /// not, the digit chord included.
     fn has_bank(&self) -> bool {
         self.cabinet.as_ref().is_some_and(|c| c.is_shown())
     }
@@ -141,7 +140,7 @@ impl TerminalSurface {
     }
 
     /// One digit of a chord, and whatever it commits. The bank is drawn for
-    /// the mouse, so the chord does not ask whether it is on show.
+    /// the eye and the mouse; a chord names a channel with or without it.
     pub fn chord_digit(&mut self, digit: u8, store: bool) -> bool {
         self.chord_modifier = true;
         let (pager, channels) = (&self.pager, &self.channels);
