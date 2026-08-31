@@ -147,8 +147,7 @@ const EFFECTS_BASE_FRAME: Duration = Duration::from_micros(16_667);
 /// Not a setting: what happens either side of it is one behaviour, and a
 /// knob for one behaviour is more than the behaviour is worth. Five minutes
 /// because the hand leaves the keys long before the eyes leave the screen:
-/// a page of output being read is a terminal in use, and half a minute of
-/// it was not nearly long enough to say otherwise.
+/// a page of output being read is a terminal in use.
 const UNATTENDED_AFTER: Duration = Duration::from_secs(300);
 
 /// What the badge says when a PTY channel's write queue sheds: the child this
@@ -550,6 +549,10 @@ pub struct TerminalSurface {
     /// a frame. Without this the picture freezes on whatever the last byte of
     /// output left behind, which is a still photograph of a CRT rather than a
     /// CRT.
+    ///
+    /// Owed only while somebody is there. A still photograph is exactly what
+    /// an unattended window should be, so [`Self::unattended`] takes this to
+    /// `None` and the first frame after a person comes back is due at once.
     next_effects_frame: Option<Instant>,
     /// Whether this window has the keyboard, and when it was last touched.
     /// Together they say whether anyone is attending the glass, which is what
@@ -2210,9 +2213,9 @@ impl Surface for TerminalSurface {
         if self.glass.is_some() {
             if self.unattended {
                 // A crossing in hand when the chair empties comes off, and
-                // the frame that takes it off is owed here: the invariant is
-                // that the glass is the session's own again afterwards, and
-                // a held picture with a critter frozen in it is not that.
+                // the frame that takes it off is owed here. INVARIANTS.md
+                // has the critters gone once they have stopped drawing, and
+                // a held picture with one frozen into it is not gone.
                 // What was due stays due, for whenever somebody is back.
                 critter_due = self.critters.withdraw();
             } else {

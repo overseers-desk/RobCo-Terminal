@@ -8,16 +8,15 @@ Machine: 16 cores, NVIDIA RTX 2070 SUPER, GNOME on Wayland with Xwayland. Percen
 
 The glass paces itself to whoever is in front of it. `effects_frame_skip` counts in 60ths of a second and ships at 3, so a terminal being used animates twenty times a second. With nobody in front of it -- the keyboard elsewhere, or five minutes without a keystroke, click or scroll -- it animates at nothing: the picture is held, no frame is drawn for it, and the whole chain costs nothing until somebody comes back. Output still draws while the picture is held; what stops is the animation over it.
 
-| state | factor | rate | cost |
-|---|---|---|---|
-| focused, being typed into | 1 | 20 Hz | 2.22% |
-| unfocused, touched within the half minute | 2 | 10 Hz | not measured separately |
-| unfocused and untouched | 4 | 5 Hz | 1.56% |
-| minimised | the compositor stops asking | none | 0.35% |
+| state | rate | cost |
+|---|---|---|
+| somebody at the glass | 20 Hz | 2.22% |
+| nobody at the glass | none | not measured |
+| minimised | none | 0.35% |
 
-The middle row sits between the two either side of it and has not been measured on its own. Three attention states in one run needs three windows placed so none covers another, which is harder to get right than it looks.
+The middle row has not been measured since the window began holding its picture rather than animating it slowly. The measurement it replaces was of a screen still drawing at 5 Hz, which cost 1.56%, and a screen drawing nothing cannot cost more than that. The 8 ms poll that reads the pty runs either way, so the floor is the poll and not zero; the minimised row is the closest thing to that floor already measured, and the compositor is withholding frames there rather than the terminal deciding to stop.
 
-A minimised window has always been free, and that is the compositor withholding frames rather than the terminal deciding to stop, so there is nothing there to reclaim in code.
+A minimised window has always been free, and there is nothing there to reclaim in code.
 
 ## The compositor pays most of the bill
 

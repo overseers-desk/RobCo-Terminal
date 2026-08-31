@@ -73,9 +73,11 @@ pub struct DecayClock {
     /// The longest frame delta that is treated as real. A frame delta larger
     /// than this comes from the process being stopped, the window being
     /// occluded, or a laptop lid, and none of those are a CRT sitting there
-    /// fading. The clamp keeps a resumed process from erasing the ghost in
-    /// one step, and 0.25 s is longer than any frame a 4 Hz redraw would
-    /// produce.
+    /// fading. The host holding its picture while nobody is at the glass is
+    /// the same case, and arrives here as one delta of however long that
+    /// lasted. The clamp keeps any of them from erasing the ghost in one
+    /// step: what comes back fades over the frames after it, as a tube
+    /// does, rather than being gone by the first.
     max_dt: f64,
 }
 

@@ -108,8 +108,8 @@ impl Critters {
     /// What is due stays due: `next` is left where it is, so a piece the
     /// clock has already called for crosses when there is somebody to see
     /// it. This is the one way a crossing ends early, and it ends the way
-    /// the invariant requires -- the cells go, and the caller paints the
-    /// frame that takes them off.
+    /// INVARIANTS.md asks -- the cells go, and the caller paints the frame
+    /// that takes them off, so nothing is left behind.
     pub fn withdraw(&mut self) -> bool {
         self.active = None;
         let had = !self.cells.is_empty();
