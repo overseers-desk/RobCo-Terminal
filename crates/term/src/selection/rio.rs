@@ -28,9 +28,9 @@ use super::{Gesture, MarkedRange};
 pub struct Rio {
     columns: usize,
     /// A gesture has marked something. Cleared on a resize, where the range
-    /// in the grid is no longer the user's; parked with the channel on a
-    /// switch instead, since the range belongs to that channel's grid and
-    /// not to the window.
+    /// in the grid is no longer the user's, and cleared with the rest of the
+    /// model on a channel switch: a mark is a region of one grid and does
+    /// not survive the glass turning to another.
     active: bool,
 }
 

@@ -10,14 +10,14 @@
 //! resolves the numerals against it; `chord`, the digits typed against those
 //! numerals, and `chord_modifier`, whose release commits them; `on_air`, the
 //! pair the glass was last showing, so a switch's work runs on a switch;
-//! `degauss`, the flinch a switch triggers; `selection` and `scroll`, which
-//! belong to the channel that is leaving; `find`, which comes down with it;
-//! and `cabinet`, which the pager keys ask about because a page nobody can
-//! see is not worth turning.
+//! `degauss`, the flinch a switch triggers; `selection`, which a switch
+//! clears; `scroll`, which re-reads the channel arriving; `find`, which
+//! comes down with the switch; and `cabinet`, which the pager keys ask
+//! about because a page nobody can see is not worth turning.
 
 use std::time::Instant;
 
-use crate::channels::{BankId, Close, Manager};
+use crate::channels::{Close, Manager};
 use crate::chord::Chord;
 
 use super::{spawn, TerminalSurface};
@@ -194,42 +194,6 @@ impl TerminalSurface {
         self.channel_changed();
     }
 
-    /// The selection changes hands with the glass: the channel being left
-    /// takes the live model, and the channel arriving gets its own back.
-    ///
-    /// A parked model comes back only while the arriving channel's history
-    /// is short of the scrollback it was given. Konsole's model holds raw
-    /// absolute indices and nothing rebases them, so once the oldest lines
-    /// start falling off the top, the same index names later text and the
-    /// mark would come back sitting over the wrong words. A mark in the
-    /// wrong place looks exactly like a mark in the right one, which is why
-    /// this errs at losing it.
-    fn hand_selection_over(&mut self, leaving: (BankId, u32)) {
-        let fresh = term::SelectionModel::new(self.selection.kind(), self.selection.columns());
-        let parked = std::mem::replace(&mut self.selection, fresh);
-        if let Some(row) = self
-            .channels
-            .rows_mut()
-            .find(|row| (row.bank, row.channel) == leaving)
-        {
-            row.selection = Some(parked);
-        }
-        let scrollback = self.session_config.scrollback;
-        let arriving = self.on_air;
-        if let Some(row) = self
-            .channels
-            .rows_mut()
-            .find(|row| (row.bank, row.channel) == arriving)
-        {
-            match row.selection.take() {
-                Some(model) if row.session.term().history_size() < scrollback => {
-                    self.selection = model;
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// Everything that follows the current pair moving, in order: the tube
     /// flinches, the bank turns to the channel on the air, and a stretch of
     /// numerals that moved under the chord abandons its digits.
@@ -239,12 +203,13 @@ impl TerminalSurface {
         }
         let on_air = self.channels.on_air();
         if self.on_air != on_air {
-            let leaving = self.on_air;
             self.on_air = on_air;
-            // A mark is a region of one grid, so it goes with its grid: the
-            // one being left keeps it against the next visit, and the one
-            // arriving brings back whatever it was holding.
-            self.hand_selection_over(leaving);
+            // A mark is a region of one grid, so it does not survive the
+            // glass turning to another: it clears with the switch, the way
+            // the drag state below does. What the mark had already copied is
+            // safe regardless -- the release wrote it to PRIMARY, and a
+            // middle click on any channel reads the string, not the mark.
+            self.selection.clear();
             // The view offset's authority is rio-vt's own `display_offset`,
             // which is the channel's, not the window's: `ScrollPosition` is a
             // mirror of it, so the channel coming to the screen brings its own
