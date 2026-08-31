@@ -774,6 +774,7 @@ impl TerminalSurface {
     /// with no window at all, which is what the contract harness would
     /// see.
     pub fn new(
+        instance: &wgpu::Instance,
         window: &Arc<Window>,
         session: &SessionConfig,
         frame_stats_enabled: bool,
@@ -820,7 +821,7 @@ impl TerminalSurface {
         let (floor_w, floor_h) = logical_well_minimum(&viewport);
         cabinet.set_well_minimum(floor_w, floor_h);
 
-        let gpu = match Gpu::new(Arc::clone(&window), frame_stats_enabled) {
+        let gpu = match Gpu::new(instance, Arc::clone(&window), frame_stats_enabled) {
             Ok(g) => {
                 log::info!("wgpu adapter {} on {}", g.adapter_name, g.backend);
                 Some(g)

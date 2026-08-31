@@ -434,11 +434,12 @@ fn main() -> ExitCode {
     // hands new windows in, and each surface hands its bank width back out.
     let surface_proxy = event_loop.create_proxy();
     let frame_stats_enabled = options.frame_stats;
+    let instance = app::gpu::create_instance(event_loop.owned_display_handle());
     shell_config.surface_factory = Box::new(move |window, ssh| {
         // The destination arrives resolved, keys and all; nothing is
         // re-read on the way in, and `None` opens the window on a shell.
         let mut surface =
-            TerminalSurface::new(window, &session.clone(), frame_stats_enabled, ssh);
+            TerminalSurface::new(&instance, window, &session.clone(), frame_stats_enabled, ssh);
         surface.set_shell_events(surface_proxy.clone());
         // The config this run resolved, whether or not a file is behind it.
         // Under `--default-settings` there is no handle to attach and this is

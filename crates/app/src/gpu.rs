@@ -44,21 +44,38 @@ pub struct Gpu {
     stale_swapchain: bool,
 }
 
+/// The one wgpu instance every window of this process shares. A per-window
+/// instance is a per-window `VkInstance`, and NVIDIA's driver (observed on
+/// 580.126.09, Wayland)
+/// jumps through freed state when one window's surface is destroyed while
+/// another instance lives: the second window opened by a single-instance
+/// handoff crashed the process on the first window's close. The display
+/// handle is the event loop's, owned for the life of the process, so no
+/// window is kept alive for it. `_from_env` keeps `WGPU_BACKEND` working,
+/// which is how a headless run picks Vulkan/lavapipe.
+pub fn create_instance(
+    display: impl winit::raw_window_handle::HasDisplayHandle + std::fmt::Debug + Send + Sync + 'static,
+) -> wgpu::Instance {
+    wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle_from_env(
+        Box::new(display),
+    ))
+}
+
 impl Gpu {
     /// `frame_stats_enabled` is `--frame-stats`; see [`frame_stats`].
-    pub fn new(window: Arc<Window>, frame_stats_enabled: bool) -> Result<Self, String> {
-        pollster::block_on(Self::new_async(window, frame_stats_enabled))
+    pub fn new(
+        instance: &wgpu::Instance,
+        window: Arc<Window>,
+        frame_stats_enabled: bool,
+    ) -> Result<Self, String> {
+        pollster::block_on(Self::new_async(instance, window, frame_stats_enabled))
     }
 
-    async fn new_async(window: Arc<Window>, frame_stats_enabled: bool) -> Result<Self, String> {
-        // With a window there *is* a display handle, and on Wayland the
-        // instance needs it before any surface can be created. `_from_env`
-        // keeps WGPU_BACKEND working, which is how a headless run picks
-        // Vulkan/lavapipe.
-        let instance = wgpu::Instance::new(
-            wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(window.clone())),
-        );
-
+    async fn new_async(
+        instance: &wgpu::Instance,
+        window: Arc<Window>,
+        frame_stats_enabled: bool,
+    ) -> Result<Self, String> {
         let surface = instance
             .create_surface(window.clone())
             .map_err(|e| format!("no wgpu surface: {e}"))?;
