@@ -22,8 +22,17 @@ robco-term (0.2.1) unstable; urgency=medium
     to stay behind and take no keys but its own channel's, so the chord
     did nothing on any other channel and nothing at all once the channel
     it was raised on had been closed.
+  * Alt reaches the shell the way readline's Meta does. Alt+. , Alt+f and
+    Alt+Backspace used to arrive as a bare key with no escape in front of
+    it, so the last argument, the word ahead and the word behind the
+    cursor were unreachable. The Mac keeps its own Option, which composes
+    a character rather than standing for Meta.
+  * A digit chord switches channels whether or not a bank is drawn. It
+    used to ask the mouse's own display and stand down when nothing was
+    drawn, so a set configured with no chassis had no keyboard route to
+    its channels at all.
 
- -- Weiwu Zhang <a@colourful.land>  Mon, 31 Aug 2026 11:40:00 +1000
+ -- Weiwu Zhang <a@colourful.land>  Mon, 31 Aug 2026 12:10:00 +1000
 
 robco-term (0.2.0) unstable; urgency=medium
 
