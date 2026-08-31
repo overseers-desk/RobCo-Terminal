@@ -413,9 +413,8 @@ fn a_fourth_press_starts_a_fresh_selection() {
 }
 
 /// A mark is a region of one grid and does not survive the glass turning to
-/// another: the channel visited never wears it, and it is gone on the way
-/// back too -- its absolute lines decay as the ring evicts, and a mark in
-/// the wrong place looks exactly like a mark in the right one. What the
+/// another: `channel_changed` clears it with the switch, so the channel
+/// visited never wears it and it is gone on the way back too. What the
 /// drag copied is safe regardless: the release wrote it to the primary
 /// selection, which the middle button pastes on any channel.
 ///

@@ -206,9 +206,12 @@ impl TerminalSurface {
             self.on_air = on_air;
             // A mark is a region of one grid, so it does not survive the
             // glass turning to another: it clears with the switch, the way
-            // the drag state below does. What the mark had already copied is
-            // safe regardless -- the release wrote it to PRIMARY, and a
-            // middle click on any channel reads the string, not the mark.
+            // the drag state below does. Restoring it on the way back was
+            // weighed and ruled out by the owner (GitHub issue #32), not
+            // left over from the old parking scheme. What the mark had
+            // already copied is safe regardless -- the release wrote it to
+            // PRIMARY, and a middle click on any channel reads the string,
+            // not the mark.
             self.selection.clear();
             // The view offset's authority is rio-vt's own `display_offset`,
             // which is the channel's, not the window's: `ScrollPosition` is a

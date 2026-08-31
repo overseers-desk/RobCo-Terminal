@@ -90,8 +90,8 @@ impl Selection {
         line.max(0) * cols + index % cols
     }
 
-    /// Move every held position `lines` lines up: what an eviction of that
-    /// many lines off the top of the ring did to the text they name.
+    /// What an eviction of `lines` lines off the top of the ring did to the
+    /// text every held position names.
     fn shift_up(&mut self, lines: u64) {
         self.begin = self.shifted(self.begin, lines);
         self.top_left = self.shifted(self.top_left, lines);
