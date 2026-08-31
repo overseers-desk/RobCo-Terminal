@@ -50,7 +50,10 @@ impl Default for BankPager {
 impl BankPager {
     pub fn new() -> Self {
         BankPager {
-            rows_visible: 1,
+            // Every slot on one page until a drawn bank measures how many
+            // of them fit, so a chord typed at a set with no bank on show
+            // names the channel it says rather than a key on a page.
+            rows_visible: CHANNEL_CAP as i32,
             page_index: 0,
             last_view: None,
         }

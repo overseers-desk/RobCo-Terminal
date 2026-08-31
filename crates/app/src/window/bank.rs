@@ -140,13 +140,9 @@ impl TerminalSurface {
         true
     }
 
-    /// One digit of a chord, and whatever it commits. Answers whether there was
-    /// a bank to type it against; a window with none leaves the key to the
-    /// keytab.
+    /// One digit of a chord, and whatever it commits. The bank is drawn for
+    /// the mouse, so the chord does not ask whether it is on show.
     pub fn chord_digit(&mut self, digit: u8, store: bool) -> bool {
-        if !self.has_bank() {
-            return false;
-        }
         self.chord_modifier = true;
         let (pager, channels) = (&self.pager, &self.channels);
         let committed = self
