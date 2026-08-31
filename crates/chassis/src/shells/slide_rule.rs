@@ -52,8 +52,6 @@ pub mod metrics {
 /// [`crate::metrics::shells::slide_rule`] composes these into `ShellMetrics`
 /// without restating them.
 pub mod pager {
-    use crate::layout::Rect as PaintRect;
-
     /// The group's natural hole, before any squeeze.
     pub const NATURAL_HEIGHT: f64 = 90.0;
     /// The content width this group is drawn at full size for: `squeeze =
@@ -61,37 +59,6 @@ pub mod pager {
     pub const SQUEEZE_SPAN: f64 = 305.0;
     /// The bevel line under the hole, unsqueezed: `round(hole_height) + 3`.
     pub const EXTRA: i32 = 3;
-
-    /// What every measure in this group scales by in a lane narrower than
-    /// [`SQUEEZE_SPAN`]. The one shell of the three that squeezes.
-    pub fn squeeze(width: f64) -> f64 {
-        1.0f64.min(if width > 0.0 {
-            width / SQUEEZE_SPAN
-        } else {
-            1.0
-        })
-    }
-
-    /// The two key recesses, PREV then NEXT, in the pager item's own
-    /// coordinates.
-    ///
-    /// The recess and not the cap sunk in it: the cap stands five squeezed
-    /// pixels inside the hole on every side, and a finger landing on that
-    /// shoulder has pressed the key it can see. Only the width is read; the
-    /// hole's top is the same pixel down the block at any height.
-    ///
-    /// [`super::pager`] paints from this, so what a press is tested against
-    /// is what was drawn.
-    pub fn keys(size: (f64, f64)) -> (PaintRect, PaintRect) {
-        let width = size.0;
-        let squeeze = squeeze(width);
-        let key_w = 71.0 * squeeze;
-        let hole_h = NATURAL_HEIGHT * squeeze;
-        (
-            PaintRect::new(12.0 * squeeze, 1.0, key_w, hole_h),
-            PaintRect::new(width - 22.0 * squeeze - key_w, 1.0, key_w, hole_h),
-        )
-    }
 }
 
 /// `chassis_metal` covers the whole chassis item.
@@ -424,12 +391,18 @@ pub fn pager(
         return Vec::new();
     }
     let _ = plastic;
-    // The squeeze, and the two keys from the one home the hit test reads.
-    let squeeze = pager::squeeze(w);
-    let (prev_key, next_key) = pager::keys(size);
-    let (key_w, hole_y, hole_h) = (prev_key.width, prev_key.y, prev_key.height);
+    // The squeeze and the three measures that follow it.
+    let squeeze = 1.0f64.min(if w > 0.0 {
+        w / pager::SQUEEZE_SPAN
+    } else {
+        1.0
+    });
+    let key_w = 71.0 * squeeze;
     let window_w = 82.0 * squeeze;
-    let window_x = (prev_key.x + key_w + next_key.x - window_w) / 2.0;
+    let hole_h = pager::NATURAL_HEIGHT * squeeze;
+    let prev_x = 12.0 * squeeze;
+    let next_x = w - 22.0 * squeeze - key_w;
+    let window_x = (prev_x + key_w + next_x - window_w) / 2.0;
     // Two digits always, as the bank's numerals are stamped.
     let n = page_index + 1;
     let page_label = if n < 10 {
@@ -455,7 +428,7 @@ pub fn pager(
     // dark cut ring and the bright bevel line on the chassis under the
     // hole.
     let recess = |x: f64, width: f64, p: &mut Painting| {
-        let r = PaintRect::new(x, hole_y, width, hole_h);
+        let r = PaintRect::new(x, 1.0, width, hole_h);
         p.rect(RectOp::gradient(
             r,
             4.0,
@@ -479,11 +452,11 @@ pub fn pager(
 
     // The two keys, each a dark metal cap sunk in its recess, the label
     // engraved above a solid triangle pointing off the bank.
-    for (key, label, direction, wear_seed) in [
-        (prev_key, "PREV", -1.0f64, 0.31f32),
-        (next_key, "NEXT", 1.0, 0.67),
+    for (x, label, direction, wear_seed) in [
+        (prev_x, "PREV", -1.0f64, 0.31f32),
+        (next_x, "NEXT", 1.0, 0.67),
     ] {
-        let hole = recess(key.x, key_w, &mut p);
+        let hole = recess(x, key_w, &mut p);
         let cap = PaintRect::new(
             hole.x + 5.0 * squeeze,
             hole.y - 1.0 + 6.0 * squeeze,

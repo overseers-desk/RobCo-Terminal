@@ -107,11 +107,10 @@ impl Manager {
 pub struct Bank {
     pub id: BankId,
     pub manager: Manager,
-    /// The channel this bank last had on the air. The current channel is a
-    /// per-bank fact -- a band selector comes back to the station it was left
-    /// on -- so it is held here and nowhere else, and the set's current
-    /// channel is whatever the current bank's entry reads. A bank that has
-    /// never taken the air holds 1, its gateway or first slot.
+    /// The channel this bank last had on the air, the set's current channel
+    /// being the current bank's entry: a band selector comes back to the
+    /// station it was left on. A bank that has never taken the air holds 1,
+    /// its gateway or first slot.
     pub channel: u32,
 }
 
@@ -422,10 +421,9 @@ impl<S> Channels<S> {
     }
 
     /// The one writer of the current pair, and so the one place the tube is
-    /// asked to flinch. The channel is written through to the bank it belongs
-    /// to, which is where the pair's second half lives; a bank already gone
-    /// from the list -- a row removed with its bank under it -- keeps nothing,
-    /// and the air is on its way elsewhere anyway.
+    /// asked to flinch. The channel is written through to its bank; a bank
+    /// already gone from the list keeps nothing, the air being on its way
+    /// elsewhere anyway.
     fn set_current(&mut self, bank: BankId, channel: u32) {
         let moved = bank != self.current_bank || channel != self.current_channel();
         self.current_bank = bank;
@@ -437,12 +435,10 @@ impl<S> Channels<S> {
         }
     }
 
-    /// The air lands on a bank the way a band selector does: on the channel
-    /// that bank was left showing, or on its first open row when that slot has
-    /// gone dark since (rows die under a bank without the air being there to
-    /// see it). False for a bank this set does not hold, and for one holding
-    /// no open row: there would be nothing to put on the glass, so the air
-    /// stays where it is.
+    /// The air lands on the channel the bank was left showing, or on its
+    /// first open row when that slot has gone dark since. False for a bank
+    /// this set does not hold, and for one holding no open row: nothing to
+    /// put on the glass, so the air stays where it is.
     pub fn select_bank(&mut self, bank: BankId) -> bool {
         let Some(i) = self.bank_of(bank) else {
             return false;
@@ -1297,9 +1293,7 @@ mod tests {
         assert_eq!(set.current_channel(), 3);
     }
 
-    /// The pager landing on a bank is a band selector coming back to the
-    /// station it was left on. Each bank keeps its own, so leaving one and
-    /// returning finds the channel that was showing there.
+    /// Leaving a bank and returning finds the channel it was showing.
     #[test]
     fn a_bank_comes_back_to_the_channel_it_was_left_on() {
         let mut set = channels();
@@ -1326,8 +1320,8 @@ mod tests {
         assert_eq!(set.on_air(), (bank, 3));
     }
 
-    /// Rows die under a bank nobody is looking at, the slot it was left on
-    /// among them: the return lands on what the bank still has.
+    /// The remembered slot died while the bank was off the air: the return
+    /// lands on what the bank still has.
     #[test]
     fn a_bank_whose_remembered_slot_went_dark_comes_back_on_its_first_open_row() {
         let mut set = channels();

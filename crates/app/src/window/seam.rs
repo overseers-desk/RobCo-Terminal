@@ -70,17 +70,10 @@ impl TerminalSurface {
         true
     }
 
-    /// The pager at the bank's foot: a left press on PREV or NEXT walks the
-    /// pages, which is the press the drawn rocker has always looked like.
-    ///
-    /// Returns whether it took the press. The hit test is the furniture's
-    /// ([`chassis::Cabinet::pager_at`], over the same key rectangles it drew)
-    /// and the step is [`TerminalSurface::step_bank`]'s, the one the
-    /// `Alt`+`PgUp`/`PgDown` keys make: within a bank it views another
-    /// screenful, and onto another bank's stretch it brings that bank's
-    /// remembered channel back to the glass. A press past the last page is
-    /// taken and does nothing, the step's own clamp answering for the dimmed
-    /// key.
+    /// The third claim: a left press on the pager's PREV or NEXT third makes
+    /// [`TerminalSurface::step_bank`]'s step, the hit test being the
+    /// furniture's ([`chassis::Cabinet::pager_at`]). Answers whether it took
+    /// the press.
     pub(super) fn pager_pressed(
         &mut self,
         button: MouseButton,

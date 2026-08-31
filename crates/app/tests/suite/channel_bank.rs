@@ -134,28 +134,18 @@ fn title(surface: &TerminalSurface) -> Option<String> {
     app::shell::Surface::title(surface)
 }
 
-/// The middle of each of the pager's two keys, PREV then NEXT, as a hand
-/// would find them: where this surface's own cabinet drew them
-/// (`chassis::shells::pager_keys`, the rectangles the hit test reads) shifted
-/// by where the pager stands on the bank it drew. The surface's cabinet and
-/// not a fresh one of the same measures: the bank it holds has been through
-/// the window's own fit, and the press lands on the appliance on screen.
-///
-/// The harness runs at a scale factor of 1, so these are physical pixels as
-/// they stand.
+/// A point in each of the pager's outer thirds, PREV then NEXT, on the
+/// surface's own cabinet: the bank it holds has been through the window's
+/// fit, and the press lands on the appliance on screen. The harness runs at
+/// a scale factor of 1, so these are physical pixels as they stand.
 fn pager_keys(surface: &TerminalSurface) -> (PhysicalPosition<f64>, PhysicalPosition<f64>) {
     let cabinet = surface.cabinet().expect("the harness gave it a cabinet");
     let bank = (cabinet.layout().bank.width, cabinet.layout().bank.height);
-    // The configuration `surface_of_height` built that cabinet from.
     let cfg = Config::default();
     let pager =
         chassis::furniture::pager_rect(cabinet.geometry(), &chassis::shell_metrics(&cfg), bank);
-    let (prev, next) = chassis::shells::pager_keys(cfg.chassis.shell, (pager.width, pager.height));
-    let mid = |r: chassis::Rect, direction: i32| {
-        let (x, y) = (
-            pager.x + r.x + r.width / 2.0,
-            pager.y + r.y + r.height / 2.0,
-        );
+    let y = pager.y + pager.height / 2.0;
+    let at = |x: f64, direction: i32| {
         assert_eq!(
             cabinet.pager_at(x, y),
             Some(direction),
@@ -163,7 +153,10 @@ fn pager_keys(surface: &TerminalSurface) -> (PhysicalPosition<f64>, PhysicalPosi
         );
         PhysicalPosition::new(x, y)
     };
-    (mid(prev, -1), mid(next, 1))
+    (
+        at(pager.x + pager.width / 6.0, -1),
+        at(pager.x + pager.width * 5.0 / 6.0, 1),
+    )
 }
 
 /// The button going down, which is the whole gesture as far as the bank's

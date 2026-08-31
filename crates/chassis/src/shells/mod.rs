@@ -199,27 +199,6 @@ pub fn pager(
     }
 }
 
-/// Where the shell's two pager keys stand, PREV then NEXT, in the pager
-/// item's own coordinates.
-///
-/// The other half of [`pager`]: that one draws the keys and this one says
-/// where they went, and each shell answers from the same numbers its own
-/// paint uses, so the rectangle a press is tested against cannot drift from
-/// the rectangle that was drawn (`crate::furniture::strip_rect`'s law, and
-/// [`crate::furniture::pager_at`] is the press).
-///
-/// What counts as the key is the shell's word too: the annunciator's ridged
-/// cap, the slide rule's whole punched recess, the switchboard's riveted
-/// arrow plate. A rectangle can stand outside the item -- the switchboard's
-/// rail rides up into the air above it -- so these are not clipped.
-pub fn pager_keys(shell: config::Shell, size: (f64, f64)) -> (PaintRect, PaintRect) {
-    match shell {
-        config::Shell::Annunciator => annunciator::pager::keys(size),
-        config::Shell::SlideRule => slide_rule::pager::keys(size),
-        config::Shell::Switchboard => switchboard::pager::keys(size),
-    }
-}
-
 /// The shell's selector track, for a profile whose indicator is the
 /// pointer.
 ///

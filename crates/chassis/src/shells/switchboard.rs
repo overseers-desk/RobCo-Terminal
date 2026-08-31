@@ -68,8 +68,6 @@ pub mod metrics {
 /// [`crate::metrics::shells::switchboard`] composes these into
 /// `ShellMetrics`.
 pub mod pager {
-    use crate::layout::Rect as PaintRect;
-
     /// `pager_height - 15`. The rail plate keeps the mock's measured 104
     /// and stands up into the row-spacing air the bank reserves above it;
     /// the *item* (what the row-count settle subtracts) admits to 15 less.
@@ -78,45 +76,6 @@ pub mod pager {
     pub const SQUEEZE_SPAN: f64 = 0.0;
     /// Nothing is added after the (absent) squeeze.
     pub const EXTRA: i32 = 0;
-
-    /// The rail's own natural span. Not [`SQUEEZE_SPAN`], which is about the
-    /// item's *height* and is zero here because the height is a constant:
-    /// what stands on the rail still shrinks with a narrow lane.
-    pub const GROUP_SPAN: f64 = 381.0;
-
-    /// What everything riveted to the rail scales by in a narrower lane.
-    pub fn squeeze(width: f64) -> f64 {
-        1.0f64.min(if width > 0.0 { width / GROUP_SPAN } else { 1.0 })
-    }
-
-    /// The raised rail everything is riveted to, in the pager item's own
-    /// coordinates. It keeps the mock's measured height and so stands up out
-    /// of the item, into the air the bank reserved above it: its `y` is
-    /// negative at the item's own height, which is the point.
-    pub fn rail(size: (f64, f64)) -> PaintRect {
-        let (w, h) = size;
-        let rail_h = super::metrics::PAGER_HEIGHT as f64 - 3.0;
-        PaintRect::new(0.0, h - rail_h - 3.0, w, rail_h)
-    }
-
-    /// The two arrow keys, PREV then NEXT, in the pager item's own
-    /// coordinates: a raised cap each, 20 squeezed pixels in from either end
-    /// of the rail and centred down it.
-    ///
-    /// [`super::pager`] paints from this, so what a press is tested against
-    /// is what was drawn.
-    pub fn keys(size: (f64, f64)) -> (PaintRect, PaintRect) {
-        let width = size.0;
-        let squeeze = squeeze(width);
-        let key_w = super::metrics::PAGER_ARROW_WIDTH as f64 * squeeze;
-        let key_h = super::metrics::PAGER_ARROW_HEIGHT as f64 * squeeze;
-        let rail = rail(size);
-        let y = rail.y + (rail.height - key_h) / 2.0;
-        (
-            PaintRect::new(20.0 * squeeze, y, key_w, key_h),
-            PaintRect::new(width - 20.0 * squeeze - key_w, y, key_w, key_h),
-        )
-    }
 }
 
 /// `chassis_metal` covers the whole chassis item: no plate, no rail, unlike
@@ -528,12 +487,14 @@ pub fn pager(plastic: Rgba, size: (f64, f64), page_index: i32, page_count: i32) 
     if w <= 0.0 || h <= 0.0 {
         return Vec::new();
     }
-    // The group's natural span; narrower content squeezes it all. The two
-    // keys come from the one home the hit test reads.
-    let squeeze = pager::squeeze(w);
-    let (prev_key, next_key) = pager::keys(size);
+    // The group's natural span; narrower content squeezes it all.
+    let squeeze = 1.0f64.min(w / 381.0);
+    let key_w = metrics::PAGER_ARROW_WIDTH as f64 * squeeze;
+    let key_h = metrics::PAGER_ARROW_HEIGHT as f64 * squeeze;
     let plate_w = 159.0 * squeeze;
     let plate_h = 90.0 * squeeze;
+    let prev_x = 20.0 * squeeze;
+    let next_x = w - 20.0 * squeeze - key_w;
     let plate_x = (w - plate_w) / 2.0;
     // Two digits a side always, as the counter's rolls are painted.
     let pad = |n: i32| {
@@ -590,7 +551,8 @@ pub fn pager(plastic: Rgba, size: (f64, f64), page_index: i32, page_count: i32) 
 
     // The rail plate, which keeps the mock's measured height and stands up
     // into the air the bank reserved above this item.
-    let rail = pager::rail(size);
+    let rail_h = metrics::PAGER_HEIGHT as f64 - 3.0;
+    let rail = PaintRect::new(0.0, h - rail_h - 3.0, w, rail_h);
     pieces.push(plate(rail, plate_face, 8.0, 3.0, 0.7, 0.45, 0.6, 0.23));
 
     let mut chrome = Painting::new();
@@ -626,7 +588,8 @@ pub fn pager(plastic: Rgba, size: (f64, f64), page_index: i32, page_count: i32) 
 
     // The two arrow keys, each a raised cap on the rail with four screws
     // and a heavy solid arrow engraved dark into its face.
-    for (cap, direction, wear_seed) in [(prev_key, -1.0f64, 0.31f32), (next_key, 1.0, 0.67)] {
+    for (x, direction, wear_seed) in [(prev_x, -1.0f64, 0.31f32), (next_x, 1.0, 0.67)] {
+        let cap = PaintRect::new(x, rail.y + (rail.height - key_h) / 2.0, key_w, key_h);
         pieces.push(plate(cap, key_face, 7.0, 3.0, 0.65, 0.45, 0.7, wear_seed));
         let seed = wear_seed as f64;
         for (sx, sy, angle) in [

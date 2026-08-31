@@ -49,8 +49,6 @@ pub mod metrics {
 /// [`crate::metrics::shells::annunciator`] composes these into `ShellMetrics`
 /// without restating them.
 pub mod pager {
-    use crate::layout::Rect as PaintRect;
-
     /// A flat 130. The key tops sit 38px into the block and the plate runs
     /// on below them, but the item's own height is the constant.
     pub const NATURAL_HEIGHT: f64 = 130.0;
@@ -60,27 +58,6 @@ pub mod pager {
     pub const SQUEEZE_SPAN: f64 = 0.0;
     /// Nothing is added after the (absent) squeeze.
     pub const EXTRA: i32 = 0;
-
-    /// The two key caps, PREV then NEXT, in the pager item's own coordinates.
-    ///
-    /// The pair stands centred in whatever lane the bank hands over, at a
-    /// 92px spread or as much of it as the lane leaves. The cap is the key:
-    /// the engraved labels and arrows above it are the plate saying what the
-    /// cap does, not a second thing to press. Only the width is read; the
-    /// tops are 38px into the block whatever its height.
-    ///
-    /// [`super::pager`] paints from this, so what a press is tested against
-    /// is what was drawn.
-    pub fn keys(size: (f64, f64)) -> (PaintRect, PaintRect) {
-        let width = size.0;
-        let (w, h) = (super::KEY_WIDTH, super::KEY_HEIGHT);
-        let spread = 92.0f64.min(width - 2.0 * w - 8.0);
-        let prev_x = (width - 2.0 * w - spread) / 2.0;
-        (
-            PaintRect::new(prev_x, super::KEY_TOP, w, h),
-            PaintRect::new(prev_x + w + spread, super::KEY_TOP, w, h),
-        )
-    }
 }
 
 /// The `chassis_metal` region covers the whole chassis item, no margin of
@@ -328,7 +305,7 @@ pub fn row_furniture(
 /// just over half strength, saying without words that the keys do nothing.
 pub fn pager(plastic: Rgba, size: (f64, f64), page_count: i32) -> Vec<crate::furniture::Piece> {
     let (width, height) = size;
-    let painting = pager_painting(plastic, size, page_count);
+    let painting = pager_painting(plastic, width, page_count);
     if painting.is_empty() {
         return Vec::new();
     }
@@ -338,19 +315,20 @@ pub fn pager(plastic: Rgba, size: (f64, f64), page_count: i32) -> Vec<crate::fur
     )]
 }
 
-fn pager_painting(plastic: Rgba, size: (f64, f64), page_count: i32) -> Painting {
+fn pager_painting(plastic: Rgba, width: f64, page_count: i32) -> Painting {
     let mut p = Painting::new();
-    let width = size.0;
     if width <= 0.0 {
         return p;
     }
     let label_color = hex_literal_to_color(LABEL_COLOR);
     let opacity: f32 = if page_count > 1 { 1.0 } else { 0.55 };
 
-    // Where the two caps stand, from the one home the hit test reads.
-    let (prev_key, next_key) = pager::keys(size);
-    let key_width = prev_key.width;
-    let (prev_key_x, next_key_x) = (prev_key.x, next_key.x);
+    // The key cap and the air between the caps; the pair stands centred in
+    // whatever lane the bank hands over.
+    let key_width = KEY_WIDTH;
+    let key_spread = 92.0f64.min(width - 2.0 * key_width - 8.0);
+    let prev_key_x = (width - 2.0 * key_width - key_spread) / 2.0;
+    let next_key_x = prev_key_x + key_width + key_spread;
 
     // The two labels, centred over their own keys, and an arrow outside
     // each pointing away from it. Both are set in the application's own
@@ -396,11 +374,11 @@ fn pager_painting(plastic: Rgba, size: (f64, f64), page_count: i32) -> Painting 
     p.text(arrow(next_x + next_w + 8.0, "\u{25B6}"));
 
     // The two keys, 38px into the block.
-    for key in [prev_key, next_key] {
-        for mut op in channel_button(plastic, key.width, key.height).ops {
+    for x in [prev_key_x, next_key_x] {
+        for mut op in channel_button(plastic, key_width, KEY_HEIGHT).ops {
             if let crate::paint::Op::Rect(r) = &mut op {
-                r.rect.x += key.x;
-                r.rect.y += key.y;
+                r.rect.x += x;
+                r.rect.y += KEY_TOP;
                 r.opacity *= opacity;
             }
             p.ops.push(op);

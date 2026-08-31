@@ -338,9 +338,8 @@ pub fn strip_at(
 ///
 /// It fills the content lane at the bank's foot, its own natural height above
 /// the shell's bottom padding. Measured here and not only drawn here for the
-/// same reason [`strip_rect`] is: the pager is the bank's other key, so the
-/// rectangle a press is tested against has to be the rectangle that was drawn.
-/// The selector's parked position is the middle of this rectangle too.
+/// same reason [`strip_rect`] is: [`pager_at`] tests the rectangle that was
+/// drawn. The selector parks at its middle.
 pub fn pager_rect(geometry: &BankGeometry, shell: &ShellMetrics, bank: (f64, f64)) -> Rect {
     let content_width = geometry.content_width(bank.0 as i32);
     let pager_h = shell.pager_height(content_width) as f64;
@@ -353,14 +352,12 @@ pub fn pager_rect(geometry: &BankGeometry, shell: &ShellMetrics, bank: (f64, f64
 }
 
 /// Which way a press at `(x, y)` walks the pages, both in the bank column's
-/// own coordinates: `-1` on the PREV key, `1` on NEXT.
+/// own coordinates: `-1` in the pager's left third, `1` in its right third.
 ///
-/// `None` everywhere else, the plate between the two keys included: the keys
-/// are the press area and not the pager. The rectangles are the shell's own
-/// ([`crate::shells::pager_keys`], the numbers its pager paints with), shifted
-/// by where [`pager_rect`] stands.
+/// Every shell puts PREV on the left, NEXT on the right and a counter or
+/// plate between, so thirds catch every aimed press without per-shell
+/// geometry; the middle stays dead so the counter is not a key.
 pub fn pager_at(
-    cfg: &Config,
     geometry: &BankGeometry,
     shell: &ShellMetrics,
     bank: (f64, f64),
@@ -368,17 +365,13 @@ pub fn pager_at(
     y: f64,
 ) -> Option<i32> {
     let rect = pager_rect(geometry, shell, bank);
-    if rect.width <= 0.0 || rect.height <= 0.0 {
+    if !within(rect, x, y) {
         return None;
     }
-    let (prev, next) = crate::shells::pager_keys(cfg.chassis.shell, (rect.width, rect.height));
-    let (x, y) = (x - rect.x, y - rect.y);
-    if within(prev, x, y) {
-        Some(-1)
-    } else if within(next, x, y) {
-        Some(1)
-    } else {
-        None
+    match ((x - rect.x) / rect.width * 3.0) as i32 {
+        0 => Some(-1),
+        2 => Some(1),
+        _ => None,
     }
 }
 
@@ -727,91 +720,28 @@ mod tests {
         );
     }
 
-    /// The bank's other key. The measures are the mock's own, read off the
-    /// rendered pager by `tests/suite/bank_furniture.rs`
-    /// (`the_pager_puts_its_two_keys_where_the_mock_measured_them`): if the
-    /// caps move, the drawing and this hit test move together or both tests
-    /// fail, which is the point of one home for the rectangles.
+    /// A press in the pager's left third is PREV, the right third NEXT, and
+    /// the middle -- counter, plate, whatever the shell stands there -- dead.
     #[test]
-    fn a_press_on_a_pager_key_lands_on_the_key_it_was_drawn_on() {
+    fn a_press_on_the_pagers_thirds_walks_the_pages() {
         let cfg = Config::default();
         let cabinet = Cabinet::from_config(&cfg, 1024.0, 768.0);
         let bank = (cabinet.layout().bank.width, cabinet.layout().bank.height);
         let pager = pager_rect(cabinet.geometry(), &crate::shell_metrics(&cfg), bank);
-
-        // Two 56x40 caps, the pair centred in the lane at a 92px spread,
-        // tops 38px into the block.
-        let spread = 92.0f64.min(pager.width - 2.0 * 56.0 - 8.0);
-        let prev_x = pager.x + (pager.width - 2.0 * 56.0 - spread) / 2.0;
-        let next_x = prev_x + 56.0 + spread;
-        let top = pager.y + 38.0;
-        assert_eq!(cabinet.pager_at(prev_x + 28.0, top + 20.0), Some(-1));
-        assert_eq!(cabinet.pager_at(next_x + 28.0, top + 20.0), Some(1));
-        // The cap's own corners are the key, and the pixel past either edge
-        // is the plate.
-        assert_eq!(cabinet.pager_at(prev_x, top), Some(-1));
-        assert_eq!(cabinet.pager_at(prev_x + 55.0, top + 39.0), Some(-1));
-        assert_eq!(cabinet.pager_at(prev_x - 1.0, top + 20.0), None);
-        assert_eq!(cabinet.pager_at(prev_x + 56.0, top + 20.0), None);
-        // The engraved PREV over the cap is the plate saying what the cap
-        // does, not a second thing to press...
-        assert_eq!(cabinet.pager_at(prev_x + 28.0, pager.y + 10.0), None);
-        // ...and the air between the two caps is nobody's.
+        let y = pager.y + pager.height / 2.0;
+        assert_eq!(cabinet.pager_at(pager.x + pager.width / 6.0, y), Some(-1));
+        assert_eq!(cabinet.pager_at(pager.x + pager.width * 5.0 / 6.0, y), Some(1));
+        assert_eq!(cabinet.pager_at(pager.x + pager.width / 2.0, y), None);
+        // Above the pager are the rows, whose press is `strip_at`'s.
+        assert_eq!(cabinet.pager_at(pager.x + pager.width / 6.0, pager.y - 1.0), None);
+        // Off the pager's own edges, and on a chassis nobody drew.
+        assert_eq!(cabinet.pager_at(pager.x - 1.0, y), None);
+        let mut hidden = cfg.clone();
+        hidden.general.chassis_shown = false;
         assert_eq!(
-            cabinet.pager_at((prev_x + 56.0 + next_x) / 2.0, top + 20.0),
+            Cabinet::from_config(&hidden, 1024.0, 768.0).pager_at(pager.x + 1.0, y),
             None
         );
-        // Above the pager are the rows, whose press is `strip_at`'s.
-        assert_eq!(cabinet.pager_at(prev_x + 28.0, pager.y - 1.0), None);
-    }
-
-    /// Every shell answers on its own two keys, wherever that shell put them:
-    /// the annunciator's ridged cap, the slide rule's punched recess, the
-    /// switchboard's riveted arrow plate riding above its own item.
-    #[test]
-    fn each_shells_pager_answers_on_the_keys_that_shell_drew() {
-        for kind in [
-            config::Shell::Annunciator,
-            config::Shell::SlideRule,
-            config::Shell::Switchboard,
-        ] {
-            let mut cfg = Config::default();
-            cfg.chassis.shell = kind;
-            let cabinet = Cabinet::from_config(&cfg, 1024.0, 768.0);
-            let bank = (cabinet.layout().bank.width, cabinet.layout().bank.height);
-            let pager = pager_rect(cabinet.geometry(), &crate::shell_metrics(&cfg), bank);
-            let (prev, next) = crate::shells::pager_keys(kind, (pager.width, pager.height));
-            assert!(
-                prev.width > 0.0 && prev.height > 0.0,
-                "{kind:?} draws a key of no area"
-            );
-            let mid = |r: Rect| {
-                (
-                    pager.x + r.x + r.width / 2.0,
-                    pager.y + r.y + r.height / 2.0,
-                )
-            };
-            let (px, py) = mid(prev);
-            let (nx, ny) = mid(next);
-            assert_eq!(cabinet.pager_at(px, py), Some(-1), "{kind:?} PREV");
-            assert_eq!(cabinet.pager_at(nx, ny), Some(1), "{kind:?} NEXT");
-            // What stands between the keys differs by shell -- bare plate, a
-            // page counter, a framed PAGE plate -- and none of it walks a
-            // page.
-            assert_eq!(
-                cabinet.pager_at(pager.x + (prev.x + prev.width + next.x) / 2.0, py),
-                None,
-                "{kind:?} between the keys"
-            );
-            // A bank nobody drew takes no press, as `strip_at` answers none.
-            let mut hidden = cfg.clone();
-            hidden.general.chassis_shown = false;
-            assert_eq!(
-                Cabinet::from_config(&hidden, 1024.0, 768.0).pager_at(px, py),
-                None,
-                "{kind:?} with the chassis hidden"
-            );
-        }
     }
 
     #[test]

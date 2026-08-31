@@ -506,21 +506,15 @@ impl Cabinet {
     }
 
     /// Which way a press at `(x, y)` walks the pages, both in the bank
-    /// column's own logical pixels: `-1` for PREV, `1` for NEXT, `None` for a
-    /// press that missed both keys.
-    ///
-    /// Here for [`Cabinet::strip_at`]'s reason -- the hit test belongs to
-    /// whoever drew the keys -- and what to *do* about the press is the app's
-    /// (`TerminalSurface::step_bank`, the same step the `Alt`+`PgUp`/`PgDown`
-    /// keys make). A press past the last page is not refused here: the step
-    /// clamps, and a dimmed rocker that answers nothing is the shell's way of
-    /// saying so.
+    /// column's own logical pixels: `-1` for PREV, `1` for NEXT. Here for
+    /// [`Cabinet::strip_at`]'s reason; what to do about the press is the
+    /// app's. A press past the last page is not refused here: the step
+    /// clamps.
     pub fn pager_at(&self, x: f64, y: f64) -> Option<i32> {
         if !self.is_shown() {
             return None;
         }
         crate::furniture::pager_at(
-            &self.cfg,
             &self.geometry,
             &self.shell,
             (self.layout.bank.width, self.layout.bank.height),
