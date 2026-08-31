@@ -302,7 +302,7 @@ mod tests {
 
     /// Within one bank's stretch, which is the whole of what this arithmetic
     /// decides: a step that crosses into another bank's is a band switch, and
-    /// that is `TerminalSurface::step_bank`'s to make.
+    /// that is [`crate::window::TerminalSurface::step_bank`]'s to make.
     #[test]
     fn stepping_the_pager_within_a_bank_views_a_page_without_stealing_the_air() {
         let mut set = model();
