@@ -21,6 +21,7 @@ mod profile_cli;
 mod profile_pixels;
 mod redraw_pacing;
 mod seam_drag;
+mod selection_drift;
 mod settings_live_reload;
 mod shed_notice;
 mod size_badge;

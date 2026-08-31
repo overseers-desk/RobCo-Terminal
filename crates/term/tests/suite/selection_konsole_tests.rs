@@ -275,3 +275,46 @@ fn char_class_groups_words_and_separates_punctuation() {
     assert_eq!(char_class('!', wc), '!', "punctuation is its own class");
     assert_ne!(char_class('!', wc), char_class('?', wc));
 }
+
+/// An eviction between the drag and the release: the ring dropped lines off
+/// the top, every absolute index re-names content that many lines later,
+/// and [`Konsole::rebase`] is what keeps the gesture on the text it
+/// covered. The two grids stand for the same buffer before and after two
+/// evictions; the release runs against the after, as it does live.
+#[test]
+fn rebase_keeps_the_gesture_on_its_text_across_an_eviction() {
+    let before = ScriptedGrid::new(COLS, &["old-1", "old-2", "hello world", "tail"]);
+    let after = ScriptedGrid::new(COLS, &["hello world", "tail", "new-1", "new-2"]);
+    let mut c = Konsole::new(COLS);
+
+    c.press(0, 2);
+    c.drag_to(&before, win(&before), 5, 2);
+
+    // Two lines fall off the ring while the button is still down.
+    c.rebase(2);
+
+    // The read side follows without another gesture: the mark is painted
+    // where the text now sits, not two rows below it.
+    assert_eq!(c.start_at(2), Some((0, 0)));
+    assert_eq!(c.end_at(2), Some((4, 0)));
+    assert_eq!(c.release(&after).as_deref(), Some("hello"));
+}
+
+/// The same drift read without a rebase call: `start_at`/`end_at` take the
+/// eviction count themselves, so a renderer frame between gesture events
+/// paints the mark in the numbering the grid holds at that frame.
+#[test]
+fn the_read_side_shifts_by_the_evictions_it_is_told_of() {
+    let g = ScriptedGrid::new(COLS, &["old-1", "old-2", "hello world"]);
+    let mut c = Konsole::new(COLS);
+
+    c.press(0, 2);
+    c.drag_to(&g, win(&g), 5, 2);
+
+    assert_eq!(c.start_at(0), Some((0, 2)));
+    assert_eq!(c.end_at(0), Some((4, 2)));
+    assert_eq!(c.start_at(1), Some((0, 1)));
+    // Past the top of the ring, the mark pins to the oldest line that
+    // still exists rather than going negative.
+    assert_eq!(c.start_at(5), Some((0, 0)));
+}

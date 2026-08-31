@@ -15,6 +15,15 @@
 //! at the cost of having to be told the window's extent explicitly: that is
 //! [`super::Window`].
 //!
+//! Absolute is not stable, though: once the scrollback ring is at capacity,
+//! every new line evicts the oldest one and re-names every absolute index to
+//! content one line later. A gesture that spans an eviction -- output
+//! arriving between the drag and the release -- would extract cells below
+//! the text it covered. So the model also carries the eviction count its
+//! coordinates were taken against ([`Konsole::rebase`], fed from rio-vt's
+//! `Grid::lines_evicted`), and every entry point brings the stored
+//! coordinates into the numbering the grid holds now.
+//!
 //! This whole file is one arm of [`super::SelectionModel`] and is written to
 //! be deletable; [`super`]'s module documentation lists what goes with it.
 
@@ -66,6 +75,27 @@ impl Selection {
         self.begin = -1;
         self.top_left = -1;
         self.bottom_right = -1;
+    }
+
+    /// One linear index, moved `lines` lines up. A cell whose line has
+    /// already fallen off the ring pins to line 0 in its own column: the
+    /// text it named is gone, and the oldest line that still exists is the
+    /// closest thing left to point at.
+    fn shifted(&self, index: i64, lines: u64) -> i64 {
+        if index < 0 || lines == 0 || self.columns == 0 {
+            return index;
+        }
+        let cols = self.columns as i64;
+        let line = (index / cols).saturating_sub(lines.min(i64::MAX as u64) as i64);
+        line.max(0) * cols + index % cols
+    }
+
+    /// Move every held position `lines` lines up: what an eviction of that
+    /// many lines off the top of the ring did to the text they name.
+    fn shift_up(&mut self, lines: u64) {
+        self.begin = self.shifted(self.begin, lines);
+        self.top_left = self.shifted(self.top_left, lines);
+        self.bottom_right = self.shifted(self.bottom_right, lines);
     }
 
     pub fn is_valid(&self) -> bool {
@@ -242,6 +272,9 @@ pub struct Konsole {
     /// `_actSel`: 0 = none, 1 = pressed but empty, 2 = inside a selection.
     act_sel: u8,
     triple_sel_begin: (usize, usize),
+    /// The grid's `lines_evicted()` when the coordinates above were last
+    /// taken or rebased: the numbering they are absolute in.
+    evicted_base: u64,
 }
 
 impl Konsole {
@@ -257,12 +290,81 @@ impl Konsole {
             mode: Mode::Character,
             act_sel: 0,
             triple_sel_begin: (0, 0),
+            evicted_base: 0,
         }
     }
 
     /// Is there a selection the user is inside or has just made?
     pub fn has_selection(&self) -> bool {
         self.act_sel > 1 && self.selection.is_valid()
+    }
+
+    /// Bring every stored coordinate into the numbering the grid holds now,
+    /// given `evicted` -- the grid's own count of lines ever evicted off the
+    /// top of the scrollback ring (`Grid::lines_evicted`). Called at the top
+    /// of every gesture, so a drag or a release that follows an eviction
+    /// still names the text the pointer was over rather than the cells that
+    /// many lines below it.
+    pub fn rebase(&mut self, evicted: u64) {
+        let lines = evicted.saturating_sub(self.evicted_base);
+        self.evicted_base = evicted;
+        if lines == 0 {
+            return;
+        }
+        let l = lines.min(usize::MAX as u64) as usize;
+        self.anchor.1 = self.anchor.1.saturating_sub(l);
+        self.head.1 = self.head.1.saturating_sub(l);
+        self.triple_sel_begin.1 = self.triple_sel_begin.1.saturating_sub(l);
+        self.selection.shift_up(lines);
+    }
+
+    /// [`Selection::start`] in the numbering `evicted` describes, without
+    /// touching the stored state: the read side of [`Self::rebase`], for the
+    /// renderer asking where the mark sits this frame.
+    pub fn start_at(&self, evicted: u64) -> Option<(usize, usize)> {
+        let lines = evicted.saturating_sub(self.evicted_base);
+        let index = self.selection.shifted(self.selection.top_left, lines);
+        (index >= 0 && self.selection.columns > 0).then(|| {
+            (
+                index as usize % self.selection.columns,
+                index as usize / self.selection.columns,
+            )
+        })
+    }
+
+    /// [`Selection::end`] in the numbering `evicted` describes.
+    pub fn end_at(&self, evicted: u64) -> Option<(usize, usize)> {
+        let lines = evicted.saturating_sub(self.evicted_base);
+        let index = self.selection.shifted(self.selection.bottom_right, lines);
+        (index >= 0 && self.selection.columns > 0).then(|| {
+            (
+                index as usize % self.selection.columns,
+                index as usize / self.selection.columns,
+            )
+        })
+    }
+
+    /// [`Selection::selected_text`] in the numbering `evicted` describes,
+    /// without touching the stored state.
+    pub fn selected_text_at(
+        &self,
+        grid: &impl GridView,
+        evicted: u64,
+        preserve_line_breaks: bool,
+    ) -> Option<String> {
+        if !self.selection.is_valid() {
+            return None;
+        }
+        let lines = evicted.saturating_sub(self.evicted_base);
+        let top_left = self.selection.shifted(self.selection.top_left, lines);
+        let bottom_right = self.selection.shifted(self.selection.bottom_right, lines);
+        Some(write_range(
+            grid,
+            top_left as usize,
+            bottom_right as usize,
+            self.selection.block_mode(),
+            preserve_line_breaks,
+        ))
     }
 
     /// Left button down at an absolute cell. Clears any selection and sets

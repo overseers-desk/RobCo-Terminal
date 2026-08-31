@@ -149,6 +149,7 @@ impl SelectionModel {
     ) {
         match self {
             SelectionModel::Konsole(k) => {
+                k.rebase(g.term.lines_evicted());
                 k.preserve_line_breaks = pointer::preserve_line_breaks(mods);
                 k.column_selection_mode = pointer::column_selection_mode(mods);
                 k.press(cell.0, cell.1);
@@ -161,6 +162,7 @@ impl SelectionModel {
     pub fn drag_to<U: EventListener>(&mut self, g: Gesture<'_, U>, cell: (usize, usize)) {
         match self {
             SelectionModel::Konsole(k) => {
+                k.rebase(g.term.lines_evicted());
                 let grid = crate::RioGrid::new(&*g.term);
                 k.drag_to(&grid, g.win, cell.0, cell.1);
             }
@@ -176,6 +178,7 @@ impl SelectionModel {
     ) -> Option<String> {
         match self {
             SelectionModel::Konsole(k) => {
+                k.rebase(g.term.lines_evicted());
                 let grid = crate::RioGrid::new(&*g.term);
                 k.double_click(&grid, g.win, cell.0, cell.1)
             }
@@ -191,6 +194,7 @@ impl SelectionModel {
     ) -> Option<String> {
         match self {
             SelectionModel::Konsole(k) => {
+                k.rebase(g.term.lines_evicted());
                 let grid = crate::RioGrid::new(&*g.term);
                 k.triple_click(&grid, g.win, cell.0, cell.1)
             }
@@ -202,6 +206,7 @@ impl SelectionModel {
     pub fn release<U: EventListener>(&mut self, g: Gesture<'_, U>) -> Option<String> {
         match self {
             SelectionModel::Konsole(k) => {
+                k.rebase(g.term.lines_evicted());
                 let grid = crate::RioGrid::new(&*g.term);
                 k.release(&grid)
             }
@@ -213,8 +218,9 @@ impl SelectionModel {
     pub fn selected_text<U: EventListener>(&self, g: Gesture<'_, U>) -> Option<String> {
         match self {
             SelectionModel::Konsole(k) => {
+                let evicted = g.term.lines_evicted();
                 let grid = crate::RioGrid::new(&*g.term);
-                k.selection.selected_text(&grid, k.preserve_line_breaks)
+                k.selected_text_at(&grid, evicted, k.preserve_line_breaks)
             }
             SelectionModel::Rio(r) => r.selected_text(g),
         }
@@ -255,8 +261,12 @@ impl SelectionModel {
     pub fn range<U: EventListener>(&self, term: &Crosswords<U>) -> Option<MarkedRange> {
         match self {
             SelectionModel::Konsole(k) => {
-                let start = k.selection.start()?;
-                let end = k.selection.end()?;
+                // In the numbering the grid holds at this frame: an eviction
+                // since the last gesture event moves the painted mark with
+                // the text it covers rather than leaving it on the rows below.
+                let evicted = term.lines_evicted();
+                let start = k.start_at(evicted)?;
+                let end = k.end_at(evicted)?;
                 Some(MarkedRange {
                     start,
                     end,
