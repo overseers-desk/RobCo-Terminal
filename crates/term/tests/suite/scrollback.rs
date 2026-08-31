@@ -10,6 +10,8 @@
 //!   history;
 //! * ordinary output does *not* force a full rebuild, so the damage path is
 //!   actually narrowing the work rather than redrawing the screen every frame;
+//! * a terminal swapped underneath the renderer rebuilds the screen, which
+//!   no damage either side of the swap reports;
 //! * a position between two lines (a wheel glide, a touchpad's pixels) is
 //!   held as rio-vt's whole lines plus a shift, and drawn as the grid moved
 //!   up by the shift with the next line filling the gap at the bottom.
@@ -239,6 +241,47 @@ fn ordinary_output_does_not_force_a_full_rebuild() {
     );
     assert!(!stats.full);
     assert_eq!(stats.rows_updated, 0, "an idle frame rewrote rows");
+}
+
+/// A channel switch puts a different terminal under the same renderer, and
+/// the one arriving reports no damage if it has been idle since it left. The
+/// cells then held are the other channel's, so the glass keeps the old
+/// picture and moves only the cursor into it.
+#[test]
+fn a_terminal_swapped_underneath_rebuilds_the_screen() {
+    let Some((gpu, _lock)) = gpu() else { return };
+    let scheme = Scheme::monochrome([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0]);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
+    let mut viewport = ScrollPosition::default();
+
+    let channel = |text: &[u8]| {
+        let mut term = Crosswords::new(
+            Size,
+            CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0u64),
+            0,
+            SCROLLBACK,
+        );
+        Processor::default().advance(&mut term, text);
+        term
+    };
+    let mut first = channel(b"FIRST\r\n");
+    let mut second = channel(b"SECOND\r\n");
+
+    let mut show = |renderer: &mut GridRenderer, font: &mut _, term: &mut _| {
+        renderer.sync(&gpu.device, &gpu.queue, font, term, &mut viewport, None)
+    };
+    show(&mut renderer, &mut font, &mut first);
+    // Both are now idle: whatever either has to report, it has reported.
+    show(&mut renderer, &mut font, &mut second);
+    let stats = show(&mut renderer, &mut font, &mut first);
+    assert!(!stats.full, "the swap alone is not damage rio-vt reports");
+
+    renderer.invalidate();
+    let stats = show(&mut renderer, &mut font, &mut second);
+    assert!(stats.full, "an invalidated renderer skipped the rebuild");
+    assert_eq!(renderer.grid().row_text(0).trim_end(), "SECOND");
 }
 
 #[test]

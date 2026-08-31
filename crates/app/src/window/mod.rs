@@ -103,7 +103,6 @@ use crate::chord::ChordInput;
 use crate::chrome::Chrome;
 use crate::frame_stats::Mark;
 use crate::gpu::Gpu;
-use crate::input::KeyboardModes;
 use crate::settings::{self, SettingsHandle};
 use crate::shell::{ShellEvent, Surface, Tick};
 use crate::ssh::SshRequest;
@@ -493,7 +492,6 @@ pub struct TerminalSurface {
     /// minimum-width hint and the shell owns every window, so a seam drag has
     /// to cross back ([`ShellEvent::SetBankWidth`]).
     shell_events: Option<EventLoopProxy<ShellEvent>>,
-    modes: KeyboardModes,
     /// What the input method is composing but has not committed, and whether
     /// composition is open at all.
     ///
@@ -918,7 +916,6 @@ impl TerminalSurface {
             pending_led_characters: None,
             seam_cursor: false,
             shell_events: None,
-            modes: KeyboardModes::default(),
             ime: ImeState::default(),
             eof: false,
             scroll: ScrollPosition::default(),

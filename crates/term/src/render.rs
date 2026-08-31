@@ -225,6 +225,12 @@ pub struct GridRenderer {
     /// Substituted into the cell on the way past like the marking above, and
     /// for the same reason.
     critter: Vec<(usize, usize, char)>,
+    /// The cells held here belong to a screen that is no longer the one on
+    /// the glass, so the next [`vt::sync`] rebuilds every row rather than
+    /// the damaged ones. Nothing the terminal reports can stand in for
+    /// this: per-line damage is a statement about one screen's own lines,
+    /// and a screen that has been swapped for another damaged nothing.
+    stale: bool,
     /// What an input method is composing right now, drawn at the cursor and
     /// belonging to no cell of the grid. See [`GridRenderer::set_preedit`].
     preedit: String,
@@ -371,6 +377,7 @@ impl GridRenderer {
             instances,
             cursor: None,
             marked: None,
+            stale: false,
             critter: Vec::new(),
             preedit: String::new(),
             scale: 1,
@@ -588,6 +595,13 @@ impl GridRenderer {
             self.build_preedit();
             self.upload_preedit(queue);
         }
+    }
+
+    /// The screen under this renderer has been swapped for another one, so
+    /// every row it holds is stale whatever the terminals on either side of
+    /// the swap have reported as damaged.
+    pub fn invalidate(&mut self) {
+        self.stale = true;
     }
 
     /// Draw what an input method is composing, at the cursor.
@@ -1077,6 +1091,9 @@ pub mod vt {
                 stats.full = true;
             }
             if viewport.sync(term).moved {
+                stats.full = true;
+            }
+            if std::mem::take(&mut self.stale) {
                 stats.full = true;
             }
 

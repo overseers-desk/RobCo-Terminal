@@ -204,6 +204,25 @@ impl TerminalSurface {
             if let Some(session) = self.channels.session() {
                 self.scroll.sync(session.term());
             }
+            // The renderer holds the cells of the channel that just left,
+            // and the channel arriving damaged nothing while it was off the
+            // air, so without this the glass keeps the old picture and moves
+            // only the cursor into it. It also covers the view the line
+            // above just re-read: `ScrollPosition::sync` is what tells the
+            // renderer the view moved, and it has already been told here.
+            if let Some(glass) = self.glass.as_mut() {
+                glass.renderer.invalidate();
+            }
+            // A composition belongs to the channel it was being typed into.
+            // Carried across, it would commit into whatever program the new
+            // channel is running.
+            self.ime.abandon();
+            // The gesture the pointer is in the middle of belongs to the
+            // grid it started on, exactly as the mark does. This is what the
+            // focus-loss path clears for the same reason (`on_focus_changed`).
+            self.dragging = false;
+            self.secondary_press = false;
+            self.last_click = None;
             // This must run only when the air moves and at no other time:
             // `channel_changed` is also called from the pump, every 8ms, and
             // `ensure_visible` recomputes `page_index` from the channel on the

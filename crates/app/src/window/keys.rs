@@ -14,7 +14,7 @@
 use winit::keyboard::ModifiersState;
 
 use crate::clipboard;
-use crate::input::{encode_winit_key, KeyAction, Modifiers};
+use crate::input::{encode_winit_key, KeyAction, KeyboardModes, Modifiers};
 
 use super::TerminalSurface;
 
@@ -73,7 +73,7 @@ impl TerminalSurface {
         }
         let mods = modifiers_from(modifiers);
         // The keytab next: it is the authority on every key it binds.
-        if let Some(action) = encode_winit_key(logical, mods, self.modes) {
+        if let Some(action) = encode_winit_key(logical, mods, self.keyboard_modes()) {
             match action {
                 KeyAction::Bytes(bytes) => self.type_bytes(&bytes),
                 other => self.scroll_key(other),
@@ -87,6 +87,23 @@ impl TerminalSurface {
                 let bytes = text.as_bytes().to_vec();
                 self.type_bytes(&bytes);
             }
+        }
+    }
+
+    /// The modes the keytab is read under, off the channel on the air.
+    ///
+    /// Asked at the key rather than held, the way the pointer asks for its
+    /// own modes (`mode_contains`): a mode is one screen's, and a window
+    /// that kept a copy would answer for the channel that set it long after
+    /// another one came to the glass. `ansi` is true because rio-vt has no
+    /// VT52 mode to leave.
+    fn keyboard_modes(&self) -> KeyboardModes {
+        use term::rio_vt::crosswords::Mode;
+        KeyboardModes {
+            ansi: true,
+            application_cursor_keys: self.mode_contains(Mode::APP_CURSOR),
+            new_line_mode: self.mode_contains(Mode::LINE_FEED_NEW_LINE),
+            app_screen: self.mode_contains(Mode::ALT_SCREEN),
         }
     }
 

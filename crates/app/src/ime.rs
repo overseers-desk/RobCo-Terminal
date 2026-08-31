@@ -98,6 +98,17 @@ impl ImeState {
         }
     }
 
+    /// Drop the half-typed composition, the input method left enabled.
+    ///
+    /// What the user was composing was being composed into one channel's
+    /// program. The commit can only go to whatever is on the air when it
+    /// arrives, so a composition outlives the channel it belongs to or it
+    /// does not outlive the switch: this is the second.
+    pub fn abandon(&mut self) {
+        self.preedit.clear();
+        self.cursor = None;
+    }
+
     /// Tell the platform where the caret is, if it has moved since last time.
     ///
     /// Rounded to whole pixels before the comparison, since that is the
