@@ -1,3 +1,39 @@
+robco-term (0.2.2) unstable; urgency=medium
+
+  * A second window can close without taking the process down with it.
+    Every window shared one GPU instance created above them; opening a
+    second window and closing the first crashed on NVIDIA's Wayland
+    driver, which reaches into state a sibling instance had already
+    freed. The instance is now made once, above every window, and handed
+    down rather than remade per window.
+  * A selection clears when you leave the channel it was made on, rather
+    than waiting there for you. Parking it on the row and handing it back
+    on return was only safe while the arriving channel's history stayed
+    short of its scrollback: the mark's row number decays as the ring
+    evicts, and a mark in the wrong place looks exactly like one in the
+    right place. Nothing marked is lost, since the middle button already
+    pastes what was copied on any channel.
+  * A tmux -CC channel's selection stops drifting once its scrollback
+    fills. Konsole's model names a row by an index that shifts as history
+    evicts old lines, and a drag spanning an eviction used to hand the
+    wrong rows to the middle button; the model now rebases its rows
+    against the grid's own eviction count on every gesture and every
+    frame.
+  * The pointer's memory of the cell it was last over, and the trackpad
+    travel it was banking toward a wheel notch, now clear with the
+    channel switch alongside the gesture they belonged to. A first motion
+    that landed on the same cell the old channel left behind used to read
+    as no movement at all.
+  * The pager's prev and next thirds take a mouse press the way Alt+PageUp
+    already does, and a press that crosses into another bank lands on
+    that bank's remembered channel.
+  * A bank remembers the channel it last had on the air. Paging onto
+    another bank's stretch switches the glass to that bank's remembered
+    channel; paging within the same bank stays view-only, and a bank
+    whose remembered channel went dark comes back on its first open row.
+
+ -- Weiwu Zhang <a@colourful.land>  Mon, 31 Aug 2026 20:30:00 +1000
+
 robco-term (0.2.1) unstable; urgency=medium
 
   * The screen stops when you do. A window that has lost the keyboard, or
