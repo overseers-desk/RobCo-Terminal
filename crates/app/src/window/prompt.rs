@@ -284,8 +284,9 @@ impl TerminalSurface {
         let Some(find) = self.find.take() else {
             return;
         };
-        // Read before the line is dropped: `prompt::Line` zeroes its buffer
-        // on the way out, so a query taken afterwards is an empty string.
+        // Read before the line is dropped: `crate::prompt::Line` zeroes its
+        // buffer on the way out, so a query taken afterwards is an empty
+        // string.
         self.last_find = find.query().to_string();
         let (bank, channel) = find.on;
         drop(find);

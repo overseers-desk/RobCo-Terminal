@@ -255,8 +255,8 @@ impl TerminalSurface {
             // The find line takes every key while it stands, so one left
             // behind on a channel nobody is looking at is a mode with no way
             // out: its own channel is the only one whose Escape it answers.
-            // It comes down here, and `last_find` brings the query back when
-            // the line is raised again.
+            // It comes down here, and the query it held is kept so it comes
+            // back when the line is raised again.
             self.close_find();
             // A composition belongs to the channel it was being typed into.
             // Carried across, it would commit into whatever program the new

@@ -29,8 +29,8 @@ pub struct Rio {
     columns: usize,
     /// A gesture has marked something. Cleared on a resize, where the range
     /// in the grid is no longer the user's; parked with the channel on a
-    /// switch, since the range it refers to is parked with it in the
-    /// channel's own grid.
+    /// switch instead, since the range belongs to that channel's grid and
+    /// not to the window.
     active: bool,
 }
 
