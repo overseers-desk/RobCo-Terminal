@@ -6,6 +6,12 @@ that is bound here is a key your editor never sees.
 
 The chord modifier is `Alt`, and `Cmd` on macOS.
 
+Every other key held with `Alt` reaches the program as an escape followed by
+the key, which is what a shell reads as Meta: `Alt`+`.` fills in the last
+argument, `Alt`+`Backspace` rubs out the word behind the cursor. On macOS the
+`Option` key composes characters instead, as it does in Terminal and iTerm2,
+so the same bindings are typed there by pressing `Esc` and then the key.
+
 ## Channels
 
 | Key | What it does |

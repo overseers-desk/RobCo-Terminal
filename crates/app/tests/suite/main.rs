@@ -13,6 +13,7 @@ mod frame_stats;
 mod fullscreen_pointer;
 mod ime;
 mod keyboard_scroll;
+mod meta_keys;
 mod pointer;
 mod pointer_live_settings;
 mod profile_cli;
