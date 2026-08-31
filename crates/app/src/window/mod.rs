@@ -142,28 +142,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(8);
 /// setting means.
 const EFFECTS_BASE_FRAME: Duration = Duration::from_micros(16_667);
 
-/// How long the glass goes untouched before it counts as unattended. Not a
-/// setting: the two factors either side of it are what change the picture,
-/// and a third knob for one behaviour is more than the behaviour is worth.
-const UNATTENDED_AFTER: Duration = Duration::from_secs(30);
-
-/// What the user's own `effects_frame_skip` is multiplied by, given who is
-/// attending the glass.
+/// How long the glass goes untouched before it counts as unattended.
 ///
-/// The steps multiply rather than pin, so a glass someone set to run at 60 Hz
-/// still moves faster unattended than a default one does at its best. A
-/// window that is both unfocused and untouched takes the larger of the two
-/// rather than their product, because it is one screen nobody is watching and
-/// not two.
-fn attention_factor(focused: bool, since_input: Duration, unfocused: i32, idle: i32) -> i32 {
-    let away = if focused { 1 } else { unfocused.max(1) };
-    let untouched = if since_input >= UNATTENDED_AFTER {
-        idle.max(1)
-    } else {
-        1
-    };
-    away.max(untouched)
-}
+/// Not a setting: what happens either side of it is one behaviour, and a
+/// knob for one behaviour is more than the behaviour is worth. Five minutes
+/// because the hand leaves the keys long before the eyes leave the screen:
+/// a page of output being read is a terminal in use, and half a minute of
+/// it was not nearly long enough to say otherwise.
+const UNATTENDED_AFTER: Duration = Duration::from_secs(300);
 
 /// What the badge says when a PTY channel's write queue sheds: the child this
 /// program spawned has stopped reading its tty and the keystrokes aimed at it
@@ -572,6 +558,10 @@ pub struct TerminalSurface {
     /// starts attended, so a headless one keeps the cadence it always had.
     focused: bool,
     last_input: Instant,
+    /// Nobody is at this glass, as of the last tick: the keyboard is
+    /// elsewhere, or it has been untouched for [`UNATTENDED_AFTER`]. What it
+    /// governs is everything the window would have drawn of its own accord.
+    unattended: bool,
     /// The output governor: when child output may next ask for a frame, and
     /// whether any arrived since the last one it asked for. The PTY is
     /// polled at ~125 Hz and a flood would otherwise paint
@@ -944,6 +934,7 @@ impl TerminalSurface {
             next_effects_frame: None,
             focused: true,
             last_input: Instant::now(),
+            unattended: false,
             next_output_frame: None,
             output_pending: false,
             glass: None,
@@ -1687,7 +1678,11 @@ impl TerminalSurface {
         // rebuilds only the rows it arrived on or left, so the frames where
         // it has not moved, which is most of them, cost nothing.
         let (cols, rows) = (glass.renderer.cols(), glass.renderer.rows());
-        self.critters.tick(now, cols, rows);
+        if self.unattended {
+            self.critters.withdraw();
+        } else {
+            self.critters.tick(now, cols, rows);
+        }
         glass.renderer.set_critter(
             &gpu.device,
             &gpu.queue,
@@ -2166,22 +2161,25 @@ impl Surface for TerminalSurface {
             wake_at = wake_at.min(deadline);
         }
 
+        // Whether anybody is there. A window that has lost the keyboard, or
+        // has held it untouched for `UNATTENDED_AFTER`, is a screen nobody
+        // is looking at, and the two things this window does of its own
+        // accord -- animating the tube, walking a critter across it -- are
+        // both done for a person. Neither is done for an empty chair.
+        self.unattended = !self.focused || now.duration_since(self.last_input) >= UNATTENDED_AFTER;
+
         // The effects clock. A window with no glass has no effects to run, so
-        // it keeps to drawing only what changed.
+        // it keeps to drawing only what changed; an unattended one holds the
+        // picture it has, which is the same thing for a different reason.
+        // Output still draws either way, so a screen left alone still shows
+        // what its child says: what stops is the animation over it.
         let mut effects_due = false;
-        if self.glass.is_some() {
+        if self.glass.is_some() && !self.unattended {
             let cfg = match self.settings.as_ref() {
                 Some(handle) => handle.current().general,
                 None => Config::default().general,
             };
-            let attention = attention_factor(
-                self.focused,
-                now.duration_since(self.last_input),
-                cfg.unfocused_frame_skip,
-                cfg.idle_frame_skip,
-            );
-            let interval =
-                EFFECTS_BASE_FRAME * (cfg.effects_frame_skip.max(1) * attention) as u32;
+            let interval = EFFECTS_BASE_FRAME * cfg.effects_frame_skip.max(1) as u32;
             match self.next_effects_frame {
                 Some(at) if at > now => wake_at = wake_at.min(at),
                 _ => {
@@ -2190,6 +2188,11 @@ impl Surface for TerminalSurface {
                     wake_at = wake_at.min(now + interval);
                 }
             }
+        } else {
+            // Nothing owed while the picture is held, and the first frame
+            // after somebody comes back is owed at once rather than an
+            // interval later.
+            self.next_effects_frame = None;
         }
 
         // The critters' own deadline: the next column of a crossing in hand,
@@ -2205,10 +2208,19 @@ impl Surface for TerminalSurface {
         // window with nothing to draw on owes the critters no frames.
         let mut critter_due = false;
         if self.glass.is_some() {
-            match self.critters.wake_at() {
-                Some(at) if at > now => wake_at = wake_at.min(at),
-                Some(_) => critter_due = true,
-                None => {}
+            if self.unattended {
+                // A crossing in hand when the chair empties comes off, and
+                // the frame that takes it off is owed here: the invariant is
+                // that the glass is the session's own again afterwards, and
+                // a held picture with a critter frozen in it is not that.
+                // What was due stays due, for whenever somebody is back.
+                critter_due = self.critters.withdraw();
+            } else {
+                match self.critters.wake_at() {
+                    Some(at) if at > now => wake_at = wake_at.min(at),
+                    Some(_) => critter_due = true,
+                    None => {}
+                }
             }
         }
 
@@ -2262,33 +2274,6 @@ impl Surface for TerminalSurface {
 
 #[cfg(test)]
 mod tests {
-    /// The shipped steps, against the states a window passes through. The
-    /// numbers on the right are what the glass runs at with the shipped
-    /// `effects_frame_skip` of 3, which is 20 Hz at a factor of one.
-    #[test]
-    fn the_glass_steps_out_only_while_nobody_is_attending() {
-        use super::{attention_factor, UNATTENDED_AFTER};
-        use std::time::Duration;
-        let just_now = Duration::from_secs(1);
-        let a_while = UNATTENDED_AFTER + Duration::from_secs(1);
-
-        // Focused and being typed into: the user's own cadence, 20 Hz.
-        assert_eq!(attention_factor(true, just_now, 2, 4), 1);
-        // Focused but untouched for half a minute: 5 Hz.
-        assert_eq!(attention_factor(true, a_while, 2, 4), 4);
-        // Clicked away from a moment ago: 10 Hz.
-        assert_eq!(attention_factor(false, just_now, 2, 4), 2);
-        // Away and untouched takes the larger step, not the product: 5 Hz,
-        // not the 1.25 Hz that multiplying them would give.
-        assert_eq!(attention_factor(false, a_while, 2, 4), 4);
-
-        // Either step at 1 switches that state off, and a step below 1 is
-        // read as 1 rather than dividing the interval away to nothing.
-        assert_eq!(attention_factor(false, just_now, 1, 4), 1);
-        assert_eq!(attention_factor(true, a_while, 2, 1), 1);
-        assert_eq!(attention_factor(false, a_while, 0, -3), 1);
-    }
-
     use super::*;
     use crt::{DegaussState, Geometry, Params};
 

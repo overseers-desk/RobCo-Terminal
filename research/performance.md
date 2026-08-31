@@ -6,7 +6,7 @@ Machine: 16 cores, NVIDIA RTX 2070 SUPER, GNOME on Wayland with Xwayland. Percen
 
 ## What a terminal costs, by who is attending it
 
-The glass paces itself to whoever is in front of it. `effects_frame_skip` counts in 60ths of a second and ships at 3, so a terminal being used animates twenty times a second. `unfocused_frame_skip` multiplies that once another window holds the keyboard, and `idle_frame_skip` once the glass has gone half a minute without a keystroke, click or scroll.
+The glass paces itself to whoever is in front of it. `effects_frame_skip` counts in 60ths of a second and ships at 3, so a terminal being used animates twenty times a second. With nobody in front of it -- the keyboard elsewhere, or five minutes without a keystroke, click or scroll -- it animates at nothing: the picture is held, no frame is drawn for it, and the whole chain costs nothing until somebody comes back. Output still draws while the picture is held; what stops is the animation over it.
 
 | state | factor | rate | cost |
 |---|---|---|---|

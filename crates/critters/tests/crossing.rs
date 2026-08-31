@@ -224,6 +224,45 @@ fn a_screen_with_no_cells_hosts_nothing_and_loses_nothing() {
     assert!(ever, "the glass never got its critter back");
 }
 
+/// Withdrawing takes a crossing off mid-walk and leaves nothing of it, and
+/// what was due is still due when there is somebody to see it again.
+#[test]
+fn a_withdrawn_crossing_leaves_the_glass_alone_and_comes_back_later() {
+    let t0 = epoch();
+    let mut critters = Critters::new(3, true, Duration::from_secs(1), [true; ART.len()]);
+    let mut crossing_at = None;
+    for i in 0..5_000u64 {
+        critters.tick(t0 + Duration::from_millis(i * 20), 80, 24);
+        if !critters.cells().is_empty() {
+            crossing_at = Some(i);
+            break;
+        }
+    }
+    let at = crossing_at.expect("nothing ever crossed");
+
+    assert!(critters.withdraw(), "the glass did not change by it");
+    assert!(critters.cells().is_empty());
+    assert_eq!(critters.crossing(), None);
+    assert!(
+        !critters.withdraw(),
+        "an empty glass changed by being cleared again"
+    );
+
+    // Nobody there: the piece stays off, however long it is left.
+    for i in at..at + 5_000 {
+        critters.withdraw();
+        assert!(critters.cells().is_empty());
+        let _ = i;
+    }
+    // And somebody back: the glass gets its critters again.
+    let mut ever = false;
+    for i in at + 5_000..at + 9_000 {
+        critters.tick(t0 + Duration::from_millis(i * 20), 80, 24);
+        ever |= !critters.cells().is_empty();
+    }
+    assert!(ever, "the glass never got its critter back");
+}
+
 #[test]
 fn taller_than_the_glass_shows_a_band_of_itself() {
     let steps = walk("locomotive", 80, 4);

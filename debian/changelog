@@ -1,5 +1,15 @@
 robco-term (0.2.1) unstable; urgency=medium
 
+  * The screen stops when you do. A window that has lost the keyboard, or
+    has gone five minutes without a keystroke, click or scroll, holds the
+    picture it has: the flicker, the sweep, the noise and the jitter stop,
+    the whole shader chain goes quiet, and a critter waits rather than
+    crossing a screen nobody is watching. Whatever the shell says still
+    arrives and still shows, and a keystroke or a click brings the tube
+    back at once. This replaces the old half-rate and quarter-rate steps,
+    so `unfocused_frame_skip` and `idle_frame_skip` are gone;
+    `effects_frame_skip` is now the one cadence, and it is what the glass
+    runs at whenever you are there.
   * A channel keeps what was yours on it. The screen comes back whole
     instead of showing the last channel's picture under the new channel's
     cursor, a run you marked with the mouse is waiting where you left it,

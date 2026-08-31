@@ -102,6 +102,23 @@ impl Critters {
         self.cells != self.prev
     }
 
+    /// Take whatever is crossing off the glass, and say whether the glass
+    /// changed by it.
+    ///
+    /// What is due stays due: `next` is left where it is, so a piece the
+    /// clock has already called for crosses when there is somebody to see
+    /// it. This is the one way a crossing ends early, and it ends the way
+    /// the invariant requires -- the cells go, and the caller paints the
+    /// frame that takes them off.
+    pub fn withdraw(&mut self) -> bool {
+        self.active = None;
+        let had = !self.cells.is_empty();
+        self.prev.clear();
+        self.prev.extend_from_slice(&self.cells);
+        self.cells.clear();
+        had
+    }
+
     /// Start a crossing if one is due, or carry the one in hand forward.
     fn advance(&mut self, now: Instant, cols: usize, rows: usize) {
         if let Some((crossing, began)) = self.active.as_mut() {
