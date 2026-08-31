@@ -24,10 +24,13 @@ use rio_vt::selection::{Selection, SelectionType};
 
 use super::{Gesture, MarkedRange};
 
+#[derive(Clone, Debug)]
 pub struct Rio {
     columns: usize,
-    /// A gesture has marked something. Cleared on a channel switch or a
-    /// resize, where the range in the grid is no longer the user's.
+    /// A gesture has marked something. Cleared on a resize, where the range
+    /// in the grid is no longer the user's; parked with the channel on a
+    /// switch, since the range it refers to is parked with it in the
+    /// channel's own grid.
     active: bool,
 }
 

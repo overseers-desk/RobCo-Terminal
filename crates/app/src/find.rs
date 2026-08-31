@@ -81,6 +81,15 @@ impl Find {
         }
     }
 
+    /// Where the query itself now sits, once it has been painted.
+    ///
+    /// A line that opens with a remembered query paints the prompt and the
+    /// query in two goes, so the floor is only known after the second: the
+    /// rows to step over are the rows the whole line ended up on.
+    pub fn set_floor(&mut self, floor: usize) {
+        self.floor = floor;
+    }
+
     /// The hit the glass is painting, or `None` before the first Enter and
     /// after a miss.
     pub fn mark(&self) -> Option<MarkedRange> {

@@ -227,6 +227,7 @@ enum Mode {
 /// pointer reported). Which of the two becomes the selection's start depends
 /// on which side of the anchor the head is on, and that is recomputed on every
 /// move so the selection follows a pointer that crosses back over its anchor.
+#[derive(Clone, Debug)]
 pub struct Konsole {
     pub selection: Selection,
     pub word_characters: String,

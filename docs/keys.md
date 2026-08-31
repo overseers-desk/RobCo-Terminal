@@ -52,6 +52,13 @@ Konsole's `Ctrl`+`Shift`+`F11` and one used to a bare `F11`.
 | Double-click | Select the word under the pointer |
 | Triple-click | Select the whole line under the pointer, wrapping and all |
 
+A mark stays with the channel it was made on. Switch away and the mark
+waits there rather than following you or being thrown away, and it is back
+on the glass when you return. A channel whose scrollback has filled up
+loses its mark instead, because the lines it named have started falling off
+the top and a mark over the wrong words looks exactly like a mark over the
+right ones.
+
 There are two selections here, as there are in every X11 terminal.
 Selecting text with the mouse fills the *primary* selection, and the middle
 button pastes it: that pair is a gesture of its own, and it leaves the
@@ -109,6 +116,11 @@ raised on, and it takes every key while it stands: what you type is the
 text to look for, and `Enter` walks the hits rather than sending a newline
 anywhere. The text is looked for literally and without regard to case, so
 `.` is a full stop and `ERROR` finds `error`.
+
+Leaving the channel takes the line down, since a line that swallows every
+key has no business standing on a screen you are not looking at. The line
+opens with the last thing you looked for already in it, ready to be stepped
+with `Enter` or typed over.
 
 `Enter` steps forward from the last hit, or from the cursor when there is
 no last hit, and wraps once when it reaches the end of the scrollback;

@@ -501,6 +501,11 @@ pub struct TerminalSurface {
     /// straight to the child and is kept nowhere. See
     /// [`TerminalSurface::ime_input`].
     ime: ImeState,
+    /// What was last looked for, kept so the find line opens with it in
+    /// place. One string for the window rather than one per channel: what a
+    /// hand reaching for the chord again wants is what it last searched
+    /// for, wherever it searched.
+    last_find: String,
     eof: bool,
     /// Where the view sits in the scrollback. The wheel moves it.
     scroll: ScrollPosition,
@@ -917,6 +922,7 @@ impl TerminalSurface {
             seam_cursor: false,
             shell_events: None,
             ime: ImeState::default(),
+            last_find: String::new(),
             eof: false,
             scroll: ScrollPosition::default(),
             // The default model until a press reads the settings: the

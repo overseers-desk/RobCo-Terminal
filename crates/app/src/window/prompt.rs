@@ -178,7 +178,12 @@ impl TerminalSurface {
 
     /// `Ctrl+Shift+F`. Raise the find line on the channel on the air, or
     /// leave the one already standing where it is: a second press is a hand
-    /// reaching for a line that is already in front of it.
+    /// reaching for a line that is already in front of it, and a line can
+    /// only stand on the channel on the air, since leaving takes it down.
+    ///
+    /// The line opens with the last query in it, ready to be stepped or
+    /// typed over. What a hand reaching for the chord again is usually
+    /// after is the search it just made.
     ///
     /// The caret is read before the prompt is painted and the floor after,
     /// which is the whole of what [`crate::find::Find`] needs to know about
@@ -189,13 +194,22 @@ impl TerminalSurface {
             return;
         }
         let on = self.channels.on_air();
+        let last = std::mem::take(&mut self.last_find);
         let Some(session) = self.channels.session_mut() else {
+            self.last_find = last;
             return;
         };
         let caret = crate::find::caret(session.term());
         session.feed(&crate::prompt::paint(crate::find::PROMPT));
-        let floor = crate::find::caret(session.term()).1;
-        self.find = Some(crate::find::Find::new(on, caret, floor));
+        let mut find = crate::find::Find::new(on, caret, 0);
+        // The remembered query goes in before the floor is read, so the row
+        // the query occupies is measured with the query on it.
+        if !last.is_empty() {
+            session.feed(&find.line.paste(&last));
+        }
+        find.set_floor(crate::find::caret(session.term()).1);
+        self.last_find = last;
+        self.find = Some(find);
     }
 
     /// The find line's keyboard, on the [`Self::prompt_key`] model: only
@@ -257,15 +271,30 @@ impl TerminalSurface {
         self.scroll.reveal(session.term_mut(), range.start.1);
     }
 
-    /// Escape. The line comes down, its mark comes off the glass with it,
-    /// and the cursor leaves the query's row so whatever the channel says
-    /// next says it on a row of its own.
-    fn close_find(&mut self) {
-        if self.find.take().is_none() {
+    /// The line comes down, its mark comes off the glass with it, and the
+    /// cursor leaves the query's row so whatever the channel says next says
+    /// it on a row of its own. Escape asks for this, and so does leaving the
+    /// channel the line stands on.
+    ///
+    /// The closing bytes go to the channel named in [`crate::find::Find::on`]
+    /// rather than the one on the air, because the two differ exactly when a
+    /// switch is what closed the line. A row that has gone takes its query
+    /// row with it, so there is nothing to close.
+    pub(super) fn close_find(&mut self) {
+        let Some(find) = self.find.take() else {
             return;
-        }
-        if let Some(session) = self.channels.session_mut() {
-            session.feed(b"\r\n");
+        };
+        // Read before the line is dropped: `prompt::Line` zeroes its buffer
+        // on the way out, so a query taken afterwards is an empty string.
+        self.last_find = find.query().to_string();
+        let (bank, channel) = find.on;
+        drop(find);
+        if let Some(row) = self
+            .channels
+            .rows_mut()
+            .find(|row| row.bank == bank && row.channel == channel)
+        {
+            row.session.feed(b"\r\n");
         }
     }
 

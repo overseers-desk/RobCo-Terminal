@@ -11,12 +11,13 @@
 //! numerals, and `chord_modifier`, whose release commits them; `on_air`, the
 //! pair the glass was last showing, so a switch's work runs on a switch;
 //! `degauss`, the flinch a switch triggers; `selection` and `scroll`, which
-//! belong to the channel that is leaving; and `cabinet`, because a window
+//! belong to the channel that is leaving; `find`, which comes down with it;
+//! and `cabinet`, because a window
 //! with no bank shown has no numerals to type against.
 
 use std::time::Instant;
 
-use crate::channels::{Close, Manager};
+use crate::channels::{BankId, Close, Manager};
 use crate::chord::Chord;
 
 use super::{spawn, TerminalSurface};
@@ -182,6 +183,42 @@ impl TerminalSurface {
         self.channel_changed();
     }
 
+    /// The selection changes hands with the glass: the channel being left
+    /// takes the live model, and the channel arriving gets its own back.
+    ///
+    /// A parked model comes back only while the arriving channel's history
+    /// is short of the scrollback it was given. Konsole's model holds raw
+    /// absolute indices and nothing rebases them, so once the oldest lines
+    /// start falling off the top, the same index names later text and the
+    /// mark would come back sitting over the wrong words. A mark in the
+    /// wrong place looks exactly like a mark in the right one, which is why
+    /// this errs at losing it.
+    fn hand_selection_over(&mut self, leaving: (BankId, u32)) {
+        let fresh = term::SelectionModel::new(self.selection.kind(), self.selection.columns());
+        let parked = std::mem::replace(&mut self.selection, fresh);
+        if let Some(row) = self
+            .channels
+            .rows_mut()
+            .find(|row| (row.bank, row.channel) == leaving)
+        {
+            row.selection = Some(parked);
+        }
+        let scrollback = self.session_config.scrollback;
+        let arriving = self.on_air;
+        if let Some(row) = self
+            .channels
+            .rows_mut()
+            .find(|row| (row.bank, row.channel) == arriving)
+        {
+            match row.selection.take() {
+                Some(model) if row.session.term().history_size() < scrollback => {
+                    self.selection = model;
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Everything that follows the current pair moving, in order: the tube
     /// flinches, the bank turns to the channel on the air, and a stretch of
     /// numerals that moved under the chord abandons its digits.
@@ -191,10 +228,12 @@ impl TerminalSurface {
         }
         let on_air = self.channels.on_air();
         if self.on_air != on_air {
+            let leaving = self.on_air;
             self.on_air = on_air;
-            // A mark is a region of one grid and means nothing on another, the
-            // same reason a resize clears it (`sync_geometry`).
-            self.selection.clear();
+            // A mark is a region of one grid, so it goes with its grid: the
+            // one being left keeps it against the next visit, and the one
+            // arriving brings back whatever it was holding.
+            self.hand_selection_over(leaving);
             // The view offset's authority is rio-vt's own `display_offset`,
             // which is the channel's, not the window's: `ScrollPosition` is a
             // mirror of it, so the channel coming to the screen brings its own
@@ -213,6 +252,12 @@ impl TerminalSurface {
             if let Some(glass) = self.glass.as_mut() {
                 glass.renderer.invalidate();
             }
+            // The find line takes every key while it stands, so one left
+            // behind on a channel nobody is looking at is a mode with no way
+            // out: its own channel is the only one whose Escape it answers.
+            // It comes down here, and `last_find` brings the query back when
+            // the line is raised again.
+            self.close_find();
             // A composition belongs to the channel it was being typed into.
             // Carried across, it would commit into whatever program the new
             // channel is running.

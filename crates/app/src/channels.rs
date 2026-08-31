@@ -120,6 +120,13 @@ pub struct Row<S> {
     /// What the slot holds. `app` puts a `term::Session` here; a test puts
     /// whatever it can assert on.
     pub session: S,
+    /// The text selection made on this channel, while another channel is on
+    /// the air. A mark is a region of one grid, so it waits here for its own
+    /// grid to come back rather than being shown over somebody else's or
+    /// thrown away. It rides with the row, which is what a store chord, an
+    /// attach and a collapse all renumber, so no selection can arrive at a
+    /// session that did not make it.
+    pub selection: Option<term::SelectionModel>,
 }
 
 /// A bank's stretch of the pager's flattened space.
@@ -452,6 +459,7 @@ impl<S> Channels<S> {
             title: String::new(),
             tmux: None,
             session,
+            selection: None,
         });
         self.set_current(0, channel);
         true
@@ -551,6 +559,7 @@ impl<S> Channels<S> {
             title: normalize_title(name),
             tmux: Some((window.clone(), pane.clone())),
             session,
+            selection: None,
         });
         if asked || greets {
             self.set_current(bank, channel);
@@ -826,6 +835,7 @@ impl<S> Channels<S> {
             title: gateway_title(host),
             tmux: None,
             session: gateway,
+            selection: None,
         });
         Some(id)
     }
@@ -857,6 +867,7 @@ impl<S> Channels<S> {
             title: format!("{user}@{host}"),
             tmux: None,
             session,
+            selection: None,
         });
         self.set_current(id, 1);
         Some(id)
@@ -878,7 +889,14 @@ impl<S> Channels<S> {
         let Some(session) = make() else {
             return false;
         };
-        self.insert_row(Row { bank, channel, title, tmux: None, session });
+        self.insert_row(Row {
+            bank,
+            channel,
+            title,
+            tmux: None,
+            session,
+            selection: None,
+        });
         self.set_current(bank, channel);
         true
     }

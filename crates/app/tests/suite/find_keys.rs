@@ -127,6 +127,42 @@ fn the_find_line_walks_the_hits_and_escape_takes_it_down() {
     );
 }
 
+/// The line takes every key while it stands, so leaving the channel it
+/// stands on takes it down rather than stranding a mode on a screen nobody
+/// is looking at. What was typed into it comes back with the next line.
+#[test]
+fn leaving_the_channel_takes_the_line_down_and_keeps_the_query() {
+    let mut surface = surface();
+    wait_for(&mut surface, "ping three");
+
+    character(&mut surface, "F", CTRL_SHIFT);
+    typed(&mut surface, "ping");
+    assert_eq!(surface.find_query(), Some("ping"));
+
+    character(&mut surface, "T", CTRL_SHIFT);
+    assert_eq!(
+        surface.find_query(),
+        None,
+        "the line followed the user to the new channel"
+    );
+
+    // And the new channel's own Escape is its own again, rather than being
+    // swallowed by a line standing somewhere behind it.
+    character(&mut surface, "F", CTRL_SHIFT);
+    assert_eq!(
+        surface.find_query(),
+        Some("ping"),
+        "the line opened empty rather than with the last query"
+    );
+    assert!(
+        screen(&surface).contains("Find: ping"),
+        "the remembered query is not on the glass\n{}",
+        screen(&surface)
+    );
+    named(&mut surface, NamedKey::Escape, NONE);
+    assert_eq!(surface.find_query(), None);
+}
+
 #[test]
 fn a_query_that_is_not_there_marks_nothing() {
     let mut surface = surface();

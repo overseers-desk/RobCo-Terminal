@@ -117,6 +117,7 @@ impl MarkedRange {
 }
 
 /// The selection model in force, and the gesture handlers it answers.
+#[derive(Clone, Debug)]
 pub enum SelectionModel {
     Konsole(konsole::Konsole),
     Rio(rio::Rio),
