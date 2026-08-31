@@ -1,4 +1,4 @@
-robco-term (0.2.0) unstable; urgency=medium
+robco-term (0.2.1) unstable; urgency=medium
 
   * A channel keeps what was yours on it. The screen comes back whole
     instead of showing the last channel's picture under the new channel's
@@ -12,6 +12,11 @@ robco-term (0.2.0) unstable; urgency=medium
     to stay behind and take no keys but its own channel's, so the chord
     did nothing on any other channel and nothing at all once the channel
     it was raised on had been closed.
+
+ -- Weiwu Zhang <a@colourful.land>  Mon, 31 Aug 2026 11:40:00 +1000
+
+robco-term (0.2.0) unstable; urgency=medium
+
   * A destination can be an IPv6 address. `--ssh 2001:db8::1` goes where
     it says, and the brackets carry a port the way `ssh` spells one,
     `--ssh [2001:db8::1]:2222`. Before this the last group of the address
