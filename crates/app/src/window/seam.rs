@@ -1,8 +1,9 @@
 //! The seam between the bank column and the glass, and the bank's own keys.
 //!
-//! Two claims on a pointer event that the grid never sees. The grab strip
-//! over the bank's right edge is the narrower one and gets first refusal;
-//! a press inside one of the drawn windows below it is the second.
+//! Three claims on a pointer event that the grid never sees. The grab strip
+//! over the bank's right edge is the narrowest one and gets first refusal;
+//! a press inside one of the drawn windows below it is the second, and one
+//! on a key of the pager at the bank's foot is the third.
 //!
 //! Fields touched: `cabinet`, which owns the geometry and the hit tests and
 //! takes a drag on the spot; `seam_press`, the press the seam is holding;
@@ -66,6 +67,34 @@ impl TerminalSurface {
             return false;
         };
         self.press_strip(strips.rows[row].channel);
+        true
+    }
+
+    /// The pager at the bank's foot: a left press on PREV or NEXT walks the
+    /// pages, which is the press the drawn rocker has always looked like.
+    ///
+    /// Returns whether it took the press. The hit test is the furniture's
+    /// ([`chassis::Cabinet::pager_at`], over the same key rectangles it drew)
+    /// and the step is [`TerminalSurface::step_bank`]'s, the one the
+    /// `Alt`+`PgUp`/`PgDown` keys make: within a bank it views another
+    /// screenful, and onto another bank's stretch it brings that bank's
+    /// remembered channel back to the glass. A press past the last page is
+    /// taken and does nothing, the step's own clamp answering for the dimmed
+    /// key.
+    pub(super) fn pager_pressed(
+        &mut self,
+        button: MouseButton,
+        position: PhysicalPosition<f64>,
+    ) -> bool {
+        if button != MouseButton::Left {
+            return false;
+        }
+        let scale = self.viewport.scale_factor.max(f64::EPSILON);
+        let (x, y) = (position.x / scale, position.y / scale);
+        let Some(direction) = self.cabinet.as_ref().and_then(|c| c.pager_at(x, y)) else {
+            return false;
+        };
+        self.step_bank(direction);
         true
     }
 

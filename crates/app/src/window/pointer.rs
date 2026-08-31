@@ -247,8 +247,14 @@ impl TerminalSurface {
         // mark the screen (`chassis::cabinet`'s wiring sketch). The bank's own
         // windows come next, for the same reason and in the same order: the
         // grab strip lies over the bank's right edge, so the seam is the
-        // narrower claim and gets first refusal.
-        if self.seam_pressed(button, position) || self.strip_pressed(button, position) {
+        // narrower claim and gets first refusal. The pager's keys at the
+        // bank's foot are the third claim and the last before the grid: they
+        // stand below the rows, so where a shell rides its rail up into the
+        // air above its own item, the row that owns that air keeps it.
+        if self.seam_pressed(button, position)
+            || self.strip_pressed(button, position)
+            || self.pager_pressed(button, position)
+        {
             return;
         }
         let Some(button) = pointer_button(button) else {

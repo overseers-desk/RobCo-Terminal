@@ -21,6 +21,8 @@ use app::window::TerminalSurface;
 use chassis::Cabinet;
 use config::Config;
 use term::{CellSize, SessionConfig, Viewport};
+use winit::dpi::PhysicalPosition;
+use winit::event::MouseButton;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 
 const CELL_W: f32 = 9.0;
@@ -130,6 +132,44 @@ fn release_chord(surface: &mut TerminalSurface) {
 
 fn title(surface: &TerminalSurface) -> Option<String> {
     app::shell::Surface::title(surface)
+}
+
+/// The middle of each of the pager's two keys, PREV then NEXT, as a hand
+/// would find them: where this surface's own cabinet drew them
+/// (`chassis::shells::pager_keys`, the rectangles the hit test reads) shifted
+/// by where the pager stands on the bank it drew. The surface's cabinet and
+/// not a fresh one of the same measures: the bank it holds has been through
+/// the window's own fit, and the press lands on the appliance on screen.
+///
+/// The harness runs at a scale factor of 1, so these are physical pixels as
+/// they stand.
+fn pager_keys(surface: &TerminalSurface) -> (PhysicalPosition<f64>, PhysicalPosition<f64>) {
+    let cabinet = surface.cabinet().expect("the harness gave it a cabinet");
+    let bank = (cabinet.layout().bank.width, cabinet.layout().bank.height);
+    // The configuration `surface_of_height` built that cabinet from.
+    let cfg = Config::default();
+    let pager =
+        chassis::furniture::pager_rect(cabinet.geometry(), &chassis::shell_metrics(&cfg), bank);
+    let (prev, next) = chassis::shells::pager_keys(cfg.chassis.shell, (pager.width, pager.height));
+    let mid = |r: chassis::Rect, direction: i32| {
+        let (x, y) = (
+            pager.x + r.x + r.width / 2.0,
+            pager.y + r.y + r.height / 2.0,
+        );
+        assert_eq!(
+            cabinet.pager_at(x, y),
+            Some(direction),
+            "the harness is pressing somewhere that is not a pager key"
+        );
+        PhysicalPosition::new(x, y)
+    };
+    (mid(prev, -1), mid(next, 1))
+}
+
+/// The button going down, which is the whole gesture as far as the bank's
+/// keys are concerned: the strips and the pager both act on the press.
+fn press(surface: &mut TerminalSurface, at: PhysicalPosition<f64>) {
+    app::shell::Surface::mouse_pressed(surface, MouseButton::Left, at, ModifiersState::empty());
 }
 
 /// Contract item 3: "`Ctrl+Shift+T` opens one more channel/tab" (`xtask
@@ -466,6 +506,47 @@ fn alt_page_keys_step_within_a_bank_without_moving_the_air() {
     assert_eq!(strips.page_index, 1);
     assert_eq!(strips.current_row, Some(0));
     assert!(strips.rows[0].current && strips.rows[0].open);
+}
+
+/// The drawn rocker is a key and not a picture: a press on NEXT walks the view
+/// the way `Alt`+`PgDown` does, PREV walks it back, and a press past the last
+/// page does nothing, which is what the dimmed rocker means.
+///
+/// The whole path, which is what this harness is for: the press arrives as a
+/// window event, the hit test is the furniture's own key rectangles
+/// (`chassis::Cabinet::pager_at`), and the step is `TerminalSurface::step_bank`
+/// -- the same one the keys make, so the two gestures cannot part company.
+#[test]
+fn a_press_on_the_pagers_keys_walks_the_pages() {
+    // The three-key page of the test above, so a second page exists.
+    let mut surface = surface_of_height(370);
+    wait_for_prompt(&mut surface);
+    character(&mut surface, "t", CTRL_SHIFT);
+    character(&mut surface, "t", CTRL_SHIFT);
+    assert_eq!(surface.bank_strips().page_count, 2);
+    let before = surface.channels().current_channel();
+    let (prev, next) = pager_keys(&surface);
+
+    press(&mut surface, next);
+    assert_eq!(
+        surface.bank_strips().page_index,
+        1,
+        "the NEXT key did not walk the view"
+    );
+    // Both pages are the one bank's, so this is the view-only step: the air
+    // stays where it was.
+    assert_eq!(surface.channels().current_channel(), before);
+
+    // Past the last page the step's own clamp answers: the press is taken and
+    // the view stands still.
+    press(&mut surface, next);
+    assert_eq!(surface.bank_strips().page_index, 1);
+
+    press(&mut surface, prev);
+    assert_eq!(surface.bank_strips().page_index, 0);
+    press(&mut surface, prev);
+    assert_eq!(surface.bank_strips().page_index, 0, "and clamps at page one");
+    assert_eq!(surface.channels().current_channel(), before);
 }
 
 /// The window's title is the current channel's, and it follows the knob. A
