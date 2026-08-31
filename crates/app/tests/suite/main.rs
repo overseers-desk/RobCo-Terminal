@@ -14,6 +14,7 @@ mod fullscreen_pointer;
 mod ime;
 mod keyboard_scroll;
 mod meta_keys;
+mod one_instance;
 mod pointer;
 mod pointer_live_settings;
 mod profile_cli;
