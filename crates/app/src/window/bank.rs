@@ -128,14 +128,30 @@ impl TerminalSurface {
         self.cabinet.as_ref().is_some_and(|c| c.is_shown())
     }
 
-    /// `Alt+PgUp` / `Alt+PgDown`: the pager, which views a page without
-    /// stealing the air. Answers whether there was a bank to step.
+    /// `Alt+PgUp` / `Alt+PgDown`: the pager. Within one bank's stretch it
+    /// views a page without stealing the air, so a hand-picked page can be
+    /// read while the channel on screen keeps printing. Landing on another
+    /// bank's stretch is the band switch it looks like, and brings that bank
+    /// back as it was left: the channel it last had on the air
+    /// ([`crate::channels::Channels::select_bank`], which owns that rule).
+    ///
+    /// Answers whether there was a bank to step.
     pub fn step_bank(&mut self, direction: i32) -> bool {
         if !self.has_bank() {
             return false;
         }
+        let before = self.pager.view(&self.channels).bank;
         self.pager.step(direction, &self.channels);
-        self.settle_bank();
+        let landed = self.pager.view(&self.channels).bank;
+        if landed == before {
+            self.settle_bank();
+            return true;
+        }
+        self.channels.select_bank(landed);
+        // `channel_changed` settles the bank itself, and turns it to the
+        // channel it just put on the air: a band comes back showing the
+        // station it was left on, page and all.
+        self.channel_changed();
         true
     }
 

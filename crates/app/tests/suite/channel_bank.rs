@@ -422,10 +422,13 @@ fn a_press_on_a_strip_opens_a_dark_slot_and_selects_an_open_one() {
     assert_eq!(wait_for_prompt(&mut surface), first);
 }
 
-/// Stepping the pager views a page without stealing the air, and the
-/// numerals restart at 1 on the new page.
+/// Stepping the pager over another of the current bank's own screenfuls views
+/// a page without stealing the air, and the numerals restart at 1 on the new
+/// page. Crossing into *another* bank's stretch is a band switch and does move
+/// the air; that needs a second bank, so it is pinned where one stands
+/// (`tmux_flow`), and the rule itself in `app::channels`.
 #[test]
-fn alt_page_keys_step_the_bank_without_moving_the_air() {
+fn alt_page_keys_step_within_a_bank_without_moving_the_air() {
     // A three-key page, so a second page exists as soon as the next free slot
     // is past the first three: paging only unrolls a page far enough to
     // reach the slot a new channel would take.
@@ -436,6 +439,11 @@ fn alt_page_keys_step_the_bank_without_moving_the_air() {
     character(&mut surface, "t", CTRL_SHIFT);
     character(&mut surface, "t", CTRL_SHIFT);
     assert_eq!(surface.bank_strips().page_count, 2);
+    assert_eq!(
+        surface.channels().banks().len(),
+        1,
+        "both pages are the one bank's, so the step stays inside it"
+    );
     let before = surface.channels().current_channel();
 
     named(&mut surface, NamedKey::PageDown, CHORD);

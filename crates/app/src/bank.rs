@@ -9,9 +9,12 @@
 //! read 1..N on every page, the way a car stereo reuses its preset keys across
 //! FM1/FM2/FM3. The pager walks one flattened space over every bank the model
 //! holds, home's slots first and then each attachment's, so the same two keys
-//! are the band switch and the preset scroll. Stepping the pager views a page
-//! without stealing the air: the channel on screen stays put until a switch is
-//! pressed.
+//! are the band switch and the preset scroll. Stepping within one bank's own
+//! screenfuls views a page without stealing the air: the channel on screen
+//! stays put until a switch is pressed. The arithmetic here never moves the
+//! air at all -- crossing into another bank's stretch is a band switch, and
+//! what that means for the channel on the air is
+//! [`crate::window::TerminalSurface::step_bank`]'s.
 
 use chassis::{BankGeometry, BankStrips, ChannelIndicator, StripRow};
 
@@ -297,13 +300,18 @@ mod tests {
         assert_eq!(bank.absolute_slot(&set, 20), 0);
     }
 
+    /// Within one bank's stretch, which is the whole of what this arithmetic
+    /// decides: a step that crosses into another bank's is a band switch, and
+    /// that is `TerminalSurface::step_bank`'s to make.
     #[test]
-    fn stepping_the_pager_views_a_page_without_stealing_the_air() {
+    fn stepping_the_pager_within_a_bank_views_a_page_without_stealing_the_air() {
         let mut set = model();
         set.open_channel(0, 7, || Some(7));
         let mut bank = pager(3, &set);
+        assert_eq!(set.banks().len(), 1, "one bank, so the step stays in it");
         let before = (set.current_bank(), set.current_channel());
         bank.step(-1, &set);
+        assert_eq!(bank.view(&set).bank, before.0);
         assert_eq!((set.current_bank(), set.current_channel()), before);
         // ...and the marked row leaves with it.
         let strips = bank.strips(&set, ChannelIndicator::Glow);

@@ -1166,3 +1166,83 @@ fn phase_16_a_cold_reattach_restores_every_session_and_every_window() {
     });
     assert_eq!(server.clients(), 2);
 }
+
+/// The chord modifier, forked per platform as the window forks it.
+#[cfg(target_os = "macos")]
+const CHORD: ModifiersState = ModifiersState::SUPER;
+#[cfg(not(target_os = "macos"))]
+const CHORD: ModifiersState = ModifiersState::ALT;
+
+/// The flow's surface with a cabinet on it: the pager keys turn nothing
+/// without a bank drawn, and 730px of window is eleven rows, so each bank's
+/// stretch here is one page and a step is a crossing.
+fn surface_with_bank() -> TerminalSurface {
+    std::env::remove_var("TMUX");
+    let viewport = Viewport::new(720, 730, 1.0, CellSize::new(9.0, 18.0));
+    let mut surface = TerminalSurface::headless(&shell(), viewport);
+    surface.set_cabinet(chassis::Cabinet::from_config(
+        &config::Config::default(),
+        720.0,
+        730.0,
+    ));
+    surface
+}
+
+/// `Alt`+`PageUp` / `PageDown` crossing from one bank's stretch into another
+/// is the band switch it looks like: the bank landed on comes back showing the
+/// channel it was left on, and the one left behind keeps its own against the
+/// return. Stepping between one bank's own screenfuls stays view-only, which
+/// `channel_bank` pins; only a crossing moves the air, and only a second bank
+/// can show it.
+#[test]
+fn phase_17_paging_across_banks_brings_each_one_back_to_the_channel_it_was_left_on() {
+    if !have_tmux() {
+        return;
+    }
+    let server = Server::start();
+    server.run(&["new-window", "-t", "one", "-n", "second"]);
+    let mut surface = surface_with_bank();
+
+    // A second home channel, because the one the attach is typed into leaves
+    // home for the attachment and holds its slot dark behind it.
+    surface.new_channel();
+    assert_eq!(surface.channels().on_air(), (0, 2));
+    let bank = attach(&mut surface, &server);
+    assert_eq!(
+        surface.bank_strips().page_count,
+        2,
+        "one page per bank, so a step is a crossing"
+    );
+    assert_eq!(surface.channels().on_air(), (bank, 2), "the attach greeted");
+
+    // Leave the attachment standing on its second window.
+    surface.press_strip(3);
+    assert_eq!(surface.channels().on_air(), (bank, 3));
+
+    // Page home. Home was left on slot 2, which is the slot now held dark
+    // behind the gateway, so the air falls to the first row home still has.
+    press(&mut surface, Key::Named(NamedKey::PageUp), None, CHORD);
+    assert_eq!(surface.channels().on_air(), (0, 1));
+
+    // Home takes a channel of its own, and that is where it is left.
+    surface.new_channel();
+    assert_eq!(surface.channels().on_air(), (0, 3));
+
+    // Back to the attachment: the window it was left on, not its gateway.
+    press(&mut surface, Key::Named(NamedKey::PageDown), None, CHORD);
+    assert_eq!(surface.channels().on_air(), (bank, 3));
+    let strips = surface.bank_strips();
+    assert!(
+        strips.current_row.is_some(),
+        "the bank came back showing the channel it put on the air"
+    );
+
+    // ...and home the same way, and the pumps the event loop runs between
+    // keystrokes leave it there.
+    press(&mut surface, Key::Named(NamedKey::PageUp), None, CHORD);
+    assert_eq!(surface.channels().on_air(), (0, 3));
+    for _ in 0..8 {
+        surface.pump();
+    }
+    assert_eq!(surface.channels().on_air(), (0, 3));
+}

@@ -107,6 +107,12 @@ impl Manager {
 pub struct Bank {
     pub id: BankId,
     pub manager: Manager,
+    /// The channel this bank last had on the air. The current channel is a
+    /// per-bank fact -- a band selector comes back to the station it was left
+    /// on -- so it is held here and nowhere else, and the set's current
+    /// channel is whatever the current bank's entry reads. A bank that has
+    /// never taken the air holds 1, its gateway or first slot.
+    pub channel: u32,
 }
 
 /// One channel slot with a session in it.
@@ -162,7 +168,6 @@ pub struct Channels<S> {
     rows: Vec<Row<S>>,
     next_bank_id: BankId,
     current_bank: BankId,
-    current_channel: u32,
     /// The set only flinches once it is on: bringing up the first channel is
     /// not a channel change.
     degauss_armed: bool,
@@ -185,11 +190,11 @@ impl<S> Channels<S> {
             banks: vec![Bank {
                 id: 0,
                 manager: Manager::Home,
+                channel: 1,
             }],
             rows: Vec::new(),
             next_bank_id: 1,
             current_bank: 0,
-            current_channel: 0,
             degauss_armed: false,
             degauss_pending: false,
             stored: Vec::new(),
@@ -235,14 +240,19 @@ impl<S> Channels<S> {
         self.current_bank
     }
 
+    /// The channel of the bank on the air, read off that bank. Zero while the
+    /// current bank id names no bank -- the beat between a bank being taken
+    /// out of the list and the air landing somewhere else -- which is the
+    /// answer the readers below already gave for a pair naming no row.
     pub fn current_channel(&self) -> u32 {
-        self.current_channel
+        self.bank_of(self.current_bank)
+            .map_or(0, |i| self.banks[i].channel)
     }
 
     /// The pair on the air, which is how most callers want it: nothing reads
     /// one of these two without reading the other.
     pub fn on_air(&self) -> (BankId, u32) {
-        (self.current_bank, self.current_channel)
+        (self.current_bank, self.current_channel())
     }
 
     pub fn len(&self) -> usize {
@@ -290,19 +300,19 @@ impl<S> Channels<S> {
     /// What the window title reads. `None` is where the caller falls back to
     /// the application's own name, which is the surface's string to supply.
     pub fn current_title(&self) -> Option<&str> {
-        match self.slot_title(self.current_bank, self.current_channel) {
+        match self.slot_title(self.current_bank, self.current_channel()) {
             Some(t) if !t.is_empty() => Some(t),
             _ => None,
         }
     }
 
     pub fn current(&self) -> Option<&Row<S>> {
-        self.row_of(self.current_bank, self.current_channel)
+        self.row_of(self.current_bank, self.current_channel())
             .map(|i| &self.rows[i])
     }
 
     pub fn current_mut(&mut self) -> Option<&mut Row<S>> {
-        self.row_of(self.current_bank, self.current_channel)
+        self.row_of(self.current_bank, self.current_channel())
             .map(|i| &mut self.rows[i])
     }
 
@@ -419,14 +429,42 @@ impl<S> Channels<S> {
     }
 
     /// The one writer of the current pair, and so the one place the tube is
-    /// asked to flinch.
+    /// asked to flinch. The channel is written through to the bank it belongs
+    /// to, which is where the pair's second half lives; a bank already gone
+    /// from the list -- a row removed with its bank under it -- keeps nothing,
+    /// and the air is on its way elsewhere anyway.
     fn set_current(&mut self, bank: BankId, channel: u32) {
-        let moved = bank != self.current_bank || channel != self.current_channel;
+        let moved = bank != self.current_bank || channel != self.current_channel();
         self.current_bank = bank;
-        self.current_channel = channel;
+        if let Some(i) = self.bank_of(bank) {
+            self.banks[i].channel = channel;
+        }
         if moved && self.degauss_armed {
             self.degauss_pending = true;
         }
+    }
+
+    /// The air lands on a bank the way a band selector does: on the channel
+    /// that bank was left showing, or on its first open row when that slot has
+    /// gone dark since (rows die under a bank without the air being there to
+    /// see it). False for a bank this set does not hold, and for one holding
+    /// no open row: there would be nothing to put on the glass, so the air
+    /// stays where it is.
+    pub fn select_bank(&mut self, bank: BankId) -> bool {
+        let Some(i) = self.bank_of(bank) else {
+            return false;
+        };
+        let remembered = self.banks[i].channel;
+        let channel = if self.row_of(bank, remembered).is_some() {
+            remembered
+        } else {
+            match self.rows.iter().find(|r| r.bank == bank) {
+                Some(row) => row.channel,
+                None => return false,
+            }
+        };
+        self.set_current(bank, channel);
+        true
     }
 
     // ---- opening -----------------------------------------------------
@@ -532,7 +570,7 @@ impl<S> Channels<S> {
         if channel < 1 {
             return false;
         }
-        let on_gateway = (self.current_bank, self.current_channel) == (bank, 1);
+        let on_gateway = self.on_air() == (bank, 1);
         let Some(Manager::Tmux {
             new_window_pending,
             attach_done,
@@ -660,7 +698,7 @@ impl<S> Channels<S> {
         let Some(index) = self.row_of(bank, channel) else {
             return;
         };
-        let was_current = bank == self.current_bank && channel == self.current_channel;
+        let was_current = self.on_air() == (bank, channel);
         self.rows.remove(index);
         if was_current {
             if let Some(next) = self.nearest_row(index, bank) {
@@ -719,10 +757,10 @@ impl<S> Channels<S> {
         if bank != self.current_bank {
             return false;
         }
-        if !(1..=CHANNEL_CAP).contains(&channel) || channel == self.current_channel {
+        if !(1..=CHANNEL_CAP).contains(&channel) || channel == self.current_channel() {
             return false;
         }
-        let origin = self.current_channel;
+        let origin = self.current_channel();
         let Some(from) = self.row_of(bank, origin) else {
             return false;
         };
@@ -766,7 +804,8 @@ impl<S> Channels<S> {
             .filter(|r| r.bank == self.current_bank)
             .map(|r| r.channel)
             .collect();
-        let Some(pos) = slots.iter().position(|c| *c == self.current_channel) else {
+        let current = self.current_channel();
+        let Some(pos) = slots.iter().position(|c| *c == current) else {
             return;
         };
         if slots.is_empty() {
@@ -806,7 +845,7 @@ impl<S> Channels<S> {
             return None;
         }
         let id = self.push_bank(host, Some((bank, channel)));
-        let was_current = bank == self.current_bank && channel == self.current_channel;
+        let was_current = self.on_air() == (bank, channel);
         let armed = self.degauss_armed;
         self.degauss_armed = false;
         self.rows[index].bank = id;
@@ -860,6 +899,7 @@ impl<S> Channels<S> {
                 user: user.to_string(),
                 port,
             },
+            channel: 1,
         });
         self.insert_row(Row {
             bank: id,
@@ -913,6 +953,7 @@ impl<S> Channels<S> {
                 new_window_pending: false,
                 attach_done: false,
             },
+            channel: 1,
         });
         id
     }
@@ -1266,6 +1307,57 @@ mod tests {
         assert_eq!(set.new_tmux_window(), Some(bank));
         assert!(window(&mut set, bank, 3, "asked", 3));
         assert_eq!(set.current_channel(), 3);
+    }
+
+    /// The pager landing on a bank is a band selector coming back to the
+    /// station it was left on. Each bank keeps its own, so leaving one and
+    /// returning finds the channel that was showing there.
+    #[test]
+    fn a_bank_comes_back_to_the_channel_it_was_left_on() {
+        let mut set = channels();
+        open(&mut set, 0, 2, 22);
+        let bank = spawned(&mut set, "prime", 44);
+        window(&mut set, bank, 1, "vim", 1);
+        window(&mut set, bank, 2, "logs", 2);
+        assert_eq!(set.on_air(), (0, 2), "the found bank took no air");
+
+        // A bank that has never been on the air comes up on its first slot,
+        // which on an attachment is the gateway.
+        assert!(set.select_bank(bank));
+        assert_eq!(set.on_air(), (bank, 1));
+        set.select_channel(bank, 3);
+
+        // Home is where it was left, and so is the attachment on the way back.
+        assert!(set.select_bank(0));
+        assert_eq!(set.on_air(), (0, 2));
+        assert!(set.select_bank(bank));
+        assert_eq!(set.on_air(), (bank, 3));
+
+        // A bank this set does not hold is nowhere to land.
+        assert!(!set.select_bank(77));
+        assert_eq!(set.on_air(), (bank, 3));
+    }
+
+    /// Rows die under a bank nobody is looking at, the slot it was left on
+    /// among them: the return lands on what the bank still has.
+    #[test]
+    fn a_bank_whose_remembered_slot_went_dark_comes_back_on_its_first_open_row() {
+        let mut set = channels();
+        open(&mut set, 0, 2, 22);
+        open(&mut set, 0, 3, 33);
+        set.select_channel(0, 2);
+        let bank = spawned(&mut set, "prime", 44);
+        window(&mut set, bank, 1, "vim", 1);
+        assert!(set.select_bank(bank));
+
+        // Home's slot 2, the one it was left on, exits while another bank has
+        // the air, and slot 1 with it.
+        assert_eq!(set.close_channel(0, 2), Close::Removed);
+        assert_eq!(set.close_channel(0, 1), Close::Removed);
+        assert_eq!(set.on_air(), (bank, 1), "neither close moved the air");
+
+        assert!(set.select_bank(0));
+        assert_eq!(set.on_air(), (0, 3), "the first row home still holds");
     }
 
     #[test]

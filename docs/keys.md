@@ -23,7 +23,7 @@ so the same bindings are typed there by pressing `Esc` and then the key.
 | `Ctrl`+`Shift`+`W` | Close this channel |
 | `Ctrl`+`PageUp` / `PageDown` | Previous / next channel |
 | `Ctrl`+`Shift`+`Left` / `Right` | Move the channel on screen one slot |
-| `Alt`+`PageUp` / `PageDown` | Page the bank without switching channel |
+| `Alt`+`PageUp` / `PageDown` | Page the bank |
 
 The digit `0` on its own means channel 10. Digits are typed one at a time,
 and the chord fires the moment no longer slot number could still match what
@@ -33,6 +33,13 @@ waits to see whether a second digit is coming. The digit chords name the
 numerals engraved on the bank while one is drawn, and the channel itself
 where none is. Only the pager keys need the bank on show, having nothing to
 step without it.
+
+Paging over another screenful of the same bank leaves the channel on screen
+alone, so a bank of more slots than the window fits can be read through
+without interrupting anything. Paging onto another bank's slots switches to
+that bank, on the channel it was last showing: it is the band switch it looks
+like, and a band comes back to the station it was left on. A bank whose last
+channel has since exited comes back on the first slot it still holds.
 
 `Ctrl`+`Shift`+`Left` / `Right` swap the channel on screen with its
 neighbour, and take an empty slot outright. The first slot and the last are
