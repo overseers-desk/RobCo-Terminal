@@ -244,6 +244,13 @@ impl TerminalSurface {
             self.dragging = false;
             self.secondary_press = false;
             self.last_click = None;
+            // And the memory the next gesture reads: the cell the pointer
+            // was last over is a cell of the grid that just left, and a
+            // motion event on the new one must not be swallowed for matching
+            // it; the wheel's banked trackpad pixels were travel over that
+            // same grid.
+            self.pointer_cell = (0, 0);
+            self.wheel_pixels = 0.0;
             // This must run only when the air moves and at no other time:
             // `channel_changed` is also called from the pump, every 8ms, and
             // `ensure_visible` recomputes `page_index` from the channel on the
