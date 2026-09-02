@@ -13,10 +13,15 @@
 
 use std::time::{Duration, Instant};
 
-use critters::{Critters, Crossing, ART};
+use critters::{Critters, Crossing, Timing, ART};
 
 fn epoch() -> Instant {
     Instant::now()
+}
+
+/// The drawn wait, which is what all but the clock test exercises.
+fn random(seconds: u64) -> Timing {
+    Timing::Random(Duration::from_secs(seconds))
 }
 
 /// One step of a walk: how far along, and what it wanted painted.
@@ -116,8 +121,8 @@ fn no_piece_stands_on_one_cell_for_longer_than_a_second() {
 fn the_same_seed_paints_the_same_screen() {
     let (t0, mut a, mut b) = (
         epoch(),
-        Critters::new(42, true, Duration::from_secs(60), [true; ART.len()]),
-        Critters::new(42, true, Duration::from_secs(60), [true; ART.len()]),
+        Critters::new(42, true, random(60), [true; ART.len()]),
+        Critters::new(42, true, random(60), [true; ART.len()]),
     );
     for i in 0..20_000u64 {
         let now = t0 + Duration::from_millis(i * 25);
@@ -131,7 +136,7 @@ fn the_same_seed_paints_the_same_screen() {
 #[test]
 fn a_day_of_crossings_all_end() {
     let t0 = epoch();
-    let mut critters = Critters::new(9, true, Duration::from_secs(900), [true; ART.len()]);
+    let mut critters = Critters::new(9, true, random(900), [true; ART.len()]);
     let (mut seen, mut standing, mut on_screen) = (0u32, None, 0u32);
     // A day at the shipped redraw cadence.
     for i in 0..(24 * 60 * 60 * 1000 / 50) {
@@ -171,7 +176,7 @@ fn a_day_of_crossings_all_end() {
 fn a_coarse_cadence_still_crosses_and_still_ends() {
     for gap in [16u64, 50, 167] {
         let t0 = epoch();
-        let mut critters = Critters::new(5, true, Duration::from_secs(30), [true; ART.len()]);
+        let mut critters = Critters::new(5, true, random(30), [true; ART.len()]);
         let mut ever = false;
         for i in 0..(60 * 60 * 1000 / gap) {
             critters.tick(t0 + Duration::from_millis(i * gap), 80, 24);
@@ -188,7 +193,7 @@ fn a_coarse_cadence_still_crosses_and_still_ends() {
 #[test]
 fn a_resize_mid_crossing_stays_in_bounds_and_still_ends() {
     let t0 = epoch();
-    let mut critters = Critters::new(11, true, Duration::from_secs(5), [true; ART.len()]);
+    let mut critters = Critters::new(11, true, random(5), [true; ART.len()]);
     let mut sizes = [(80usize, 24usize), (40, 8), (200, 60), (3, 1), (80, 24)]
         .into_iter()
         .cycle();
@@ -210,7 +215,7 @@ fn a_resize_mid_crossing_stays_in_bounds_and_still_ends() {
 #[test]
 fn a_screen_with_no_cells_hosts_nothing_and_loses_nothing() {
     let t0 = epoch();
-    let mut critters = Critters::new(3, true, Duration::from_secs(1), [true; ART.len()]);
+    let mut critters = Critters::new(3, true, random(1), [true; ART.len()]);
     for i in 0..5_000u64 {
         critters.tick(t0 + Duration::from_millis(i * 20), 0, 0);
         assert!(critters.cells().is_empty());
@@ -225,11 +230,11 @@ fn a_screen_with_no_cells_hosts_nothing_and_loses_nothing() {
 }
 
 /// Withdrawing takes a crossing off mid-walk and leaves nothing of it, and
-/// what was due is still due when there is somebody to see it again.
+/// the glass gets critters again once there is somebody to see them.
 #[test]
-fn a_withdrawn_crossing_leaves_the_glass_alone_and_comes_back_later() {
+fn a_withdrawn_crossing_leaves_the_glass_alone_and_the_next_still_comes() {
     let t0 = epoch();
-    let mut critters = Critters::new(3, true, Duration::from_secs(1), [true; ART.len()]);
+    let mut critters = Critters::new(3, true, random(1), [true; ART.len()]);
     let mut crossing_at = None;
     for i in 0..5_000u64 {
         critters.tick(t0 + Duration::from_millis(i * 20), 80, 24);
@@ -240,19 +245,18 @@ fn a_withdrawn_crossing_leaves_the_glass_alone_and_comes_back_later() {
     }
     let at = crossing_at.expect("nothing ever crossed");
 
-    assert!(critters.withdraw(), "the glass did not change by it");
+    assert!(critters.withdraw(t0), "the glass did not change by it");
     assert!(critters.cells().is_empty());
     assert_eq!(critters.crossing(), None);
     assert!(
-        !critters.withdraw(),
+        !critters.withdraw(t0),
         "an empty glass changed by being cleared again"
     );
 
     // Nobody there: the piece stays off, however long it is left.
     for i in at..at + 5_000 {
-        critters.withdraw();
+        critters.withdraw(t0 + Duration::from_millis(i * 20));
         assert!(critters.cells().is_empty());
-        let _ = i;
     }
     // And somebody back: the glass gets its critters again.
     let mut ever = false;
@@ -284,7 +288,7 @@ fn wider_than_the_glass_still_crosses() {
 #[test]
 fn switched_off_it_is_a_build_without_it() {
     let t0 = epoch();
-    let mut critters = Critters::new(7, false, Duration::from_secs(1), [true; ART.len()]);
+    let mut critters = Critters::new(7, false, random(1), [true; ART.len()]);
     for i in 0..100_000u64 {
         critters.tick(t0 + Duration::from_millis(i * 10), 80, 24);
         assert!(critters.cells().is_empty());
@@ -296,14 +300,14 @@ fn switched_off_it_is_a_build_without_it() {
 #[test]
 fn switched_off_mid_crossing_it_leaves_at_once() {
     let t0 = epoch();
-    let mut critters = Critters::new(13, true, Duration::from_secs(1), [true; ART.len()]);
+    let mut critters = Critters::new(13, true, random(1), [true; ART.len()]);
     let mut i = 0u64;
     while critters.cells().is_empty() {
         critters.tick(t0 + Duration::from_millis(i * 10), 80, 24);
         i += 1;
         assert!(i < 100_000, "nothing ever crossed");
     }
-    critters.configure(false, Duration::from_secs(1), [true; ART.len()]);
+    critters.configure(false, random(1), [true; ART.len()]);
     critters.tick(t0 + Duration::from_millis(i * 10), 80, 24);
     assert!(critters.cells().is_empty());
 }
@@ -313,7 +317,7 @@ fn switched_off_mid_crossing_it_leaves_at_once() {
 #[test]
 fn it_never_asks_to_sleep_through_its_own_next_step() {
     let t0 = epoch();
-    let mut critters = Critters::new(17, true, Duration::from_secs(2), [true; ART.len()]);
+    let mut critters = Critters::new(17, true, random(2), [true; ART.len()]);
     for i in 0..50_000u64 {
         let now = t0 + Duration::from_millis(i * 7);
         critters.tick(now, 80, 24);
@@ -336,7 +340,7 @@ fn a_retired_piece_never_comes_and_the_others_take_its_turns() {
     let only = ART.iter().position(|a| a.name == "swan").unwrap();
     let mut allowed = [false; ART.len()];
     allowed[only] = true;
-    let mut critters = Critters::new(23, true, Duration::from_secs(2), allowed);
+    let mut critters = Critters::new(23, true, random(2), allowed);
     let mut seen = 0;
     for i in 0..200_000u64 {
         critters.tick(t0 + Duration::from_millis(i * 10), 80, 24);
@@ -351,7 +355,7 @@ fn a_retired_piece_never_comes_and_the_others_take_its_turns() {
 #[test]
 fn every_piece_retired_is_the_same_silence_as_switched_off() {
     let t0 = epoch();
-    let mut critters = Critters::new(29, true, Duration::from_secs(1), [false; ART.len()]);
+    let mut critters = Critters::new(29, true, random(1), [false; ART.len()]);
     for i in 0..200_000u64 {
         critters.tick(t0 + Duration::from_millis(i * 10), 80, 24);
         assert!(critters.cells().is_empty());
@@ -368,7 +372,7 @@ fn every_piece_retired_is_the_same_silence_as_switched_off() {
 #[test]
 fn the_answer_is_whether_the_cells_differ_and_nothing_looser() {
     let t0 = epoch();
-    let mut critters = Critters::new(31, true, Duration::from_secs(2), [true; ART.len()]);
+    let mut critters = Critters::new(31, true, random(2), [true; ART.len()]);
     let mut previous: Vec<(usize, usize, char)> = Vec::new();
     let mut moved_without_growing = 0;
     for i in 0..40_000u64 {
@@ -401,17 +405,83 @@ fn the_answer_is_whether_the_cells_differ_and_nothing_looser() {
 #[test]
 fn a_tick_at_the_deadline_moves_the_deadline() {
     let t0 = epoch();
-    let mut critters = Critters::new(37, true, Duration::from_secs(3), [true; ART.len()]);
+    let mut critters = Critters::new(37, true, random(3), [true; ART.len()]);
     critters.tick(t0, 80, 24);
     let mut now = t0;
     for _ in 0..20_000 {
-        let due = critters.wake_at().expect("enabled, so it always has a next");
+        let due = critters
+            .wake_at()
+            .expect("enabled, so it always has a next");
         // Wake exactly when asked, as the caller does.
         now = now.max(due);
         critters.tick(now, 80, 24);
         assert!(
             critters.wake_at().is_some_and(|next| next > now),
             "the deadline stayed at or behind {now:?} after a tick that answered it"
+        );
+    }
+}
+
+/// Coming back to the terminal is not an occasion for a critter.
+///
+/// A window counts as unattended the moment it loses the keyboard, so this
+/// is the ordinary rhythm of using a computer: look away, look back. An
+/// arrival banked while nobody was there would be waiting at the moment of
+/// return, and every return would be greeted -- which is a critter on every
+/// alt-tab rather than one a quarter of an hour.
+#[test]
+fn returning_to_the_window_does_not_summon_one() {
+    let t0 = epoch();
+    let mut critters = Critters::new(11, true, random(900), [true; ART.len()]);
+    let ms = |n: u64| t0 + Duration::from_millis(n);
+    let mut at = 0u64;
+    critters.tick(ms(at), 80, 24);
+
+    let mut greeted = 0;
+    for _ in 0..200 {
+        at += 20_000;
+        critters.withdraw(ms(at));
+        at += 50;
+        critters.tick(ms(at), 80, 24);
+        if critters.crossing().is_some() {
+            greeted += 1;
+        }
+    }
+    // Two hundred returns across about an hour of away-time. At a quarter of
+    // an hour on average a handful of them will coincide with an arrival;
+    // one per return is the failure this guards.
+    assert!(
+        greeted < 20,
+        "{greeted} of 200 returns were greeted by a critter"
+    );
+}
+
+/// The clock timing reaches the schedule, and lands inside the interval it
+/// was given.
+///
+/// The mark arithmetic is pinned exactly in the crate's own unit tests. What
+/// this covers is the join to the wall clock, which cannot assert a
+/// particular minute because it runs at whatever minute it runs at: a
+/// one-minute interval puts the next arrival somewhere in the next minute,
+/// and never further off than that.
+#[test]
+fn a_clock_timed_critter_is_due_within_the_interval() {
+    let now = Instant::now();
+    for interval in [60u64, 300, 900] {
+        let mut critters = Critters::new(
+            5,
+            true,
+            Timing::Clock(Duration::from_secs(interval)),
+            [true; ART.len()],
+        );
+        critters.tick(now, 80, 24);
+        let due = critters
+            .wake_at()
+            .expect("enabled, so it always has a next");
+        let delay = due.saturating_duration_since(now);
+        assert!(
+            delay > Duration::ZERO && delay <= Duration::from_secs(interval),
+            "a {interval}s interval put the next arrival {delay:?} away"
         );
     }
 }

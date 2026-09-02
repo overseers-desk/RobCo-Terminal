@@ -1,37 +1,24 @@
-//! The critters: at long random intervals a drawn figure crosses the glass
-//! and leaves.
+//! The critters: every so often a drawn figure crosses the glass and leaves.
 //!
-//! # What it is for
+//! A layer above the terminal being emulated, so nothing is interrupted: text
+//! scrolls behind a critter, a keystroke does not chase it away, a selection
+//! copied across one yields what the session wrote, and the terminal never
+//! learns one was there. It is not a screen saver and does not wait for you
+//! to stop typing.
 //!
-//! A laugh from somebody who has seen it before, and nothing else. It is not
-//! a screen saver: it comes while you are typing, it does not wait for you to
-//! stop, and a keystroke does not chase it away. The old text-mode screen
-//! savers had to hide when you touched the keyboard because they *were* the
-//! screen, and interrupting one interrupted the work behind it. This is a
-//! layer above the terminal being emulated, so there is nothing to interrupt:
-//! text scrolls behind a critter, a selection copied across one yields what
-//! the session wrote, and the terminal itself never learns one was there.
+//! A critter is uninvited, so it may land on the line somebody is reading.
+//! What makes that acceptable is that it does not stay; [`art`] carries the
+//! rule and the number that keeps it, and nothing here needs to know what is
+//! on the screen or whether anybody is typing.
 //!
-//! # The promise it keeps
-//!
-//! A critter is uninvited, so it may land on the very line somebody is
-//! reading. What makes that acceptable is that it does not stay; [`art`]
-//! carries the rule and the number that keeps it. Nothing here therefore
-//! needs to know what is on the screen, where the cursor is, or whether
-//! anybody is typing.
-//!
-//! # What this crate is
-//!
-//! Arithmetic on a clock the caller owns. Given the time and the size of the
-//! screen it answers with characters and where to put them, or with nothing,
-//! and it depends on no renderer, no terminal and no clock. The caller stamps
-//! the characters into cells it has made from its own colour scheme, so a
-//! critter wears the phosphor without this crate holding an opinion about
-//! colour.
+//! Given the time and the size of the screen this answers with characters and
+//! where to put them, or with nothing. The caller stamps them into cells of
+//! its own colour scheme, so a critter wears the phosphor without this crate
+//! holding an opinion about colour.
 //!
 //! ```no_run
 //! use std::time::{Duration, Instant};
-//! let mut critters = critters::Critters::new(1, true, Duration::from_secs(900), [true; critters::ART.len()]);
+//! let mut critters = critters::Critters::new(1, true, critters::Timing::Random(Duration::from_secs(900)), [true; critters::ART.len()]);
 //! if critters.tick(Instant::now(), 80, 24) {
 //!     for &(row, col, ch) in critters.cells() {
 //!         let _ = (row, col, ch);
@@ -45,4 +32,4 @@ mod rng;
 mod schedule;
 
 pub use art::{Art, Crossing, ART, TRANSPARENT};
-pub use schedule::Critters;
+pub use schedule::{Critters, Timing};

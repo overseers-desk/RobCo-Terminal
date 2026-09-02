@@ -3689,6 +3689,9 @@ dependencies = [
 [[package]]
 name = "robco-critters"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+]
 
 [[package]]
 name = "robco-crt-render"

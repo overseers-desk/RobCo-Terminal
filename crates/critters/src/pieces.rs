@@ -1,27 +1,22 @@
 //! The eight pieces, and nothing else.
 //!
-//! Every literal here is a transcription. The picture is somebody's drawing,
-//! kept the way they drew it, and this file holds no logic so that a
-//! transcription can be read against the program it came from without
-//! machinery in the way. What each piece is made of, how fast it walks and
+//! Every literal here is a transcription, kept the way its artist drew it.
+//! This file holds no logic, so a transcription can be read against the
+//! program it came from; what each piece is made of, how fast it walks and
 //! which way round it goes is one table over in [`crate::art`].
 //!
 //! Where they came from:
 //!
-//! * the dolphins, the ducks, the swan, the whale, the ship and the sea
-//!   monster are asciiquarium's, by Kirk Baucom, an aquarium that has been
-//!   swimming in terminals since 2000;
-//! * Pac-Man and his ghost are from jbanana's `anims`, which walks hand-drawn
-//!   figures across a terminal;
-//! * the locomotive is `sl`'s D51, Toyoda Masashi's, which has been running
-//!   over mistyped `ls` since 1993.
+//! * the dolphins, ducks, swan, whale, ship and sea monster are
+//!   asciiquarium's, by Kirk Baucom, an aquarium swimming in terminals since
+//!   2000;
+//! * Pac-Man and his ghost are from jbanana's `anims`;
+//! * the locomotive is `sl`'s D51, Toyoda Masashi's, running over mistyped
+//!   `ls` since 1993.
 //!
-//! `?` is transparent, as it is in all three. A frame is one string with
-//! newlines: it reads as the picture it is, which a list of rows does not.
-//!
-//! The right-hand and left-hand frames are both the artist's. Nothing here is
-//! a mirror image computed from the other side, because an asymmetric figure
-//! reversed by arithmetic reads as a mistake.
+//! Both facings are the artist's. Nothing here is a mirror image computed
+//! from the other side, an asymmetric figure reversed by arithmetic reading
+//! as a mistake.
 
 // A pair of dolphins, leaping and going back in.
 pub const DOLPHINS_RIGHT: [&str; 2] = [

@@ -1,47 +1,35 @@
 //! What a piece of art is, and where it stands while it crosses.
 //!
 //! The art itself is in [`crate::pieces`], which holds string literals and
-//! nothing else so that a transcription can be proofread against the program
-//! it came from without machinery in the way. This module is the shape of the
-//! table and the arithmetic of a crossing.
-//!
-//! # The box
+//! nothing else, so a transcription can be proofread against the program it
+//! came from without machinery in the way.
 //!
 //! Every piece is transcribed inside a box `width` by `height`, and every
-//! frame of it is that box. A frame is one string with newlines rather than a
-//! list of rows: it keeps the nesting one level shallower, and it lets the
-//! literal in `pieces.rs` be read as the picture it is.
-//!
-//! [`TRANSPARENT`] is the character that lets what is behind show through,
-//! and a line shorter than the box is transparent to the box's right edge.
+//! frame of it is that box. A frame is one string with newlines, which reads
+//! as the picture it is where a list of rows would not. [`TRANSPARENT`] lets
+//! what is behind show through, and a line shorter than the box is
+//! transparent to the box's right edge.
 //!
 //! Whether a **space** shows through is the piece's own business
-//! ([`Art::solid`]), because the sources disagree and each is right about its
-//! own art. The sea pieces are drawn as outlines and rendered with spaces
-//! transparent, so the session's text swims behind a whale rather than being
-//! erased by its belly; that is how those figures have always looked. The
-//! locomotive and Pac-Man are drawn as solid things and written to the screen
-//! a whole line at a time, spaces and all, so a boiler is a boiler and the
-//! text goes behind it. Reading either kind the other way spoils it.
+//! ([`Art::solid`]): the sea pieces are outlines, drawn so the session's text
+//! swims behind a whale rather than being erased by its belly, while the
+//! locomotive and Pac-Man are solid things written a whole line at a time.
+//! Reading either kind the other way spoils it.
 //!
-//! # Speed
+//! [`Art::step_ms`] is milliseconds per column, and it is the number the
+//! whole feature rests on: a cell is covered for `width * step_ms`, every
+//! piece holds that near a second, and a critter is therefore off any line
+//! somebody is reading before it is waited for. Wide art moves fast, which is
+//! also how a locomotive ought to look beside a swan.
 //!
-//! [`Art::step_ms`] is milliseconds per column of travel, and it is the one
-//! number that keeps the promise the whole feature rests on: a critter is
-//! uninvited, so it may not sit on a line somebody is reading. A cell is
-//! covered for `width * step_ms`, and every piece in the table holds that
-//! near a second. It follows that wide art moves fast, which is also how a
-//! locomotive ought to look beside a swan.
-//!
-//! Travel is a function of elapsed time and never an increment per call. The
-//! caller's redraw cadence is the user's to set (`general.effects_frame_skip`
-//! runs 1 to 10, so 16 ms to 167 ms), and at the slow end a piece advances
-//! nine columns between two calls. That is correct rather than something to
-//! be smoothed: the piece is where the clock says it is.
+//! Travel is a function of elapsed time, never an increment per call. The
+//! redraw cadence is the user's (`general.effects_frame_skip` runs 1 to 10,
+//! so 16 ms to 167 ms), and at the slow end a piece advances nine columns
+//! between calls, which is correct rather than something to smooth.
 
 /// The character that means "let what is behind show through", spelled as
-/// asciiquarium spells it, and for its reason: it is a character none of this
-/// art wants to draw, and unlike a space it is visible in a literal.
+/// asciiquarium spells it: no piece wants to draw one, and unlike a space it
+/// is visible in a literal.
 pub const TRANSPARENT: char = '?';
 
 /// One piece of art: what it is, the box it is drawn in, how fast it walks,
@@ -67,13 +55,9 @@ pub struct Art {
     /// that way.
     pub right: &'static [&'static str],
     /// The frames as drawn travelling left, empty if it was never drawn that
-    /// way.
-    ///
-    /// Nothing here is mirrored by machine: an asymmetric figure reversed by
-    /// arithmetic reads as a mistake, so a piece its author drew one way
-    /// round crosses that way round. Two of the eight are one-way, and both
-    /// happen to go left -- Pac-Man is being chased and the locomotive is
-    /// `sl`'s, which has always run right to left.
+    /// way. Nothing here is mirrored by machine, so a piece its author drew
+    /// one way round crosses that way round: Pac-Man is being chased and the
+    /// locomotive is `sl`'s, which has always run right to left.
     pub left: &'static [&'static str],
 }
 
@@ -94,10 +78,8 @@ impl Art {
     }
 }
 
-/// One crossing in progress.
-///
-/// Public and `Copy` so a test can build one and walk it by hand, with no
-/// clock and no scheduler anywhere in the picture.
+/// One crossing in progress. Public and `Copy` so a test can build one and
+/// walk it by hand, with no clock and no scheduler in the picture.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Crossing {
     pub art: &'static Art,
@@ -112,11 +94,6 @@ pub struct Crossing {
 }
 
 impl Crossing {
-    /// Steps in a whole crossing: on from one edge, off past the other.
-    pub fn steps(&self, cols: usize) -> u32 {
-        cols as u32 + u32::from(self.art.width)
-    }
-
     /// The box's leftmost column, off the screen at both ends of a crossing.
     pub fn column(&self, cols: usize) -> i32 {
         let step = self.step as i32;
@@ -129,14 +106,13 @@ impl Crossing {
 
     /// Whether the box is clear of the far edge.
     pub fn done(&self, cols: usize) -> bool {
-        self.step >= self.steps(cols)
+        // On from one edge, off past the other.
+        self.step >= cols as u32 + u32::from(self.art.width)
     }
 
     /// Append every cell this crossing wants painted, row-major, clipped to
-    /// the screen, transparent cells left out.
-    ///
-    /// Deterministic: the same crossing on the same size of screen appends
-    /// the same cells in the same order, which is what the tests hold it to.
+    /// the screen and transparent cells left out. Deterministic: the same
+    /// crossing on the same screen appends the same cells in the same order.
     pub fn paint(&self, cols: usize, rows: usize, out: &mut Vec<(usize, usize, char)>) {
         if self.done(cols) {
             return;
@@ -355,26 +331,20 @@ mod tests {
 
     #[test]
     fn a_transparent_cell_is_left_alone_and_a_space_is_the_pieces_business() {
-        static OUTLINE: Art = Art {
-            name: "outline",
-            width: 3,
-            height: 1,
-            step_ms: 1,
-            frame_steps: 1,
-            solid: false,
-            right: &["a b"],
-            left: &[],
-        };
-        static SOLID: Art = Art {
-            name: "solid",
-            width: 3,
-            height: 1,
-            step_ms: 1,
-            frame_steps: 1,
-            solid: true,
-            right: &["a b"],
-            left: &[],
-        };
+        const fn fixture(name: &'static str, solid: bool) -> Art {
+            Art {
+                name,
+                width: 3,
+                height: 1,
+                step_ms: 1,
+                frame_steps: 1,
+                solid,
+                right: &["a b"],
+                left: &[],
+            }
+        }
+        static OUTLINE: Art = fixture("outline", false);
+        static SOLID: Art = fixture("solid", true);
         let cells = |art: &'static Art| {
             let mut out = Vec::new();
             Crossing {

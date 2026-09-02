@@ -11,7 +11,12 @@ publish = false
 name = "critters"
 path = "src/lib.rs"
 
-# No dependencies, and the same reason `tmux-cc` has none: what this crate
-# does is arithmetic on a clock the caller owns. The generator it needs is
-# twenty lines in `rng`.
+# One dependency, and it is the clock. A critter on the quarter hour is a
+# reminder of the time, so the mark it lands on has to be the one the wall
+# clock shows: minutes taken from the system clock alone are UTC minutes,
+# which are half an hour out in Adelaide, Darwin, India and Nepal. chrono is
+# already in the binary under russh, so this costs a line here and nothing
+# there. Everything else is arithmetic on a clock the caller owns, and the
+# generator of random numbers is twenty lines in `rng`.
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

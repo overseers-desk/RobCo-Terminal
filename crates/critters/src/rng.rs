@@ -1,16 +1,11 @@
 //! Randomness, and the one distribution this crate draws from.
 //!
-//! Twenty lines rather than a dependency, for two reasons. The demand is
-//! small -- a different piece, a different row, a different wait -- and none
-//! of it is adversarial: nobody is attacking a duck, so nothing here wants a
-//! cryptographic generator and none is used. The second reason is the tests:
-//! a stream that follows from a seed is what lets a test assert a whole
-//! crossing, cell for cell, and a thousand simulated hours of scheduling.
+//! Nothing here is adversarial and none of it is cryptographic. A stream that
+//! follows from a seed is the point: it lets a test assert a whole crossing,
+//! cell for cell, and a thousand simulated hours of scheduling.
 
-/// SplitMix64: Steele, Lea and Flood's mixer, the one a seeded `u64` is
-/// usually smeared with before it is fit to be a stream. It is its own
-/// generator as well as its own seeder, which is why it is the whole of this
-/// module.
+/// SplitMix64: its own generator as well as its own seeder, which is why it
+/// is the whole of this module.
 pub fn next_u64(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut z = *state;
@@ -19,9 +14,8 @@ pub fn next_u64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-/// A number in `0..n`, uniform enough. The modulo's bias is one part in
-/// 2^64 over a bound this crate never takes above a few hundred, which is
-/// not a thing any eye watching a duck can measure.
+/// A number in `0..n`, uniform enough: the modulo's bias is one part in 2^64
+/// over a bound never taken above a few hundred here.
 pub fn below(state: &mut u64, n: u64) -> u64 {
     if n == 0 {
         return 0;
@@ -29,18 +23,14 @@ pub fn below(state: &mut u64, n: u64) -> u64 {
     next_u64(state) % n
 }
 
-/// A wait drawn from the memoryless distribution with this mean, in seconds.
+/// A wait drawn from the memoryless distribution with this mean, in seconds:
+/// `-mean * ln(u)` for `u` uniform in `(0, 1]`.
 ///
-/// `-mean * ln(u)` for `u` uniform in `(0, 1]`. The point of drawing at all
-/// is that a fixed timer is a metronome: a user who has seen two critters
-/// knows when the third is due, and knowing is the end of the joke. Nothing
-/// is clamped at the top, because a long gap is a legitimate draw and a
-/// ceiling would put back the shape the distribution was chosen for not
-/// having.
+/// Nothing is clamped at the top. A long gap is a legitimate draw, and a
+/// ceiling would put back the shape the distribution was chosen for lacking.
 pub fn wait(state: &mut u64, mean: f64) -> f64 {
-    // 53 bits, the mantissa's worth, shifted off the top where SplitMix64's
-    // bits are best. The +1 keeps `u` off zero, whose logarithm is not a
-    // duration.
+    // 53 bits, the mantissa's worth, off the top where SplitMix64's bits are
+    // best. The +1 keeps `u` off zero, whose logarithm is not a duration.
     let u = ((next_u64(state) >> 11) + 1) as f64 / (1u64 << 53) as f64;
     mean * -u.ln()
 }
