@@ -333,9 +333,16 @@ impl<S> Channels<S> {
             .any(|b| b.manager.home() == Some((bank, channel)))
     }
 
-    /// `:149-168`. The lowest free slot of a bank. On home the held slots count
-    /// as taken; on an attachment the gateway holds 1, so windows fill from 2.
-    /// Zero when the bank is full to the cap.
+    /// Whether a hold on `bank` stands in a slot's way. It does while the bank
+    /// lights a row; on one gone entirely dark it does not, or the user's next
+    /// channel there would open at 02 with 01 dark beside it and unopenable.
+    fn holds_bind(&self, bank: BankId) -> bool {
+        self.rows.iter().any(|r| r.bank == bank)
+    }
+
+    /// `:149-168`. The lowest free slot of a bank. On home the held slots
+    /// count as taken ([`Self::holds_bind`]); on an attachment the gateway
+    /// holds 1, so windows fill from 2. Zero when the bank is full to the cap.
     pub fn first_free(&self, bank: BankId) -> u32 {
         let mut taken = [false; CHANNEL_CAP as usize + 1];
         for row in self.rows.iter().filter(|r| r.bank == bank) {
@@ -344,7 +351,7 @@ impl<S> Channels<S> {
             }
         }
         for (held_bank, slot) in self.banks.iter().filter_map(|b| b.manager.home()) {
-            if held_bank == bank && slot <= CHANNEL_CAP {
+            if held_bank == bank && slot <= CHANNEL_CAP && self.holds_bind(bank) {
                 taken[slot as usize] = true;
             }
         }
@@ -436,9 +443,10 @@ impl<S> Channels<S> {
     }
 
     /// The air lands on the channel the bank was left showing, or on its
-    /// first open row when that slot has gone dark since. False for a bank
-    /// this set does not hold, and for one holding no open row: nothing to
-    /// put on the glass, so the air stays where it is.
+    /// first open row when that slot has gone dark since. False only for a
+    /// bank this set does not hold: one with no open row takes the air too, on
+    /// the slot it remembers, the strip the user paged to and the glass having
+    /// to agree (`window::TerminalSurface::no_signal` draws the rest).
     pub fn select_bank(&mut self, bank: BankId) -> bool {
         let Some(i) = self.bank_of(bank) else {
             return false;
@@ -449,7 +457,7 @@ impl<S> Channels<S> {
         } else {
             match self.rows.iter().find(|r| r.bank == bank) {
                 Some(row) => row.channel,
-                None => return false,
+                None => remembered,
             }
         };
         self.set_current(bank, channel);
@@ -459,9 +467,10 @@ impl<S> Channels<S> {
     // ---- opening -----------------------------------------------------
 
     /// `:213-225`. PTY shells live on the home bank alone: an attachment's
-    /// channels are tmux's to give. A held slot refuses; it is a transported
-    /// channel's berth. `session` is called only once the slot is known to be
-    /// takeable, so a refused open costs no pty.
+    /// channels are tmux's to give. A held slot refuses while its bank binds
+    /// ([`Self::holds_bind`]); it is a transported channel's berth. `session`
+    /// is called only once the slot is known to be takeable, so a refused open
+    /// costs no pty.
     pub fn open_channel(
         &mut self,
         bank: BankId,
@@ -474,7 +483,9 @@ impl<S> Channels<S> {
         if !(1..=CHANNEL_CAP).contains(&channel) {
             return false;
         }
-        if self.row_of(bank, channel).is_some() || self.slot_held(bank, channel) {
+        if self.row_of(bank, channel).is_some()
+            || (self.slot_held(bank, channel) && self.holds_bind(bank))
+        {
             return false;
         }
         let Some(session) = session() else {
@@ -943,10 +954,10 @@ impl<S> Channels<S> {
     }
 
     /// `:577-608`. Detach or gateway death: the bank's window rows vanish, the
-    /// gateway transports home to the slot it never gave up and relights, and
-    /// the user lands on it. Answers where it landed, or `None` for a bank
-    /// that never held a slot: those simply go, rows and all, and the air
-    /// falls to the nearest surviving row if it was standing there.
+    /// gateway transports home to its berth and relights, and the user lands
+    /// on it. Answers where it landed, or `None` when nothing came home: a
+    /// bank that never held a slot simply goes, rows and all, with the air
+    /// falling to the nearest surviving row if it was standing there.
     pub fn collapse_bank(&mut self, bank: BankId) -> Option<(BankId, u32)> {
         let i = self.bank_of(bank)?;
         let Manager::Tmux { home, .. } = &self.banks[i].manager else {
@@ -970,15 +981,27 @@ impl<S> Channels<S> {
             return None;
         };
         self.rows.retain(|r| r.bank != bank || r.channel == 1);
+        // The berth was the gateway's alone while nothing could take a held
+        // slot. Now a dark bank offers it, so a taken berth sends the returning
+        // gateway to the next free slot, and a full one sends it out.
+        let berth = if self.row_of(home_bank, home_slot).is_some() {
+            self.first_free(home_bank)
+        } else {
+            home_slot
+        };
         if let Some(gateway) = self.rows.iter().position(|r| r.bank == bank) {
-            self.rows[gateway].bank = home_bank;
-            self.rows[gateway].channel = home_slot;
-            self.resort();
+            if berth == 0 {
+                self.rows.remove(gateway);
+            } else {
+                self.rows[gateway].bank = home_bank;
+                self.rows[gateway].channel = berth;
+                self.resort();
+            }
         }
         self.banks.remove(i);
-        self.set_current(home_bank, home_slot);
+        self.set_current(home_bank, if berth == 0 { home_slot } else { berth });
         self.degauss_armed = armed;
-        Some((home_bank, home_slot))
+        (berth != 0).then_some((home_bank, berth))
     }
 
     /// `:669-681`. The tmux server's hostname can resolve after the handshake:
@@ -1342,6 +1365,33 @@ mod tests {
         assert_eq!(set.on_air(), (0, 3), "the first row home still holds");
     }
 
+    /// The first-run path: the only channel there was transported, so home
+    /// holds nothing but the dark berth, which takes the air and then the row.
+    #[test]
+    fn a_bank_of_nothing_but_a_held_berth_takes_the_air_and_then_the_berth() {
+        let mut set = channels();
+        set.attach(0, 1, "prime").unwrap();
+        assert!(set.select_bank(0), "home takes the air with no row on it");
+        assert_eq!(set.on_air(), (0, 1));
+        assert!(set.current().is_none(), "and nothing to put on the glass");
+        assert_eq!(set.first_free(0), 1, "the berth of a dark bank is free");
+        assert!(open(&mut set, 0, 1, 77));
+        assert_eq!(set.on_air(), (0, 1));
+    }
+
+    /// The collision that opens: the berth is occupied by the time the gateway
+    /// comes home, so it lands beside it.
+    #[test]
+    fn a_gateway_whose_berth_was_taken_comes_home_to_the_next_free_slot() {
+        let mut set = channels();
+        let bank = set.attach(0, 1, "prime").unwrap();
+        set.select_bank(0);
+        assert!(open(&mut set, 0, 1, 77), "the dark berth opened");
+        assert_eq!(set.collapse_bank(bank), Some((0, 2)));
+        assert_eq!(set.on_air(), (0, 2));
+        assert_eq!(set.len(), 2, "both rows stand");
+    }
+
     #[test]
     fn a_collapse_brings_the_gateway_home_to_the_slot_it_never_gave_up() {
         let mut set = channels();
@@ -1450,9 +1500,10 @@ mod tests {
         let mut set = channels();
         let bank = set.attach(0, 1, "prime").unwrap();
         // The air is on an attachment, but the pager has stepped back to home:
-        // the new channel is a PTY shell, not a tmux window.
+        // the new channel is a PTY shell, not a tmux window, and home being
+        // dark it takes 01.
         assert_eq!(set.new_channel(0, || Some(7)), None);
-        assert_eq!(set.slot_title(0, 2), Some(""));
+        assert_eq!(set.slot_title(0, 1), Some(""));
         // Viewing the attachment, the same key asks its gateway instead.
         assert_eq!(set.new_channel(bank, || Some(8)), Some(bank));
         assert!(matches!(

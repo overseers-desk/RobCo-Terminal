@@ -165,6 +165,10 @@ pub const SHED_TMUX: &str = "tmux input dropped";
 /// two above.
 pub const SHED_SSH: &str = "ssh input dropped";
 
+/// What stands on the glass when the air is on a bank with no open row: what
+/// the dark screen is, and the one thing to do about it. No timer.
+pub const NO_SIGNAL: [&str; 2] = ["no channel on this bank", "Ctrl+Shift+T starts one"];
+
 /// Not a config key: a fixed multiplier applied to the stored `fontScaling`.
 /// `SizingRequest::default()` carries the same 0.75, and this name exists so
 /// the one place that needs the product for a shader uniform
@@ -1229,6 +1233,12 @@ impl TerminalSurface {
         &self.notice
     }
 
+    /// [`NO_SIGNAL`] while the air stands on a bank with nothing to put on the
+    /// glass. The frame draws what this says, so a test with no device can ask.
+    pub fn no_signal(&self) -> Option<[&'static str; 2]> {
+        self.channels.session().is_none().then_some(NO_SIGNAL)
+    }
+
     /// The channel state itself, for a test or for whoever mounts the bank.
     pub fn channels(&self) -> &Channels<AppSession> {
         &self.channels
@@ -1631,6 +1641,7 @@ impl TerminalSurface {
         // been cleared, or was never made, leaves this `None` and the glass
         // shows no highlight at all.
         let top_line = self.top_line();
+        let no_signal = self.no_signal();
         let marked = self
             .marked_range()
             .map(|range| Marked { range, top_line });
@@ -1644,11 +1655,37 @@ impl TerminalSurface {
             (Some(glass), Some(session)) => (glass, session),
             // A window with no chain or no child still has to put something on
             // the screen, or the compositor shows whatever was there before.
-            _ => {
+            (glass, _) => {
                 // No glass means no marks reach the query set, so timing
                 // this frame is withdrawn rather than resolved half-written.
                 frame.discard_timing();
                 frame.clear();
+                // The bank the user paged to is still theirs to look at, so the
+                // casting and the message go on through the badge pass.
+                if let (Some(glass), Some(message)) = (glass, no_signal) {
+                    let (width, height) = (glass.target.width, glass.target.height);
+                    let entries = message.map(|text| crate::chrome::Entry {
+                        text,
+                        opacity: crate::overlay::NOTICE_OPACITY,
+                    });
+                    glass.chrome.render(
+                        &gpu.device,
+                        &gpu.queue,
+                        &mut frame.encoder,
+                        &frame.view,
+                        (bank + width, height),
+                        (bank, height),
+                        (width, height),
+                        self.viewport.scale_factor,
+                        column_params.as_ref(),
+                        &column_pieces,
+                        Some(crate::chrome::Badges {
+                            atlas: glass.renderer.atlas(),
+                            scale: glass.resolved.integer_scale,
+                            entries: &entries,
+                        }),
+                    );
+                }
                 gpu.present(frame);
                 return;
             }

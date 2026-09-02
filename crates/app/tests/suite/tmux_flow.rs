@@ -1061,8 +1061,11 @@ fn phase_14_a_second_session_on_the_server_gets_a_bank_and_a_client_of_its_own()
         2,
         "the client the terminal started went to another server"
     );
-    // Home is untouched: neither bank stands on a slot of it.
-    assert_eq!(surface.channels().first_free(0), 2);
+    // Home stands dark behind the one berth the typed attach left held, the
+    // found bank standing on no slot of it: a dark bank offers its berth back,
+    // so the next channel here is 01.
+    assert!(surface.channels().rows().iter().all(|r| r.bank != 0));
+    assert_eq!(surface.channels().first_free(0), 1);
 }
 
 /// A session killed on the server takes its bank with it and leaves home
@@ -1245,4 +1248,39 @@ fn phase_17_paging_across_banks_brings_each_one_back_to_the_channel_it_was_left_
         surface.pump();
     }
     assert_eq!(surface.channels().on_air(), (0, 3));
+}
+
+/// The first-run path: the only channel there is types `tmux -CC`, so home is
+/// left holding nothing but the dark berth behind the transported gateway.
+/// Paging home lands on it anyway -- strip and glass agreeing on an empty bank
+/// -- and tunes to no signal; the new-channel key there takes 01, the berth
+/// notwithstanding; and the detached gateway comes home beside it.
+#[test]
+fn phase_18_paging_home_off_a_first_channels_attach_tunes_the_glass_to_no_signal() {
+    if !have_tmux() {
+        return;
+    }
+    let server = Server::start();
+    let mut surface = surface_with_bank();
+    let bank = attach(&mut surface, &server);
+    press(&mut surface, Key::Named(NamedKey::PageUp), None, CHORD);
+    assert_eq!(surface.channels().on_air(), (0, 1), "home takes the air");
+    assert!(surface.channels().current().is_none(), "no row on it");
+    assert_eq!(surface.no_signal(), Some(app::window::NO_SIGNAL));
+
+    // The new-channel key on the empty bank opens 01, not the 02 beside it.
+    surface.new_channel();
+    assert_eq!(surface.channels().on_air(), (0, 1));
+    assert!(surface.no_signal().is_none(), "a lit row ends the message");
+
+    // Detach from the gateway: home's 01 is taken now, so it lands on 02.
+    press(&mut surface, Key::Named(NamedKey::PageDown), None, CHORD);
+    surface.press_strip(1);
+    assert_eq!(surface.channels().on_air(), (bank, 1), "the gateway");
+    surface.close_channel();
+    pump_until(&mut surface, "the bank to collapse home", |s| {
+        s.channels().banks().len() == 1 && s.channels().current_bank() == 0
+    });
+    let landed = surface.channels().on_air();
+    assert_eq!(landed, (0, 2), "beside the row that took the berth");
 }

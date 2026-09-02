@@ -39,7 +39,9 @@ alone, so a bank of more slots than the window fits can be read through
 without interrupting anything. Paging onto another bank's slots switches to
 that bank, on the channel it was last showing: it is the band switch it looks
 like, and a band comes back to the station it was left on. A bank whose last
-channel has since exited comes back on the first slot it still holds.
+channel has since exited comes back on the first slot it still holds, and one
+holding no channel at all comes back to no signal, where `Ctrl`+`Shift`+`T`
+starts the next one.
 
 `Ctrl`+`Shift`+`Left` / `Right` swap the channel on screen with its
 neighbour, and take an empty slot outright. The first slot and the last are
