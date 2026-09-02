@@ -2260,8 +2260,8 @@ impl Surface for TerminalSurface {
                 // A crossing in hand when the chair empties comes off, and
                 // the frame that takes it off is owed here. INVARIANTS.md
                 // has the critters gone once they have stopped drawing, and
-                // a held picture with one frozen into it is not gone.
-                // What was due stays due, for whenever somebody is back.
+                // a held picture with one frozen into it is not gone. The
+                // arrival due is forfeited, not banked for the return.
                 critter_due = self.critters.withdraw(now);
             } else {
                 match self.critters.wake_at() {
