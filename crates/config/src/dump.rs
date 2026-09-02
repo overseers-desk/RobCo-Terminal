@@ -26,7 +26,7 @@ use serde::Serialize;
 
 use crate::schema::{
     ChannelDisplay, ChannelIndicator, ChassisSettings, GeneralSettings, Rasterization,
-    ScreenSettings, SelectionModel, Shell,
+    ScreenSettings, SelectionModel, Shell, CritterTiming,
 };
 
 /// One font catalogue entry: the key settings persist and the label a menu
@@ -44,6 +44,7 @@ struct Values {
     channel_indicator: Vec<ChannelIndicator>,
     channel_display: Vec<ChannelDisplay>,
     selection_model: Vec<SelectionModel>,
+    timing: Vec<CritterTiming>,
 }
 
 #[derive(Serialize)]
@@ -84,6 +85,7 @@ pub fn dump(fonts: Vec<FontListing>) -> String {
             channel_indicator: CHANNEL_INDICATORS.to_vec(),
             channel_display: CHANNEL_DISPLAYS.to_vec(),
             selection_model: SELECTION_MODELS.to_vec(),
+            timing: CRITTER_TIMINGS.to_vec(),
         },
     };
     toml_edit::ser::to_string_pretty(&dump).expect("settings dump serializes")
@@ -123,6 +125,7 @@ const CHANNEL_INDICATORS: [ChannelIndicator; 3] = [
 ];
 const CHANNEL_DISPLAYS: [ChannelDisplay; 2] = [ChannelDisplay::Led, ChannelDisplay::Tape];
 const SELECTION_MODELS: [SelectionModel; 2] = [SelectionModel::Konsole, SelectionModel::Rio];
+const CRITTER_TIMINGS: [CritterTiming; 2] = [CritterTiming::Clock, CritterTiming::Random];
 
 #[cfg(test)]
 mod tests {
@@ -137,6 +140,7 @@ mod tests {
         i: ChannelIndicator,
         d: ChannelDisplay,
         m: SelectionModel,
+        t: CritterTiming,
     ) {
         match r {
             Rasterization::NoRasterization
@@ -156,6 +160,9 @@ mod tests {
         }
         match m {
             SelectionModel::Konsole | SelectionModel::Rio => {}
+        }
+        match t {
+            CritterTiming::Clock | CritterTiming::Random => {}
         }
     }
 

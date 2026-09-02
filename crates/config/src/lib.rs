@@ -33,7 +33,7 @@ pub mod watch;
 pub use profile::Profile;
 
 pub use schema::{
-    ChannelDisplay, ChannelIndicator, ChassisSettings, CritterSettings, FontSource,
+    ChannelDisplay, ChannelIndicator, ChassisSettings, CritterSettings, CritterTiming, FontSource,
     GeneralSettings, Rasterization, ScreenSettings, SerialSettings, Shell, SshHost, SshSettings,
 };
 
@@ -253,7 +253,7 @@ key = "/home/overseer/.ssh/id_gw"
         assert!(!config.critters.locomotive);
         assert!(config.critters.pacman);
         assert!(config.critters.enabled);
-        assert_eq!(config.critters.mean_minutes, 15.0);
+        assert_eq!(config.critters.minutes, 15.0);
     }
 
     /// A rate named without the switch is a rate and not a slow terminal:

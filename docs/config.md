@@ -273,26 +273,27 @@ key = ""
 ### `[critters]`
 
 Every so often something drawn walks across the glass and leaves. A whale
-spouts, three ducks paddle past, a locomotive runs through. It is not a
-screen saver and it does not wait for you to stop typing: a critter is drawn
-over the terminal's picture rather than into it, so text scrolls behind one,
-a keystroke does not chase it away, and a selection copied across one gives
-you back what the session wrote. Nothing is interrupted, so there is nothing
-to protect by hiding.
+spouts, three ducks paddle past, a locomotive runs through. It is drawn over
+the terminal's picture rather than into it, so text scrolls behind one, a
+keystroke does not chase it away, and a selection copied across one gives
+back what the session wrote. Every piece is off any cell it touches within
+about a second, which is why the wide ones cross faster than the small ones,
+and why there is no key here for how fast they go.
 
-What makes an uninvited animation acceptable over a line you are reading is
-that it does not stay. Every piece is off any cell it touches within about a
-second, which is why the wide ones cross faster than the small ones, and why
-there is no key here for how fast they go.
-
-`mean_minutes` is an average, not a period. The wait is drawn fresh each
-time from a distribution with no shape to it, so a critter is never due: at
-the shipped fifteen, gaps of two minutes and of fifty are both ordinary.
+Shipped, they come on the clock: at `minutes = 15` a critter crosses at :00,
+:15, :30 and :45 by the clock in your room, so catching one tells you the
+time. The hour is always a mark, so an interval that does not divide it takes
+a short last step rather than sliding round the clock. Under
+`timing = "random"` the same number is an average instead, and gaps of two
+minutes and of fifty are both ordinary at fifteen. Leaving the window
+forfeits a critter rather than banking it, an arrival held over for your
+return being one that greets every return.
 
 | Key | Default | What it does |
 |---|---|---|
 | `enabled` | `true` | Whether anything crosses the glass at all. Off is the same silence as a build with none of this in it. |
-| `mean_minutes` | `15.0` | The average wait between one critter and the next. Set it low to watch them; set it high for a rarer surprise. The settings window's slider runs 1 to 120; the file takes any number, and anything under a second is read as a second. |
+| `timing` | `"clock"` | `clock` puts a critter on each wall-clock mark; `random` scatters them around an average. |
+| `minutes` | `15.0` | The minutes between marks, or the average wait under `random`. The settings window's slider runs 1 to 120; the file takes any number, and anything under a second is read as a second. |
 | `dolphins` | `true` | A pair leaping and going back in, asciiquarium's. |
 | `ducks` | `true` | Three abreast, quacking down the line, asciiquarium's. |
 | `swan` | `true` | asciiquarium's, and the only one that needs no animating to look alive. |
