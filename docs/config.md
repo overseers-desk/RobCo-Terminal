@@ -280,14 +280,16 @@ back what the session wrote. Every piece is off any cell it touches within
 about a second, which is why the wide ones cross faster than the small ones,
 and why there is no key here for how fast they go.
 
-Shipped, they come on the clock: at `minutes = 15` a critter crosses at :00,
-:15, :30 and :45 by the clock in your room, so catching one tells you the
-time. The hour is always a mark, so an interval that does not divide it takes
-a short last step rather than sliding round the clock. Under
-`timing = "random"` the same number is an average instead, and gaps of two
-minutes and of fifty are both ordinary at fifteen. Leaving the window
-forfeits a critter rather than banking it, an arrival held over for your
-return being one that greets every return.
+One critter per interval, counted from midnight. Shipped, it arrives at the
+start of its interval, so at `minutes = 15` you get one at :00, :15, :30 and
+:45 by the clock in your room, and catching one tells you the time. Under
+`timing = "random"` it arrives at an unpredictable point inside the same
+interval instead, so it still comes four times an hour but never when you
+expect it.
+
+An interval you were not there for brings nothing. A window counts as
+unattended the moment it loses the keyboard, so an arrival held over would be
+one waiting at the moment you came back, greeting every return.
 
 | Key | Default | What it does |
 |---|---|---|

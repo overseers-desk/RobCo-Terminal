@@ -77,7 +77,7 @@ use std::time::{Duration, Instant};
 
 use chassis::Cabinet;
 use config::{Config, CritterSettings, CritterTiming};
-use critters::{Critters, Timing};
+use critters::Critters;
 use crt::{Chain, Degauss, Geometry, Pacing, Params};
 use term::distortion;
 use term::fonts::sizing::{ScalePolicy, SizingRequest};
@@ -717,16 +717,6 @@ fn critter_seed() -> u64 {
         .unwrap_or(0x5EED)
 }
 
-/// When the critters come, as the crate wants it told: the two timings read
-/// the same number and mean opposite things by it.
-fn critter_timing(settings: &CritterSettings) -> Timing {
-    let interval = critter_interval(settings.minutes);
-    match settings.timing {
-        CritterTiming::Clock => Timing::Clock(interval),
-        CritterTiming::Random => Timing::Random(interval),
-    }
-}
-
 /// The number the config asks for, as a duration. The file takes any number
 /// where the settings window offers a slider, so this is where an unusable
 /// one stops: under a second reads as a second, and one too large for a
@@ -748,7 +738,8 @@ fn shipped_critters() -> Critters {
     Critters::new(
         critter_seed(),
         shipped.enabled,
-        critter_timing(&shipped),
+        critter_interval(shipped.minutes),
+        shipped.timing == CritterTiming::Random,
         critter_cast(&shipped),
     )
 }
@@ -1502,7 +1493,8 @@ impl TerminalSurface {
         let cfg = self.live_config();
         self.critters.configure(
             cfg.critters.enabled,
-            critter_timing(&cfg.critters),
+            critter_interval(cfg.critters.minutes),
+            cfg.critters.timing == CritterTiming::Random,
             critter_cast(&cfg.critters),
         );
 
@@ -1727,7 +1719,7 @@ impl TerminalSurface {
         // it has not moved, which is most of them, cost nothing.
         let (cols, rows) = (glass.renderer.cols(), glass.renderer.rows());
         if self.unattended {
-            self.critters.withdraw(now);
+            self.critters.withdraw();
         } else {
             self.critters.tick(now, cols, rows);
         }
@@ -2262,9 +2254,9 @@ impl Surface for TerminalSurface {
                 // has the critters gone once they have stopped drawing, and
                 // a held picture with one frozen into it is not gone. The
                 // arrival due is forfeited, not banked for the return.
-                critter_due = self.critters.withdraw(now);
+                critter_due = self.critters.withdraw();
             } else {
-                match self.critters.wake_at() {
+                match self.critters.wake_at(now) {
                     Some(at) if at > now => wake_at = wake_at.min(at),
                     Some(_) => critter_due = true,
                     None => {}

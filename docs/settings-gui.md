@@ -24,10 +24,10 @@ started rather than the ones already running.
 
 The **Critters** tab is where the appliance's own company is settled:
 whether anything crosses the glass, when, and which of the eight pieces are
-still in the cast. On the shipped clock timing a critter crosses on each
-quarter hour, so catching one tells you the time;
-[`[critters]`](config.md#critters) names each piece and describes the
-random timing the other setting gives.
+still in the cast. On the shipped timing a critter crosses on each quarter
+hour, so catching one tells you the time; the other setting keeps the same
+interval and puts the arrival at an unpredictable point inside it.
+[`[critters]`](config.md#critters) names each piece.
 
 The **Serial** tab puts the terminal on a slow line: a switch, and the rate
 beside it as the standard baud figures a wire ran at. It is the reading that

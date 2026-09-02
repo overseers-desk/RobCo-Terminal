@@ -1,4 +1,5 @@
-//! Randomness, and the one distribution this crate draws from.
+//! Randomness: which piece, which way round, which row, and where in its
+//! interval the critter arrives.
 //!
 //! Nothing here is adversarial and none of it is cryptographic. A stream that
 //! follows from a seed is the point: it lets a test assert a whole crossing,
@@ -23,18 +24,6 @@ pub fn below(state: &mut u64, n: u64) -> u64 {
     next_u64(state) % n
 }
 
-/// A wait drawn from the memoryless distribution with this mean, in seconds:
-/// `-mean * ln(u)` for `u` uniform in `(0, 1]`.
-///
-/// Nothing is clamped at the top. A long gap is a legitimate draw, and a
-/// ceiling would put back the shape the distribution was chosen for lacking.
-pub fn wait(state: &mut u64, mean: f64) -> f64 {
-    // 53 bits, the mantissa's worth, off the top where SplitMix64's bits are
-    // best. The +1 keeps `u` off zero, whose logarithm is not a duration.
-    let u = ((next_u64(state) >> 11) + 1) as f64 / (1u64 << 53) as f64;
-    mean * -u.ln()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -46,28 +35,6 @@ mod tests {
         let again: Vec<u64> = (0..8).map(|_| next_u64(&mut b)).collect();
         assert_eq!(run, again);
         assert!(run.windows(2).all(|w| w[0] != w[1]));
-    }
-
-    /// The two properties the schedule stands on: the mean is the mean, and
-    /// the shape is the exponential's rather than a timer's. `1 - 1/e` of
-    /// the draws fall below the mean, which a metronome would fail by
-    /// putting all of them at it.
-    #[test]
-    fn the_wait_is_memoryless_with_the_mean_it_was_given() {
-        let mut state = 1;
-        let mean = 900.0;
-        let draws: Vec<f64> = (0..10_000).map(|_| wait(&mut state, mean)).collect();
-        let average = draws.iter().sum::<f64>() / draws.len() as f64;
-        assert!(
-            (average - mean).abs() < mean * 0.03,
-            "average {average} is not the mean {mean}"
-        );
-        let below_mean = draws.iter().filter(|d| **d < mean).count() as f64 / draws.len() as f64;
-        assert!(
-            (below_mean - (1.0 - std::f64::consts::E.recip())).abs() < 0.02,
-            "{below_mean} of the draws fell below the mean"
-        );
-        assert!(draws.iter().all(|d| *d > 0.0));
     }
 
     #[test]

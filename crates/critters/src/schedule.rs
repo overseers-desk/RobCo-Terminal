@@ -4,13 +4,18 @@
 //! and `crt::Pacing` already use here, so a test drives a thousand hours
 //! through it in a millisecond.
 //!
-//! [`Timing::Clock`] puts an arrival on each wall-clock mark: at the shipped
-//! quarter hour, :00, :15, :30 and :45, so catching one tells the time. The
-//! hour is always a mark, so an interval that does not divide it takes a
-//! short last step rather than sliding round the clock. [`Timing::Random`]
-//! draws its wait instead ([`crate::rng::wait`]), and nothing about one
-//! arrival says when the next is. Either way the next is settled once the
-//! glass is clear of the last, so two never overlap.
+//! One interval brings one critter. Intervals are counted from local
+//! midnight, so an interval dividing the hour lands on the clock's own marks:
+//! at the shipped quarter hour, :00, :15, :30 and :45, and catching one tells
+//! the time. With `jitter` the arrival is placed at a random point inside its
+//! interval instead of at the start, so it stays unpredictable while still
+//! coming once an interval.
+//!
+//! An interval joined late brings nothing. That is the whole of what happens
+//! when nobody is at the terminal: the moment passed with no one to see it,
+//! and a moment nobody saw is missed rather than owed. Without that rule an
+//! arrival waits at the moment you come back, and since a window counts as
+//! unattended as soon as it loses the keyboard, every return is greeted.
 //!
 //! Any row, the cursor's included. A shell writes at the bottom and a
 //! full-screen program everywhere, so there is no quiet half to prefer, and
@@ -23,46 +28,39 @@ use chrono::Timelike;
 use crate::art::{Art, Crossing, ART};
 use crate::rng;
 
-/// What settles when the next critter comes. An interval and an average are
-/// the same kind of number meaning opposite things, so it travels inside the
-/// answer to which it is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Timing {
-    /// On every wall-clock multiple of this past the hour.
-    Clock(Duration),
-    /// At random, this long between arrivals on average.
-    Random(Duration),
-}
+/// How late an interval may be joined and still bring a critter. Frames
+/// arrive every 16 to 167 ms, so an interval watched from its start is joined
+/// well inside this; one joined later than this was not being watched.
+const JOINED: Duration = Duration::from_secs(1);
 
-/// How long until the next mark, marks falling on every multiple of `every`
-/// past the hour. The hour is always one: an interval that does not divide it
-/// would otherwise walk its marks round the clock, and a mark that moves is
-/// no mark.
-fn until_mark(past_the_hour: Duration, every: Duration) -> Duration {
-    let hour = Duration::from_secs(3600);
-    let every = every.max(Duration::from_secs(1));
-    let since = Duration::from_nanos((past_the_hour.as_nanos() % every.as_nanos()) as u64);
-    (every - since).min(hour.saturating_sub(past_the_hour))
-}
-
-/// How far into the hour the local wall clock is: the mark has to be the one
-/// on the clock in the room.
-fn past_the_hour() -> Duration {
+/// Which interval the local clock is in, and how far into it, counting from
+/// midnight. Local rather than UTC: the mark has to be the one on the clock
+/// in the room.
+fn interval_now(every: Duration) -> (u64, Duration) {
     let now = chrono::Local::now();
-    Duration::from_secs(u64::from(now.minute()) * 60 + u64::from(now.second()))
+    let secs =
+        u64::from(now.hour()) * 3600 + u64::from(now.minute()) * 60 + u64::from(now.second());
+    let every = every.as_secs().max(1);
+    (secs / every, Duration::from_secs(secs % every))
 }
 
 /// One window's critters.
 pub struct Critters {
     rng: u64,
     enabled: bool,
-    timing: Timing,
+    /// One critter per interval of this.
+    every: Duration,
+    /// Whether the arrival is placed at random inside its interval rather
+    /// than at the start of it.
+    jitter: bool,
     /// The pieces left switched on, by index in [`ART`]. All of them off is
     /// the same silence as `enabled` false, and reached the same way.
     allowed: [bool; ART.len()],
-    /// When the next crossing begins. `None` until the first tick, so a
-    /// window that is never drawn schedules nothing.
-    next: Option<Instant>,
+    /// The interval this has planned for.
+    planned: Option<u64>,
+    /// How far into that interval the critter is due, or `None` where the
+    /// interval brings none: it was joined late, or its critter has been.
+    due: Option<Duration>,
     /// The crossing in progress, and the instant it began.
     active: Option<(Crossing, Instant)>,
     /// The cells as of the last tick, row-major.
@@ -75,13 +73,21 @@ pub struct Critters {
 impl Critters {
     /// A window's own. Two given the same seed and the same ticks paint the
     /// same cells for ever, which is what the tests stand on.
-    pub fn new(seed: u64, enabled: bool, timing: Timing, allowed: [bool; ART.len()]) -> Self {
+    pub fn new(
+        seed: u64,
+        enabled: bool,
+        every: Duration,
+        jitter: bool,
+        allowed: [bool; ART.len()],
+    ) -> Self {
         Self {
             rng: seed,
             enabled,
-            timing,
+            every,
+            jitter,
             allowed,
-            next: None,
+            planned: None,
+            due: None,
             active: None,
             cells: Vec::new(),
             prev: Vec::new(),
@@ -89,9 +95,16 @@ impl Critters {
     }
 
     /// The settings, re-applied when the config file changes.
-    pub fn configure(&mut self, enabled: bool, timing: Timing, allowed: [bool; ART.len()]) {
+    pub fn configure(
+        &mut self,
+        enabled: bool,
+        every: Duration,
+        jitter: bool,
+        allowed: [bool; ART.len()],
+    ) {
         self.enabled = enabled;
-        self.timing = timing;
+        self.every = every;
+        self.jitter = jitter;
         self.allowed = allowed;
     }
 
@@ -102,8 +115,7 @@ impl Critters {
         self.cells.clear();
 
         if !self.enabled || cols == 0 || rows == 0 {
-            // A screen with no cells cannot host a crossing, and does not
-            // consume the one that was due: `next` is left standing.
+            // A screen with no cells cannot host a crossing.
             self.active = None;
         } else {
             self.advance(now, cols, rows);
@@ -120,17 +132,15 @@ impl Critters {
     /// Take whatever is crossing off the glass, and say whether the glass
     /// changed by it.
     ///
-    /// The turn is forfeited and the next settled from here: a window is
-    /// unattended the moment it loses the keyboard, so an arrival banked for
-    /// a return would greet every return. The cells go and the caller paints
-    /// the frame taking them off, which is what INVARIANTS.md asks.
-    pub fn withdraw(&mut self, now: Instant) -> bool {
+    /// The interval it came in is already spent, so nothing is owed for it.
+    /// The cells go and the caller paints the frame taking them off, which is
+    /// what INVARIANTS.md asks.
+    pub fn withdraw(&mut self) -> bool {
         self.active = None;
         let had = !self.cells.is_empty();
         self.prev.clear();
         self.prev.extend_from_slice(&self.cells);
         self.cells.clear();
-        self.schedule(now);
         had
     }
 
@@ -141,22 +151,30 @@ impl Critters {
             crossing.step = (ms / u128::from(crossing.art.step_ms.max(1))) as u32;
             if crossing.done(cols) {
                 self.active = None;
-                self.schedule(now);
             }
             return;
         }
-        match self.next {
-            // The first tick is the epoch: a window schedules from when it is
-            // first drawn, not from some earlier zero.
-            None => self.schedule(now),
-            Some(at) if now >= at => {
-                self.active = self.cast(rows).map(|c| (c, now));
-                if self.active.is_none() {
-                    self.schedule(now);
-                }
-            }
-            Some(_) => {}
+        let (index, into) = interval_now(self.every);
+        if self.planned != Some(index) {
+            self.planned = Some(index);
+            self.due = (into < JOINED).then(|| self.offset());
         }
+        if self.due.is_some_and(|due| into >= due) {
+            self.active = self.cast(rows).map(|c| (c, now));
+            self.due = None;
+        }
+    }
+
+    /// Where in its interval this one arrives: the start, or anywhere inside
+    /// it when jittered.
+    fn offset(&mut self) -> Duration {
+        if !self.jitter {
+            return Duration::ZERO;
+        }
+        Duration::from_millis(rng::below(
+            &mut self.rng,
+            self.every.as_millis().max(1) as u64,
+        ))
     }
 
     /// Choose a piece, a facing and a row. Uniform over the pieces still
@@ -194,16 +212,6 @@ impl Critters {
         })
     }
 
-    fn schedule(&mut self, now: Instant) {
-        let delay = match self.timing {
-            Timing::Clock(every) => until_mark(past_the_hour(), every),
-            Timing::Random(mean) => {
-                Duration::from_secs_f64(rng::wait(&mut self.rng, mean.as_secs_f64()))
-            }
-        };
-        self.next = Some(now + delay);
-    }
-
     /// The cells to paint, row-major. Empty when the glass is its own again.
     pub fn cells(&self) -> &[(usize, usize, char)] {
         &self.cells
@@ -214,22 +222,23 @@ impl Critters {
         self.active.map(|(c, _)| c.art.name)
     }
 
-    /// The next column of a crossing in hand, or the instant the next one is
-    /// due. The caller folds it into the deadline it already keeps, so a
-    /// terminal with nothing else to do sleeps through the wait.
-    pub fn wake_at(&self) -> Option<Instant> {
+    /// The next column of a crossing in hand, the moment this interval's
+    /// critter is due, or the start of the next interval. The caller folds it
+    /// into the deadline it already keeps.
+    pub fn wake_at(&self, now: Instant) -> Option<Instant> {
         if !self.enabled {
             return None;
         }
-        match self.active {
-            Some((crossing, began)) => Some(
-                began
-                    + Duration::from_millis(
-                        u64::from(crossing.step + 1) * u64::from(crossing.art.step_ms.max(1)),
-                    ),
-            ),
-            None => self.next,
+        if let Some((crossing, began)) = self.active {
+            let step = u64::from(crossing.step + 1) * u64::from(crossing.art.step_ms.max(1));
+            return Some(began + Duration::from_millis(step));
         }
+        let (_, into) = interval_now(self.every);
+        let ahead = match self.due {
+            Some(due) if due > into => due - into,
+            _ => self.every.saturating_sub(into),
+        };
+        Some(now + ahead)
     }
 }
 
@@ -237,38 +246,23 @@ impl Critters {
 mod tests {
     use super::*;
 
-    fn mins(m: u64) -> Duration {
-        Duration::from_secs(m * 60)
-    }
-
-    fn secs(s: u64) -> Duration {
-        Duration::from_secs(s)
-    }
-
     #[test]
     fn the_quarter_hours_are_where_the_clock_says() {
-        let quarter = mins(15);
-        assert_eq!(until_mark(mins(0), quarter), mins(15));
-        assert_eq!(until_mark(mins(7) + secs(30), quarter), mins(7) + secs(30));
-        assert_eq!(until_mark(mins(14) + secs(59), quarter), secs(1));
-        assert_eq!(until_mark(mins(45), quarter), mins(15));
-        assert_eq!(until_mark(mins(59), quarter), mins(1));
+        // Counting from midnight, an interval dividing the hour puts every
+        // boundary on a mark of the clock: 96 quarter hours in a day, and the
+        // one in hand is where the wall clock says it is.
+        let quarter = Duration::from_secs(900);
+        let (index, into) = interval_now(quarter);
+        assert!(index < 96, "{index} is not an interval of today");
+        assert!(into < quarter);
+        let clock = chrono::Local::now();
+        let minutes = u64::from(clock.hour()) * 60 + u64::from(clock.minute());
+        assert_eq!(index, minutes / 15);
     }
 
-    /// An interval that does not divide the hour would walk its marks round
-    /// the clock an hour at a time. The hour closes the gap with a short step.
-    #[test]
-    fn the_hour_is_always_a_mark() {
-        let seven = mins(7);
-        assert_eq!(until_mark(mins(0), seven), mins(7));
-        assert_eq!(until_mark(mins(56), seven), mins(4));
-        assert_eq!(until_mark(mins(59), seven), mins(1));
-    }
-
-    /// A hand-edited file can ask for an interval the settings window does
-    /// not offer, and nothing below a second is an interval.
     #[test]
     fn an_interval_of_nothing_is_a_second() {
-        assert_eq!(until_mark(mins(0), Duration::ZERO), secs(1));
+        let (_, into) = interval_now(Duration::ZERO);
+        assert!(into < Duration::from_secs(1));
     }
 }

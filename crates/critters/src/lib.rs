@@ -18,7 +18,7 @@
 //!
 //! ```no_run
 //! use std::time::{Duration, Instant};
-//! let mut critters = critters::Critters::new(1, true, critters::Timing::Random(Duration::from_secs(900)), [true; critters::ART.len()]);
+//! let mut critters = critters::Critters::new(1, true, Duration::from_secs(900), true, [true; critters::ART.len()]);
 //! if critters.tick(Instant::now(), 80, 24) {
 //!     for &(row, col, ch) in critters.cells() {
 //!         let _ = (row, col, ch);
@@ -32,4 +32,4 @@ mod rng;
 mod schedule;
 
 pub use art::{Art, Crossing, ART, TRANSPARENT};
-pub use schedule::{Critters, Timing};
+pub use schedule::Critters;

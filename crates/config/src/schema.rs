@@ -367,8 +367,9 @@ impl SerialSettings {
     }
 }
 
-/// When a critter comes: on each wall-clock mark, or at random around an
-/// average. `docs/config.md` carries what each means to a user.
+/// Where in its interval a critter arrives: at the start, on the clock's own
+/// mark, or at a random point inside it. `docs/config.md` carries what each
+/// means to a user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CritterTiming {
@@ -387,8 +388,8 @@ pub struct CritterSettings {
     /// Whether anything crosses the glass at all.
     pub enabled: bool,
     pub timing: CritterTiming,
-    /// Minutes: between marks on the clock, or the average wait, according
-    /// to [`CritterTiming`].
+    /// Minutes between one critter and the next. [`CritterTiming`] settles
+    /// where in that interval it lands.
     pub minutes: f64,
     pub dolphins: bool,
     pub ducks: bool,
