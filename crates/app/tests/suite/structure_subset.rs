@@ -20,6 +20,7 @@ fn structure_reads_only_structural_keys() {
         ("rasterization", "scanline_rasterization"),
         ("font_source", "system_fonts"),
         ("selection_model", "rio"),
+        ("timing", "random"),
     ];
     let document = serde_json::to_value(&base).expect("config serializes");
     for (section, object) in document.as_object().expect("config is an object") {

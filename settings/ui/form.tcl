@@ -105,8 +105,9 @@ namespace eval ::rcsettings::ui::form {
         }
         critters {
             {When they visit} {
-                enabled      bool "Let them visit"                {}
-                mean_minutes scale "Minutes apart, on average"    {1.0 120.0}
+                enabled bool "Let them visit"      {}
+                timing  enum "Timing"              {}
+                minutes scale "Minutes"            {1.0 120.0}
             }
             {Who visits} {
                 dolphins   bool "Dolphins"        {}

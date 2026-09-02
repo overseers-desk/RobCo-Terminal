@@ -43,7 +43,7 @@ fn every_piece_of_art_has_a_key_that_retires_it() {
 
 #[test]
 fn every_key_that_is_not_a_knob_names_a_piece_of_art() {
-    let knobs: BTreeSet<String> = ["enabled", "mean_minutes"]
+    let knobs: BTreeSet<String> = ["enabled", "timing", "minutes"]
         .into_iter()
         .map(String::from)
         .collect();

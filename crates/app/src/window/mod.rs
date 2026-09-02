@@ -76,8 +76,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chassis::Cabinet;
-use config::{Config, CritterSettings};
-use critters::Critters;
+use config::{Config, CritterSettings, CritterTiming};
+use critters::{Critters, Timing};
 use crt::{Chain, Degauss, Geometry, Pacing, Params};
 use term::distortion;
 use term::fonts::sizing::{ScalePolicy, SizingRequest};
@@ -717,18 +717,25 @@ fn critter_seed() -> u64 {
         .unwrap_or(0x5EED)
 }
 
-/// The wait the config asks for, as a duration.
-///
-/// The file is hand-editable and takes any number where the settings window
-/// offers a slider, so this is where an unusable one stops. A value under a
-/// second is read as a second, and one too large for a `Duration` at all --
-/// `1e300` minutes, say -- falls back to the shipped default rather than
-/// taking the window down with it, because a mistyped interval is a typo and
-/// not a reason to lose a session.
-fn critter_mean(minutes: f64) -> Duration {
-    let shipped = CritterSettings::default().mean_minutes * 60.0;
+/// When the critters come, as the crate wants it told: the two timings read
+/// the same number and mean opposite things by it.
+fn critter_timing(settings: &CritterSettings) -> Timing {
+    let interval = critter_interval(settings.minutes);
+    match settings.timing {
+        CritterTiming::Clock => Timing::Clock(interval),
+        CritterTiming::Random => Timing::Random(interval),
+    }
+}
+
+/// The number the config asks for, as a duration. The file takes any number
+/// where the settings window offers a slider, so this is where an unusable
+/// one stops: under a second reads as a second, and one too large for a
+/// `Duration` at all falls back to the shipped one, a typo being no reason to
+/// lose a session.
+fn critter_interval(minutes: f64) -> Duration {
+    let shipped = CritterSettings::default().minutes * 60.0;
     Duration::try_from_secs_f64((minutes * 60.0).max(1.0)).unwrap_or_else(|_| {
-        log::warn!("critters.mean_minutes = {minutes} is not a usable interval; using {shipped}s");
+        log::warn!("critters.minutes = {minutes} is not a usable interval; using {shipped}s");
         Duration::from_secs_f64(shipped)
     })
 }
@@ -741,7 +748,7 @@ fn shipped_critters() -> Critters {
     Critters::new(
         critter_seed(),
         shipped.enabled,
-        critter_mean(shipped.mean_minutes),
+        critter_timing(&shipped),
         critter_cast(&shipped),
     )
 }
@@ -1495,7 +1502,7 @@ impl TerminalSurface {
         let cfg = self.live_config();
         self.critters.configure(
             cfg.critters.enabled,
-            critter_mean(cfg.critters.mean_minutes),
+            critter_timing(&cfg.critters),
             critter_cast(&cfg.critters),
         );
 
@@ -1720,7 +1727,7 @@ impl TerminalSurface {
         // it has not moved, which is most of them, cost nothing.
         let (cols, rows) = (glass.renderer.cols(), glass.renderer.rows());
         if self.unattended {
-            self.critters.withdraw();
+            self.critters.withdraw(now);
         } else {
             self.critters.tick(now, cols, rows);
         }
@@ -2255,7 +2262,7 @@ impl Surface for TerminalSurface {
                 // has the critters gone once they have stopped drawing, and
                 // a held picture with one frozen into it is not gone.
                 // What was due stays due, for whenever somebody is back.
-                critter_due = self.critters.withdraw();
+                critter_due = self.critters.withdraw(now);
             } else {
                 match self.critters.wake_at() {
                     Some(at) if at > now => wake_at = wake_at.min(at),

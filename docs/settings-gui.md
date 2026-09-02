@@ -22,11 +22,12 @@ whatever it holds, being what the row is identified by. The terminal reads
 the table when it launches, so a change here reaches the next session
 started rather than the ones already running.
 
-The **Critters** tab is where the appliance's own company is settled: whether
-anything crosses the glass, how long on average between one and the next, and
-which of the eight pieces are still in the cast. The interval is an average
-and not a period, so a critter is never due; [`[critters]`](config.md#critters)
-says more about why, and names each piece.
+The **Critters** tab is where the appliance's own company is settled:
+whether anything crosses the glass, when, and which of the eight pieces are
+still in the cast. On the shipped clock timing a critter crosses on each
+quarter hour, so catching one tells you the time;
+[`[critters]`](config.md#critters) names each piece and describes the
+random timing the other setting gives.
 
 The **Serial** tab puts the terminal on a slow line: a switch, and the rate
 beside it as the standard baud figures a wire ran at. It is the reading that
