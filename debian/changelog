@@ -1,3 +1,25 @@
+robco-term (0.2.3) unstable; urgency=medium
+
+  * Critters come on the clock. One crosses the glass at the start of
+    each interval counted from midnight, so at the shipped quarter hour
+    you get one at :00, :15, :30 and :45, and catching one tells you the
+    time without looking. Setting `timing` to `random` keeps the same
+    interval and puts the arrival at an unpredictable point inside it.
+  * A critter no longer greets you whenever you come back to the window.
+    A window counts as unattended the moment it loses the keyboard, and
+    an arrival that fell due while nobody was there used to wait for the
+    return, so returning was the commonest way to see one. An interval
+    nobody was watching now brings nothing.
+  * The `[critters]` table reads `timing` and `minutes` in place of
+    `mean_minutes`. A `mean_minutes` left in a config file is ignored and
+    the quarter hour applies.
+  * An empty bank tunes to no-signal: the air lands on a rowless bank and
+    the glass carries the casting with a centred NO_SIGNAL notice.
+    Ctrl+Shift+T there opens slot 01, and a returning gateway whose berth
+    is taken lands on the next free slot.
+
+ -- Weiwu Zhang <a@colourful.land>  Wed, 02 Sep 2026 16:34:45 +1000
+
 robco-term (0.2.2) unstable; urgency=medium
 
   * A second window can close without taking the process down with it.
