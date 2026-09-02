@@ -10,9 +10,6 @@ robco-term (0.2.3) unstable; urgency=medium
     an arrival that fell due while nobody was there used to wait for the
     return, so returning was the commonest way to see one. An interval
     nobody was watching now brings nothing.
-  * The `[critters]` table reads `timing` and `minutes` in place of
-    `mean_minutes`. A `mean_minutes` left in a config file is ignored and
-    the quarter hour applies.
   * An empty bank tunes to no-signal: the air lands on a rowless bank and
     the glass carries the casting with a centred NO_SIGNAL notice.
     Ctrl+Shift+T there opens slot 01, and a returning gateway whose berth
