@@ -294,8 +294,8 @@ one waiting at the moment you came back, greeting every return.
 | Key | Default | What it does |
 |---|---|---|
 | `enabled` | `true` | Whether anything crosses the glass at all. Off is the same silence as a build with none of this in it. |
-| `timing` | `"clock"` | `clock` puts a critter on each wall-clock mark; `random` scatters them around an average. |
-| `minutes` | `15.0` | The minutes between marks, or the average wait under `random`. The settings window's slider runs 1 to 120; the file takes any number, and anything under a second is read as a second. |
+| `timing` | `"clock"` | `clock` puts the arrival at the start of each interval, on the wall-clock mark; `random` puts it at an unpredictable point inside the same interval. |
+| `minutes` | `15.0` | The minutes in one interval. The settings window's slider runs 1 to 120; the file takes any number, and anything under a second is read as a second. |
 | `dolphins` | `true` | A pair leaping and going back in, asciiquarium's. |
 | `ducks` | `true` | Three abreast, quacking down the line, asciiquarium's. |
 | `swan` | `true` | asciiquarium's, and the only one that needs no animating to look alive. |

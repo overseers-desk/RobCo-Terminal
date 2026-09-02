@@ -1,10 +1,8 @@
-//! A whole crossing, and a whole day of them, driven by a clock made up on
-//! the spot.
+//! A whole crossing, driven by a clock made up on the spot.
 //!
-//! Nothing here needs a terminal, a window or a GPU, because the crate is
-//! arithmetic: the fake clock below is the same trick `crt::Pacing::tick_by`
-//! plays, and it is what lets a test watch a duck cross ten thousand times
-//! in a millisecond.
+//! Nothing here needs a terminal, a window or a GPU. A `Crossing` walked by
+//! hand, the same trick `crt::Pacing::tick_by` plays, is what lets a test
+//! watch a duck cross ten thousand times in a millisecond.
 //!
 //! The walk is driven by hand, with no clock and no scheduler: a `Crossing`
 //! stepped one column at a time proves it goes on at one edge and off at the
@@ -19,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use critters::{Critters, Crossing, ART};
 
-/// Tick a real second's worth of frames and say whether a critter came.
+/// Tick real seconds' worth of frames and count how many times a critter came.
 fn watch(critters: &mut Critters, seconds: f64) -> u32 {
     let (start, mut seen, mut standing) = (Instant::now(), 0, false);
     while Instant::now().duration_since(start).as_secs_f64() < seconds {

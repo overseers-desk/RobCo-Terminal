@@ -59,7 +59,8 @@ pub struct Critters {
     /// The interval this has planned for.
     planned: Option<u64>,
     /// How far into that interval the critter is due, or `None` where the
-    /// interval brings none: it was joined late, or its critter has been.
+    /// interval brings no more: it was joined late, or its critter has
+    /// already crossed.
     due: Option<Duration>,
     /// The crossing in progress, and the instant it began.
     active: Option<(Crossing, Instant)>,
