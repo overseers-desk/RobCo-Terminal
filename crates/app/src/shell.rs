@@ -102,6 +102,10 @@ pub trait Surface {
     }
     /// The pointer moved to this physical-pixel position.
     fn cursor_moved(&mut self, _position: PhysicalPosition<f64>, _modifiers: ModifiersState) {}
+    /// The pointer left the window. winit reports the leaving and not where
+    /// the pointer went, and no other event tells a surface its pointer is
+    /// no longer over it.
+    fn cursor_left(&mut self) {}
     /// The wheel turned.
     fn mouse_wheel(&mut self, _delta: MouseScrollDelta, _modifiers: ModifiersState) {}
     /// The window gained or lost keyboard focus.
@@ -786,6 +790,11 @@ impl ApplicationHandler<ShellEvent> for Shell {
                 if let Some(state) = self.windows.get_mut(&window_id) {
                     state.cursor = position;
                     state.surface.cursor_moved(position, modifiers);
+                }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                if let Some(state) = self.windows.get_mut(&window_id) {
+                    state.surface.cursor_left();
                 }
             }
             WindowEvent::MouseInput {

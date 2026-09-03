@@ -250,6 +250,10 @@ impl TerminalSurface {
             // same grid.
             self.pointer_cell = (0, 0);
             self.wheel_pixels = 0.0;
+            // And the link the pointer was over, or had pressed: cells of
+            // that grid too.
+            self.link_press = None;
+            self.set_hover(None);
             // This must run only when the air moves and at no other time:
             // `channel_changed` is also called from the pump, every 8ms, and
             // `ensure_visible` recomputes `page_index` from the channel on the

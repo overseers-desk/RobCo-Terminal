@@ -451,3 +451,93 @@ fn a_mark_clears_with_the_switch_and_its_text_stays_on_primary() {
         "the copied text outlives the mark on the primary selection"
     );
 }
+
+/// The chord that opens a link: Command on macOS, Control everywhere else,
+/// the same chord that joins lines on a drag.
+fn opening() -> ModifiersState {
+    if cfg!(target_os = "macos") {
+        ModifiersState::SUPER
+    } else {
+        ModifiersState::CONTROL
+    }
+}
+
+/// "see " is four columns, so the URL runs from column 4 to column 22.
+const LINKED: &str = "printf 'see https://example.com now\\n'";
+
+#[test]
+fn a_chorded_click_on_a_url_opens_it_and_a_plain_click_does_not() {
+    let mut surface = surface(LINKED, 24);
+    wait_for_screen(&mut surface, "example.com");
+
+    surface.mouse_pressed(MouseButton::Left, at(6, 0), none());
+    surface.mouse_released(MouseButton::Left, at(6, 0), none());
+    assert_eq!(surface.last_opened(), None, "a plain click followed the link");
+
+    // Another cell of the same link, so this is a fresh click and not the
+    // second press of a double.
+    surface.mouse_pressed(MouseButton::Left, at(12, 0), opening());
+    surface.mouse_released(MouseButton::Left, at(12, 0), opening());
+    assert_eq!(surface.last_opened(), Some("https://example.com"));
+}
+
+#[test]
+fn a_chorded_press_that_drags_selects_the_link_and_opens_nothing() {
+    let mut surface = surface(LINKED, 24);
+    wait_for_screen(&mut surface, "example.com");
+
+    surface.mouse_pressed(MouseButton::Left, at(4, 0), opening());
+    surface.cursor_moved(at(23, 0), opening());
+    surface.mouse_released(MouseButton::Left, at(23, 0), opening());
+    assert_eq!(surface.last_opened(), None, "a drag followed the link");
+    assert_eq!(surface.last_selection(), Some("https://example.com"));
+}
+
+#[test]
+fn the_link_under_the_pointer_follows_the_chord_and_leaves_with_the_view() {
+    let mut surface = surface(LINKED, 24);
+    wait_for_screen(&mut surface, "example.com");
+
+    surface.cursor_moved(at(10, 0), none());
+    assert_eq!(surface.hovered_link(), None, "no chord, no underline");
+    surface.cursor_moved(at(11, 0), opening());
+    assert_eq!(surface.hovered_link(), Some("https://example.com"));
+
+    // The chord let go, and pressed again, without the pointer moving.
+    surface.modifiers_changed(none());
+    assert_eq!(surface.hovered_link(), None);
+    surface.modifiers_changed(opening());
+    assert_eq!(surface.hovered_link(), Some("https://example.com"));
+
+    // The view moving under the pointer takes the underline with it, and
+    // the next motion asks again.
+    surface.mouse_wheel(MouseScrollDelta::LineDelta(0.0, 1.0), opening());
+    assert_eq!(surface.hovered_link(), None);
+    surface.cursor_moved(at(12, 0), opening());
+    assert_eq!(surface.hovered_link(), Some("https://example.com"));
+
+    surface.focus_changed(false);
+    assert_eq!(surface.hovered_link(), None, "focus lost");
+    surface.cursor_moved(at(13, 0), opening());
+    assert_eq!(surface.hovered_link(), Some("https://example.com"));
+    surface.cursor_left();
+    assert_eq!(surface.hovered_link(), None, "the pointer left the window");
+    // A chord pressed while the pointer is elsewhere raises nothing here.
+    surface.modifiers_changed(opening());
+    assert_eq!(surface.hovered_link(), None);
+}
+
+#[test]
+fn an_osc8_hyperlink_opens_its_uri_and_not_its_text() {
+    let mut surface = surface(
+        "printf '\\033]8;;https://example.org\\aclick me\\033]8;;\\a\\n'",
+        24,
+    );
+    wait_for_screen(&mut surface, "click me");
+
+    surface.cursor_moved(at(2, 0), opening());
+    assert_eq!(surface.hovered_link(), Some("https://example.org"));
+    surface.mouse_pressed(MouseButton::Left, at(2, 0), opening());
+    surface.mouse_released(MouseButton::Left, at(2, 0), opening());
+    assert_eq!(surface.last_opened(), Some("https://example.org"));
+}

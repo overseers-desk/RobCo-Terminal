@@ -81,9 +81,10 @@ use critters::Critters;
 use crt::{Chain, Degauss, Geometry, Pacing, Params};
 use term::distortion;
 use term::fonts::sizing::{ScalePolicy, SizingRequest};
+use term::hotspots::UrlFilterChain;
 use term::rio_vt::crosswords::pos::Side;
 use term::rio_vt::crosswords::Mode;
-use term::selection::{Gesture, Kind, SelectionModel};
+use term::selection::{Gesture, Kind, MarkedRange, SelectionModel};
 use ssh_link::{AskDesk, Link};
 use term::{
     CellSize, ChannelSession, ControlModeTap, FontContext, FontEntry, GridRenderer, Marked,
@@ -95,7 +96,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{Ime, MouseButton, MouseScrollDelta};
 use winit::event_loop::EventLoopProxy;
 use winit::keyboard::ModifiersState;
-use winit::window::Window;
+use winit::window::{CursorIcon, Window};
 
 use crate::bank::BankPager;
 use crate::channels::{BankId, Channels, Close};
@@ -103,11 +104,12 @@ use crate::chord::ChordInput;
 use crate::chrome::Chrome;
 use crate::frame_stats::Mark;
 use crate::gpu::Gpu;
+use crate::opener::Opener;
 use crate::settings::{self, SettingsHandle};
 use crate::shell::{ShellEvent, Surface, Tick};
 use crate::ssh::SshRequest;
 use crate::tmux::Gateway;
-use crate::window::keys::key_text;
+use crate::window::keys::{key_text, modifiers_from};
 use crate::{clipboard, paths};
 
 mod bank;
@@ -474,9 +476,13 @@ pub struct TerminalSurface {
     /// writing per motion would be a file rewrite and a reload per pixel of
     /// travel for a value the screen already shows.
     pending_led_characters: Option<i32>,
-    /// Whether the pointer is currently wearing the seam's shape, so the
-    /// window is only told when it changes.
+    /// Whether the seam claims the pointer's shape: the resize arrows over
+    /// the grab strip, which outrank the hand over a link
+    /// (`TerminalSurface::set_pointer_shape`).
     seam_cursor: bool,
+    /// The shape the window was last told to wear, so it is told only when
+    /// the shape changes.
+    pointer_shape: CursorIcon,
     /// How this surface reaches its shell. The bank's width is the window's
     /// minimum-width hint and the shell owns every window, so a seam drag has
     /// to cross back ([`ShellEvent::SetBankWidth`]).
@@ -501,6 +507,22 @@ pub struct TerminalSurface {
     selection: SelectionModel,
     /// The absolute cell the pointer was last over.
     pointer_cell: (usize, usize),
+    /// Whether the pointer is inside the window at all, so a modifier
+    /// pressed with it over another window raises no underline here.
+    pointer_present: bool,
+    /// The URL filters, run over the viewport when the pointer asks what
+    /// link it is over (`term::links::link_at`).
+    links: UrlFilterChain,
+    /// The link under the pointer while the chord that opens one is held:
+    /// the cells it occupies, which the renderer underlines, and what
+    /// opening it means.
+    hover: Option<(MarkedRange, String)>,
+    /// A left press that landed on a link with the chord held: the cell it
+    /// landed on, and the link, opened if the button comes up on that cell.
+    link_press: Option<((usize, usize), String)>,
+    /// What opens a link: the platform's handler behind a window, a
+    /// recording behind a headless surface (`crate::opener`).
+    opener: Opener,
     /// The left button is down and a move extends the selection.
     dragging: bool,
     /// The left press that is down was Control-held and became a secondary
@@ -916,6 +938,7 @@ impl TerminalSurface {
             seam_press: false,
             pending_led_characters: None,
             seam_cursor: false,
+            pointer_shape: CursorIcon::Default,
             shell_events: None,
             ime: ImeState::default(),
             last_find: String::new(),
@@ -926,6 +949,15 @@ impl TerminalSurface {
             // on the glass to mark yet.
             selection: SelectionModel::new(Kind::Konsole, columns),
             pointer_cell: (0, 0),
+            pointer_present: false,
+            links: UrlFilterChain::with_url_filter(),
+            hover: None,
+            link_press: None,
+            opener: if window_has_display {
+                Opener::platform()
+            } else {
+                Opener::recording()
+            },
             dragging: false,
             secondary_press: false,
             last_click: None,
@@ -1108,6 +1140,16 @@ impl TerminalSurface {
     /// primary selection's slot, which is where selecting puts it.
     pub fn last_selection(&self) -> Option<&str> {
         self.clipboard.last(clipboard::Target::Primary)
+    }
+
+    /// The link the pointer opened last, as the window's opener recorded it.
+    pub fn last_opened(&self) -> Option<&str> {
+        self.opener.last_opened()
+    }
+
+    /// The link under the pointer right now, the one underlined on the glass.
+    pub fn hovered_link(&self) -> Option<&str> {
+        self.hover.as_ref().map(|(_, url)| url.as_str())
     }
 
     /// This window's clipboard store, for a caller that wants to see which
@@ -1644,6 +1686,11 @@ impl TerminalSurface {
         let marked = self
             .marked_range()
             .map(|range| Marked { range, top_line });
+        // And the link under the pointer, on the same terms.
+        let link = self
+            .hover
+            .as_ref()
+            .map(|(range, _)| Marked { range: *range, top_line });
 
         let Some(gpu) = self.gpu.as_mut() else { return };
         let Some(mut frame) = gpu.acquire() else {
@@ -1705,7 +1752,7 @@ impl TerminalSurface {
             session.term_mut(),
             &mut self.scroll,
             marked.as_ref(),
-            None,
+            link.as_ref(),
         );
         // What the input method is composing goes into the grid, at the
         // cursor, before the grid is drawn, so it runs through the CRT chain
@@ -2138,6 +2185,10 @@ impl Surface for TerminalSurface {
         self.on_cursor_moved(position, modifiers);
     }
 
+    fn cursor_left(&mut self) {
+        self.on_cursor_left();
+    }
+
     fn mouse_wheel(&mut self, delta: MouseScrollDelta, modifiers: ModifiersState) {
         self.on_mouse_wheel(delta, modifiers);
     }
@@ -2310,6 +2361,9 @@ impl Surface for TerminalSurface {
         if released {
             self.commit_chord();
         }
+        // The chord that opens a link, pressed or let go with the pointer
+        // resting on one, is the other edge a surface reads here.
+        self.refresh_hover(modifiers_from(modifiers));
     }
 }
 

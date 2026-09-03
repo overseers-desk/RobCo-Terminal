@@ -23,13 +23,14 @@
 use std::time::{Duration, Instant};
 
 use term::distortion::{self, correct_distortion, DistortionParams};
-use term::pointer::{self, on_press, PointerAction, PointerContext};
+use term::pointer::{self, on_press, opens_link, PointerAction, PointerContext};
 use term::rio_vt::crosswords::pos::Side;
 use term::rio_vt::crosswords::Mode;
 use term::selection;
 use winit::dpi::PhysicalPosition;
 use winit::event::{MouseButton, MouseScrollDelta};
 use winit::keyboard::ModifiersState;
+use winit::window::CursorIcon;
 
 use crate::input::Modifiers;
 use crate::settings;
@@ -195,6 +196,65 @@ impl TerminalSurface {
         }
     }
 
+    /// The link under `cell` as the glass shows it now, or `None` off any.
+    fn link_under(&mut self, cell: (usize, usize)) -> Option<(selection::MarkedRange, String)> {
+        let top_line = self.top_line();
+        let session = self.channels.session()?;
+        term::links::link_at(&mut self.links, session.term(), top_line, cell)
+    }
+
+    /// What the pointer is over, read afresh: a link while the chord that
+    /// opens one is held and the pointer is in the window, nothing otherwise.
+    pub(super) fn refresh_hover(&mut self, mods: Modifiers) {
+        let hover = if opens_link(mods) && self.pointer_present {
+            self.link_under(self.pointer_cell)
+        } else {
+            None
+        };
+        self.set_hover(hover);
+    }
+
+    /// The link under the pointer changed. The renderer's underline moves
+    /// with the next frame, asked for here since a motion asks for none of
+    /// its own, and the pointer's shape changes now.
+    pub(super) fn set_hover(&mut self, hover: Option<(selection::MarkedRange, String)>) {
+        if hover == self.hover {
+            return;
+        }
+        self.hover = hover;
+        self.set_pointer_shape();
+        if let Some(window) = self.window.as_ref() {
+            window.request_redraw();
+        }
+    }
+
+    /// The one writer of the pointer's shape, in claim order: the seam's
+    /// resize arrows, the hand over a link, the platform's default. The
+    /// window is told only when the shape changes.
+    pub(super) fn set_pointer_shape(&mut self) {
+        let shape = if self.seam_cursor {
+            CursorIcon::EwResize
+        } else if self.hover.is_some() {
+            CursorIcon::Pointer
+        } else {
+            CursorIcon::Default
+        };
+        if shape == self.pointer_shape {
+            return;
+        }
+        self.pointer_shape = shape;
+        if let Some(window) = self.window.as_ref() {
+            window.set_cursor(shape);
+        }
+    }
+
+    /// The pointer left the window: nothing is under it, and a modifier
+    /// pressed over another window raises no underline here.
+    pub(super) fn on_cursor_left(&mut self) {
+        self.pointer_present = false;
+        self.set_hover(None);
+    }
+
     /// Report a button or wheel event to the program, in whichever of the
     /// two wire formats it asked for.
     fn report_mouse(
@@ -262,13 +322,16 @@ impl TerminalSurface {
         };
         let (cell, side) = self.cell_side_at(position);
         self.pointer_cell = cell;
+        self.pointer_present = true;
 
-        // `over_hot_spot` is false until the renderer owns a per-frame
-        // URL chain to ask: activating a link needs the chain the drawn
-        // frame was built from, not one rebuilt behind the pointer.
-        // `term::hotspots` is tested against that day; this call site is
-        // where it plugs in.
-        match on_press(self.pointer_context(), button, mods, false) {
+        // The link under the press, asked only when the chord that opens
+        // one is held: a plain press marks, whatever it lands on.
+        let link = if opens_link(mods) {
+            self.link_under(cell)
+        } else {
+            None
+        };
+        match on_press(self.pointer_context(), button, mods, link.is_some()) {
             PointerAction::Mark | PointerAction::MarkAndActivateHotSpot => {
                 self.retarget_selection(self.selection_kind());
                 let now = Instant::now();
@@ -298,6 +361,12 @@ impl TerminalSurface {
                 }
                 self.dragging = true;
                 self.last_click = Some((now, cell, count));
+                // A link opens when the button comes up on the cell it went
+                // down on: a press that travels is a drag, and selects the
+                // link's text instead of following it. The first press of a
+                // run is the one that opens; the double and the triple that
+                // may follow it select the word and the line.
+                self.link_press = link.filter(|_| count == 1).map(|(_, url)| (cell, url));
             }
             PointerAction::ReportToProgram => {
                 self.report_mouse(report_button(button), cell, mods, true)
@@ -337,6 +406,16 @@ impl TerminalSurface {
         let (cell, side) = self.cell_side_at(position);
         self.pointer_cell = cell;
 
+        // Before the drag's own release below, which returns: the press
+        // that put a link here also set `dragging`.
+        if button == pointer::Button::Left {
+            if let Some((pressed_at, url)) = self.link_press.take() {
+                if cell == pressed_at {
+                    self.opener.open(&url);
+                }
+            }
+        }
+
         if button == pointer::Button::Left && self.dragging {
             self.dragging = false;
             // The selection goes to the primary selection here, not on a
@@ -369,12 +448,14 @@ impl TerminalSurface {
             return;
         }
         self.pointer_cell = cell;
+        self.pointer_present = true;
+        let mods = modifiers_from(modifiers);
+        self.refresh_hover(mods);
 
         if self.dragging {
             self.drag_selection_to(cell, side);
             return;
         }
-        let mods = modifiers_from(modifiers);
         if !mods.shift && self.mode_contains(Mode::MOUSE_MOTION) {
             self.report_mouse(mouse::MouseButton::Release, cell, mods, true);
         }
@@ -382,6 +463,9 @@ impl TerminalSurface {
 
     pub(super) fn on_mouse_wheel(&mut self, delta: MouseScrollDelta, modifiers: ModifiersState) {
         self.attended();
+        // The view is about to move under the pointer, so the link it was
+        // over is no longer under it; the next motion asks again.
+        self.set_hover(None);
         let mods = modifiers_from(modifiers);
         let cell_height = f64::from(self.viewport.term_size().cell_height).max(1.0);
 
@@ -455,6 +539,11 @@ impl TerminalSurface {
             // flag left standing would turn the next window's first ordinary
             // press into a right release.
             self.secondary_press = false;
+            // The link a press landed on goes with it, and so does the
+            // underline: the release that would have opened it goes to
+            // another window.
+            self.link_press = None;
+            self.set_hover(None);
             // A window that goes away under a half-typed chord commits it
             // rather than holding the digits for whenever it comes back.
             self.chord_modifier = false;

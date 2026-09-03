@@ -8,7 +8,7 @@
 //! Fields touched: `cabinet`, which owns the geometry and the hit tests and
 //! takes a drag on the spot; `seam_press`, the press the seam is holding;
 //! `pending_led_characters`, what a drag has landed and the settings file
-//! does not carry yet; `seam_cursor`, the shape the window is wearing; and
+//! does not carry yet; `seam_cursor`, whether the seam claims the pointer's shape; and
 //! `shell_events`, because the bank's width is the window's minimum-width
 //! hint and only the shell can apply one.
 
@@ -16,7 +16,6 @@ use chassis::{SeamCursor, SeamUpdate};
 use config::toml::Scalar;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
-use winit::window::CursorIcon;
 
 use crate::shell::ShellEvent;
 
@@ -167,13 +166,7 @@ impl TerminalSurface {
             return;
         }
         self.seam_cursor = claimed;
-        if let Some(window) = self.window.as_ref() {
-            window.set_cursor(if claimed {
-                CursorIcon::EwResize
-            } else {
-                CursorIcon::Default
-            });
-        }
+        self.set_pointer_shape();
     }
 
     /// A press on one of the bank's strips. The `channel` is
