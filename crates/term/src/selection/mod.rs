@@ -38,7 +38,7 @@
 //! `crates/app/tests/suite/structure_subset.rs`'s alternates and in
 //! `crates/app/tests/suite/pointer_live_settings.rs`; the `selection_model`
 //! row in `settings/ui/form.tcl`, its row in `docs/config.md`, and the
-//! sentence naming the two models in `docs/keys.md`.
+//! sentence naming the two models in `docs/controls.md`.
 
 pub mod konsole;
 pub mod rio;

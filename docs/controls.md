@@ -1,8 +1,9 @@
-# Keys
+# Controls
 
-Every key the terminal takes for itself. Everything not listed here goes to
-the program on the other end, which is why the list is worth knowing: a key
-that is bound here is a key your editor never sees.
+Every key and pointer gesture the terminal takes for itself. Everything not
+listed here goes to the program on the other end, which is why the list is
+worth knowing: a key that is bound here is a key your editor never sees, and
+a click that is taken here is a click it never receives.
 
 The chord modifier is `Alt`, and `Cmd` on macOS.
 

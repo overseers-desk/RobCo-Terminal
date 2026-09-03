@@ -236,8 +236,9 @@ rules it has to obey.
 
 `Alt`+digit brings a channel to the screen, `Ctrl`+`Shift`+`T` opens one,
 and copy and paste are `Ctrl`+`Shift`+`C` and `Ctrl`+`Shift`+`V` where any
-other terminal puts them. [docs/keys.md](docs/keys.md) is the full list, and
-it also says which keys this terminal leaves alone.
+other terminal puts them. [docs/controls.md](docs/controls.md) is the full
+list of keys and pointer gestures, and it also says which keys this terminal
+leaves alone.
 
 ## Command line
 
