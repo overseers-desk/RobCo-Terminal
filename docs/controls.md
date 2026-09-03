@@ -104,6 +104,30 @@ so it opens the settings window and reaches a mouse-tracking program the
 same way the button itself does. That is why `Cmd` and not `Ctrl` holds
 the unbroken copy there.
 
+## Links
+
+| Gesture | What it does |
+|---|---|
+| `Ctrl`+click on a link | Open it with the system's own handler |
+
+`Cmd`+click on macOS, where `Ctrl`+click is the secondary click. A link is
+a URL, an e-mail address, or a hyperlink a program declared with OSC 8:
+`www.example.com` opens as `http://`, an address as `mailto:`, a hyperlink
+as the URI the program gave, whatever text it showed. The terminal starts
+`xdg-open`, `open` or the Windows URL handler and never learns which
+browser answered.
+
+While the key is held and the pointer rests on a link, the link is
+underlined and the pointer becomes a hand; let the key go, move off, or
+scroll, and both go. The underline is the glass's own: a copy of the
+screen carries no mark the session did not send.
+
+The press is the same one that copies a wrapped run unbroken, so what the
+hand does next decides: a click that stays on its cell opens the link, a
+drag selects its text and opens nothing. With a program tracking the mouse
+(an editor, tmux), the press is the program's; hold `Shift` as well to take
+it back, as for any selection.
+
 ## The menu bar, on macOS
 
 | Key | What it does |
