@@ -1705,6 +1705,7 @@ impl TerminalSurface {
             session.term_mut(),
             &mut self.scroll,
             marked.as_ref(),
+            None,
         );
         // What the input method is composing goes into the grid, at the
         // cursor, before the grid is drawn, so it runs through the CRT chain

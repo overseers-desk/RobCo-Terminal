@@ -197,6 +197,7 @@ fn a_marked_run_is_drawn_in_inverse_video_and_nothing_else_moves() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
     let plain = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
 
@@ -210,6 +211,7 @@ fn a_marked_run_is_drawn_in_inverse_video_and_nothing_else_moves() {
         &mut term,
         &mut viewport,
         Some(&run),
+        None,
     );
     let highlighted = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
 
@@ -243,6 +245,7 @@ fn a_marked_run_is_drawn_in_inverse_video_and_nothing_else_moves() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
     let cleared = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
     assert_eq!(
@@ -268,6 +271,7 @@ fn a_selection_repaints_the_rows_it_crossed_and_no_others() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
 
     let run = marked(0, 4, 1);
@@ -278,6 +282,7 @@ fn a_selection_repaints_the_rows_it_crossed_and_no_others() {
         &mut term,
         &mut viewport,
         Some(&run),
+        None,
     );
     assert!(!stats.full, "marking a run repainted the whole screen");
     assert_eq!(
@@ -294,6 +299,7 @@ fn a_selection_repaints_the_rows_it_crossed_and_no_others() {
         &mut term,
         &mut viewport,
         Some(&run),
+        None,
     );
     assert_eq!(
         stats.rows_updated, 0,
@@ -312,6 +318,7 @@ fn a_selection_repaints_the_rows_it_crossed_and_no_others() {
         &mut term,
         &mut viewport,
         Some(&grown),
+        None,
     );
     assert_eq!(
         stats.marked_rows, 2,
@@ -326,6 +333,7 @@ fn a_selection_repaints_the_rows_it_crossed_and_no_others() {
         &mut font,
         &mut term,
         &mut viewport,
+        None,
         None,
     );
     assert_eq!(
@@ -355,6 +363,7 @@ fn a_cell_the_phosphor_already_collapsed_still_reads_when_marked() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
     let plain = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
     let rect = cell_rect(&renderer, 0, 0);
@@ -371,11 +380,101 @@ fn a_cell_the_phosphor_already_collapsed_still_reads_when_marked() {
         &mut term,
         &mut viewport,
         Some(&run),
+        None,
     );
     let highlighted = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
     assert!(
         !is_flat(&highlighted, rect),
         "a marked cell whose glyph and plate had collapsed to one phosphor came out \
          one flat colour again: the mark cannot be seen"
+    );
+}
+
+#[test]
+fn a_linked_run_is_underlined_and_nothing_else_moves() {
+    let Some((gpu, _lock)) = gpu() else { return };
+    let scheme = Scheme::monochrome(PHOSPHOR, BEHIND);
+    let (mut renderer, mut font) = renderer(&gpu, &scheme);
+    let mut viewport = ScrollPosition::default();
+    let (mut term, mut processor) = terminal();
+
+    processor.advance(&mut term, b"HELLO WORLD\r\n");
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+        None,
+    );
+    let plain = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+
+    // "WORLD": columns 6 to 10 of the top line, as the link under the pointer.
+    let link = marked(6, 10, 0);
+    let rects: Vec<_> = (6..=10).map(|col| cell_rect(&renderer, col, 0)).collect();
+    let stats = renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+        Some(&link),
+    );
+    assert_eq!(stats.link_rows, 1, "the one row the link entered is rebuilt for it");
+    let underlined = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+
+    assert_ne!(
+        plain.pixels, underlined.pixels,
+        "a linked run left the screen exactly as it found it: nothing was drawn"
+    );
+    identical_outside(&plain, &underlined, &rects);
+
+    // A line one pixel below the baseline, lit across every cell of the run,
+    // and nothing taken from the glyph above it.
+    let cell = renderer.atlas().cell;
+    let line_y = (cell.baseline + 1).min(cell.height as i32 - 1) as u32;
+    for (i, rect) in rects.iter().enumerate() {
+        let col = i + 6;
+        let (x0, y0, w, _) = *rect;
+        for x in x0..x0 + w {
+            assert!(
+                underlined.pixel(x, y0 + line_y)[0] > 128,
+                "column {col}: the underline is missing at x={x}"
+            );
+        }
+        let (was_lit, _) = lit_and_dark(&plain, *rect);
+        let (now_lit, _) = lit_and_dark(&underlined, *rect);
+        assert!(now_lit > was_lit, "column {col} gained no pixels");
+    }
+
+    // The same link a frame later costs no row.
+    let again = renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+        Some(&link),
+    );
+    assert_eq!(again.link_rows, 0);
+    assert!(!again.full);
+
+    // Taking the link away gives the picture back bit for bit.
+    renderer.sync(
+        &gpu.device,
+        &gpu.queue,
+        &mut font,
+        &mut term,
+        &mut viewport,
+        None,
+        None,
+    );
+    let restored = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
+    assert_eq!(
+        plain.pixels, restored.pixels,
+        "the underline left something behind after the pointer moved off"
     );
 }

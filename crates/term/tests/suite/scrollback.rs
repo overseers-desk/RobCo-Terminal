@@ -126,6 +126,7 @@ fn scrollback_viewport_follows_history() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
     assert!(stats.rows_updated > 0, "output produced no damage at all");
     assert_eq!(
@@ -148,6 +149,7 @@ fn scrollback_viewport_follows_history() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
     assert!(
         stats.full,
@@ -165,6 +167,7 @@ fn scrollback_viewport_follows_history() {
         &mut font,
         &mut term,
         &mut viewport,
+        None,
         None,
     );
     assert_eq!(viewport.offset(), 0);
@@ -206,6 +209,7 @@ fn ordinary_output_does_not_force_a_full_rebuild() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
 
     // One line of output on a screen with room to spare. Two rows can
@@ -217,6 +221,7 @@ fn ordinary_output_does_not_force_a_full_rebuild() {
         &mut font,
         &mut term,
         &mut viewport,
+        None,
         None,
     );
     assert!(
@@ -237,6 +242,7 @@ fn ordinary_output_does_not_force_a_full_rebuild() {
         &mut font,
         &mut term,
         &mut viewport,
+        None,
         None,
     );
     assert!(!stats.full);
@@ -270,7 +276,7 @@ fn a_terminal_swapped_underneath_rebuilds_the_screen() {
     let mut second = channel(b"SECOND\r\n");
 
     let mut show = |renderer: &mut GridRenderer, font: &mut _, term: &mut _| {
-        renderer.sync(&gpu.device, &gpu.queue, font, term, &mut viewport, None)
+        renderer.sync(&gpu.device, &gpu.queue, font, term, &mut viewport, None, None)
     };
     show(&mut renderer, &mut font, &mut first);
     // Both are now idle: whatever either has to report, it has reported.
@@ -307,6 +313,7 @@ fn untouched_cells_read_as_blanks_not_nuls() {
         &mut font,
         &mut term,
         &mut viewport,
+        None,
         None,
     );
 
@@ -489,6 +496,7 @@ fn a_shifted_view_draws_the_grid_higher_with_the_next_line_filling_the_gap() {
         &mut term,
         &mut view,
         None,
+        None,
     );
     assert_eq!(renderer.grid().row_text(0).trim_end(), "LINE-013");
     assert_eq!(renderer.grid().row_text(5).trim_end(), "LINE-018");
@@ -546,6 +554,7 @@ fn a_shifted_view_draws_the_grid_higher_with_the_next_line_filling_the_gap() {
         &mut font,
         &mut term,
         &mut view,
+        None,
         None,
     );
     renderer.set_origin(pad as i32, pad as i32, 0);

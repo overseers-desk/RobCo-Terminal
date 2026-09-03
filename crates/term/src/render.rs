@@ -111,9 +111,13 @@ pub struct SyncStats {
     pub cursor_rows: usize,
     /// Rows rewritten only because the selection entered or left them.
     pub marked_rows: usize,
+    /// Rows rewritten only because the link under the pointer entered or
+    /// left them.
+    pub link_rows: usize,
 }
 
-/// What the pointer has marked, as the renderer is told it once a frame.
+/// A run of cells the renderer paints specially, as it is told it once a
+/// frame: what the pointer has marked, and the link the pointer rests on.
 ///
 /// The renderer is handed the range and never the model that produced it:
 /// the drag anchor, the word mode and the swap detection are the window
@@ -220,6 +224,11 @@ pub struct GridRenderer {
     /// finished picture, so the highlight bends with the curvature and glows
     /// with the phosphor like everything else on the tube.
     marked: Option<Marked>,
+    /// The link under the pointer, as of the last [`vt::sync`], underlined
+    /// in the cells the way the marking is inverted in them. Nothing of it
+    /// reaches the grid: a copy of the screen carries no underline the
+    /// session did not send.
+    link: Option<Marked>,
     /// The critter standing over the screen, as of the last
     /// [`GridRenderer::set_critter`]: `(row, column, character)`, row-major.
     /// Substituted into the cell on the way past like the marking above, and
@@ -377,6 +386,7 @@ impl GridRenderer {
             instances,
             cursor: None,
             marked: None,
+            link: None,
             stale: false,
             critter: Vec::new(),
             preedit: String::new(),
@@ -788,6 +798,13 @@ impl GridRenderer {
             if marked_at(self.marked.as_ref(), row, col) {
                 cell = inverted(cell, &self.scheme);
             }
+            // The link under the pointer is underlined the same way, and
+            // after the marking, so a selected link keeps its swapped
+            // colours: the line is drawn in whatever the glyph is drawn in.
+            if marked_at(self.link.as_ref(), row, col) {
+                cell.underline = true;
+                cell.line_color = cell.fg;
+            }
             // A critter stands on the cell, and after the marking rather than
             // before it: the highlight belongs to the screen, and a critter
             // walking through a selection is standing on a highlighted
@@ -1082,6 +1099,7 @@ pub mod vt {
             term: &mut Crosswords<L>,
             viewport: &mut ScrollPosition,
             marked: Option<&Marked>,
+            link: Option<&Marked>,
         ) -> SyncStats {
             let mut stats = SyncStats::default();
 
@@ -1123,6 +1141,17 @@ pub mod vt {
             };
             self.marked = marked.cloned();
 
+            // The link under the pointer moves the same way, and a row it
+            // has left is rebuilt for the same reason.
+            let link_rows: Vec<usize> = if self.link.as_ref() == link {
+                Vec::new()
+            } else {
+                (0..self.render_rows())
+                    .filter(|&row| marking_differs(self.link.as_ref(), link, row, self.cols))
+                    .collect()
+            };
+            self.link = link.cloned();
+
             // The spare row under the screen shows the line after the last
             // one on screen, which exists only while the view is scrolled
             // back: `fill_row(rows)` is `Line(rows - display_offset)`, a
@@ -1163,6 +1192,12 @@ pub mod vt {
                 if !rows_to_update.contains(&row) {
                     rows_to_update.push(row);
                     stats.marked_rows += 1;
+                }
+            }
+            for row in link_rows {
+                if !rows_to_update.contains(&row) {
+                    rows_to_update.push(row);
+                    stats.link_rows += 1;
                 }
             }
             rows_to_update.sort_unstable();

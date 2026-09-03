@@ -145,6 +145,7 @@ fn a_critter_is_drawn_in_the_cells_and_gives_them_back() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
     let plain = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
     let grid_before = renderer.grid().clone();
@@ -196,6 +197,7 @@ fn a_critter_that_has_not_moved_repaints_nothing() {
         &mut term,
         &mut viewport,
         None,
+        None,
     );
 
     let critter = figure(3);
@@ -243,6 +245,7 @@ fn the_cursor_under_a_critter_still_shows_the_session() {
         &mut font,
         &mut term,
         &mut viewport,
+        None,
         None,
     );
     let plain = renderer.render_to_image(&gpu, wgpu::Color::BLACK);
