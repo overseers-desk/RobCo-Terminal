@@ -3,8 +3,8 @@
 //! chords a press reads on the way.
 
 use term::pointer::{
-    column_selection_mode, control_click_is_secondary, on_press, preserve_line_breaks, Button,
-    Modifiers, PointerAction, PointerContext,
+    column_selection_mode, control_click_is_secondary, on_press, opens_link, preserve_line_breaks,
+    Button, Modifiers, PointerAction, PointerContext,
 };
 
 /// The chord that copies a wrapped command as one unbroken run: Command on
@@ -136,7 +136,10 @@ fn control_with_the_left_button_is_the_secondary_click_on_macos() {
         control: true,
         ..Modifiers::NONE
     };
-    assert_eq!(control_click_is_secondary(control), cfg!(target_os = "macos"));
+    assert_eq!(
+        control_click_is_secondary(control),
+        cfg!(target_os = "macos")
+    );
     assert!(
         !control_click_is_secondary(Modifiers {
             alt: true,
@@ -145,4 +148,21 @@ fn control_with_the_left_button_is_the_secondary_click_on_macos() {
         "Ctrl+Alt drags a rectangle on every platform, macOS included"
     );
     assert!(!control_click_is_secondary(Modifiers::NONE));
+}
+
+#[test]
+fn the_chord_that_joins_lines_on_a_drag_opens_a_link_on_a_click() {
+    assert!(opens_link(join_lines()));
+    assert!(!opens_link(Modifiers::NONE));
+    assert!(!opens_link(Modifiers::NONE.with_shift()));
+    for modifiers in [Modifiers::NONE, join_lines(), Modifiers::NONE.with_shift()] {
+        assert_eq!(preserve_line_breaks(modifiers), !opens_link(modifiers));
+    }
+    // Ctrl+Alt is the rectangle drag, and opens nothing on any platform.
+    let rectangle = Modifiers {
+        control: true,
+        alt: true,
+        ..Modifiers::NONE
+    };
+    assert!(!opens_link(rectangle));
 }

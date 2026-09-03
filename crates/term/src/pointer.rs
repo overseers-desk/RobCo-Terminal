@@ -108,9 +108,10 @@ pub enum PointerAction {
 
 /// The press routing table.
 ///
-/// `over_hot_spot` reports whether a link lies under the cell; a left press
-/// that marks and lands on one activates it, which is why a plain click opens
-/// a URL without a modifier.
+/// `over_hot_spot` reports whether a link lies under the cell and the press
+/// carries the chord that opens one ([`opens_link`]); the caller folds both
+/// into it, so the table reads no modifier for links. A left press that
+/// marks and lands on one anchors the selection and activates the link.
 ///
 /// The three buttons divide as: left marks or reports, middle pastes the
 /// primary selection or reports, and right opens the settings application or
@@ -183,18 +184,30 @@ pub fn control_click_is_secondary(modifiers: Modifiers) -> bool {
     cfg!(target_os = "macos") && modifiers.control && !modifiers.alt
 }
 
+/// Control without Alt, or Command on macOS, where Control is the secondary
+/// click ([`control_click_is_secondary`]) and cannot also mean this. One
+/// chord with two readings, decided by what the hand does next: held through
+/// a drag it copies a wrapped run unbroken ([`preserve_line_breaks`]), held
+/// through a click on a link it opens the link ([`opens_link`]).
+fn ctrl_or_cmd(modifiers: Modifiers) -> bool {
+    if cfg!(target_os = "macos") {
+        modifiers.meta
+    } else {
+        modifiers.control && !modifiers.alt
+    }
+}
+
 /// `_preserveLineBreaks`, set from the press modifiers: the drag that copies
 /// a wrapped selection as one unbroken run.
-///
-/// Command holds it on macOS, where Control is the secondary click
-/// ([`control_click_is_secondary`]) and cannot also mean this; Ctrl without
-/// Alt holds it everywhere else.
 pub fn preserve_line_breaks(modifiers: Modifiers) -> bool {
-    if cfg!(target_os = "macos") {
-        !modifiers.meta
-    } else {
-        !(modifiers.control && !modifiers.alt)
-    }
+    !ctrl_or_cmd(modifiers)
+}
+
+/// Whether a press on a link opens it: the chord [`preserve_line_breaks`]
+/// reads, taken at the click rather than the drag, so a click made to focus
+/// the window or to anchor a selection follows no link.
+pub fn opens_link(modifiers: Modifiers) -> bool {
+    ctrl_or_cmd(modifiers)
 }
 
 /// `_columnSelectionMode`: Ctrl+Alt makes the drag rectangular.

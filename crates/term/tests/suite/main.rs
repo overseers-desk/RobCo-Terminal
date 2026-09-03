@@ -9,6 +9,7 @@ mod fallback;
 mod font_parity;
 mod grid_tests;
 mod hotspot_tests;
+mod link_tests;
 mod pixel_properties;
 mod pointer_tests;
 mod preedit;

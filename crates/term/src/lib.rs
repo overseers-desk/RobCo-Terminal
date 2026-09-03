@@ -27,10 +27,12 @@
 //! * [`grid`]: the grid seam. `GridView` is the one definition of what a
 //!   line says; [`rio_grid`] adapts rio-vt's `Crosswords` onto it and carries
 //!   the read-back-as-text path with it.
-//! * [`selection`] / [`hotspots`] / [`pointer`]: what the user has selected,
-//!   which spans are links, and whether a pointer event marks the screen or
-//!   reaches the program. Scrollback search is rio-vt's own
-//!   (`Crosswords::search_next`), driven from `crates/app`'s find line.
+//! * [`selection`] / [`hotspots`] / [`links`] / [`pointer`]: what the user
+//!   has selected, which spans the URL filters match, the link under a cell
+//!   (an OSC 8 hyperlink first, a matched span otherwise), and whether a
+//!   pointer event marks the screen or reaches the program. Scrollback
+//!   search is rio-vt's own (`Crosswords::search_next`), driven from
+//!   `crates/app`'s find line.
 //! * [`fonts`]: the bundled catalogue, and [`fonts::sizing`], the seam: a
 //!   catalogue row plus the user's knobs in, a `ResolvedFont` out. Nothing
 //!   downstream sees the catalogue's raw per-entry properties again.
@@ -55,6 +57,7 @@ pub mod distortion;
 pub mod fonts;
 pub mod grid;
 pub mod hotspots;
+pub mod links;
 pub mod pointer;
 pub mod render;
 pub mod rio_grid;
@@ -77,6 +80,7 @@ pub use fonts::{bundled_fonts, font_by_name, system_fonts, FontEntry, FontSource
 pub use gpu::{Gpu, Image, Target};
 pub use grid::{GridView, ScriptedGrid};
 pub use hotspots::{HotSpot, HotSpotType, UrlFilterChain, UrlType};
+pub use links::link_at;
 pub use render::{GridRenderer, Marked, SyncStats};
 // The two grid-to-text answers, both at the root because both are asked
 // from outside: `live_text` is what the program below has written on the
