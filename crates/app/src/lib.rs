@@ -76,6 +76,7 @@ pub mod input;
 pub mod instance;
 pub mod menu;
 pub mod mouse;
+pub mod opener;
 pub mod overlay;
 pub mod paths;
 pub mod picker;
