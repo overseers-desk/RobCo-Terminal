@@ -395,8 +395,13 @@ fn a_channel_switch_triggers_the_degauss_and_a_store_does_not() {
     );
 
     // Opening a channel moves the air onto it, which is a channel change.
+    // Sampled at a stamp taken before the keystroke: the transient is 200 ms
+    // long and the keystroke's own cost is the scheduler's, so a stamp taken
+    // after it can land past the end. The sampler saturates a time before
+    // the trigger to its start, which is the peak.
+    let before = Instant::now();
     character(&mut surface, "t", CTRL_SHIFT);
-    let running = surface.degauss_state(Instant::now());
+    let running = surface.degauss_state(before);
     assert!(running.is_active(), "the tube did not flinch: {running:?}");
     assert!(running.brightness > 1.0 && running.scale_y < 1.0);
 
@@ -423,12 +428,14 @@ fn a_channel_switch_triggers_the_degauss_and_a_store_does_not() {
     );
 
     // Choosing another channel is one again, and so is closing onto one.
+    let before = Instant::now();
     character(&mut surface, "1", CHORD);
     release_chord(&mut surface);
-    assert!(surface.degauss_state(Instant::now()).is_active());
+    assert!(surface.degauss_state(before).is_active());
     let _ = surface.degauss_state(Instant::now() + crt::degauss::DURATION);
+    let before = Instant::now();
     character(&mut surface, "w", CTRL_SHIFT);
-    assert!(surface.degauss_state(Instant::now()).is_active());
+    assert!(surface.degauss_state(before).is_active());
 }
 
 /// The press of a preset. A dark slot starts a session on it, an open one
