@@ -85,9 +85,16 @@ fn typing_thrown_away_by_a_full_queue_says_so_on_the_glass() {
 
     // A paste far larger than the queue can hold, at a child that reads none of
     // it. The first megabytes queue; the writes past the cap are thrown away.
+    //
+    // Twice the cap, because a write reaches the pty before it reaches the
+    // queue and only the tail the master would not take is queued. The
+    // master's own buffer therefore comes off the total, and a margin
+    // narrower than that buffer decides the test on how much the kernel felt
+    // like absorbing. No pty buffer is megabytes deep, so at twice the cap
+    // the queue is over it whatever the master took.
     let chunk = vec![b'x'; 64 << 10];
     let mut offered = 0usize;
-    while offered <= INPUT_CAP + chunk.len() {
+    while offered <= 2 * INPUT_CAP {
         surface.write(&chunk);
         offered += chunk.len();
     }
