@@ -186,8 +186,12 @@ fn main() -> ExitCode {
         }
     }
 
+    // `term` at warn so the glass crate's own news is heard: it says out
+    // loud when a face will not load or the pty will not take a write, and
+    // a filter naming only the binary and its library leaves that unsaid
+    // unless the run happens to carry RUST_LOG.
     let mut builder = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("robco_app=info,app=info"),
+        env_logger::Env::default().default_filter_or("robco_app=info,app=info,term=warn"),
     );
     if options.verbose {
         builder.filter_level(log::LevelFilter::Debug);
