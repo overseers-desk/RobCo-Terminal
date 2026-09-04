@@ -330,11 +330,12 @@ fn a_child_that_never_reads_bounds_the_queue_instead_of_growing_it() {
 /// A rate bounds the read itself, and nothing queues behind it.
 ///
 /// Measured against an unthrottled session of the same age running the same
-/// program, because what a machine moves in a fixed interval is not a
-/// constant, and the ratio between the two is what a rate claims to set. At
-/// 120 bytes a second, 1200 baud, the throttled session is owed 36 bytes
-/// over the 300 ms this runs, with a second's worth of credit as the
-/// ceiling above that.
+/// program, because what a machine moves in an interval is not a constant,
+/// and the ratio between the two is what a rate claims to set. The interval
+/// is however long the unthrottled session takes to move five thousand
+/// bytes, and the throttled one is bounded by what 120 bytes a second, 1200
+/// baud, earns over that measured span, with a second's worth of credit as
+/// the ceiling above it.
 #[test]
 fn a_rate_bounds_what_the_read_loop_takes() {
     let viewport = Viewport::new(800, 480, 1.0, CellSize::new(10.0, 20.0));
@@ -352,25 +353,30 @@ fn a_rate_bounds_what_the_read_loop_takes() {
     };
     let size = viewport.term_size();
     let mut free = Session::spawn(&dumping(None), size, NoopTap::default()).expect("spawn");
+    // Stamped before the spawn, so the span it measures covers every
+    // moment the throttled session could have been earning credit.
+    let started = Instant::now();
     let mut slow = Session::spawn(&dumping(Some(120)), size, NoopTap::default()).expect("spawn");
 
     let (mut free_bytes, mut slow_bytes) = (0usize, 0usize);
-    let deadline = Instant::now() + Duration::from_millis(300);
-    while Instant::now() < deadline {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while free_bytes <= 5_000 {
+        assert!(
+            Instant::now() < deadline,
+            "the unthrottled session took {free_bytes} bytes of the dump, so the \
+             comparison is measuring something other than the rate"
+        );
         free_bytes += free.pump().bytes;
         slow_bytes += slow.pump().bytes;
         std::thread::sleep(Duration::from_millis(5));
     }
+    let span = started.elapsed();
 
+    let earned = (120.0 * span.as_secs_f64()).ceil() as usize + 120;
     assert!(
-        free_bytes > 5_000,
-        "the unthrottled session took {free_bytes} bytes of the dump, so the \
-         comparison is measuring something other than the rate"
-    );
-    assert!(
-        slow_bytes < 500,
+        slow_bytes <= earned,
         "the throttled session took {slow_bytes} bytes where 120 a second \
-         earns about 36"
+         earns at most {earned} over {span:?}"
     );
 }
 
@@ -408,16 +414,18 @@ fn control_mode_lifts_the_rate() {
         std::thread::sleep(Duration::from_millis(5));
     }
 
+    // Five thousand bytes is more than 120 a second earns inside the
+    // deadline, so reaching it is the lift, however the run is scheduled.
     let mut bytes = 0usize;
-    let deadline = Instant::now() + Duration::from_millis(300);
-    while Instant::now() < deadline {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while bytes <= 5_000 {
+        assert!(
+            Instant::now() < deadline,
+            "the gateway's stream was metered at the rate: {bytes} bytes"
+        );
         bytes += session.pump().bytes;
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(
-        bytes > 5_000,
-        "the gateway's stream was metered at the rate: {bytes} bytes in 300 ms"
-    );
 }
 
 /// Control mode takes the wire, and the queue lets go of it.
