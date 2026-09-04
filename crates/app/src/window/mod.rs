@@ -142,7 +142,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(8);
 /// display session (R2) says the assumption costs anything, the fix is to
 /// measure the present interval and divide that, not to change what the
 /// setting means.
-const EFFECTS_BASE_FRAME: Duration = Duration::from_micros(16_667);
+pub const EFFECTS_BASE_FRAME: Duration = Duration::from_micros(16_667);
 
 /// How long the glass goes untouched before it counts as unattended.
 ///

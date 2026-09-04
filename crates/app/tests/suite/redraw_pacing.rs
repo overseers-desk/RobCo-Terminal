@@ -11,7 +11,7 @@
 use std::time::{Duration, Instant};
 
 use app::shell::Surface;
-use app::window::TerminalSurface;
+use app::window::{TerminalSurface, EFFECTS_BASE_FRAME};
 use term::{CellSize, SessionConfig, Viewport};
 
 fn surface() -> TerminalSurface {
@@ -33,40 +33,43 @@ fn a_flood_of_output_buys_one_frame_per_cadence_not_one_per_tick() {
     let mut surface = surface();
     surface.write(b"first\r");
 
-    // Tick until the echo lands and buys its frame.
+    // Tick until the echo lands and buys its frame. The stamp is taken
+    // before the tick that redraws, so it is no later than the clock the
+    // governor dated the frame by.
     let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    let bought = loop {
         assert!(Instant::now() < deadline, "cat never echoed");
+        let stamp = Instant::now();
         if surface.tick().redraw {
-            break;
+            break stamp;
         }
         std::thread::sleep(Duration::from_millis(2));
-    }
+    };
 
-    // More output, immediately: the next frame is not due yet, so however
-    // many ticks run inside the cadence, none of them redraws. The window
-    // is kept well under the 16.7 ms cadence so the assertion is exact.
+    // More output, immediately. The next frame is not due until a cadence
+    // after the one just bought, so however many ticks run before then,
+    // the one that redraws comes no sooner than that. Measured between
+    // stamps rather than counted inside a window, because how many ticks
+    // fit in a window, and whether a window ends before the cadence does,
+    // is the scheduler's to decide. The pending output is not dropped
+    // either: the frame it waited for is the one this loop ends on.
     surface.write(b"second\r");
-    let inside_cadence = Instant::now() + Duration::from_millis(8);
-    let mut redraws = 0;
-    while Instant::now() < inside_cadence {
-        if surface.tick().redraw {
-            redraws += 1;
-        }
-    }
-    assert_eq!(redraws, 0, "output redrew inside the frame it already bought");
-
-    // The pending output is not dropped: once the cadence elapses, the
-    // frame it waited for is asked for.
     let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    let after = loop {
         assert!(
             Instant::now() < deadline,
             "the pending output never got its frame"
         );
-        if surface.tick().redraw {
-            break;
+        let redraw = surface.tick().redraw;
+        let stamp = Instant::now();
+        if redraw {
+            break stamp;
         }
-        std::thread::sleep(Duration::from_millis(2));
-    }
+    };
+    let waited = after.duration_since(bought);
+    assert!(
+        waited >= EFFECTS_BASE_FRAME,
+        "output redrew {waited:?} after the frame it already bought, inside \
+         the {EFFECTS_BASE_FRAME:?} cadence"
+    );
 }
