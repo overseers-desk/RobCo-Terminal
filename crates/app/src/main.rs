@@ -344,6 +344,10 @@ fn main() -> ExitCode {
     // too, and the process never walks the platform's font directories at
     // all. The two dumps return above this line and never decide, which is
     // what keeps `--dump-settings` scan-free.
+    // Before any window is built, so the first frame is already drawn in
+    // the face the flag named.
+    app::window::set_font_override(options.font.clone());
+
     term::fonts::system::allow_system_lettering(
         initial_config.screen.font_source == config::FontSource::SystemFonts,
     );

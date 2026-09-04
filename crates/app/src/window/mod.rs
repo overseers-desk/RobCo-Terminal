@@ -226,6 +226,19 @@ fn bank_physical(cabinet: &Cabinet, scale_factor: f64, window_width: u32) -> u32
 /// the whole point of the source key is that a bundled profile does not
 /// enumerate the machine to find out what it is missing.
 fn font_entry(cfg: &Config) -> &'static FontEntry {
+    // `--font` outranks the profile and every later reload of it. The
+    // machine's catalogue is searched rather than the one the profile
+    // selects, because it holds the bundled faces as well, so one flag
+    // takes either kind of name. A name that is in neither falls through to
+    // the profile's own answer below, with the family said out loud: a
+    // misspelt flag that silently drew the default font would be a run
+    // whose picture disagrees with the command that asked for it.
+    if let Some(name) = font_override() {
+        match term::font_by_name(name, term::FontSource::System) {
+            Some(entry) => return entry,
+            None => log::error!("--font {name:?}: no such family on this machine"),
+        }
+    }
     let source = chassis::font_source(cfg);
     if let Some(entry) = term::font_by_name(&cfg.screen.font_name, source) {
         return entry;
@@ -240,6 +253,24 @@ fn font_entry(cfg: &Config) -> &'static FontEntry {
         term::FontSource::Bundled,
     )
     .expect("the bundled catalogue always contains the default font")
+}
+
+/// The family `--font` named, for the life of the process.
+///
+/// A `OnceLock` above the windows rather than a field on one: the flag is the
+/// process's, every window this process opens draws in it, and a window
+/// opened by a later `--new-window` handoff would have no argument list of
+/// its own to read it from.
+static FONT_OVERRIDE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Record what `--font` named. The first call wins, which is the one the
+/// command line makes before any window exists.
+pub fn set_font_override(family: Option<String>) {
+    let _ = FONT_OVERRIDE.set(family);
+}
+
+fn font_override() -> Option<&'static str> {
+    FONT_OVERRIDE.get()?.as_deref()
 }
 
 /// What a channel slot holds in this binary: a PTY session carrying the

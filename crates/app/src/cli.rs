@@ -93,6 +93,12 @@ pub struct Options {
     /// flag that asks for a font scan, which is why it is its own flag
     /// rather than a part of the settings dump.
     pub list_renderable_fonts: bool,
+    /// `--font <family>`: the face the glass draws in for this run,
+    /// whatever the profile says. Looked up in the machine's catalogue,
+    /// which holds the bundled faces too, so either kind of name works.
+    /// A run-scoped override rather than an edit: it outlives a live
+    /// config reload and leaves the user's file alone.
+    pub font: Option<String>,
     /// `--settings`: open the settings window instead of a terminal. No
     /// glass, no instance lock, no config watch; this process is the
     /// settings application for as long as it lives.
@@ -127,6 +133,7 @@ pub fn help(program_name: &str) -> String {
         "Usage: {program_name} [--default-settings] [--workdir <dir>] [--program <prog>] \
 [-p|--profile <prof>] [--fullscreen] [-h|--help]\n\
 \x20 --default-settings  Run {program_name} with the default settings\n\
+\x20 --font <family>     Draw the glass in this font family for this run.\n\
 \x20 --workdir <dir>     Change working directory to 'dir'\n\
 \x20 -e <cmd>            Command to execute. This option will catch all following arguments, so use it as the last option.\n\
 \x20 --program <prog>    Program to run instead of the user's shell.\n\
@@ -179,6 +186,13 @@ where
                     i += 1;
                 }
                 None => return Outcome::Fail(format!("{text} needs a profile name\n")),
+            },
+            "--font" => match args.get(i + 1) {
+                Some(v) => {
+                    opts.font = Some(v.to_string_lossy().into_owned());
+                    i += 1;
+                }
+                None => return Outcome::Fail("--font needs a family name\n".into()),
             },
             "--workdir" => match args.get(i + 1) {
                 Some(v) => {
