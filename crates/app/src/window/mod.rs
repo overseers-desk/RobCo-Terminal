@@ -457,6 +457,9 @@ pub struct TerminalSurface {
     /// The window's own inner size in physical pixels. The swapchain is this
     /// big; the well is this less the bank column.
     window_size: (u32, u32),
+    /// The last clipped-frame report, so the log carries one line per
+    /// distinct disagreement rather than one per frame.
+    logged_clip: Option<(u32, u32, u32, u32, u32)>,
     /// The cabinet the well is set into, or `None` for a surface that stands in
     /// no chassis at all: every headless one unless a test asks for one
     /// ([`TerminalSurface::set_cabinet`]), which is what keeps a surface with
@@ -920,6 +923,7 @@ impl TerminalSurface {
             window,
             gpu,
             channels,
+            logged_clip: None,
             banks: HashMap::new(),
             picker: None,
             find: None,
@@ -1436,15 +1440,19 @@ impl TerminalSurface {
         if let Some(cabinet) = self.cabinet.as_mut() {
             cabinet.resized(f64::from(window_w) / scale, f64::from(window_h) / scale);
         }
-        let bank = self.bank_physical();
-        self.viewport.width = window_w.saturating_sub(bank).max(1);
         self.viewport.height = window_h.max(1);
         // The margin is physical (see `Viewport::margin`), so a DPR change
         // moves it even with the settings themselves untouched -- the same
         // reason `relayout` is what `scale_factor_changed` calls.
         let cfg = self.live_config();
         self.ensure_margin(&cfg);
+        // Floor before boundary: the bank's width is a function of the floor
+        // (`apply_live_settings` says why). Ordered so this reads only the
+        // cell and the margin, settled above, and nothing it is about to
+        // write.
         self.settle_well_minimum();
+        let bank = self.bank_physical();
+        self.viewport.width = window_w.saturating_sub(bank).max(1);
         self.sync_geometry();
         self.settle_rows();
     }
@@ -1559,8 +1567,14 @@ impl TerminalSurface {
             // Both of them move the floor: the cell is what the eighty
             // columns are counted in, and the margin is what is taken off
             // the well before they are counted.
-            self.settle_well_minimum();
-            self.sync_geometry();
+            // `relayout` rather than the floor and the geometry alone: the
+            // bank's width is a function of the well's floor, so a font that
+            // moves the floor moves the boundary the well is measured from.
+            // Settling the floor without re-dividing the window leaves the
+            // well the width it had against the old boundary, and the chain
+            // then draws a picture of that width at the new boundary's
+            // offset, off the right edge of the swapchain.
+            self.relayout();
         }
 
         let well = (self.viewport.width.max(1), self.viewport.height.max(1));
@@ -1833,6 +1847,35 @@ impl TerminalSurface {
         // marks bracket its `if` rather than sitting inside it, so the query
         // set is always eight-for-eight written even with the chassis
         // hidden -- a hidden-column frame legitimately measures ~0 there.
+        // The swapchain image is the authority on what may be drawn into it,
+        // so the two rectangles laid onto it below are clipped to it here.
+        // They are computed from the window's division into bank and well,
+        // and a division that disagrees with the image by a pixel used to
+        // reach wgpu as a validation error, which is a panic and takes the
+        // process with it. Clipped, the same disagreement costs a stripe of
+        // one frame and a line in the log, and the terminal stays on the
+        // screen to be read.
+        let (surface_width, surface_height) = gpu.size();
+        let bank = bank.min(surface_width);
+        let well = (
+            target_width.min(surface_width - bank),
+            target_height.min(surface_height),
+        );
+        if well != (target_width, target_height) {
+            let clip = (bank, target_width, target_height, surface_width, surface_height);
+            if self.logged_clip != Some(clip) {
+                self.logged_clip = Some(clip);
+                log::error!(
+                    "the well does not fit the window it is drawn in: \
+                     bank {bank} plus well {target_width}x{target_height} \
+                     against a {surface_width}x{surface_height} surface; \
+                     the frame is clipped to {}x{}",
+                    well.0,
+                    well.1,
+                );
+            }
+        }
+
         frame.mark(Mark::FrameStart);
         frame.mark(Mark::GridStart);
         glass.renderer.draw(
@@ -1854,7 +1897,7 @@ impl TerminalSurface {
             &glass.target.texture,
             &frame.view,
             (bank, 0),
-            (target_width, target_height),
+            well,
             gpu.format(),
             &mut frame.encoder,
             time,
@@ -1892,7 +1935,7 @@ impl TerminalSurface {
         // badge, and hiding a loss behind a cosmetic switch would be a
         // second way to lose the news.
         frame.mark(Mark::ChromeStart);
-        let window = (bank + target_width, target_height);
+        let window = (bank + well.0, well.1);
         let badge_opacity = if glass.applied.general.show_terminal_size {
             self.size_badge.1
         } else {
@@ -1914,8 +1957,8 @@ impl TerminalSurface {
             &mut frame.encoder,
             &frame.view,
             window,
-            (bank, target_height),
-            (target_width, target_height),
+            (bank, well.1),
+            well,
             scale_factor,
             column_params.as_ref(),
             &column_pieces,
